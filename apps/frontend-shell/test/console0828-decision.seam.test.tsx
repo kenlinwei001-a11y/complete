@@ -348,6 +348,9 @@ vi.mock("@/api/endpoints", () => ({
     if (tickFails) throw new Error("推进这一跳没走通（桩：本用例刻意不回）");
     return { curTick: n, state: WORLD_AFTER, disclosure: DISCLOSURE };
   }),
+  // WO-C0828-P2：定价读数是只读触发（选中卡点即调），桩回空清单 ⇒ 候选卡如实显示「未定价」，
+  // 不侵入既有断言。⛔ 缺这一条的话组件拿到 undefined 当场抛错（手写导出清单不会自动跟上，见下注）。
+  simPricing: vi.fn(async () => ({ items: [] })),
   runSolver: vi.fn(async () => {
     if (solverFails) throw new Error("求解器这一跳没走通（桩：本用例刻意不回）");
     return { data: impedimentPayload(), snapshotVersion: "sv-test" };

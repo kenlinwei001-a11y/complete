@@ -477,6 +477,13 @@ export interface CandidateVM {
   dims: CandidateDimVM[];
   provenance: { solverKey: string; formula: string; inputs: string[] };
   honesty: ImpedimentHonesty;
+  /**
+   * WO-C0828-P2 · 引擎原样契约候选（`SolutionCandidate`）。
+   * 视图模型把 `rungKind` 等拆进了 `rung:`/`effect:` 子结构 ⇒ **拼不回去**；
+   * 逐候选反事实定价（POST …/pricing）收的是契约形状，故这里保原样一份，
+   * ⛔ 不许试图从 VM 字段反拼契约（拼回去就是第二份真相源）。
+   */
+  raw: SolutionCandidate;
 }
 
 /** 一个阻滞点的候选态：要么有候选，要么有一个**说得清是哪一种**的缺席。 */
@@ -530,6 +537,8 @@ export function toCandidateVM(c: SolutionCandidate, im: ChainImpediment, caveatN
     provenance: { solverKey: c.provenance.solverKey, formula: c.provenance.formula, inputs: [...c.provenance.inputs] },
     // 候选自己带 dataMode（引擎透传宿主的）；诚实位组装复用同一份 `honestyOf`，不另写一套四态。
     honesty: honestyOf({ ...im, dataMode: c.dataMode }, caveatNote),
+    // WO-C0828-P2：定价按契约形状收候选（见接口注释），保原样一份。
+    raw: c,
   };
 }
 

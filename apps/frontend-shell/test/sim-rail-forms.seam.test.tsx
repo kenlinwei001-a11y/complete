@@ -242,6 +242,8 @@ const worldSpy = vi.hoisted(() => vi.fn(async (_sessionId: string) => ({ tick: 0
 vi.mock("@/api/endpoints", () => ({
   /* 落点下拉的「号」取自本体主键。⚠ 手写的 mock 导出面不会跟着组件的新 import 走。
      形态见 `console0828-decision.seam.test.tsx` 同名桩上的那段账。 */
+  // WO-C0828-P2：定价只读触发桩（缺则组件拿到 undefined，渲染当场抛）。
+  simPricing: vi.fn(async () => ({ items: [] })),
   fetchObjectTypes: vi.fn(async () => []),
   fetchSimViewConfig: vi.fn(async () => ({
     tenantId: "demo",

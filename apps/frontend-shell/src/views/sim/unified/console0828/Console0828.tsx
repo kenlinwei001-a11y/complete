@@ -50,9 +50,9 @@
  *     且**在检查点那一拍写扰动会污染检查点本身**。⇒ 左栏的 ✕ 只从**待施加清单**里拿掉，
  *     世界已经吃过的那一下要靠重算；屏上把这件事说清楚，不装作删了就没发生过。
  */
-import { Fragment, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { PropagationRulesResponse, SandboxViewConfig, SimRunDisclosure } from "@platform/contracts";
+import type { PropagationRulesResponse, SandboxViewConfig, SimRunDisclosure, SolutionCandidate } from "@platform/contracts";
 import {
   createSimPerturbation,
   fetchAllObjects,
@@ -64,8 +64,10 @@ import {
   proposeSimCandidates,
   runSolver,
   simCounterfactual,
+  simPricing,
   simTick,
   simWorld,
+  type PricingOutcomeItem,
   type SimProposalResponse,
 } from "@/api/endpoints";
 import { BASE_REGISTRY } from "@platform/contracts";
@@ -334,6 +336,105 @@ function bestDimOf(c: { readonly dims: readonly CandDim[] }): CandDim | null {
 
 /** 改善量的显示。⚠ 单位一律用引擎给的 `d.unit`，⛔ 前端不换算也不补单位。 */
 const fmtGain = (n: number): string => n.toLocaleString("zh-CN", { maximumFractionDigits: 2 });
+
+/* ══ WO-C0828-P2 · 逐候选反事实定价（D2 ⑥ 披露 → 候选卡）══════════════════════
+ * 后端六步装配（查绑定 → 代入 → 扰动 → 平行世界 → 同尺读数 → 披露）的**渲染侧**：
+ * 只渲染回包、⛔ 不重算分布（单源，见 endpoints.simPricing 头注）。
+ * gap 三态照实渲染 —— 那是三种不同的业务事实（无绑定 / 式子算不出 / 落点格不存在），
+ * ⛔ 不返 0、不降格成「没算」。 */
+
+const PRICING_GAP_TEXT: Record<"NO_BINDING" | "PRESSURE_TARGET_UNCOMPUTABLE" | "TARGET_CELL_ABSENT", string> = {
+  NO_BINDING: "未找到压力绑定",
+  PRESSURE_TARGET_UNCOMPUTABLE: "压力目标值算不出",
+  TARGET_CELL_ABSENT: "压力落点格不存在于当前世界态",
+};
+
+/** 候选卡第一层那行：拨后仍受影响 N 张 / X + 位移 p90（或诚实 gap）。 */
+function PricingReadout({
+  candidateId,
+  outcome,
+  pending,
+  err,
+}: {
+  candidateId: string;
+  outcome: PricingOutcomeItem | undefined;
+  pending: boolean;
+  err: string | null;
+}): JSX.Element {
+  return (
+    <p className={styles.calibre} data-testid={`c0828-price-${candidateId}`}>
+      {pending ? (
+        "定价推演中…"
+      ) : outcome === undefined ? (
+        err === null ? (
+          "未定价"
+        ) : (
+          "定价失败"
+        )
+      ) : outcome.kind === "gap" ? (
+        <>
+          定价缺格 · {PRICING_GAP_TEXT[outcome.reason]}
+          {outcome.missingBinding === null
+            ? ""
+            : `：${outcome.missingBinding.objectType}.${outcome.missingBinding.prop} 无对应派生规格（拨了也不按式子传导，不编数）`}
+        </>
+      ) : (
+        <>
+          拨后仍受影响 <b>{outcome.after.touchedOrders}</b> 张 · <b>{fmtMoney(outcome.after.exposureYuan, "元")}</b>
+          {" · "}位移 p90{" "}
+          <b>{outcome.after.displacement.p90 === null ? "无实质读数" : outcome.after.displacement.p90.toFixed(2)}</b>
+        </>
+      )}
+    </p>
+  );
+}
+
+/** 定价明细 —— 收进「判定依据 · 明细」：分档 / 口径声明 / 对照零 / 披露六要素。 */
+function PricingReadoutDetail({
+  outcome,
+  err,
+}: {
+  outcome: PricingOutcomeItem | undefined;
+  err: string | null;
+}): JSX.Element | null {
+  if (outcome === undefined) {
+    return err === null ? null : (
+      <p className={styles.calibre}>定价调用失败：{err} —— 这是调用失败，不是「没有价」。</p>
+    );
+  }
+  if (outcome.kind === "gap") {
+    return (
+      <p className={styles.calibre}>
+        定价缺格 · {PRICING_GAP_TEXT[outcome.reason]}
+        {outcome.missingBinding === null
+          ? " —— 该杠杆当前没有可传导的派生式子，如实缺格，⛔ 不返 0。"
+          : `：${outcome.missingBinding.objectType}.${outcome.missingBinding.prop} 无对应派生规格 —— 该杠杆拨了也不会按式子传导，如实缺格，⛔ 不返 0。`}
+      </p>
+    );
+  }
+  const d = outcome.after.displacement;
+  return (
+    <div data-testid={`c0828-price-detail-${outcome.candidateId}`}>
+      <p className={styles.calibre}>
+        位移分布：{d.buckets.map((b) => `${b.label} ${b.n}`).join(" · ")}
+        {outcome.after.faintOnly > 0 ? `；另有 ${outcome.after.faintOnly} 张只到噪声级，不计入「被推动」` : ""}。
+      </p>
+      {/* PRD §4.2 明定的口径声明文案 —— 一字不落，且 p90 必须用本次真读数，⛔ 不许写死。 */}
+      <p className={styles.calibre} data-testid={`c0828-price-claim-${outcome.candidateId}`}>
+        口径声明：受影响张数按 0.01 位移门槛计；本次位移 p90 ={" "}
+        {d.p90 === null ? "无实质读数（全部 ≤ 门槛）" : d.p90.toFixed(2)} —— 位移离门槛越近，张数对门槛越敏感。
+      </p>
+      <p className={styles.calibre}>
+        对照（不处置）读数 {outcome.control.touchedOrders} 张 · {fmtMoney(outcome.control.exposureYuan, "元")} —— 差分基准；
+        定价走只读平行世界，世界态零写入。
+      </p>
+      <p className={styles.calibre}>
+        披露：规格 {outcome.specKey} · 推演 {outcome.disclosure.tickCount} 拍 · 总耗时 {outcome.disclosure.elapsedMs.total}ms ·
+        本次未调用 agent。
+      </p>
+    </div>
+  );
+}
 
 export default function Console0828({
   sessionId,
@@ -865,6 +966,47 @@ export default function Console0828({
     return impGroups.actionable.find((i) => i.impedimentId === id) ?? impGroups.actionable[0] ?? null;
   }, [impGroups, pickedFix]);
 
+  /* ══ WO-C0828-P2 · 定价接线 ══════════════════════════════════════════════════
+   * 触发 = 选中卡点或推演时长变化（`horizon` 与 runM 同源），一次 POST ≤4 条候选。
+   * ⛔ 不挂在 runM 后面：runM 会真落扰动 + 推世界（有副作用），而定价只需要
+   * 「当前选的这几条候选 × 当前推演时长」—— 不该逼用户重跑一次推演才能看价。
+   * 定价本身全程只读（后端 persist:false 临时扰动路，世界态逐字节不变）。 */
+  const [pricingItems, setPricingItems] = useState<Readonly<Record<string, PricingOutcomeItem>>>({});
+  const [pricingErr, setPricingErr] = useState<string | null>(null);
+  const pricingM = useMutation({
+    mutationFn: async (input: { sessionId: string; horizon: number; candidates: readonly SolutionCandidate[] }) => {
+      const res = await simPricing(input.sessionId, { horizon: input.horizon, candidates: input.candidates });
+      const byId: Record<string, PricingOutcomeItem> = {};
+      for (const it of res.items) byId[it.candidateId] = it;
+      return byId;
+    },
+    onMutate: () => {
+      setPricingItems({});
+      setPricingErr(null);
+    },
+    onSuccess: (byId) => setPricingItems(byId),
+    onError: (e: unknown) => {
+      setPricingItems({});
+      setPricingErr(e instanceof Error ? e.message : String(e));
+    },
+  });
+  const pricingPending = pricingM.isPending;
+  useEffect(() => {
+    if (sessionId === undefined || sessionId === "" || picked === null) {
+      setPricingItems({});
+      setPricingErr(null);
+      return;
+    }
+    const candidates = picked.candidates.slice(0, 4).map((c) => c.raw);
+    if (candidates.length === 0) {
+      setPricingItems({});
+      return;
+    }
+    pricingM.mutate({ sessionId, horizon, candidates });
+    // `pricingM.mutate` 是稳定引用（TanStack v5）；`picked` 由 useMemo 钉住 ——
+    // 三样都变才算「要重新定价」。
+  }, [sessionId, horizon, picked, pricingM.mutate]);
+
   /* ══ WO-C0828-VOICE · 「N 种对策 ▸」点了没反应 —— 三条病因叠在一起 ═══════════════
    *
    * 仓主实拍反馈「点了没反应」。逐条核过，**三条都成立，缺一条都修不好**：
@@ -991,11 +1133,23 @@ export default function Console0828({
    */
   /* ②b：本面板是基础数据（不随扰动变），唯有第四栏这一格「代价」是**本次推演**的量
      （敞口 / 单数来自 `runM`）⇒ `mv` 放宽为可空，空 = 尚未推演，那格如实写，⛔ 不编数。 */
-  const OptionsGrid = ({ p, mv }: { p: NonNullable<typeof picked>; mv: NonNullable<typeof money> | null }): JSX.Element => (
+  const OptionsGrid = ({ p, mv, pricing, pricingPending, pricingErr }: {
+    p: NonNullable<typeof picked>;
+    mv: NonNullable<typeof money> | null;
+    pricing: Readonly<Record<string, PricingOutcomeItem>>;
+    pricingPending: boolean;
+    pricingErr: string | null;
+  }): JSX.Element => (
     <div className={styles.opts} data-testid="c0828-opt-grid">
       {p.candidates.slice(0, 3).map((c) => (
         <div key={c.candidateId} className={styles.opt} data-testid={`c0828-opt-${c.candidateId}`}>
           <h5 className={styles.optTitle}>{`${c.leverName || c.lever.objectId} · ${candidateRungShort(c)}`}</h5>
+          <PricingReadout
+            candidateId={c.candidateId}
+            outcome={pricing[c.candidateId]}
+            pending={pricingPending}
+            err={pricingErr}
+          />
           {/* WO-C0828-P1-E6：第一层只留结论名与动作，所有明细收进「判定依据 · 明细」。 */}
           <details className={styles.more}>
             <summary>判定依据 · 明细</summary>
@@ -1032,6 +1186,7 @@ export default function Console0828({
                 取值：{c.fromText} → {c.toText}
                 {c.lever.factorName === null ? "" : ` · 因子「${c.lever.factorName}」`}
               </p>
+              <PricingReadoutDetail outcome={pricing[c.candidateId]} err={pricingErr} />
             </div>
           </details>
           {(() => {
@@ -2582,7 +2737,13 @@ export default function Console0828({
                     ⤢ 放大
                   </button>
                 </div>
-                <OptionsGrid p={picked} mv={money} />
+                <OptionsGrid
+                  p={picked}
+                  mv={money}
+                  pricing={pricingItems}
+                  pricingPending={pricingPending}
+                  pricingErr={pricingErr}
+                />
                 {optionsZoom ? (
                   /* ⚠ 弹窗里渲染的是**同一个 `OptionsGrid`**，不是复制一份 JSX。
                      复制即两套真相源：改了内联忘了弹窗，两处对同一个方案给出两种说法。 */
@@ -2592,7 +2753,13 @@ export default function Console0828({
                     width={1280}
                   >
                     <div data-testid="c0828-options-zoom-body">
-                      <OptionsGrid p={picked} mv={money} />
+                      <OptionsGrid
+                        p={picked}
+                        mv={money}
+                        pricing={pricingItems}
+                        pricingPending={pricingPending}
+                        pricingErr={pricingErr}
+                      />
                     </div>
                   </Modal>
                 ) : null}

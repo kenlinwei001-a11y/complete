@@ -279,6 +279,8 @@ vi.mock("@/api/endpoints", () => ({
      是**手写的导出清单**、不会自动跟上 ⇒ 组件拿到 undefined ⇒ 本文件 13/13 全红。
      形态：「我用『typecheck 绿』当作『新 import 处处可用』的证据 —— mock 的导出面
      是手写的，类型系统看不见。」（CLAUDE.md 铁律 0.6 第 4 条同族。） */
+  // WO-C0828-P2：定价只读触发桩（缺则组件拿到 undefined，渲染当场抛）。
+  simPricing: vi.fn(async () => ({ items: [] })),
   fetchObjectTypes: vi.fn(async () => []),
   fetchSimViewConfig: vi.fn(async () => cfg),
   fetchDrillStateVarLayers: vi.fn(async () => ({ layers: layersFromEdges(edges), ruleCount: edges.length })),
