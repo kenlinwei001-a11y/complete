@@ -10,8 +10,27 @@
 #
 # 用法：
 #   bash scripts/battery.sh run   <pkg> <evidence-dir> [已知红文件...]
+#   bash scripts/battery.sh solo  <pkg> <evidence-dir> <红文件...>   # 全包后新红 A/B：只 solo 不重跑全包
 #   bash scripts/battery.sh probe <evidence-file>
 set -u
+
+cmd_solo() {
+  local pkg="$1" evid="$2"; shift 2
+  local head rev rc=0
+  rev=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+  head="HEAD=$rev START=$(date '+%m-%d %H:%M:%S')"
+  mkdir -p "$evid"
+  printf '%s\ncmd: solo-only A/B (%s 文件逐个 maxWorkers=1)\n' "$head" "$#" > "$evid/battery-solo.txt"
+  for f in "$@"; do
+    echo "== solo $f ==" >> "$evid/battery-solo.txt"
+    nice -n 10 pnpm --filter "$pkg" exec vitest run "$f" --maxWorkers=1 --testTimeout=1500000 >> "$evid/battery-solo.txt" 2>&1
+    rc=$?
+    printf 'SOLO_RC[%s]=%s\n' "$f" "$rc" >> "$evid/battery-solo.txt"
+  done
+  printf 'SOLO_RC=%s END=%s\n' "$rc" "$(date '+%m-%d %H:%M:%S')" >> "$evid/battery-solo.txt"
+  printf 'SOLO_RC=%s\n' "$rc" > "$evid/battery.rc"
+  echo "solo done: SOLO_RC=$rc"
+}
 
 cmd_run() {
   local pkg="$1" evid="$2"; shift 2
@@ -61,6 +80,7 @@ cmd_probe() {
 ST=/tmp/battery-probe.state
 case "${1:-}" in
   run) shift; cmd_run "$@" ;;
+  solo) shift; cmd_solo "$@" ;;
   probe) shift; cmd_probe "${1:?用法: battery.sh probe <证据文件>}" "$ST" ;;
-  *) echo "用法: battery.sh run <pkg> <evidence-dir> [已知红文件...] | battery.sh probe <证据文件>"; exit 2 ;;
+  *) echo "用法: battery.sh run <pkg> <evidence-dir> [已知红文件...] | battery.sh solo <pkg> <evidence-dir> <红文件...> | battery.sh probe <证据文件>"; exit 2 ;;
 esac
