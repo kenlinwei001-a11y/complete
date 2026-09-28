@@ -437,6 +437,50 @@
   background: transparent;
 }
 
+/* ── 区③ 读数口径表（2026-09-28：仓主判原先的散文式说明「不专业」，改结构化表）──
+   与区③b 的表分开：那边的单元格是短数、一律 nowrap；这边第一列与第三列是人话长句，
+   必须允许折行，否则窄右栏里会横向滚。 */
+.provTitle {
+  font-size: 12px;
+  color: var(--muted2);
+  line-height: 1.6;
+  margin-top: 6px;
+}
+.provTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 4px;
+  table-layout: fixed;
+}
+.provTable th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--muted);
+  padding: 4px 8px 4px 0;
+  border-bottom: 1px solid var(--line2);
+  white-space: nowrap;
+}
+.provTable td {
+  padding: 4px 8px 4px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--txt);
+  line-height: 1.55;
+  vertical-align: top;
+  word-break: break-word;
+}
+.provTable th:nth-child(1) {
+  width: 34%;
+}
+.provTable th:nth-child(2) {
+  width: 20%;
+}
+.provFoot {
+  font-size: 11px;
+  color: var(--muted2);
+  padding-top: 3px;
+}
+
 /* ── 区③b 客户与订单 ────────────────────────────────────────────────── */
 .tableWrap {
   overflow-x: auto;

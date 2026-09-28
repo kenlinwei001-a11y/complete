@@ -449,7 +449,7 @@ describe("⑦ 诚实位：三态分得开", () => {
     });
     const joined = notes.map((n) => `${n.text}||${n.raw}`).join("\n");
     expect(joined).toContain("775");
-    expect(joined).toContain("没能打到世界上");
+    expect(joined).toContain("没能落到数据上");
     expect(joined).toContain("order obj_material_pos_lfp not found");
     expect(joined).toContain("不读你选的那个主体");
     expect(joined).toContain("诚实缺席");
@@ -559,19 +559,42 @@ describe("⑦ 诚实位：三态分得开", () => {
     }
   });
 
-  it("屏上那句话必须点名「哪几个不变、哪个才变」，且没算过时不吓唬人", () => {
+  it("口径表必须点名「哪几个不变、哪个才变」，且没算过时不吓唬人", () => {
     expect(invariantNumbersNote(null)).toBeNull();
     const note = invariantNumbersNote(baseReport({}));
     expect(note).not.toBeNull();
     // 不许只说「有些数不变」就完事 —— 必须把会变的那个指出来
     expect(note!.movingLabels.length).toBeGreaterThan(0);
     expect(note!.frozenLabels.length).toBeGreaterThan(0);
-    for (const m of note!.movingLabels) expect(note!.text).toContain(m);
-    // 第二层要给出处与「它其实在回答什么」，不许只说「它不动」
-    expect(note!.raw).toContain("实参里**没有**你加的事件");
-    expect(note!.raw).toContain("它其实在回答");
-    // 实测数字要在第二层留底（COO 那次对照实验的原始读数）
-    expect(note!.raw).toContain("0 条改变 → 104 条改变");
+    // 表头点明两类各几个
+    expect(note!.title).toContain(String(note!.frozenLabels.length));
+    expect(note!.title).toContain(String(note!.movingLabels.length));
+    // 每一行都要有「它在回答什么」，不许只说「它不动」
+    for (const r of note!.rows) expect(r.answers.trim().length).toBeGreaterThan(0);
+    // 表里必须同时有吃事件与不吃事件的行（两类缺一 = 表在骗人）
+    expect(note!.rows.some((r) => r.consumesEvents)).toBe(true);
+    expect(note!.rows.some((r) => !r.consumesEvents)).toBe(true);
+    // 保质期角标在（复验配方本身在源码注释里，不上屏）
+    expect(note!.measuredAt).toContain("实测");
+  });
+
+  /**
+   * 🔴 **R-UI-4 的机读判据**：这张表是**上屏**的文案，任何一格都不许出现
+   * 开发话 —— 端点路径 / 种子口径 / shell 命令 / 内部机制名（「世界态」「本体真值」）。
+   *
+   * ── 来历（2026-09-28 仓主实测）────────────────────────────────────────────
+   * 原实现把复验配方（`真后端 seed 42 · 复验端点 POST /a/v1/sim/sessions/:id/drill`）
+   * 连同「它其实在回答：…这个世界当下…」一起印在屏上，仓主判「不专业」。
+   * `dev-jargon:check` 咬不到它 —— 扫描面只收 `views`/`pages/admin` 的 **.tsx**，
+   * 而这段文案写在本 `.ts` 模型里（门自己的诚实边界点名了同类
+   * `views/sim/sandboxConsoleModel.ts:809`）。⇒ 这条断言就是补那个盲区的机器那一半：
+   * **判据落在渲染用的字段上，不落在源码 grep 上**。
+   */
+  it("口径表里不许有开发话（R-UI-4：端点 / 种子 / 命令 / 内部机制名）", () => {
+    const note = invariantNumbersNote(baseReport({}))!;
+    const onScreen = [note.title, note.measuredAt, ...note.rows.flatMap((r) => [r.label, r.answers])].join("\n");
+    expect(onScreen).not.toMatch(/seed|battery\/|\/a\/v1|curl|pnpm|POST /);
+    expect(onScreen).not.toMatch(/世界态|本体真值|世界/);
   });
 
   it("金丝雀：全绿的一次演习只留必要的几条，不会凭空长出「没打上」这种条目", () => {

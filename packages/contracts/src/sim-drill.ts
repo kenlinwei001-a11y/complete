@@ -371,7 +371,7 @@ export const DRILL_EVENT_SPECS: readonly DrillEventSpec[] = [
     kind: "ORDER_CANCEL",
     label: "订单取消",
     payloadKeys: [
-      { key: "cancelPct", type: "number", required: true, hint: "取消掉这张单的百分之多少：100 = 整单取消，30 = 砍掉三成" },
+      { key: "cancelPct", type: "number", required: true, hint: "取消比例（%）：100 = 整单取消；30 = 取消三成" },
     ],
     /**
      * **全表唯一的负系数**：取消 = 需求**反向**。`magnitudePerUnit: -1` ⇒ 用户填 100（整单取消）
@@ -398,7 +398,7 @@ export const DRILL_EVENT_SPECS: readonly DrillEventSpec[] = [
     label: "临时插单",
     payloadKeys: [
       { key: "qtyDelta", type: "number", required: true, hint: "插单数量（套）" },
-      { key: "modelId", type: "string", required: true, hint: "插哪个型号 —— 这一格决定算出来的数，必填" },
+      { key: "modelId", type: "string", required: true, hint: "插单型号（型号 id）" },
     ],
     /**
      * 落点在**型号**上，不在用户选的那个客户上 —— 理由在本表头注：
@@ -439,7 +439,7 @@ export const DRILL_EVENT_SPECS: readonly DrillEventSpec[] = [
     label: "改交付地点",
     payloadKeys: [
       { key: "newLocationId", type: "string", required: false, hint: "新交付地点对象 id" },
-      { key: "movedPct", type: "number", required: true, hint: "这张单有多少比例改地点：100 = 整单改" },
+      { key: "movedPct", type: "number", required: true, hint: "改地点比例（%）：100 = 整单改" },
     ],
     /**
      * ⚠ **这一条是本表里最该被质疑的一条，所以把理由写全**：
@@ -530,7 +530,7 @@ export const DRILL_EVENT_SPECS: readonly DrillEventSpec[] = [
      * 没有任何路由消费这个键（`supply_demand_gap_attribution` 是 `args: []`），
      * 改成百分比之后换算 1:1，不必发明「短缺多少吨 = 多少点」这种系数。
      */
-    payloadKeys: [{ key: "shortagePct", type: "number", required: true, hint: "短缺占在手库存的百分之多少：100 = 库存全断" }],
+    payloadKeys: [{ key: "shortagePct", type: "number", required: true, hint: "短缺比例（%，占在手库存）：100 = 库存全断" }],
     stateEffect: {
       objectType: "Material",
       keyProp: "matId",

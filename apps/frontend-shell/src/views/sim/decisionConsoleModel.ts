@@ -165,7 +165,7 @@ export function landingNoteFor(spec: DrillEventSpec): string | null {
   const eff = spec.stateEffect;
   if (!eff) return null;
   if (eff.targetFrom === "payloadKey") {
-    return `这件事真正压到的是你填的那个「${eff.targetKey}」，不是你选的那个主体 —— 本世界里主体那一类对象在关系图上没有对应方向的边。`;
+    return `这件事真正压到的是你填的那个「${eff.targetKey}」，不是你选的那个主体 —— 本次推演里主体那一类对象在关系图上没有对应方向的边。`;
   }
   return "这件事会真的改到数上，所以它要求主体是一个真实存在的对象。";
 }
@@ -652,7 +652,7 @@ export function collectHonesty(input: {
     }
     for (const e of r.appliedStateEffects) {
       if (e.applied) continue;
-      out.push({ text: `「${input.specsByKind.get(e.eventKind)?.label ?? e.eventKind}」这件事没能打到世界上`, raw: JSON.stringify(e), anchor: "z3" });
+      out.push({ text: `「${input.specsByKind.get(e.eventKind)?.label ?? e.eventKind}」这件事没能落到数据上`, raw: JSON.stringify(e), anchor: "z3" });
     }
     for (const run of r.solverRuns) {
       if (run.ok) continue;
@@ -663,7 +663,7 @@ export function collectHonesty(input: {
       if (!spec || subjectIsRead(spec)) continue;
       out.push({
         text: `「${spec.label}」今天不读你选的那个主体 —— 它只决定去问哪几个算法`,
-        raw: `该事件的全部路由入参声明为空（routes[].args = []）且无世界态落点（stateEffect = null）；主体只进回执，不进算式。`,
+        raw: `该事件给每一路算法的入参里都没有主体这一项，也没有直接改数的落点；主体只出现在回执里，不进算式。`,
         anchor: "z1",
       });
     }
@@ -753,8 +753,12 @@ export function humanizeApiError(raw: string): { text: string; recognized: boole
  *   前端给它的实参实测是 **`{}`** —— **一个 event 都没传进去**。
  *   `chain_impediments`（18 处卡点）同理，实参是 `{scope:{}}`。
  *   ⇒ 这两路**结构上不可能**随事件变。实测坐实：把 `pctChange` 从 15 拉到 100000，
- *   `risk_timeline` 的 8 张卡指纹**逐字节相同**、`chain_impediments` 的 18 条 id **逐字节相同**；
+ *   `risk_timeline` 的 8 张卡指纹**逐字节相同**、`chain_impediments` 的 18 条 id **逐字节相同**、
+ *   `portfolio` 的产销缺口 **81 → 81**；
  *   同一次对照里，真吃事件的那一路 `findingsChanged` 从 **0 → 104**。
+ *   ⚠ 上面这几行是**复验配方**（种子 + 端点 + 原始读数）：只许待在注释里。
+ *     先前它们被印在屏上（连 `seed 42`、`POST /a/v1/…` 一起），2026-09-28 仓主判「不专业」——
+ *     那正是 `CONVENTION-ui-information-layering` R-UI-4 点名的形态（任何一层都不上屏）。
  *   ⇒ 用户改了输入 → 抬头说「这几件事凑一块」→ 底下那个数纹丝不动 ⇒
  *   他只能得出「这系统在骗我」这一个结论。**而他是对的**：那行抬头是一句错误归因。
  * · **Y**：每个第一层的数都必须**自己说清楚它吃不吃你加的事**。
@@ -778,7 +782,10 @@ export interface ScreenNumberProvenance {
    * `false` ⇒ 屏上必须标「不随你加的事变」，否则就是错误归因。
    */
   consumesEvents: boolean;
-  /** 不吃事件时，这个数到底在回答什么问题（不许只说「它不动」就完事）。 */
+  /**
+   * 这个数到底在回答什么问题（不许只说「它不动」就完事）。
+   * ⛔ 人话、无术语、**不许出现端点 / 种子 / 复验步骤**（R-UI-4：开发的话任何一层都不上屏）。
+   */
   answers: string;
 }
 
@@ -794,66 +801,80 @@ export const SCREEN_NUMBER_PROVENANCE: readonly ScreenNumberProvenance[] = [
     label: "这 30 天交不出去的货（亿）· 多少张单 · 会晚多少张",
     route: "算每个基地这 30 天紧到什么程度",
     consumesEvents: false,
-    answers: "这个世界**当下**每个基地紧到什么程度 —— 它是本次演习的**背景板**，不是结果。",
+    answers: "当前真实数据里每个基地这 30 天的紧张程度 —— 本次推演的背景，不是事件的结果。",
   },
   {
     label: "哪儿会出事（处）",
     route: "全链扫红线 + 枚举改法",
     consumesEvents: false,
-    answers: "本体真值上**当下**扫得出的卡点与改法 —— 同样是背景板。",
+    answers: "当前真实数据里扫得出的卡点与改法 —— 同样是背景。",
   },
   {
     label: "产销缺口（万套）",
     route: "演习里的供需缺口归因",
     consumesEvents: false,
-    answers: "它读**本体真值**（在手量与需求量），不读这次推出来的世界态 ⇒ 幅度拉到 10 万倍也是同一个数。",
+    answers: "读当前真实数据（在手量与需求量），不读本次推演出来的结果。",
   },
   {
     label: "N 条顺着关系推出来的结论因此改变",
     route: "把事情施加上去 + 往后推 30 天 + 扫一遍卡住的地方",
     consumesEvents: true,
-    answers: "",
+    answers: "你加的事顺着关系推下去，推翻了哪些结论。",
   },
   {
-    label: "世界态改动了多少格",
+    label: "推演数据改动了多少格",
     route: "把事情施加上去 + 往后推 30 天 + 扫一遍卡住的地方",
     consumesEvents: true,
-    answers: "",
+    answers: "你加的事落到推演数据上，改动了多少格。",
   },
 ];
 
 /**
- * 屏上要打的那句话：**哪几个数不随你加的事变，哪个才是会变的那个**。
+ * 屏上那张**口径表**：哪几个数不随你加的事变、哪几个随、各自在回答什么。
+ *
+ * 形状是**表**不是散文（`CONVENTION-ui-information-layering §3`：数据本身有结构，
+ * 第一层就把结构画出来）—— 三列 = 读数 / 随本次事件 / 它在回答什么。
+ *
+ * ⛔ **屏上只给这三列**。复验配方（种子口径、接口路径、两次幅度对照的原始读数）
+ * 一律不上屏（R-UI-4 十三类形态里的「种子 / 画像口径」「接口路径」「shell 命令」，
+ * 任何一层都不许）—— 它们留在本文件 §8 头注与 `DecisionConsoleView` 的注释里，
+ * 屏上只留一条保质期角标 `measuredAt`（规范允许、且要求「压成小字，不是删」）。
+ * 「世界 / 世界态 / 本体真值」这类内部叫法同样不上屏，一律说「当前真实数据 / 推演数据」。
  *
  * `null` = 还没算过（没结果时不该先吓唬人）。
  */
-export function invariantNumbersNote(report: DrillReport | null): {
-  text: string;
-  raw: string;
+export interface ScreenNumberRow {
+  /** 这个数在屏上的名字。 */
+  label: string;
+  /** 吃不吃本次事件 —— 表第二列直接用它。 */
+  consumesEvents: boolean;
+  /** 它在回答什么（每一行都要有，不吃事件的那几行尤其不许只说「它不动」）。 */
+  answers: string;
+}
+
+export interface ScreenNumberNote {
+  /** 表头那一行：几个不随你加的事变、几个随。 */
+  title: string;
+  rows: ScreenNumberRow[];
+  /** 保质期角标（小字）。复验配方在源码注释里，不上屏。 */
+  measuredAt: string;
   movingLabels: string[];
   frozenLabels: string[];
-} | null {
+}
+
+export function invariantNumbersNote(report: DrillReport | null): ScreenNumberNote | null {
   if (!report) return null;
   const frozen = SCREEN_NUMBER_PROVENANCE.filter((p) => !p.consumesEvents);
   const moving = SCREEN_NUMBER_PROVENANCE.filter((p) => p.consumesEvents);
   if (frozen.length === 0) return null;
   return {
-    text:
-      `⚠ 这一屏上有 ${frozen.length} 个数**不随你加的事变** —— 你把幅度从 15 改成 100000，它们也是同一个数。` +
-      `它们回答的是「这个世界当下什么样」，不是「你加的这几件事之后会怎样」。` +
-      `真的会随你加的事变的是：${moving.map((m) => `「${m.label}」`).join("、")}。`,
-    raw:
-      frozen
-        .map((p) => `· ${p.label}\n  由「${p.route}」那一路算；本次传给它的实参里**没有**你加的事件 ⇒ 结构上不会变。\n  它其实在回答：${p.answers}`)
-        .join("\n") +
-      // ⚠ 日期前必须留一个非词字符：写成 `\n\n2026-08-29` 时，源码里 `\` `n` 紧挨着 `2`，
-      //   `stale-claims` 的日期正则 `\b20\d{2}-...` 卡在词边界上匹配不到 —— 本单实测踩过一次。
-      `\n\n 实测于 2026-08-29（真后端 seed 42 · 复验端点 POST /a/v1/sim/sessions/:id/drill）：\n` +
-      `同一个「物料价格变动」把幅度从 15 拉到 100000 ——\n` +
-      `· 每个基地紧到什么程度：8 张卡逐字节相同\n· 全链卡点：18 条 id 逐字节相同\n· 产销缺口：81 → 81\n` +
-      `· 而演习那一路「顺着关系推出来的结论」：0 条改变 → 104 条改变。\n` +
-      `你自己就能复验，不用看代码：把上面那件事的幅度改一个大得离谱的数，再按一次〔算一下〕——\n` +
-      `这几个数会一动不动，而「N 条结论因此改变」会变。`,
+    title: `本屏 ${SCREEN_NUMBER_PROVENANCE.length} 个读数 —— ${frozen.length} 个不随你加的事变（背景读数），${moving.length} 个随你加的事变`,
+    rows: SCREEN_NUMBER_PROVENANCE.map((p) => ({
+      label: p.label,
+      consumesEvents: p.consumesEvents,
+      answers: p.answers,
+    })),
+    measuredAt: "2026-08-29 实测",
     movingLabels: moving.map((m) => m.label),
     frozenLabels: frozen.map((f) => f.label),
   };

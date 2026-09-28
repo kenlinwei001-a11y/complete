@@ -664,7 +664,7 @@ export default function DecisionConsoleView() {
                           <>
                             <br />
                             <span className={styles.greyLine}>
-                              这类事今天不看你选的是谁，它只决定去问哪几路算
+                              这类事件不作用于所选主体，只决定调用哪几路计算
                             </span>
                           </>
                         ) : null}
@@ -825,13 +825,36 @@ export default function DecisionConsoleView() {
                  * ⚠ 判据与文案全部来自 `invariantNumbersNote`（纯函数 + 声明表），
                  *   不在这里写死一句话 —— 写死的话，下次有人给那一路接上事件入参时
                  *   没有任何东西会提醒他来改，一句当时正确的话就静默变成假话。
+                 *
+                 * ⚠ **2026-09-28 形状改为表**（仓主判原先那段散文「不专业」）：
+                 *   三列 = 读数 / 随本次事件 / 它在回答什么（`CONVENTION-ui-information-layering §3`）。
+                 *   复验配方（`seed 42` · `POST /a/v1/sim/sessions/:id/drill` · 两次幅度对照的原始读数）
+                 *   原先印在屏上，按 R-UI-4 已移进 `decisionConsoleModel.ts` §8 头注；屏上只留
+                 *   `measuredAt` 那条小字保质期角标（规范：压成小字，不是删）。
                  */}
                 {invariantNote ? (
-                  <p className={styles.greyLine} data-testid="dc-invariant-note">
-                    {invariantNote.text}
-                    <br />
-                    <Raw text={invariantNote.raw} />
-                  </p>
+                  <div data-testid="dc-invariant-note">
+                    <div className={styles.provTitle}>{invariantNote.title}</div>
+                    <table className={styles.provTable}>
+                      <thead>
+                        <tr>
+                          <th>读数</th>
+                          <th>随本次事件</th>
+                          <th>它在回答什么</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {invariantNote.rows.map((r) => (
+                          <tr key={r.label}>
+                            <td>{r.label}</td>
+                            <td>{r.consumesEvents ? "随事件变 · 是" : "背景读数 · 否"}</td>
+                            <td>{r.answers}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div className={styles.provFoot}>{invariantNote.measuredAt}</div>
+                  </div>
                 ) : null}
 
                 {gapFinding ? (
@@ -914,7 +937,7 @@ export default function DecisionConsoleView() {
                           <Raw
                             text={
                               `幅度怎么换算的：${e.rawMagnitude} ⇒ 该变量全距的 ${e.rangePct.toFixed(1)}%` +
-                              ` × 本世界实测全距 ${e.observedRange.toFixed(1)} = ${e.magnitude.toFixed(1)}\n` +
+                              ` × 本次推演实测全距 ${e.observedRange.toFixed(1)} = ${e.magnitude.toFixed(1)}\n` +
                               `换算依据：${e.magnitudeBasis}\n` +
                               (e.downstream.length > 0
                                 ? `这一格的出边（顺着往下推的第一跳）：${e.downstream.join("、")}`
@@ -958,13 +981,13 @@ export default function DecisionConsoleView() {
                       <div className={styles.splitLabel}>
                         {result.report.worldCellsMoved === 0
                           ? `你加的这几件事一格都没改动 —— 冲击写进去了、出边也在，但推完 ${HORIZON_DAYS} 天之后与「不加这几件事」逐格相同。这是结论，不是故障。`
-                          : `格数据因为你加的这几件事而变了（全世界一共 ${result.report.worldCellsTotal.toLocaleString("zh-CN")} 格）。`}
+                          : `推演数据因为你加的这几件事变了（共 ${result.report.worldCellsTotal.toLocaleString("zh-CN")} 格）。`}
                         <br />
                         <Raw
                           text={
                             `这个数是实测出来的：后端把这一批事件拿掉、用同样的参数再推了一遍 ${HORIZON_DAYS} 天，逐格比对。\n` +
                             `⚠ 它是这 ${result.report.appliedStateEffects.length} 件事「合起来」的数，不是其中某一件的功劳 —— 逐件归因要多推 ${result.report.appliedStateEffects.length} 遍，代价与收益不成比例，所以这里不做，也不假装做了。\n` +
-                            `⚠ 「动了 N 格」不等于「屏上的卡点清单会变」：卡点是按每个变量在全世界的分位数判的，动的格子若都在警戒线以下，清单就不会变。`
+                            `⚠ 「动了 N 格」不等于「屏上的卡点清单会变」：卡点是按每个变量在推演数据里的分位数判的，动的格子若都在警戒线以下，清单就不会变。`
                           }
                         />
                       </div>
@@ -1006,14 +1029,20 @@ export default function DecisionConsoleView() {
                           这与本页那句「报『没算出来』和报『没事』必须分得开」是同一条纪律：
                           **不许拿一句听起来稳妥的话，去盖住一个我们实测知道的事实。**
                         */}
-                        {result.report.findingsChanged === 0
-                          ? `条**顺着关系推出来的**结论因此改变 —— 你加的这几件事传下去了（上面「动了 N 格」就是证据），但动的格子没有一个越过它那个变量的警戒线，所以这类结论一条都没被推翻。这是结论，不是故障。**值得把幅度拨大再算一次**：实测 11 类事件里，小幅度下报 0 的有 10 类，其中 6 类拨大之后就不再是 0。（求解器那一路的结论不在这个数里，见下面各路的回执。）`
-                          : `条**顺着关系推出来的**结论因你加的这几件事而改变（不加时这类结论一共 ${result.report.findingsBaseline.toLocaleString("zh-CN")} 条；求解器那一路不计在内）。`}
+                        {result.report.findingsChanged === 0 ? (
+                          <>
+                            条<strong>顺着关系推出来的</strong>结论因此改变 —— 你加的这几件事传下去了（上面「动了 N 格」就是证据），但动的格子没有一个越过它那个变量的警戒线，所以这类结论一条都没被推翻。这是结论，不是故障。<strong>值得把幅度拨大再算一次</strong>：实测 11 类事件里，小幅度下报 0 的有 10 类，其中 6 类拨大之后就不再是 0。（求解器那一路的结论不在这个数里，见下面各路的回执。）
+                          </>
+                        ) : (
+                          <>
+                            条<strong>顺着关系推出来的</strong>结论因你加的这几件事而改变（不加时这类结论一共 {result.report.findingsBaseline.toLocaleString("zh-CN")} 条；求解器那一路不计在内）。
+                          </>
+                        )}
                         <br />
                         <Raw
                           text={
-                            `怎么算的：把这批事件拿掉再推一遍同样的 ${HORIZON_DAYS} 天，对照世界也扫一遍卡点，两份清单逐条比（新增 + 消失 + 严重度变了的都算）。\n` +
-                            `⚠ 「只比传导引擎扫出来的那些」：求解器那一路读的是本体真值、不读世界态，把它算进来这个数会恒不为 0，判据就废了。所以这个数是 0 时，屏上的卡点总数仍可能因为求解器而变多 —— 两者不矛盾，看的是不同的东西。\n` +
+                            `怎么算的：把这批事件拿掉再推一遍同样的 ${HORIZON_DAYS} 天，那一遍也扫一遍卡点，两份清单逐条比（新增 + 消失 + 严重度变了的都算）。\n` +
+                            `⚠ 「只比传导引擎扫出来的那些」：求解器那一路读的是当前真实数据、不读推演数据，把它算进来这个数会恒不为 0，判据就废了。所以这个数是 0 时，屏上的卡点总数仍可能因为求解器而变多 —— 两者不矛盾，看的是不同的东西。\n` +
                             `⚠ 这个数是 0 而上面「动了 N 格」不是 0，是「正常且有意义」的一种结果：冲击确实传下去了，但动的那些格子没有一个越过它那个变量的警戒线（卡点按分位数判），所以这类结论没变。`
                           }
                         />
@@ -1547,8 +1576,10 @@ function TemplateRow({
    *   「这次算会不会**把主体喂给求解器**」，不是「这条事件记录**需不需要**主体」。
    *   照 CLAUDE.md 铁律 0.6 的句式：
    *   > 「我用『没有求解器读这个主体』当作『这条事件不需要主体』的证据，而前者并不度量后者。」
-   *   所以旁边那句「这类事今天不看你选的是谁，它只决定去问哪几路算」**保留** ——
+   *   所以旁边那句「这类事件不作用于所选主体，只决定调用哪几路计算」**保留** ——
    *   它说的是「选谁不改变算法结果」，那是真的；但**总得说清这件事发生在谁身上**。
+   *   （2026-09-28：只改措辞不改判断 —— 原句「今天不看你选的是谁…去问哪几路算」是口语，
+   *     仓主判「不专业」，改后的两句同义；本注释同步改，避免注释与屏上文案对不上。）
    *
    * 这是**既有缺陷**（`canAdd` 在本单基线 `handoff-wo-decision-console` 上逐字相同，非本轮引入），
    * 只是决策台此前没有从登录页走得到，一直没被真的点到。
@@ -1632,7 +1663,7 @@ function TemplateRow({
               />
               {q.trim().length === 0 ? (
                 <span className={styles.fieldHint}>
-                  单子太多，铺不下 —— 输单号或客户名，我把对得上的列出来。
+                  输入单号或客户名筛选（订单量大，不铺全量列表；命中最多列前 20 条）。
                 </span>
               ) : search.isLoading ? (
                 <span className={styles.fieldHint}>正在找…</span>
@@ -1721,7 +1752,7 @@ function TemplateRow({
 
           {!subjectRead ? (
             <span className={styles.fieldHint}>
-              这类事今天不看你选的是谁 —— 它只决定去问哪几路算。选了也不会白选：回执里会写清楚。
+              这类事件不作用于所选主体；它只决定本次调用哪几路计算 —— 结果回执里会写明。
             </span>
           ) : null}
 
@@ -1803,14 +1834,16 @@ function TemplateRow({
               {/* 判据与 canAdd 同源：缺主体就说缺主体，不再按 subjectRead 分叉 ——
                   分叉过的那一版，8/11 条路上「加进去」是灰的而这句话一个字都不提原因。
                   触发条件用 canAdd 那一条（无条件要 id），**文案**用两级选择器的细话：
-                  只说「先选对谁」时，用户已经选了基地、会以为自己选过了。 */}
+                  只说「请选择X」时，用户已经选了基地、会以为自己选过了 ⇒ 必须点名缺的是哪一级。
+                  2026-09-28 文案打磨（仓主令「不专业的描述」）：去掉「后台会回「未能评估」」这类
+                  内部机制话（R-UI-4 同族），一句说到「填齐后才能加进去」。 */}
               {pickedId.length === 0
                 ? mustPickLeaf && scope?.child
-                  ? `先把「${scope.child.label}」也选上 —— 只选了${scope.label}还不够，${scope.child.label}才是这件事真正落到的地方；`
-                  : `先选${scope?.label ?? SUBJECT_FALLBACK.label}；`
+                  ? `还需选「${scope.child.label}」—— 只选${scope.label}还不够；`
+                  : `请选择${scope?.label ?? SUBJECT_FALLBACK.label}；`
                 : ""}
-              {spec.payloadKeys.filter((k) => k.required && (payload[k.key] === undefined || payload[k.key] === "")).map((k) => `「${k.hint || k.key}」要填；`)}
-              填齐了才能加 —— 缺一个必填的，后台会回「未能评估」而不是算成 0。
+              {spec.payloadKeys.filter((k) => k.required && (payload[k.key] === undefined || payload[k.key] === "")).map((k) => `「${k.hint || k.key}」还没填；`)}
+              填齐后才能加进去。
             </span>
           ) : null}
           {/*
