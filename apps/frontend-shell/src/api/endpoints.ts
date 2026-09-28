@@ -83,6 +83,8 @@ import type {
   //   ⚠ `PropagationRule` 本单也要用，但它已在 :64 由 WO-BEFE-E 引入 —— 合并时三个单
   //     各写一遍同一个 import 造成 TS2300。此处**不是删掉它**，是它已在上面声明过。
   SimCounterfactualResult,
+  // WO-C0828-P2 · 逐候选反事实定价：候选契约形状（契约单源，前端不重定义）
+  SolutionCandidate,
   // WO-SIM-DISCLOSURE · 推演过程披露层（契约单源；前端不重定义，contracts-only-shared）
   SimRunDisclosure,
   // WO-PROCESS-INSTANCE · 流程运行时（前端不重定义，contracts-only-shared）
@@ -1058,6 +1060,81 @@ export const simTick = (sessionId: string, n = 1, disclose = false) =>
 export const simWorld = (sessionId: string) =>
   api.a<{ tick: number; state: TickState; baseProvenance?: CellProvenance }>(
     `/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/world`,
+  );
+
+/* ── WO-C0828-P2 · 逐候选反事实定价（PRD-sim-options-decision-surface.md §4.2 D2）──────────
+ *
+ * 后端 `option-pricing.ts` 的六步装配（查绑定 → 代入 → 扰动 → 平行世界 → 同尺读数 → 披露），
+ * 全程 `persist:false` 临时扰动路 ⇒ 世界态逐字节不变（E2-g）。
+ * 回包形状是**装配方的输出契约**，前端只渲染、⛔ 不重算分布（两份实现并存即第二份真相源）。
+ */
+
+/** 定价披露层（铁律 1.5 判据二：specKey / 落点 / tick 数 / 耗时 / 本次未调用 agent）。 */
+export interface PricingDisclosure {
+  readonly specKey: string | null;
+  readonly targetObjectId: string | null;
+  readonly targetStateVar: string | null;
+  readonly tickCount: number;
+  readonly elapsedMs: {
+    readonly total: number;
+    readonly binding: number;
+    readonly perturb: number;
+    readonly tick: number;
+    readonly diff: number;
+  };
+  readonly agentInvolved: false;
+}
+
+/** 同尺读数（与 `console0828Model.ts` buildMoneyView.magnitude 逐字节同口径，落点在后端）。 */
+export interface PricingReading {
+  readonly touchedOrders: number;
+  readonly faintOnly: number;
+  readonly exposureYuan: number;
+  readonly displacement: {
+    readonly faintOnly: number;
+    readonly touchedOrders: number;
+    /** 金丝雀：世界里的订单总数（0 ⇒ 遍历坏了，不许报「没有波及」）。 */
+    readonly ordersSeen: number;
+    readonly p50: number | null;
+    readonly p90: number | null;
+    readonly max: number | null;
+    readonly buckets: readonly { readonly label: string; readonly n: number }[];
+  };
+}
+
+export type PricingGapReason = "NO_BINDING" | "PRESSURE_TARGET_UNCOMPUTABLE" | "TARGET_CELL_ABSENT";
+
+export type PricingOutcomeItem =
+  | {
+      readonly kind: "gap";
+      readonly candidateId: string;
+      readonly reason: PricingGapReason;
+      /** NO_BINDING 时列出缺的绑定（PRD ①：⛔ 不返 0、不降格）。 */
+      readonly missingBinding: { readonly objectType: string; readonly prop: string } | null;
+      readonly disclosure: PricingDisclosure;
+    }
+  | {
+      readonly kind: "priced";
+      readonly candidateId: string;
+      readonly specKey: string;
+      readonly fingerprint: string;
+      readonly perturbation: {
+        readonly targetObjectId: string;
+        readonly targetStateVar: string;
+        readonly mode: "set";
+        readonly magnitude: number;
+      };
+      readonly horizon: number;
+      /** 对照（不处置）读数 —— diff(对照, 对照) 恒空 ⇒ 诚实零（E2-c）。 */
+      readonly control: PricingReading;
+      readonly after: PricingReading;
+      readonly disclosure: PricingDisclosure;
+    };
+
+export const simPricing = (sessionId: string, body: { horizon?: number; candidates: readonly SolutionCandidate[] }) =>
+  api.a<{ items: readonly PricingOutcomeItem[] }>(
+    `/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/pricing`,
+    { body },
   );
 
 /**

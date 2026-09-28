@@ -167,4 +167,40 @@ describe("SEAM · 扰动影响面随扰动变化", () => {
       "c0828-base-status 明标缺失 —— 摘牌不是删数，新位置的措辞必须让读者自己判断它与扰动无关",
     ).toBe(true);
   });
+
+  /* ── ⑨ WO-C0828-P2 定价接线结构判据（PRD §7：E2 在合并态断言，扩既有文件不新建门）──
+   * 定价装配的真身在 datacore（option-pricing.ts，六步）；前端是**渲染侧**。
+   * 这条咬三样，防止「装配有了、屏上没有」或「屏上自己重算一份分布」：
+   *  · simPricing 在屏组件里真调（只有 endpoints.ts 导出 = 排练，不是接线）；
+   *  · p90 读数来自回包 `after.displacement.p90`（前端重算 = 第二套真相源）；
+   *  · 口径声明文案一字不落（PRD §4.2 明定，p90 用真读数，不许写死）。
+   */
+  it("⑨ P2 定价接线：simPricing 真调 + 分布只渲染回包 + 口径声明在源", () => {
+    const tree = checkedTree(
+      "apps/frontend-shell/src/views/sim/unified/console0828",
+      "useMutation",
+      2,
+    );
+    const pricingCalls = factHits(tree, /(?<![\w.])simPricing\s*\(/);
+    expect(
+      pricingCalls.some((f) => f.endsWith("Console0828.tsx")),
+      `定价必须真调 simPricing（命中文件：${pricingCalls.join(",") || "无"}）；只在 endpoints.ts 挂着 = 排练不是接线`,
+    ).toBe(true);
+    const backendRead = factHits(tree, /after\.displacement\.p90/);
+    expect(
+      backendRead.some((f) => f.endsWith("Console0828.tsx")),
+      "候选卡 p90 必须读后端回包 after.displacement.p90 —— 前端重算位移分布 = 第二套真相源",
+    ).toBe(true);
+    const claim = factHits(tree, /受影响张数按 0\.01 位移门槛计；本次位移 p90/);
+    expect(
+      claim.some((f) => f.endsWith("Console0828.tsx")),
+      `口径声明文案缺失或被改写（命中文件：${claim.join(",") || "无"}）—— PRD §4.2 明定文案，一字不落`,
+    ).toBe(true);
+    // 反向：口径声明里的 p90 不许写死成常量 —— 必须跟着回包走（文案句 + "=" 后不能直接是数字）。
+    const hardcodedP90 = factHits(tree, /门槛计；本次位移 p90\s*=\s*["'0-9]/);
+    expect(
+      hardcodedP90,
+      `口径声明里的 p90 被写死（命中：${hardcodedP90.join(",") || "无"}）—— 必须用回包真读数`,
+    ).toEqual([]);
+  });
 });

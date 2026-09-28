@@ -70,7 +70,7 @@ import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow�
 import { ForecastAdoptionPayloadSchema } from "@platform/contracts"; // WO-SIM-ACTION-REAL · 采纳产能预测结论 payload 契约
 import { SchemeAdoptionPayloadSchema } from "@platform/contracts"; // WO-ADOPT-SCHEME-CARRIER · 采纳经营方案 payload 契约（量纲逐字段标注）
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
-import { ADVERSARY_FEATURE_KEY, adversaryMoveNameOf, applyPerturbationToState, diffTickStates, isPerturbationActiveAt, partitionAdversaryRules, partitionPropagationRules, PerturbationSchema, PropagationRulePatchSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, unknownPropagationRuleKeys, type CellProvenance, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimCounterfactualResult, type SimSession, type SimSessionStatus, type StateVarDomainLookup, type TickState } from "@platform/contracts";
+import { ADVERSARY_FEATURE_KEY, adversaryMoveNameOf, applyPerturbationToState, diffTickStates, isPerturbationActiveAt, partitionAdversaryRules, partitionPropagationRules, PerturbationSchema, PropagationRulePatchSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, SolutionCandidateSchema, unknownPropagationRuleKeys, type CellProvenance, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimCounterfactualResult, type SimSession, type SimSessionStatus, type StateVarDomainLookup, type TickState } from "@platform/contracts";
 import { diffEnterpriseStates, ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 企业状态快照（差分口径与 StateDelta 同一份纯函数）
 import { PERTURBATION_TRACE_PREFIX, firedPropagationRuleKeys, propagateTick, type CadenceGateLookup, type PairWeightLookup, type PerturbationInTick, type PropagationGraph, type RuleParamLookup, type ScopeReport, type StateVarDisclosure, type UnresolvedCadenceGate, type UnresolvedPairWeight } from "./sim/propagation.js";
 import type { PairWeightReport } from "./sim/pair-weights.js";
@@ -96,6 +96,12 @@ import { buildChangeImpactWorld, previewChangeImpact } from "./sim/change-impact
 // 本文件只负责「取数据 → 交给它 → 回包」这三件事（同 change-impact / impact-analysis 的分层）。
 import { buildMetricSeries } from "./sim/metric-series.js";
 import { buildExplainSlice } from "./sim/explain-slice.js";
+// WO-C0828-P2 · D2 逐候选反事实定价的**模型层**（PRD-sim-options-decision-surface §4.2）。
+// 六步装配全在那边（对照与候选世界都走 persist:false 临时扰动路 ⇒ 零写入）；
+// 本文件只负责「取数据 → 交给它 → 回包」这三件事（同 change-impact / impact-analysis 的分层）。
+import { priceCandidate, pricingFingerprint, scenarioPerturbationsHash, type PricingOutcome } from "./sim/option-pricing.js";
+// 定价的业务键 → 内部 id 解析单源（枚举器的唯一键逻辑；见 resolver 的「先 load 再调」警告）。
+import { resolveBusinessRefToObjectId, type BusinessRefMemo } from "./solvers/impediment-options.js";
 // WO-SIM-SEED-WORLD · 建会话/推拍两条生产写路径的**契约**（定义住在播种侧，本文件只 import type ⇒ 运行时零依赖、不成环）。
 // 两个符号各有真实调用点，缺一个就编译不过：
 //   `listSimWorldObjects` → 落点成员集合物化入口（本文件 `:4138`，WO-IMPEDIMENT-LEVERS 侧）
@@ -2372,16 +2378,30 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const simAdvanceTicks = async (
     c: AuthCtx,
     s: SimSession,
-    opts: { rules: PropagationRule[]; n: number; persist: boolean; ephemeralPerturbations?: readonly Perturbation[] },
+    opts: {
+      rules: PropagationRule[];
+      n: number;
+      persist: boolean;
+      ephemeralPerturbations?: readonly Perturbation[];
+      /** 排除会话既有扰动（场景假设）的裸基准推进 —— 定价读数的差分锚点。 */
+      excludeSessionPerturbations?: boolean;
+      /**
+       * 从历史定格态起推（定价基准重放用，与 exclude 配套）：`fromState` = 锚点 tick 的世界态，
+       * `fromTick` = 该锚点 tick。缺省 = 从当前态起推（与旧行为逐字节同，RL9）。
+       * ⚠ 只允许 persist:false —— 从历史态落盘会覆盖真实世界线（守卫见下）。
+       */
+      fromState?: TickState;
+      fromTick?: number;
+    },
   ) => {
     const { rules: propRules, n, persist } = opts;
     // 逐环节计时（WO-SIM-DISCLOSURE ⑥）：**只测不改**——计时器一行算法都不碰，
     // 停表也不参与任何判断。它的读数只出现在 `?disclose=1` 的披露层里。
     const timer = new PhaseTimer();
     const stopTotal = timer.start("total");
-    const fromTick = s.curTick;
-    let state = await simCurrent(c, s);
-    let curTick = s.curTick;
+    const fromTick = opts.fromTick ?? s.curTick;
+    let state = opts.fromState !== undefined ? simState(opts.fromState) : await simCurrent(c, s);
+    let curTick = fromTick;
     // 增量 3 传导核接入（opt-in）：有规则才传导，否则退回恒等 tick（无规则不触发，可回退）。
     // propagateTick 是纯函数（R6 确定性、R14 零业务常数）。
     const propagate = propRules.length > 0;
@@ -2398,10 +2418,18 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     if (persist && (opts.ephemeralPerturbations?.length ?? 0) > 0) {
       throw new Error("simAdvanceTicks: ephemeralPerturbations 只允许在 persist:false 的推进里使用（落盘会造成查不出来源的世界线污染）");
     }
-    const sessionPerturbations = [
-      ...(await repos.sim.listPerturbations(c.tenantId, s.id)),
-      ...(opts.ephemeralPerturbations ?? []),
-    ];
+    // 真 tick 必须施加会话扰动 —— 排除开关只服务于定价的裸基准推进（persist:false），
+    // 落盘时排除 = 把世界线假设静默丢掉，与 ephemeral 落盘同级的事故。
+    if (persist && opts.excludeSessionPerturbations) {
+      throw new Error("simAdvanceTicks: excludeSessionPerturbations 只允许在 persist:false 的推进里使用（真 tick 必须施加会话扰动）");
+    }
+    // 从历史态落盘 = 用反事实覆盖真实世界线，比 ephemeral 落盘更隐蔽（ephemeral 至少来源可查）。
+    if (persist && opts.fromState !== undefined) {
+      throw new Error("simAdvanceTicks: fromState 只允许在 persist:false 的推进里使用（真 tick 必须从当前态起推）");
+    }
+    const sessionPerturbations = opts.excludeSessionPerturbations
+      ? [...(opts.ephemeralPerturbations ?? [])]
+      : [...(await repos.sim.listPerturbations(c.tenantId, s.id)), ...(opts.ephemeralPerturbations ?? [])];
     /**
      * 「落地前值」= 该扰动 `startTick` 的**前一 tick** 快照上的目标值（`startTick===0` 取 baseSnapshot）。
      * 只有 `set` 与 `scale(magnitude===0)` 到期时用得上 —— 这两种模式不可解析求逆；
@@ -2831,6 +2859,129 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       suppressedRulesFiredInBaseline: suppressed.map((r) => r.key).filter((k) => baseline.firedRuleKeys.includes(k)).sort(),
     };
     return result;
+  });
+  /**
+   * WO-C0828-P2 · D2 逐候选反事实定价（PRD-sim-options-decision-surface.md §4.2）。
+   *
+   * 一次定价 ≤4 条候选（PRD 性能段）。对照与候选世界都走 `simAdvanceTicks` 的
+   * persist:false 临时扰动路 ⇒ **零写入**：session curTick 不动、世界态逐字节不变、
+   * 不产扰动记录（E2-g 由机制保证，不是注释保证）。指纹缓存命中即回
+   * （键 = sessionId+curTick+场景扰动集 sha256+candidateId，PRD 性能段原式；
+   * 容量 500，超限按插入序淘汰 —— 场景扰动集一变哈希就变，无陈旧读数风险）。
+   */
+  const pricingCache = new Map<string, PricingOutcome>();
+  app.post("/a/v1/sim/sessions/:id/pricing", async (req) => {
+    const c = ctx(req);
+    await requireSim(c, "sim.propagation");
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
+    const body = parseBody(
+      z.object({
+        horizon: z.number().int().min(1).max(64).optional(),
+        candidates: z.array(SolutionCandidateSchema).min(1).max(4),
+      }),
+      req.body ?? {},
+    );
+    const horizon = body.horizon ?? 1;
+    const specs = await repos.derivationSpecs.list(c.tenantId, (r) => r.status === "ACTIVE");
+    const scenarioPerts = await repos.sim.listPerturbations(c.tenantId, s.id);
+    const scenarioHash = scenarioPerturbationsHash(scenarioPerts);
+    const { active } = await sessionPropRules(c, s, undefined);
+    const advance = (
+      _sessionId: string,
+      opts: {
+        n: number;
+        ephemeral?: readonly Perturbation[];
+        excludeSessionPerturbations?: boolean;
+        fromState?: TickState;
+        fromTick?: number;
+      },
+    ): Promise<TickState> =>
+      simAdvanceTicks(c, s, {
+        rules: active,
+        n: opts.n,
+        persist: false,
+        ephemeralPerturbations: opts.ephemeral ?? [],
+        excludeSessionPerturbations: opts.excludeSessionPerturbations,
+        fromState: opts.fromState,
+        fromTick: opts.fromTick,
+      }).then((r) => r.state);
+    const orderIds: string[] = [];
+    const orderValues = new Map<string, number>();
+    for (const o of await repos.objects.listByType(c.tenantId, "Order")) {
+      orderIds.push(o.id);
+      const v = o.props.value;
+      if (typeof v === "number" && Number.isFinite(v)) orderValues.set(o.id, v);
+    }
+    // 业务键 → 内部 id（单源：枚举器同一条 uniqueKeyProps/businessRef 链，见
+    // `resolveBusinessRefToObjectId`）。候选 lever.objectId 是业务键（matId/lineId/processId），
+    // 世界态与对象库按内部 `o.id` 寻址 —— 不解析就全灭成 TARGET_CELL_ABSENT（E2 取证实抓）。
+    const typeArrays = new Map<string, readonly ObjectInstance[]>();
+    const refMemo: BusinessRefMemo = new Map();
+    const objectsOfType = async (typeKey: string): Promise<readonly ObjectInstance[]> => {
+      const hit = typeArrays.get(typeKey);
+      if (hit !== undefined) return hit;
+      const arr = await repos.objects.listByType(c.tenantId, typeKey);
+      typeArrays.set(typeKey, arr);
+      return arr;
+    };
+    const items: PricingOutcome[] = [];
+    for (const candidate of body.candidates) {
+      const fp = pricingFingerprint({
+        sessionId: s.id,
+        curTick: s.curTick,
+        scenarioHash,
+        candidateId: candidate.candidateId,
+      });
+      const cached = pricingCache.get(fp);
+      if (cached !== undefined) {
+        items.push(cached);
+        continue;
+      }
+      // 解析候选业务键（必须先 load 该类型再调 resolver —— 否则唯一键会被 memo 钉成 null）。
+      const typeObjs = await objectsOfType(candidate.lever.objectType);
+      const resolvedObjectId = resolveBusinessRefToObjectId(
+        candidate.lever.objectType,
+        candidate.lever.objectId,
+        typeObjs,
+        typeArrays,
+        refMemo,
+      );
+      const outcome = await priceCandidate(
+        {
+          listPerturbations: async () => scenarioPerts,
+          readWorldState: async () => simCurrent(c, s),
+          readObjectProps: async (objectId) => (await repos.objects.get(c.tenantId, objectId))?.props ?? {},
+          listOrderIds: async () => orderIds,
+          listOrderValues: async () => orderValues,
+          // 基准重放锚点：tick 0 ⇒ baseSnapshot（与 tick 路影子线同一份起点）；
+          // 历史定格读不到 ⇒ 诚实回落 baseSnapshot 全史重放（锚点行缺失是数据异常，不许拿编的锚点顶）。
+          readTickState: async (_sessionId, tick) =>
+            tick === 0
+              ? s.baseSnapshot
+              : ((await repos.sim.getTickState(c.tenantId, s.id, tick))?.state ?? s.baseSnapshot),
+          advanceTicks: advance,
+          now: () => performance.now(),
+          makeId: (prefix) => newId(prefix),
+        },
+        {
+          tenantId: c.tenantId,
+          sessionId: s.id,
+          curTick: s.curTick,
+          horizon,
+          candidate,
+          resolvedObjectId: resolvedObjectId ?? undefined,
+          specs,
+          sessionCreatedAt: s.createdAt,
+        },
+      );
+      pricingCache.set(fp, outcome);
+      if (pricingCache.size > 500) {
+        const oldest = pricingCache.keys().next().value;
+        if (oldest !== undefined) pricingCache.delete(oldest);
+      }
+      items.push(outcome);
+    }
+    return { items };
   });
   /**
    * 把一条扰动施加到**当前 tick**，并把结果落回 `sim_tick_state`（`/act` 与 `POST /perturbations` 共用）。
