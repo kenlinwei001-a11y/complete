@@ -1,4 +1,5 @@
 import { round } from "../prng.js";
+import type { ObjectInstance } from "../domain.js";
 import { validationError } from "../errors.js";
 import { NOMINAL_PROCESS_YIELD } from "../synthetic/battery.js";
 import { baseName, baseProvenanceSynthetic, clamp, dayFrom, maintWeekOf, normalizeBaseRef, num, str, type SolverContext } from "./types.js";
@@ -48,137 +49,257 @@ export function equipmentOee(props: Record<string, unknown>): number {
   return num(props.oeeA, 1) * num(props.oeeP, 1) * num(props.oeeQ, 1);
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+ * WO-CAPMEMO · 「同一批输入不重算第二遍」——键是**对象身份**，不是内容哈希
+ *
+ * 来历（2026-09-28 实测）：统一推演控制台「全流程扫描」→ `chain_impediments` 一次请求，CPU profile 里
+ * `computeRollup` 被调 **457 次**（每次把 13 基地 × 50 工序 × 60 设备重建成公式串），空载 4.5s、
+ * 共享机高负载 24–93s ⇒ 撞穿 AgentCore 的 `SOLVER_RUN_TIMEOUT_MS`(15000) ⇒ 屏上「卡点识别未完成」。
+ * 追下去**全是重算**，不是新算：
+ *   ① `capacityObjective` 对 6 个认证型号各调一次 `computeByProcessModel`，而 rollup 与型号**无关** ⇒ 同一份输入 ×6；
+ *   ② 候选枚举逐档 patch **一个**对象（`patchCapacityContext` / `mapCapacityContextProp` 用 `.map` 换掉整条数组，
+ *      其余对象**身份不变**），12 个没被碰到的基地却跟着全量重算。
+ *
+ * 为什么键用身份、不用内容哈希：算内容哈希本身就要遍历全量对象，等于把省下的钱又花回去。
+ * 「patch = 换掉一个对象」是本文两个 patch 入口的**唯一**形态（见 `mapCapacityContext` 的克隆面 switch），
+ * 故身份比对在这个用法下与内容比对等价，而前者是 O(1) 引用比较。
+ *
+ * 安全性（三条，缺一条这里就会静默返回过期值 —— 那比慢更坏）：
+ *   · **不就地改**：solver 侧无 `obj.props.x = …` 就地写（全仓唯一一处是 `service.ts` 的 `markSourceStale`，
+ *     写的是 DataSourceHealth，不在产能金字塔里）；
+ *   · **跨请求不复用**：仓储 `listByType` 每次返回新数组且逐条克隆（memory `clone(item)` / pg 重新反序列化）
+ *     ⇒ 上一请求的对象身份活不到下一请求；
+ *   · **读者不改**：全部调用方只 `for (const r of …)` 读，不 push/sort/改返回数组与行对象。
+ * ⚠ 加改写时先回来读这三条；任一条被破坏，本层就会静默返回过期值。
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+type ObjArr = readonly ObjectInstance[];
+
+/** 身份列表逐元素比对（同序同元素 ⇒ 输入没变）。 */
+function sameObjs(a: ObjArr, b: ObjArr): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+const linesByBaseMemo = new WeakMap<ObjArr, Record<string, ObjectInstance[]>>();
+const processesByLineMemo = new WeakMap<ObjArr, Record<string, ObjectInstance[]>>();
+const equipmentByProcessMemo = new WeakMap<ObjArr, Record<string, ObjectInstance[]>>();
+
+/** 数组身份 → 分组记录（复用同一份 `groupBy`，不另抄）。patch 换掉整条数组 ⇒ 新身份 ⇒ 重算。 */
+function memoGroupBy(
+  memo: WeakMap<ObjArr, Record<string, ObjectInstance[]>>,
+  items: ObjArr,
+  keyFn: (x: ObjectInstance) => string,
+): Record<string, ObjectInstance[]> {
+  const hit = memo.get(items);
+  if (hit !== undefined) return hit;
+  const v = groupBy([...items], keyFn);
+  memo.set(items, v);
+  return v;
+}
+
+interface BaseNodeMemoEntry { lines: ObjArr; procs: ObjArr; equips: ObjArr; packCellCount: number; node: BaseRollup }
+const baseNodeMemo = new WeakMap<ObjectInstance, BaseNodeMemoEntry>();
+
+interface RollupSlot { packCellCount: number; result?: { bases: BaseRollup[]; ruleRefs: string[] } }
+const rollupMemo = new WeakMap<object, WeakMap<object, WeakMap<object, WeakMap<object, RollupSlot>>>>();
+
+/** (bases, lines, processes, equipment) 身份元组 → 结果槽位；元组里任一数组换了对象 ⇒ 新槽位。
+ *  `packCellCount` 参与判定：它进 `weeklyWan`，而 `{...c, params:{...}}` 这种换参数但复用数组的构造是合法的。 */
+function rollupSlot(c: SolverContext): RollupSlot {
+  let m1 = rollupMemo.get(c.bases);
+  if (m1 === undefined) { m1 = new WeakMap(); rollupMemo.set(c.bases, m1); }
+  let m2 = m1.get(c.lines);
+  if (m2 === undefined) { m2 = new WeakMap(); m1.set(c.lines, m2); }
+  let m3 = m2.get(c.processes);
+  if (m3 === undefined) { m3 = new WeakMap(); m2.set(c.processes, m3); }
+  let slot = m3.get(c.equipment);
+  if (slot === undefined || slot.packCellCount !== c.params.packCellCount) {
+    slot = { packCellCount: c.params.packCellCount };
+    m3.set(c.equipment, slot);
+  }
+  return slot;
+}
+
 export function computeRollup(c: SolverContext): { bases: BaseRollup[]; ruleRefs: string[] } {
-  const p = c.params;
-  const linesByBase = groupBy(c.lines, (l) => str(l.props.baseId));
-  const processesByLine = groupBy(c.processes, (pr) => str(pr.props.lineId));
-  const equipmentByProcess = groupBy(c.equipment, (e) => str(e.props.processId));
+  const slot = rollupSlot(c);
+  if (slot.result !== undefined) return slot.result; // 同一份输入（含 6 个型号共用一次）
+  const linesByBase = memoGroupBy(linesByBaseMemo, c.lines, (l) => str(l.props.baseId));
+  const processesByLine = memoGroupBy(processesByLineMemo, c.processes, (pr) => str(pr.props.lineId));
+  const equipmentByProcess = memoGroupBy(equipmentByProcessMemo, c.equipment, (e) => str(e.props.processId));
   const out: BaseRollup[] = [];
-  for (const b of c.bases) {
-    const baseId = str(b.props.baseId);
-    const lines = linesByBase[baseId] ?? [];
-    const lineNodes: RollupNode[] = [];
-    const processNodes: RollupNode[] = [];
-    const equipNodes: RollupNode[] = [];
-    for (const line of lines) {
-      const lineId = str(line.props.lineId);
-      const procs = processesByLine[lineId] ?? [];
-      const serialCaps: number[] = [];
-      let formationCap = Infinity;
-      let agingCap = Infinity;
-      for (const proc of procs) {
-        const kind = str(proc.props.kind);
-        let daily: number;
-        let formula: string;
-        const inputs: { name: string; value: number | string }[] = [];
-        if (kind === "formation") {
-          daily = num(proc.props.channels) * num(proc.props.channelOutputDaily) * num(proc.props.yield, 1);
-          formula = "化成产能 = 通道数 × 单通道产出 × 良率";
-          inputs.push(
-            { name: "channels", value: num(proc.props.channels) },
-            { name: "channelOutputDaily", value: num(proc.props.channelOutputDaily) },
-            { name: "yield", value: num(proc.props.yield, 1) },
-          );
-          formationCap = Math.min(formationCap, daily);
-        } else if (kind === "aging") {
-          daily = num(proc.props.agingSlots) / Math.max(1, num(proc.props.agingDays, 1));
-          formula = "老化产能 = 库位数 / 老化天数";
-          inputs.push(
-            { name: "agingSlots", value: num(proc.props.agingSlots) },
-            { name: "agingDays", value: num(proc.props.agingDays, 1) },
-          );
-          agingCap = Math.min(agingCap, daily);
-        } else {
-          const equips = equipmentByProcess[str(proc.props.processId)] ?? [];
-          let hourlySum = 0;
-          for (const e of equips) {
-            const oee = equipmentOee(e.props);
-            const hourly = (3600 / Math.max(0.01, num(e.props.ctSeconds, 1))) * num(e.props.availFactor, 1) * oee;
-            hourlySum += hourly;
-            equipNodes.push({
-              key: str(e.props.equipId),
-              name: str(e.props.equipId),
-              capacityPerDay: round(hourly * num(proc.props.shiftHours, 24) * num(proc.props.shifts, 1), 2),
-              formula: "设备产能/h = (3600 / 节拍CT_s) × 可用时间系数 × OEE",
-              inputs: [
-                { name: "ctSeconds", value: num(e.props.ctSeconds, 1) },
-                { name: "availFactor", value: num(e.props.availFactor, 1) },
-                { name: "oee", value: round(oee, 4) },
-              ],
-            });
-          }
-          const labor = num(proc.props.shiftHours, 24) * num(proc.props.shifts, 1);
-          daily =
-            hourlySum * labor * num(proc.props.yield, 1) * num(proc.props.attendance, 1) * num(proc.props.utilization, 1);
-          formula = "工序产能 = Σ设备产能/h × 班次时长×班次数 × 良率 × 出勤率 × 利用率";
-          inputs.push(
-            { name: "equipHourlySum", value: round(hourlySum, 2) },
-            { name: "laborHours", value: labor },
-            { name: "yield", value: num(proc.props.yield, 1) },
-            { name: "attendance", value: num(proc.props.attendance, 1) },
-            { name: "utilization", value: num(proc.props.utilization, 1) },
-          );
-          serialCaps.push(daily);
+  for (const b of c.bases) out.push(rollupForBase(c, b, linesByBase, processesByLine, equipmentByProcess));
+  const result = { bases: out, ruleRefs: ["C01", "C02"] };
+  slot.result = result;
+  return result;
+}
+
+/**
+ * 单个基地的产能金字塔 —— **重算的粒度**（WO-CAPMEMO）。
+ * patch 只换掉一个对象时，只有它所属基地读到的对象身份变了，其余基地直接复用上一轮的 `BaseRollup` 对象：
+ * 既不建公式串，也不重算 `round()`。身份判定覆盖该基地读到的**全部**对象
+ * （基地本身 / 它的产线 / 这些产线上的工序 / 这些工序上的设备）。
+ */
+function rollupForBase(
+  c: SolverContext,
+  b: ObjectInstance,
+  linesByBase: Record<string, ObjectInstance[]>,
+  processesByLine: Record<string, ObjectInstance[]>,
+  equipmentByProcess: Record<string, ObjectInstance[]>,
+): BaseRollup {
+  const lines = linesByBase[str(b.props.baseId)] ?? [];
+  const procs: ObjectInstance[] = [];
+  const equips: ObjectInstance[] = [];
+  for (const line of lines) {
+    for (const pr of processesByLine[str(line.props.lineId)] ?? []) {
+      procs.push(pr);
+      for (const e of equipmentByProcess[str(pr.props.processId)] ?? []) equips.push(e);
+    }
+  }
+  const hit = baseNodeMemo.get(b);
+  if (
+    hit !== undefined && hit.packCellCount === c.params.packCellCount &&
+    sameObjs(hit.lines, lines) && sameObjs(hit.procs, procs) && sameObjs(hit.equips, equips)
+  ) {
+    return hit.node;
+  }
+  const node = buildBaseRollup(c, b, linesByBase, processesByLine, equipmentByProcess);
+  baseNodeMemo.set(b, { lines, procs, equips, packCellCount: c.params.packCellCount, node });
+  return node;
+}
+
+/** 单基地全量派生（只有身份判定未命中时才走到）。函数体逐字来自 WO-CAPMEMO 之前的 `computeRollup` 逐基地循环。 */
+function buildBaseRollup(
+  c: SolverContext,
+  b: ObjectInstance,
+  linesByBase: Record<string, ObjectInstance[]>,
+  processesByLine: Record<string, ObjectInstance[]>,
+  equipmentByProcess: Record<string, ObjectInstance[]>,
+): BaseRollup {
+  const p = c.params;
+  const baseId = str(b.props.baseId);
+  const lines = linesByBase[baseId] ?? [];
+  const lineNodes: RollupNode[] = [];
+  const processNodes: RollupNode[] = [];
+  const equipNodes: RollupNode[] = [];
+  for (const line of lines) {
+    const lineId = str(line.props.lineId);
+    const procs = processesByLine[lineId] ?? [];
+    const serialCaps: number[] = [];
+    let formationCap = Infinity;
+    let agingCap = Infinity;
+    for (const proc of procs) {
+      const kind = str(proc.props.kind);
+      let daily: number;
+      let formula: string;
+      const inputs: { name: string; value: number | string }[] = [];
+      if (kind === "formation") {
+        daily = num(proc.props.channels) * num(proc.props.channelOutputDaily) * num(proc.props.yield, 1);
+        formula = "化成产能 = 通道数 × 单通道产出 × 良率";
+        inputs.push(
+          { name: "channels", value: num(proc.props.channels) },
+          { name: "channelOutputDaily", value: num(proc.props.channelOutputDaily) },
+          { name: "yield", value: num(proc.props.yield, 1) },
+        );
+        formationCap = Math.min(formationCap, daily);
+      } else if (kind === "aging") {
+        daily = num(proc.props.agingSlots) / Math.max(1, num(proc.props.agingDays, 1));
+        formula = "老化产能 = 库位数 / 老化天数";
+        inputs.push(
+          { name: "agingSlots", value: num(proc.props.agingSlots) },
+          { name: "agingDays", value: num(proc.props.agingDays, 1) },
+        );
+        agingCap = Math.min(agingCap, daily);
+      } else {
+        const equips = equipmentByProcess[str(proc.props.processId)] ?? [];
+        let hourlySum = 0;
+        for (const e of equips) {
+          const oee = equipmentOee(e.props);
+          const hourly = (3600 / Math.max(0.01, num(e.props.ctSeconds, 1))) * num(e.props.availFactor, 1) * oee;
+          hourlySum += hourly;
+          equipNodes.push({
+            key: str(e.props.equipId),
+            name: str(e.props.equipId),
+            capacityPerDay: round(hourly * num(proc.props.shiftHours, 24) * num(proc.props.shifts, 1), 2),
+            formula: "设备产能/h = (3600 / 节拍CT_s) × 可用时间系数 × OEE",
+            inputs: [
+              { name: "ctSeconds", value: num(e.props.ctSeconds, 1) },
+              { name: "availFactor", value: num(e.props.availFactor, 1) },
+              { name: "oee", value: round(oee, 4) },
+            ],
+          });
         }
-        processNodes.push({
-          key: str(proc.props.processId),
-          name: str(proc.props.name),
-          capacityPerDay: round(daily, 2),
-          formula,
-          inputs,
-        });
+        const labor = num(proc.props.shiftHours, 24) * num(proc.props.shifts, 1);
+        daily =
+          hourlySum * labor * num(proc.props.yield, 1) * num(proc.props.attendance, 1) * num(proc.props.utilization, 1);
+        formula = "工序产能 = Σ设备产能/h × 班次时长×班次数 × 良率 × 出勤率 × 利用率";
+        inputs.push(
+          { name: "equipHourlySum", value: round(hourlySum, 2) },
+          { name: "laborHours", value: labor },
+          { name: "yield", value: num(proc.props.yield, 1) },
+          { name: "attendance", value: num(proc.props.attendance, 1) },
+          { name: "utilization", value: num(proc.props.utilization, 1) },
+        );
+        serialCaps.push(daily);
       }
-      const serialMin = serialCaps.length > 0 ? Math.min(...serialCaps) : 0;
-      const lineDaily = Math.min(serialMin, formationCap, agingCap);
-      lineNodes.push({
-        key: lineId,
-        name: str(line.props.name, lineId),
-        capacityPerDay: round(lineDaily, 2),
-        formula: "产线产能 = min(串行段) ⊕ 并行段汇合（化成/老化）—— C02 串/并口径",
-        inputs: [
-          { name: "serialMin", value: round(serialMin, 2) },
-          { name: "formationCap", value: Number.isFinite(formationCap) ? round(formationCap, 2) : 0 },
-          { name: "agingCap", value: Number.isFinite(agingCap) ? round(agingCap, 2) : 0 },
-        ],
+      processNodes.push({
+        key: str(proc.props.processId),
+        name: str(proc.props.name),
+        capacityPerDay: round(daily, 2),
+        formula,
+        inputs,
       });
     }
-    // SA-3 Workshop 层：一个基地的多条"产线"实为 N 道串行工序车间（制浆→…→PACK），物料顺次流经，
-    // 基地日成品产出 = 单道代表工序吞吐（各车间产能均值），而非求和（求和会把同一批在制品按车间数
-    // 重复计入 → 远超共享化成/老化封顶 → 预测退化为与 Process.yield 无关的静态封顶）。此均值口径与
-    // 实际值聚合（pairing/simclock 按基地取各车间均值）同尺度，且保留化成/串行工序的良率敏感度（校准可观测）。
-    const lineMean =
-      lineNodes.length > 0 ? lineNodes.reduce((a, l) => a + l.capacityPerDay, 0) / lineNodes.length : 0;
-    // WO-SCALE-COHERENCE 回补（保 SA-3 良率敏感度不被 gwh 夹点抹平）：scale-coherence 令共享化成/老化封顶
-    // 按 gwh 派生并夹定 dailyCells，但这两个封顶不含 Process.yield → min 绑它们时 dailyCells 对良率零敏感，
-    // M11 校准（重放调 Process.yield 观改善）失去杠杆。以基地代表良率/名义良率 之比缩放共享封顶：基线(良率≈名义)
-    // 缩放≈1（锚不动），良率被下调时缩放<1 → dailyCells 同比降 → 校准重放可观测（dailyCells ∝ yield，R6 确定性）。
-    const baseProcs = lines.flatMap((l) => processesByLine[str(l.props.lineId)] ?? []);
-    const baseYields = baseProcs.map((pr) => num(pr.props.yield, 1)).filter((y) => y > 0);
-    const baseMeanYield = baseYields.length > 0 ? baseYields.reduce((a, v) => a + v, 0) / baseYields.length : 1;
-    const yieldFactor = baseMeanYield / NOMINAL_PROCESS_YIELD;
-    const sharedFormation = (num(b.props.formationCapDaily, Infinity) || Infinity) * yieldFactor;
-    const sharedAging = (num(b.props.agingCapDaily, Infinity) || Infinity) * yieldFactor;
-    const dailyCells = round(Math.min(lineMean, sharedFormation, sharedAging), 2);
-    const weeklyWan = round((dailyCells * 7) / Math.max(1, c.params.packCellCount) / 10000, 4);
-    out.push({
-      baseId,
-      base: str(b.props.name, baseId),
-      dailyCells,
-      weeklyWan,
-      lines: lineNodes,
-      processes: processNodes,
-      equipment: equipNodes,
-      formula:
-        "基地产能 = 代表产线产能（各串行工序车间均值，受共享资源封顶：化成柜/老化库，C01 ≤ 设计上限）；周产能(万套) = 基地日产能(电芯) × 7 ÷ 单PACK电芯数 ÷ 10000",
+    const serialMin = serialCaps.length > 0 ? Math.min(...serialCaps) : 0;
+    const lineDaily = Math.min(serialMin, formationCap, agingCap);
+    lineNodes.push({
+      key: lineId,
+      name: str(line.props.name, lineId),
+      capacityPerDay: round(lineDaily, 2),
+      formula: "产线产能 = min(串行段) ⊕ 并行段汇合（化成/老化）—— C02 串/并口径",
       inputs: [
-        { name: "lineMean", value: round(lineMean, 2) },
-        { name: "sharedFormationCap", value: Number.isFinite(sharedFormation) ? sharedFormation : 0 },
-        { name: "sharedAgingCap", value: Number.isFinite(sharedAging) ? sharedAging : 0 },
-        { name: "packCellCount", value: p.packCellCount },
+        { name: "serialMin", value: round(serialMin, 2) },
+        { name: "formationCap", value: Number.isFinite(formationCap) ? round(formationCap, 2) : 0 },
+        { name: "agingCap", value: Number.isFinite(agingCap) ? round(agingCap, 2) : 0 },
       ],
     });
   }
-  return { bases: out, ruleRefs: ["C01", "C02"] };
+  // SA-3 Workshop 层：一个基地的多条"产线"实为 N 道串行工序车间（制浆→…→PACK），物料顺次流经，
+  // 基地日成品产出 = 单道代表工序吞吐（各车间产能均值），而非求和（求和会把同一批在制品按车间数
+  // 重复计入 → 远超共享化成/老化封顶 → 预测退化为与 Process.yield 无关的静态封顶）。此均值口径与
+  // 实际值聚合（pairing/simclock 按基地取各车间均值）同尺度，且保留化成/串行工序的良率敏感度（校准可观测）。
+  const lineMean =
+    lineNodes.length > 0 ? lineNodes.reduce((a, l) => a + l.capacityPerDay, 0) / lineNodes.length : 0;
+  // WO-SCALE-COHERENCE 回补（保 SA-3 良率敏感度不被 gwh 夹点抹平）：scale-coherence 令共享化成/老化封顶
+  // 按 gwh 派生并夹定 dailyCells，但这两个封顶不含 Process.yield → min 绑它们时 dailyCells 对良率零敏感，
+  // M11 校准（重放调 Process.yield 观改善）失去杠杆。以基地代表良率/名义良率 之比缩放共享封顶：基线(良率≈名义)
+  // 缩放≈1（锚不动），良率被下调时缩放<1 → dailyCells 同比降 → 校准重放可观测（dailyCells ∝ yield，R6 确定性）。
+  const baseProcs = lines.flatMap((l) => processesByLine[str(l.props.lineId)] ?? []);
+  const baseYields = baseProcs.map((pr) => num(pr.props.yield, 1)).filter((y) => y > 0);
+  const baseMeanYield = baseYields.length > 0 ? baseYields.reduce((a, v) => a + v, 0) / baseYields.length : 1;
+  const yieldFactor = baseMeanYield / NOMINAL_PROCESS_YIELD;
+  const sharedFormation = (num(b.props.formationCapDaily, Infinity) || Infinity) * yieldFactor;
+  const sharedAging = (num(b.props.agingCapDaily, Infinity) || Infinity) * yieldFactor;
+  const dailyCells = round(Math.min(lineMean, sharedFormation, sharedAging), 2);
+  const weeklyWan = round((dailyCells * 7) / Math.max(1, c.params.packCellCount) / 10000, 4);
+  return {
+    baseId,
+    base: str(b.props.name, baseId),
+    dailyCells,
+    weeklyWan,
+    lines: lineNodes,
+    processes: processNodes,
+    equipment: equipNodes,
+    formula:
+      "基地产能 = 代表产线产能（各串行工序车间均值，受共享资源封顶：化成柜/老化库，C01 ≤ 设计上限）；周产能(万套) = 基地日产能(电芯) × 7 ÷ 单PACK电芯数 ÷ 10000",
+    inputs: [
+      { name: "lineMean", value: round(lineMean, 2) },
+      { name: "sharedFormationCap", value: Number.isFinite(sharedFormation) ? sharedFormation : 0 },
+      { name: "sharedAgingCap", value: Number.isFinite(sharedAging) ? sharedAging : 0 },
+      { name: "packCellCount", value: p.packCellCount },
+    ],
+};
 }
 
 // ---------------------------------------------------------------------------
@@ -224,6 +345,62 @@ function materialConstraint(
   return tightest ? { matFactor: round(tightest.factor, 6), matName: tightest.name } : { matFactor: 1 };
 }
 
+const materialMemo = new WeakMap<ObjArr, Map<string, { matFactor: number; matName?: string }>>();
+
+/** WO-CAPMEMO：`materialConstraint` 只读 `c.materials` 与落点属性名 ⇒ 按 (物料数组身份, 属性) 缓存。 */
+function materialConstraintMemo(
+  c: SolverContext,
+  binding: CapacityFactorBinding | undefined,
+): { matFactor: number; matName?: string } {
+  const prop = binding?.prop ?? "onHand";
+  const mats = c.materials ?? [];
+  let byProp = materialMemo.get(mats);
+  if (byProp === undefined) { byProp = new Map(); materialMemo.set(mats, byProp); }
+  const hit = byProp.get(prop);
+  if (hit !== undefined) return hit;
+  const v = materialConstraint(c, binding);
+  byProp.set(prop, v);
+  return v;
+}
+
+interface CapacityIndex {
+  /** 工序 id → 工序日产能（来自 rollup 的工序节点）。 */
+  procCapById: Map<string, number>;
+  /** 基地 id → 该基地的工序对象（先按读入顺序分组、再按 processId 全序 —— 与原 `filter().sort()` 同序）。 */
+  procsByBase: Map<string, ObjectInstance[]>;
+  /** 基地 id → 该基地的 `BaseRollup` 对象（逐基地行的缓存键，见 `baseRowsMemo`）。 */
+  rollupByBase: Map<string, BaseRollup>;
+}
+const capacityIndexStore = new WeakMap<object, CapacityIndex>();
+
+/** WO-CAPMEMO 第二级：`BaseRollup` 身份 × (型号|认证系数|物料齐套|物料名) → 该基地的逐工序行。 */
+const baseRowsMemo = new WeakMap<BaseRollup, Map<string, ByProcessModelRow[]>>();
+
+/**
+ * WO-CAPMEMO：`computeByProcessModel` 里与 **modelId 无关**的两个索引。缓存在 **rollup 结果对象**上 ——
+ * rollup 自己按输入身份元组缓存 ⇒ 同一份输入的 6 个型号拿到同一个对象 ⇒ 这两个索引只建一次。
+ * 原先每型号各扫一遍全量工序（6 型号 × 逐档探针 × 650 工序）。
+ */
+function capacityIndexMemo(rollup: { bases: BaseRollup[] }, c: SolverContext): CapacityIndex {
+  const hit = capacityIndexStore.get(rollup);
+  if (hit !== undefined) return hit;
+  const procCapById = new Map<string, number>();
+  for (const br of rollup.bases) for (const pn of br.processes) procCapById.set(pn.key, pn.capacityPerDay);
+  const procsByBase = new Map<string, ObjectInstance[]>();
+  for (const p of c.processes) {
+    const k = str(p.props.baseId);
+    const list = procsByBase.get(k);
+    if (list === undefined) procsByBase.set(k, [p]);
+    else list.push(p);
+  }
+  for (const list of procsByBase.values()) list.sort((a, b) => str(a.props.processId).localeCompare(str(b.props.processId)));
+  const rollupByBase = new Map<string, BaseRollup>();
+  for (const br of rollup.bases) rollupByBase.set(br.baseId, br);
+  const v: CapacityIndex = { procCapById, procsByBase, rollupByBase };
+  capacityIndexStore.set(rollup, v);
+  return v;
+}
+
 export function computeByProcessModel(
   c: SolverContext,
   modelId: string,
@@ -236,24 +413,37 @@ export function computeByProcessModel(
   const cert = baseFilter ? new Map([...certAll].filter(([b]) => b === baseFilter)) : certAll;
   if (cert.size === 0) return []; // 该型号未在该基地认证 → 无逐工序格（诚实空·不臆造）
   const rollup = computeRollup(c);
-  const procCapById = new Map<string, number>();
-  for (const br of rollup.bases) for (const pn of br.processes) procCapById.set(pn.key, pn.capacityPerDay);
+  // WO-CAPMEMO：下面三个派生量都与 modelId **无关**，逐型号重算它们是纯浪费（候选枚举里 6 型号 × 逐档探针）。
+  const idx = capacityIndexMemo(rollup, c);
   // 因子落点单源查表（corrupt→读不到属性→逐格派生退化→SEAM 红咬）。
   const yb = bindings.find((b) => b.mark === "⑥"); // Process.yield_baseline
   const matb = bindings.find((b) => b.mark === "⑬"); // Material.onHand（层4 ∩）
-  const { matFactor, matName } = materialConstraint(c, matb);
+  const { matFactor, matName } = materialConstraintMemo(c, matb);
   const yProp = yb?.prop ?? "yield_baseline";
-  const equipByProcess = groupBy(c.equipment, (e) => str(e.props.processId));
+  const equipByProcess = memoGroupBy(equipmentByProcessMemo, c.equipment, (e) => str(e.props.processId));
 
   const rows: ByProcessModelRow[] = [];
   for (const [baseId, status] of [...cert.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
     const certFactor = c.params.certFactors[status] ?? 1;
-    const procs = c.processes
-      .filter((p) => str(p.props.baseId) === baseId)
-      .sort((a, b) => str(a.props.processId).localeCompare(str(b.props.processId)));
-    for (const proc of procs) {
+    /**
+     * WO-CAPMEMO 第二级：**逐基地的行**。一档 patch 只换掉一个对象 ⇒ 只有它那个基地的 rollup 变了，
+     * 其余基地的行与上一档**逐字节相同**（每行含一条公式串 + 一个溯源对象，是本函数最贵的一段）。
+     * 键 = (该基地的 `BaseRollup` 对象, 型号, 认证系数, 物料齐套, 物料名) —— 前四个就足以定住行的全部输入：
+     * 良率张力/OEE 张力只读 `c.params`（不进 patch 面），`baseName` 读的是被 BaseRollup 身份钉住的那个基地对象。
+     * 只在**默认因子册**下启用：非默认 bindings 会改变行内容，不做内容键（那将需要哈希 bindings，得不偿失）。
+     */
+    const cache = bindings === CAPACITY_FACTOR_BINDINGS ? baseRowsMemo : undefined;
+    const baseNode = idx.rollupByBase.get(baseId);
+    const memoKey = `${modelId}|${certFactor}|${matFactor}|${matName ?? ""}`;
+    const hit = baseNode === undefined ? undefined : cache?.get(baseNode)?.get(memoKey);
+    if (hit !== undefined) {
+      for (const r of hit) rows.push(r);
+      continue;
+    }
+    const baseRows: ByProcessModelRow[] = [];
+    for (const proc of idx.procsByBase.get(baseId) ?? []) {
       const pid = str(proc.props.processId);
-      const processCap = procCapById.get(pid) ?? 0;
+      const processCap = idx.procCapById.get(pid) ?? 0;
       if (processCap <= 0) continue; // 无产能工序（缺设备/静态数据）跳过·不臆造
       // 良率基线再基（读 binding ⑥ 落点属性·把工序运算良率重基到校准良率基线·mutating yield_baseline 即改 cellsPerDayP50）。
       const yBaseline = num(proc.props[yProp], num(proc.props.yield, 1));
@@ -271,7 +461,7 @@ export function computeByProcessModel(
       ].sort((a, b) => b.value - a.value || (a.mark < b.mark ? -1 : 1));
       const top = cand[0]!;
       const cellsPerDayGap = round((cellsPerDayP50 * top.value) / 100, 4);
-      rows.push({
+      baseRows.push({
         baseId,
         base: baseName(c, baseId),
         process: pid,
@@ -296,6 +486,12 @@ export function computeByProcessModel(
         },
       });
     }
+    if (cache !== undefined && baseNode !== undefined) {
+      let byKey = cache.get(baseNode);
+      if (byKey === undefined) { byKey = new Map(); cache.set(baseNode, byKey); }
+      byKey.set(memoKey, baseRows);
+    }
+    for (const r of baseRows) rows.push(r);
   }
   return rows;
 }
