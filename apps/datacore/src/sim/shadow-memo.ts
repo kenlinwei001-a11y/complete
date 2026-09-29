@@ -32,10 +32,10 @@
  * ⚠ 刻意**不含** `baseSnapshot`、也不含 `curTick`：前者在会话创建后**没有写点**
  *   （`putSession` 的四个调用点：状态变更 · tick 进位 · disabledRuleKeys · 回滚，
  *   没有一个动 `baseSnapshot`），后者是备忘录的**键**的一部分（按拍存）。
- *   ⛔ 将来若有人加了一个会改 `baseSnapshot` 的写点，**必须同时把它加进本指纹** ——
+ *   ⛔ 将来若有人加了一个会改 `baseSnapshot` 的写点，**必须同时把换掉的旧世界赶出本备忘录** ——
  *   否则影子线会读到上一版世界，而屏上是一个**看不出来**的错数。
- *   本文件对「被整个换掉」这种情况另有零成本兜底：条目记着那一份 baseSnapshot 的**引用**，
- *   `===` 不等即当未命中（见 `get` 的 `baseRef` 判据）。
+ *   ⚠ 这条不变量**没有运行期判据**（第一版有一个，恒假、已删 —— 病历见 `ShadowMemo` 的类头注），
+ *   守着它的是 `shadow-memo.seam.test.ts` §4 的源码扫描断言。
  *
  * ── 复用**不许**改变的东西（改了就白做）──────────────────────────────────────
  * · 复用只是**省掉重放**，产出的影子态必须与重放**逐字节相同**（对照实验判据）。
@@ -59,12 +59,23 @@ export interface ShadowSnapshot {
   readonly pending: readonly DelayedContribution[];
 }
 
-/** 备忘录的一格。`baseRef` 只用于零成本地察觉「baseSnapshot 被整个换掉了」。 */
+/** 备忘录的一格。 */
 interface Slot {
   readonly tick: number;
   readonly snap: ShadowSnapshot;
-  readonly baseRef: unknown;
 }
+
+/**
+ * 延迟队列的**逐条拷贝**。
+ *
+ * ⚠ 只 `[...pending]` 是**不够的**：那只换掉了数组，元素还是同一批对象引用 ——
+ *   调用方（或将来某个改 pending 的引擎版本）就地改一个 `amount`，
+ *   改的就是备忘录里那一格，下一次命中会拿到被改过的队列。实测：`got.pending[0].amount = 999`
+ *   之后重取，读到的是 **999** 而不是原值（`shadow-memo.seam.test.ts` §4 咬死这一条）。
+ *   今天 `propagateTick` 走 `pending.filter(...)` **不就地改元素**（所以这是个潜伏缺陷，不是已发作的错），
+ *   但那是引擎的实现细节，不是本文件的契约 —— 拷贝一遍的成本是几个扁平对象，不值得赌。
+ */
+const clonePending = (p: readonly DelayedContribution[]): DelayedContribution[] => p.map((x) => ({ ...x }));
 
 // ⚠ 分隔符的值是一个 NUL（U+0000）—— **必须写成转义**，不许写成字面 NUL 字节：
 //   字面 NUL 会让 git 把本文件判成 binary（`git diff` 只剩一句「Binary files differ」）、
@@ -141,29 +152,46 @@ export const shadowMemoStats = { hits: 0, misses: 0 };
  * 逐拍全留会在长会话里把一个进程的内存吃穿。控制台的实际访问形状是
  * 「在同一拍上连打几次，然后进一拍」，所以最近一拍的命中率就是主要收益；
  * 未命中只是**退化成今天的行为**（重放），不会算错。
+ *
+ * ── ⛔ 这里**没有**「baseSnapshot 换过没有」的运行期判据，这是实测改掉的（别加回去）──────
+ * 第一版拿 `s.baseSnapshot` 的**对象引用**当判据（同引用=没换过）。实测**恒不成立**：
+ * `getSession` 两个实现都是**每次读都深拷一份**（memory `repo/memory.ts` 的 `clone` = `structuredClone`，
+ * pg 侧走 JSON 反序列化）⇒ 同一份 baseSnapshot 每次读回来都是**新的对象**。
+ * 后果不是"偶尔不命中"，是**永远不命中**：备忘录退化成纯粹的哈希开销（每请求把 2.6 万条入参过一遍 sha256），
+ * 而**一行收益都没有** —— 而它看起来完全正常（计数在动、代码在跑、测试若无「必须命中」那条断言照样绿）。
+ * 形态（铁律 0.6 句式）：
+ * > **「我用『我写了复用』当作『复用真的发生了』的证据，而前者并不度量后者
+ * >   —— 判据恒假时，备忘录只是把成本加了一遍。」**
+ * 抓住它的是 `shadow-memo.seam.test.ts` §2 里那句「A 那一跑没有命中 ⇒ 本用例根本没验到『复用』」。
+ *
+ * 那么这一格凭什么仍然是对的？靠**一条不变量**（不是靠这个判据）：
+ * > 一个会话的 `baseSnapshot` **只在建会话那一刻写一次**，此后终生不变。
+ *
+ * 该不变量由 `shadow-memo.seam.test.ts` §4 的**源码扫描**守着（剥注释后咬 `.baseSnapshot =`
+ * 这种**赋值**：现在全仓零处）。将来谁加了会换 baseSnapshot 的写点，那条断言会先说话，
+ * 他必须同时把换掉的旧世界从备忘录里赶出去 —— 否则影子线会读到一个**看不出来**的错世界。
  */
 export class ShadowMemo {
   private readonly slots = new Map<string, Slot>();
 
   constructor(private readonly cap: number = 4) {}
 
-  get(key: string, tick: number, baseSnapshot: unknown): ShadowSnapshot | null {
+  get(key: string, tick: number): ShadowSnapshot | null {
     const s = this.slots.get(key);
     if (s === undefined) { shadowMemoStats.misses += 1; return null; }
     if (s.tick !== tick) { shadowMemoStats.misses += 1; return null; }
-    // baseSnapshot 被整个换掉过 ⇒ 这一格的前提没了（`putSession` 今天不会换它，见文件头注）。
-    if (s.baseRef !== baseSnapshot) { shadowMemoStats.misses += 1; return null; }
     // LRU：命中即提到最新。
     this.slots.delete(key);
     this.slots.set(key, s);
     shadowMemoStats.hits += 1;
-    // 浅拷 pending：调用方拿到的是**值**，写回不去污染备忘录里那一格。
-    return { state: s.snap.state, pending: [...s.snap.pending] };
+    // 返回**值**不是内部那一格：状态对象本身逐拍重放时是新建的（`propagateTick` 返回 `cloneState`），
+    // 但数组与元素都是共享引用，故两样都要拷（见 `clonePending` 的理由）。
+    return { state: s.snap.state, pending: clonePending(s.snap.pending) };
   }
 
-  put(key: string, tick: number, snap: ShadowSnapshot, baseSnapshot: unknown): void {
+  put(key: string, tick: number, snap: ShadowSnapshot): void {
     this.slots.delete(key);
-    this.slots.set(key, { tick, snap: { state: snap.state, pending: [...snap.pending] }, baseRef: baseSnapshot });
+    this.slots.set(key, { tick, snap: { state: snap.state, pending: clonePending(snap.pending) } });
     while (this.slots.size > this.cap) {
       const oldest = this.slots.keys().next();
       if (oldest.done === true) break;

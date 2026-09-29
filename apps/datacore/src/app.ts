@@ -2563,7 +2563,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         scopeKey: JSON.stringify(s.scope ?? null),
         graph, rules: propRules, ruleParams, cadenceGates, pairWeights,
       });
-      const hit = shadowMemo.get(shadowKey, s.curTick, s.baseSnapshot);
+      const hit = shadowMemo.get(shadowKey, s.curTick);
       if (hit !== null) {
         // 命中：直接拿同一拍已经算过的那一格，**一次 propagateTick 都不跑**。
         driftState = hit.state; driftPending = [...hit.pending];
@@ -2575,7 +2575,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
           const d = propagateTick(graph, driftState, propRules, driftPending, t, ruleParams, cadenceGates, [], pairWeights, stateVarDomains);
           driftState = d.next; driftPending = d.pending;
         }
-        shadowMemo.put(shadowKey, s.curTick, { state: driftState, pending: driftPending }, s.baseSnapshot);
+        shadowMemo.put(shadowKey, s.curTick, { state: driftState, pending: driftPending });
       }
       stopShadow();
     }
@@ -2619,7 +2619,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
           // 进了一拍 ⇒ 把新那一格存下：**下一次请求就不必再从头重放**（这正是本单的全部收益）。
           // 存的是刚算出来的量，不额外跑 propagateTick（多跑一次就白省了）。
           if (shadowKey !== null) {
-            shadowMemo.put(shadowKey, beforeTick + 1, { state: driftState, pending: driftPending }, s.baseSnapshot);
+            shadowMemo.put(shadowKey, beforeTick + 1, { state: driftState, pending: driftPending });
           }
         }
         for (const k of firedPropagationRuleKeys(out.trace, out.pending)) firedKeys.add(k);
