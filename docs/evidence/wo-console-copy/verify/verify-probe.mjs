@@ -37,12 +37,26 @@ function repoRoot(from) {
   }
   throw new Error("找不到仓库根（从 " + fileURLToPath(from) + " 往上 8 层都没有 apps/+packages/）");
 }
-const ROOT = repoRoot(import.meta.url);
+// 允许从别处的副本跑（比如负载高时复制到 /tmp 调参）：仓库根用 env 指定。
+const ROOT = process.env.E2E_REPO_ROOT ?? repoRoot(import.meta.url);
 
 const BASE = process.env.E2E_BASE ?? "http://127.0.0.1:5175";
 const PORTS = (process.env.E2E_API_PORTS ?? "4031").replace(/[^0-9|]/g, "");
 const SHOTS = process.env.E2E_SHOTS ?? "/tmp/console-copy-verify";
-const CDP_PORT = 9335; // 与交付自带探针的 9334 岔开
+const CDP_PORT = Number(process.env.E2E_CDP_PORT ?? 9335); // 与交付自带探针的 9334 岔开
+
+// ⚠ 自证「连的是自己那一个浏览器」。2026-09-29 实测踩过：上一轮遗留的 Chrome 还占着 9335，
+//   新 Chrome 绑不上端口，而探针只探「9335 有没有在答」——有答就往下走，于是驱动的是
+//   **上一个浏览器**（带着上一轮的登录态）⇒ ① 步等 #login-username 恒等不到，
+//   报出假红「登录表单（60s）」。形态与铁律 1.6 那条端口教训同源：
+//   「读了别人的旧服务，然后对自己的代码下结论。」
+try {
+  await (await fetch(`http://127.0.0.1:${CDP_PORT}/json/version`)).json();
+  console.log(`FATAL: ${CDP_PORT} 上已有浏览器在答——它会污染读数，先清掉再跑（不是产品缺陷）`);
+  process.exit(2);
+} catch { /* 端口是空的，正常 */ }
+// 等真推演的上限秒数：本机负载高时同一条 drill 可从 68s 拉到 10 分钟以上，故可调。
+const NOTE_WAIT = Number(process.env.E2E_NOTE_WAIT ?? 360);
 mkdirSync(SHOTS, { recursive: true });
 
 // ── 复验方自己读模型源码，抽出 (label, consumesEvents) 序列（C2 的对照源）────────────
@@ -72,7 +86,7 @@ const hintCanary = HINTS.every((h) => h.hint);
 
 const chrome = spawn("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", [
   "--headless=new", "--disable-gpu", "--no-first-run", "--no-sandbox",
-  `--remote-debugging-port=${CDP_PORT}`, "--user-data-dir=/tmp/e6-chrome-profile-verify",
+  `--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=/tmp/e6-chrome-profile-verify-${CDP_PORT}-${process.pid}`,
   "--window-size=1680,900", "about:blank",
 ], { stdio: "ignore" });
 const bail = (msg, rc) => { console.log("FATAL: " + msg); chrome.kill(); process.exit(rc); };
@@ -124,14 +138,26 @@ if (!modelCanary || !hintCanary) bail("对照源没抽到（工具坏了，不�
 await send("Page.enable"); await send("Network.enable"); await send("Runtime.enable");
 console.log("== ① 登录 ==");
 await send("Page.navigate", { url: BASE + "/" });
-await waitFor(`!!document.querySelector('#login-username')`, "登录表单", 60);
+// 起手等「登录表单」或「已登录的首页」二者之一：全新 profile 必然出登录页，
+// 但万一带了会话就直接进首页——两种都算启动成功，别读成卡住。负载高时放宽到 180s。
+let booted = null;
+for (let i = 0; i < 180; i++) {
+  booted = await evalJs(`document.querySelector('#login-username') ? "login"
+    : (document.querySelector('[data-testid="home-page"]') ? "home" : "")`).catch(() => "");
+  if (booted) break;
+  await new Promise((r) => setTimeout(r, 1000));
+}
+console.log("启动态: " + (booted || "无（180s）"));
+if (!booted) bail("登录表单/首页都没出现（180s）", 3);
+if (booted === "login") {
 await evalJs(`(() => {
   const set = (sel, val) => { const el = document.querySelector(sel);
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, val);
     el.dispatchEvent(new Event('input', { bubbles: true })); };
   set('#login-tenant', 'demo'); set('#login-username', 'admin'); set('#login-password', 'demo1234');
   document.querySelector('button[type="submit"]').click(); return true; })()`);
-await waitFor(`!!document.querySelector('[data-testid="home-page"]')`, "首页", 90);
+}
+await waitFor(`!!document.querySelector('[data-testid="home-page"]')`, "首页", 120);
 
 console.log("== ② 进「事件影响与对策」= 左导航 nav-decision-console ==");
 await waitFor(`!!document.querySelector('[data-testid="nav-decision-console"]')`, "左导航条目", 90);
@@ -147,6 +173,46 @@ const cancelOnScreen = await evalJs(`(() => {
   const body = (document.querySelector('[data-testid="decision-console"]') ?? document.body).innerText;
   return { hasNew: body.includes('取消比例（%）：100 = 整单取消；30 = 取消三成'),
            hasOldA: body.includes('砍掉三成'), hasOldB: body.includes('百分之多少') }; })()`);
+
+// ── 轻量模式（E2E_SKIP_DRILL=1）：本机负载高时一条 drill 要 9 分钟以上，
+//    这一步只验「部署前段」——页面能进、契约 hint 是新的、渲染正文无开发话。
+//    ⚠ 它**不含**推演后的口径表判据（C2/C3/C4/C8 等），别把它读成满盘绿。
+if (process.env.E2E_SKIP_DRILL === "1") {
+  const light = await evalJs(`(() => {
+    const root = document.querySelector('[data-testid="decision-console"]');
+    const text = root ? root.innerText : document.body.innerText;
+    return {
+      route: /\\/v\\/decision-console/.test(location.href),
+      root: !!root,
+      // ⚠ 轻量态**没有**口径表（还没推演），所以金丝雀不能用「读数」——它必然 false。
+      //   2026-09-28 实测踩过：误报过一次 LIGHT_FAIL。轻量态的金丝雀 = 表单提示在屏。
+      canary: { hasDuShu: text.includes('读数'), hasForm: text.includes('取消比例') },
+      hintNew: text.includes('取消比例（%）：100 = 整单取消；30 = 取消三成'),
+      hintOld: text.includes('砍掉三成') || text.includes('百分之多少'),
+      forbidden: {
+        seed: /seed\\s*\\d|seed=/.test(text), endpoint: /\\/a\\/v1|\\/b\\/v1|POST /.test(text),
+        curl: /curl/.test(text), pnpm: /pnpm/.test(text), repoPath: /apps\\/|packages\\/|src\\//.test(text),
+        contractType: /DrillReport|WorldSnapshot|ScreenNumberNote/.test(text),
+        woId: /WO-[A-Z0-9]/.test(text), worldTerms: /世界态|本体真值|世界/.test(text), literalStars: /\\*\\*/.test(text),
+      },
+      netHits: NET_N,
+    }; })()`.replace("NET_N", String(netHits.length)));
+  const lightChecks = {
+    route: light.route, root: light.root,
+    canary: light.canary.hasForm,
+    hintNew: light.hintNew, hintOldAbsent: !light.hintOld,
+    noDevJargon: Object.values(light.forbidden).every((v) => v === false),
+    backend: light.netHits > 0,
+  };
+  console.log("轻量模式读数:", JSON.stringify(light, null, 1));
+  console.log("轻量判据:", JSON.stringify(lightChecks));
+  const shot2 = await send("Page.captureScreenshot", { format: "png" });
+  writeFileSync(`${SHOTS}/light-1680x900.png`, Buffer.from(shot2.result.data, "base64"));
+  const okLight = Object.values(lightChecks).every(Boolean);
+  console.log(okLight ? "LIGHT_PASS" : "LIGHT_FAIL");
+  ws.close(); chrome.kill();
+  process.exit(okLight ? 0 : 1);
+}
 
 console.log("== ④ 加一件「物料价格变动」并算 ==");
 await evalJs(`document.querySelector('[aria-label="加一件「物料价格变动」"]')?.click()`);
@@ -172,7 +238,7 @@ if (!added) bail("〔加进去〕按不动", 4);
 await new Promise((r) => setTimeout(r, 900));
 await evalJs(`document.querySelector('[data-testid="dc-go"]').click()`);
 console.log("已按〔算一下〕，等真推演（本机实测 68–126s，故等 360s）…");
-await waitFor(`!!document.querySelector('[data-testid="dc-invariant-note"]')`, "口径表", 360);
+await waitFor(`!!document.querySelector('[data-testid="dc-invariant-note"]')`, "口径表", NOTE_WAIT);
 await new Promise((r) => setTimeout(r, 2000));
 
 console.log("== ⑤ 判据 ==");
