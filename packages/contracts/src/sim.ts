@@ -672,6 +672,137 @@ export const PropagationRuleSchema = z.object({
 export type PropagationRule = z.infer<typeof PropagationRuleSchema>;
 
 // ══════════════════════════════════════════════════════════════════════════
+// § 格的「外生性」判据（WO-SIM-EXOGENOUS · 引擎衰减相 × 落点选择共用同一份）
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 一个〔类型 · 状态量〕格的规范键。**唯一构造点** —— 消费方不许各自拼串。
+ *
+ * 分隔符 `.`：`typeKey` 与 `stateVar` 都是系统键（禁自由串）且不含 `.`，
+ * 故拼串无歧义。与规则图自身的单位同粒度（`PropagationRule` 的 source/target 都是
+ * `(TypeKey, stateVar)` 二元组，不是单个类型、也不是单个量名）。
+ */
+export function simCellKey(typeKey: string, stateVar: string): string {
+  return `${typeKey}.${stateVar}`;
+}
+
+/**
+ * 一个格在传导图里的角色。**全部由 `PropagationRule[]` 派生** —— 不新增数据、不入库、无迁移。
+ *
+ * ── 为什么需要它（病灶，2026-09-29 实测定案）─────────────────────────────────
+ * 世界里有两类格，用户施加的扰动对它们**语义完全不同**：
+ *
+ * · **外生格**（`exogenous`，入度 0）：没有任何规则写它 ⇒ 它的值由外部给定。
+ *   扰动打在这里会**原样留存**（实测 `priceShock` +20 / `deliveryDelay` +7 /
+ *   `equipmentFailure` +2 / `forecastBias` +20，推 3 拍后一字不差）。
+ *
+ * · **内生格**（入度 >0）：它是**别的格算出来的**。引擎每拍执行
+ *   `x ← rest + (1−λ)(x − rest)`（`datacore/src/sim/propagation.ts` 衰减相），
+ *   把用户施加的偏移按 `(1−λ)^t` 拉回静息点 —— 实测 `Material.shortageRisk`（入度 6）
+ *   上打 +30，推 3 拍后**剩 0.00e+0**；`Order.demandPressure`（入度 1）剩 0.00564。
+ *   即：**what-if 打在因变量上，数学上必然被抹掉**，与用户填了什么无关。
+ *
+ * ⚠ 引擎**早就知道**这条判据 —— `propagation.ts` 衰减相原文：
+ *   「只有"被某条规则写入"的量纲才衰减 —— 入度 0 的量纲是**外生输入**，引擎无权让它自己变小。」
+ *   但它**只被用来决定「谁该衰减」，没有送到「落点该选哪一格」** ——
+ *   落点是两张人工表（`eventCatalog.ts` 的 `preferStateVars[]` / `sim-drill.ts` 的
+ *   `stateEffect.stateVar`）凭业务语义填的，看不见这条判据。实测 12 类业务事件里
+ *   **8 类打在内生格上** ⇒ 世界差分塌成同一个 0，屏上「受影响订单 0 张 / 敞口 0.0元」
+ *   逐字相同 —— 用户读到的「无论输入什么结论都一样」就是这个。
+ *
+ * 故本函数把那条判据**从实现细节提升为一等概念**，让引擎与落点选择吃同一份 ——
+ * 照 `isReactionRule` 立下的「消费方不许各自判」纪律，不许再出现第二份。
+ */
+export interface CellRole {
+  /** 入度：有几条规则把这一格当 `target`（被写过几次）。 */
+  readonly inDegree: number;
+  /** 出度：有几条规则把这一格当 `source`（能往外传几条边）。 */
+  readonly outDegree: number;
+  /**
+   * **外生输入** = 从不是任何规则的 `target`。引擎无权让它自己变小（不衰减）。
+   * 扰动打在这里才留得住。
+   */
+  readonly exogenous: boolean;
+  /**
+   * **可作扰动落点** = 外生 ∧ 有出边。
+   *
+   * 两条缺一不可，且治的是两种不同的病：
+   *  · 缺 `exogenous` ⇒ 扰动被引擎每拍重算抹掉（`OrderPromise.promiseRisk` 之外的 8 类）；
+   *  · 缺 `outDegree>0` ⇒ 留住了也一步传不出去（`QualityLot.inspectBacklog` /
+   *    `CustomerLocation.deliveryHoldRisk`，实测世界差分恒为 1 格）。
+   *
+   * ⚠ 这是**落点的必要条件，不是「结论一定好看」的充分条件** —— 从落点到 Order 的
+   *   系数连乘仍可能小于披露阈值（实测 `Supplier.deliveryDelay` 4.01e-3 传得到但过不了
+   *   0.01）。那属于**度量口径**的问题，不该混进落点判据里一起解。
+   */
+  readonly drivable: boolean;
+}
+
+/** `buildCellRoles` 的产物。除查表外，另给落点选择两个现成的取法。 */
+export interface CellRoles {
+  /** 规范键 → 角色。 */
+  readonly byCell: ReadonlyMap<string, CellRole>;
+  /** 某类型上**可作落点**的状态量，**按字母序**（确定性 R6；⛔ 不用 `Set` 迭代序）。 */
+  drivableStateVarsOf(typeKey: string): readonly string[];
+  /** 这一格能不能当落点。 */
+  isDrivable(typeKey: string, stateVar: string): boolean;
+  /** 这一格是不是外生输入。 */
+  isExogenous(typeKey: string, stateVar: string): boolean;
+}
+
+/** `buildCellRoles` 只读这四个字段 —— 用 `Pick` 而非整个 `PropagationRule`，
+ * 好让调用方传「从库里裸读回来、可能缺可选字段」的行（照 `isReactionRule` 的做法）。 */
+export type CellRoleRule = Pick<
+  PropagationRule,
+  "sourceTypeKey" | "sourceStateVar" | "targetTypeKey" | "targetStateVar"
+>;
+
+/**
+ * 从传导规则现算每个格的角色。**纯函数**（R6 确定性）。
+ *
+ * 复杂度 O(规则数)；调用方一次算好复用（引擎每 tick 一次、前端随规则查询一次），
+ * ⛔ 不要在逐格的循环里重复調用。
+ */
+export function buildCellRoles(rules: readonly CellRoleRule[]): CellRoles {
+  const byCell = new Map<string, { inDegree: number; outDegree: number }>();
+  const bump = (key: string, side: "inDegree" | "outDegree"): void => {
+    const cur = byCell.get(key);
+    if (cur === undefined) byCell.set(key, { inDegree: side === "inDegree" ? 1 : 0, outDegree: side === "outDegree" ? 1 : 0 });
+    else cur[side] += 1;
+  };
+  for (const r of rules) {
+    bump(simCellKey(r.targetTypeKey, r.targetStateVar), "inDegree");
+    bump(simCellKey(r.sourceTypeKey, r.sourceStateVar), "outDegree");
+  }
+
+  const roles = new Map<string, CellRole>();
+  /** typeKey → 可落点的 stateVar（用 Set 去重，出参再排序 ⇒ 迭代序不外泄）。 */
+  const drivableByType = new Map<string, Set<string>>();
+  for (const [key, d] of byCell) {
+    const exogenous = d.inDegree === 0;
+    const drivable = exogenous && d.outDegree > 0;
+    roles.set(key, { inDegree: d.inDegree, outDegree: d.outDegree, exogenous, drivable });
+    if (!drivable) continue;
+    const dot = key.indexOf(".");
+    const typeKey = key.slice(0, dot);
+    const stateVar = key.slice(dot + 1);
+    const s = drivableByType.get(typeKey) ?? new Set<string>();
+    s.add(stateVar);
+    drivableByType.set(typeKey, s);
+  }
+  const sorted = new Map<string, readonly string[]>();
+  for (const [t, s] of drivableByType) sorted.set(t, [...s].sort((a, b) => a.localeCompare(b)));
+
+  const roleOf = (typeKey: string, stateVar: string): CellRole | undefined => roles.get(simCellKey(typeKey, stateVar));
+  return {
+    byCell: roles,
+    drivableStateVarsOf: (typeKey) => sorted.get(typeKey) ?? [],
+    isDrivable: (typeKey, stateVar) => roleOf(typeKey, stateVar)?.drivable === true,
+    isExogenous: (typeKey, stateVar) => roleOf(typeKey, stateVar)?.exogenous === true,
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // § 对抗方开关（WO-ADVERSARY-REACTION · 默认关闭）
 // ══════════════════════════════════════════════════════════════════════════
 
