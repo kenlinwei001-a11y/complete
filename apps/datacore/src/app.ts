@@ -74,6 +74,8 @@ import { ADVERSARY_FEATURE_KEY, adversaryMoveNameOf, applyPerturbationToState, d
 import { diffEnterpriseStates, ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 企业状态快照（差分口径与 StateDelta 同一份纯函数）
 import { PERTURBATION_TRACE_PREFIX, firedPropagationRuleKeys, propagateTick, type CadenceGateLookup, type PairWeightLookup, type PerturbationInTick, type PropagationGraph, type RuleParamLookup, type ScopeReport, type StateVarDisclosure, type UnresolvedCadenceGate, type UnresolvedPairWeight } from "./sim/propagation.js";
 import type { PairWeightReport } from "./sim/pair-weights.js";
+// 影子线的按拍备忘录（WO-SIM-PERF-SHADOW）：把「每请求重放 curTick 拍」换成「同一拍只算一次」。
+import { ShadowMemo, shadowFingerprint } from "./sim/shadow-memo.js";
 // 传导相入参（图/范围/规则参数/节拍闸门）的**唯一装配处**——本文件不许再装配第二遍。
 // `buildCadenceGates` / `scopePropagationGraph` 刻意**不在本文件 import**：它们只该出现在装配处里。
 import { buildPropagationInputs } from "./sim/propagation-inputs.js";
@@ -452,6 +454,15 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const auth = new AuthService(repos, config.ACCESS_TOKEN_TTL_SEC, config.REFRESH_TOKEN_TTL_SEC);
   await auth.init();
   const authz = new AuthzService(repos);
+  /**
+   * 影子线（`simAdvanceTicks` 里那条「同拍同图、扰动清空」的第二条线）的**按拍备忘录**。
+   * 现状是每个请求从 `baseSnapshot` 重放 `curTick` 拍 —— 实测占一次 tick 的 **43%**
+   * （`shadow 4549 / total 10491 ms`），而一次控制台推演要打 8 次这类请求。
+   * 为什么它可复用、指纹覆盖了什么、哪些东西**不许**跟着变：全部记在
+   * `sim/shadow-memo.ts` 的文件头注里（那里是本条的单一出处，这里不复述）。
+   * 挂在 `buildApp` 作用域内 ⇒ 每个 app 实例一份，测试之间天然隔离。
+   */
+  const shadowMemo = new ShadowMemo();
   // 受信内部对端（B 栈）：webhook 投递到该 origin 时才附带 SERVICE_TOKEN
   // —— B 侧 `/b/v1/internal/invalidate` 已收口为服务间鉴权，不带则缓存失效链静默断掉。
   // 两个 env 缺任一即为 undefined ⇒ 一律不附带凭证（宁可失效链退回 TTL 60s 兜底，也不外泄密钥）。
@@ -2535,14 +2546,36 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const wantDrift = sessionPerturbations.length > 0 && engineTick;
     let driftState: TickState | null = null;
     let driftPending: DelayedContribution[] = [];
+    /**
+     * 本跑影子线的备忘录键（`null` = 这一跑不走影子线，别去查也别去写）。
+     *
+     * ⚠ 键里必须含**这一跑喂进引擎的那份规则**（`propRules`）：对照跑会拿一份**改过的**规则集
+     *   进来（`disabledRuleKeys` / 定价的裸基准），同一个会话同一拍上会有**两份不同的**影子态。
+     *   指纹里含 `rules` 正是为了这个 —— 少了它，两条规则集互相读到对方的影子线。
+     */
+    let shadowKey: string | null = null;
     if (wantDrift) {
       const stopShadow = timer.start("shadow");
-      driftState = simState(s.baseSnapshot);
-      for (let t = 0; t < s.curTick; t++) {
-        // ⚠ 影子线必须与真实线**同一份** pairWeights/stateVarDomains —— 两条线只许差「有没有扰动」
-        // 这一个变量，任何别的差异都会直接污染信噪比那个读数。
-        const d = propagateTick(graph, driftState, propRules, driftPending, t, ruleParams, cadenceGates, [], pairWeights, stateVarDomains);
-        driftState = d.next; driftPending = d.pending;
+      shadowKey = shadowFingerprint({
+        tenantId: c.tenantId,
+        sessionId: s.id,
+        // 范围进了图（裁剪发生在装配处），但它是**会话属性**且直接决定图 ⇒ 一并进指纹。
+        scopeKey: JSON.stringify(s.scope ?? null),
+        graph, rules: propRules, ruleParams, cadenceGates, pairWeights,
+      });
+      const hit = shadowMemo.get(shadowKey, s.curTick, s.baseSnapshot);
+      if (hit !== null) {
+        // 命中：直接拿同一拍已经算过的那一格，**一次 propagateTick 都不跑**。
+        driftState = hit.state; driftPending = [...hit.pending];
+      } else {
+        driftState = simState(s.baseSnapshot);
+        for (let t = 0; t < s.curTick; t++) {
+          // ⚠ 影子线必须与真实线**同一份** pairWeights/stateVarDomains —— 两条线只许差「有没有扰动」
+          // 这一个变量，任何别的差异都会直接污染信噪比那个读数。
+          const d = propagateTick(graph, driftState, propRules, driftPending, t, ruleParams, cadenceGates, [], pairWeights, stateVarDomains);
+          driftState = d.next; driftPending = d.pending;
+        }
+        shadowMemo.put(shadowKey, s.curTick, { state: driftState, pending: driftPending }, s.baseSnapshot);
       }
       stopShadow();
     }
@@ -2583,6 +2616,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
             [], pairWeights, stateVarDomains,
           );
           driftState = d.next; driftPending = d.pending;
+          // 进了一拍 ⇒ 把新那一格存下：**下一次请求就不必再从头重放**（这正是本单的全部收益）。
+          // 存的是刚算出来的量，不额外跑 propagateTick（多跑一次就白省了）。
+          if (shadowKey !== null) {
+            shadowMemo.put(shadowKey, beforeTick + 1, { state: driftState, pending: driftPending }, s.baseSnapshot);
+          }
         }
         for (const k of firedPropagationRuleKeys(out.trace, out.pending)) firedKeys.add(k);
         for (const t of out.trace) {
