@@ -94,7 +94,8 @@ export interface BusinessEvent {
   /**
    * 名字右边那半行**提示**（稿上 `.sel`）。
    * ⚠ 必须短：门 `ui-first-layer:check` 把第一层里 ≥24 字的串按「长说明」计，
-   *   本仓前一张单已因此红过一次。成段解释一律进 `detail`（第二层）。
+   *   本仓前一张单已因此红过一次。成段解释一律降到第二层（`<details>`），
+   *   **且不许写死** —— 见本接口末尾那段关于 `detail` 的注。
    */
   readonly hint: string;
   /** 落点对象类型（按「先问哪个」排序，取第一个今天真有实例的）。 */
@@ -113,8 +114,12 @@ export interface BusinessEvent {
   readonly timeShape: EventTimeShape;
   readonly unit: string;
   readonly defaultMagnitude: number;
-  /** 第二层：这件事**先推动什么**。成句，只在展开后出现。 */
-  readonly detail: string;
+  /* ⛔ 这里曾有 `readonly detail: string` —— 12 句手写的两跳承诺
+   * （「先传导至 X，再传导至 Y」）。2026-09-29 删除，理由记在
+   * `console0828Model.ts` 的 `propagationForecast` 段头注：
+   * 它与规则图之间没有任何东西在对账（两套真相源），实测 12 条里 3 条的默认落点出度为 0，
+   * 其中 `due-change` 承诺的「再传导至加急与短缺」在 55 条已发布规则里**一条边都没有**。
+   * 现在那句人话由**后端现算的层级**生成（`GET /a/v1/sim/drill/state-var-layers`）。 */
 }
 
 /**
@@ -152,7 +157,6 @@ export const BUSINESS_EVENTS: readonly BusinessEvent[] = [ // hardcoded-data-all
     timeShape: "once",
     unit: "%",
     defaultMagnitude: 20,
-    detail: "提高该物料的价格冲击，先传导至型号成本压力，再经订单传导至客户应收。",
   },
   {
     id: "batch-defect",
@@ -167,7 +171,6 @@ export const BUSINESS_EVENTS: readonly BusinessEvent[] = [ // hardcoded-data-all
     timeShape: "once",
     unit: "%",
     defaultMagnitude: 15,
-    detail: "提高该批次的检验积压 / 不良压力，先传导至返工与放行，再折减可交付量。",
   },
   {
     id: "rush-order",
@@ -182,7 +185,6 @@ export const BUSINESS_EVENTS: readonly BusinessEvent[] = [ // hardcoded-data-all
     timeShape: "once",
     unit: "点",
     defaultMagnitude: 30,
-    detail: "追加一笔计划外需求量，先传导至型号需求负荷，再传导至基地负荷与产线利用率。",
   },
   {
     id: "due-change",
@@ -197,7 +199,6 @@ export const BUSINESS_EVENTS: readonly BusinessEvent[] = [ // hardcoded-data-all
     timeShape: "once",
     unit: "点",
     defaultMagnitude: 20,
-    detail: "提前交付承诺，先传导至交期承诺风险，再传导至加急与短缺。",
   },
   {
     id: "order-cancel",
@@ -212,7 +213,6 @@ export const BUSINESS_EVENTS: readonly BusinessEvent[] = [ // hardcoded-data-all
     timeShape: "once",
     unit: "点",
     defaultMagnitude: 25,
-    detail: "整单撤销，先传导至订单流失，再反向影响型号需求负荷。",
   },
   {
     id: "inbound-delay",
@@ -227,7 +227,6 @@ export const BUSINESS_EVENTS: readonly BusinessEvent[] = [ // hardcoded-data-all
     timeShape: "sustained",
     unit: "天",
     defaultMagnitude: 7,
-    detail: "该供应商到货延迟，先传导至物料短缺，再传导至型号供应风险与订单短缺。",
   },
   {
     id: "material-short",
@@ -242,7 +241,6 @@ export const BUSINESS_EVENTS: readonly BusinessEvent[] = [ // hardcoded-data-all
     timeShape: "sustained",
     unit: "点",
     defaultMagnitude: 30,
-    detail: "该物料缺口扩大，先传导至替代料切换与齐套缺口，再传导至型号供应风险。",
   },
   {
     id: "equipment-down",
@@ -257,7 +255,6 @@ export const BUSINESS_EVENTS: readonly BusinessEvent[] = [ // hardcoded-data-all
     timeShape: "sustained",
     unit: "天",
     defaultMagnitude: 2,
-    detail: "该设备停机，先传导至维修排队与工序队列，再折减该产线产出。",
   },
   {
     id: "capacity-loss",
@@ -272,7 +269,6 @@ export const BUSINESS_EVENTS: readonly BusinessEvent[] = [ // hardcoded-data-all
     timeShape: "sustained",
     unit: "%",
     defaultMagnitude: 20,
-    detail: "该基地负荷变化，先传导至产线利用率与检修窗，再传导至跨基地调拨。",
   },
   {
     id: "ship-to-change",
@@ -287,7 +283,6 @@ export const BUSINESS_EVENTS: readonly BusinessEvent[] = [ // hardcoded-data-all
     timeShape: "once",
     unit: "点",
     defaultMagnitude: 20,
-    detail: "变更收货地，先传导至交付暂扣风险与跨基地调拨压力。",
   },
   {
     id: "order-reprice",
@@ -302,7 +297,6 @@ export const BUSINESS_EVENTS: readonly BusinessEvent[] = [ // hardcoded-data-all
     timeShape: "once",
     unit: "点",
     defaultMagnitude: 15,
-    detail: "重议该订单价格，先传导至订单成本压力，再传导至客户应收压力。",
   },
   {
     id: "forecast-bias",
@@ -317,7 +311,6 @@ export const BUSINESS_EVENTS: readonly BusinessEvent[] = [ // hardcoded-data-all
     timeShape: "sustained",
     unit: "%",
     defaultMagnitude: 20,
-    detail: "销售预测出现偏差，先传导至型号需求负荷，再传导至基地负荷与成品库存消耗。",
   },
 ];
 

@@ -46,6 +46,7 @@ import type {
   CandidateEffectKind,
   CandidateJoinKind,
   CandidateRungKind,
+  PropagationRule,
 } from "@platform/contracts";
 import type { CandidateVM } from "../../chainImpediment";
 
@@ -804,6 +805,108 @@ export async function scenarioFingerprint(
     })),
   );
   return sha256Hex(canonical);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// § 「这件事会推动什么」—— **现算，不写死**
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * ── 为什么把 `eventCatalog.detail` 那 12 句删掉（2026-09-29，实测）────────────
+ *
+ * 那 12 句是**手写的两跳承诺**（句式统一为「先传导至 X，再传导至 Y」），
+ * 而它们与规则图之间**没有任何东西在对账** —— 文案是常量表，规则是种子数据，
+ * **两套真相源**。真后端实测（demo 租户，55 条规则 100% PUBLISHED）：
+ *
+ * · `due-change` 默认落点 `OrderPromise.promiseRisk`，文案承诺「再传导至加急与短缺」，
+ *   而**以 `promiseRisk` 为源的规则 0 条**（金丝雀：`demo_order_shortage_to_promise_risk`
+ *   是**流入**它的那条，方向相反）。回包 trace 6,945 笔逐笔核过：写到落点对象 1 笔（流入），
+ *   **从落点对象出发的 0 笔**；本次 134 笔 expedite 类写入没有一笔来自落点。
+ * · 目录 12 条里 **3 条的默认落点出度为 0**（`due-change` / `batch-defect` / `ship-to-change`，
+ *   后者**全部落点都无出边**）。粗扫判据 = 该格有没有规则以它为源。
+ * · 代价是**把正确的读数显示成故障**：用户按承诺预期加急/短缺会动，拿到「1 格读数变化 · ~0 元」，
+ *   会判断成推演没生效。
+ *
+ * ── 现在是 Y：读**后端已经算好的那一份**，不自己判度数 ────────────────────────
+ * 层级（根源 / 枢纽 / 末端）的**唯一实现**是后端 `sim/drill-scan.ts` 的 `layerOfStateVars`，
+ * 经 `GET /a/v1/sim/drill/state-var-layers` 下发（口径：末端 = 出度 0 且入度 > 0 ⇒ **只承接不外传**）。
+ * 本层**消费**它，零度数计算 —— 与 `metricWallModel.ts:20` 那条裁决同一条纪律
+ * （「前端再算一份，度数口径一漂两边就各说各话」）。
+ *
+ * ⚠ 列一跳目标用的是 `rules` 同一份回包（`propagation-rules`）的**投影**，不是另算一套层级：
+ *   「有出边」这个判断仍然由后端的 layer 给，目标名单只是把同一份规则表读出来给用户看。
+ * ⚠ 层级那一跳没回来时**返回 `unknown` 而不是推断** —— 拿规则自己判度数正是上面禁止的那件事。
+ */
+export interface StateVarLayerRow {
+  readonly stateVar: string;
+  readonly layer: string;
+  readonly label: string;
+}
+
+export type PropagationForecast =
+  /** 层级读数还没回来 —— **不许猜**，与「末端」是两个不同的命题。 */
+  | { readonly kind: "unknown" }
+  /** 该状态变量不在传导图里（后端两头都是 0 时不下发层级）。 */
+  | { readonly kind: "absent"; readonly stateVar: string }
+  /** 末端：只承接、不外传 ⇒ 这笔扰动不会继续传导。 */
+  | { readonly kind: "sink"; readonly stateVar: string }
+  /** 根源 / 枢纽：有规则从它出发，列一跳目标。 */
+  | {
+      readonly kind: "relay";
+      readonly stateVar: string;
+      readonly layer: string;
+      readonly outCount: number;
+      readonly targets: readonly string[];
+    };
+
+export function propagationForecast(
+  stateVar: string,
+  layers: readonly StateVarLayerRow[] | null,
+  rules: readonly PropagationRule[] | null,
+): PropagationForecast {
+  if (layers === null) return { kind: "unknown" };
+  const row = layers.find((l) => l.stateVar === stateVar);
+  if (row === undefined) return { kind: "absent", stateVar };
+  if (row.layer === "末端") return { kind: "sink", stateVar };
+  const out = (rules ?? []).filter((r) => r.sourceStateVar === stateVar);
+  if (out.length === 0) {
+    // 后端说它不是末端，而规则表里读不到出边 —— 两份读数打架。
+    // 不编一个折中说法：退回 unknown，让屏上显示「还不知道」而不是显示一句可能假的话。
+    return { kind: "unknown" };
+  }
+  const targets = [...new Set(out.map((r) => `${r.targetTypeKey}.${r.targetStateVar}`))].sort((a, b) =>
+    a.localeCompare(b),
+  );
+  return { kind: "relay", stateVar, layer: row.layer, outCount: out.length, targets };
+}
+
+/**
+ * 第一层（展开表单即见）：**只放结论，一个内部字段名都没有**。
+ *
+ * ⚠ 为什么不在这一层点名落点的 `typeKey.stateVar` 与一跳目标：那是判据 4 的既有裁决
+ *   （`docs/CONVENTION-ui-information-layering.md` §1，`WO-SIM-PLAIN-WORDS` 锁过测试）——
+ *   内部字段名降到第二层。此处保留的是**结论**：「这笔扰动会不会接着往下走」，
+ *   它决定用户按下「加入」之后该期待什么，⛔ 不该藏在 details 里。
+ */
+export function forecastHeadline(f: PropagationForecast): string {
+  switch (f.kind) {
+    case "unknown":
+      return "这件事会推动什么，等传导图的层级读数回来再报 —— 还没回来就不猜。";
+    case "absent":
+      return "这一项不在当前传导图里：没有规则读它，也没有规则写它 ⇒ 这笔扰动不会传导到别处。";
+    case "sink":
+      return "按当前传导图，这一项是末端（只有规则往里写、没有规则从它出发）⇒ 这笔扰动不会继续传导，推演后只会看到它自己的读数变化。";
+    case "relay":
+      return `按当前传导图，这一项是${f.layer}：有 ${f.outCount} 条规则从它出发，会继续传导到别的指标（逐跳链路见推演后的「本次推演的计算口径」）。`;
+  }
+}
+
+/** 第二层（`<details>`）：把「传到哪几个量上」用**内部字段名**写全，与上句同一份读数。 */
+export function forecastFull(f: PropagationForecast): string {
+  if (f.kind !== "relay") return forecastHeadline(f);
+  return f.targets.length > 0
+    ? `按当前传导图，这一项是${f.layer}：有 ${f.outCount} 条规则从它出发，会继续传导至 ${f.targets.join("、")}（只列一跳；完整链路见推演后的「本次推演的计算口径」）。`
+    : `按当前传导图，这一项是${f.layer}：有 ${f.outCount} 条规则从它出发，会继续传导（完整链路见推演后的「本次推演的计算口径」）。`;
 }
 
 /** 把引擎候选的 lever 字段转成 adopt_sim_option 杠杆行。 */

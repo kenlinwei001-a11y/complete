@@ -135,6 +135,39 @@ function baseNodeObjectIds(): Record<string, string[]> {
 let nodeObjectIds: Record<string, string[]> = baseNodeObjectIds();
 let edges: Edge[] = baseEdges();
 
+/**
+ * `GET /a/v1/sim/drill/state-var-layers` 的桩 —— 按后端 `layerOfStateVars`
+ * （`apps/datacore/src/sim/drill-scan.ts`）的口径从**同一份 `edges`** 现算：
+ * 末端 = 出度 0 且入度 > 0 · 枢纽 = 两头都有 · 根源 = 入度 0 出度 > 0 ·
+ * 两头皆 0 ⇒ **不下发**（= 不在传导图里，与「末端」是两个命题）。
+ *
+ * ⚠ 这是**桩模拟后端**，不是把后端的算法抄进前端 —— 生产代码里前端只消费这一跳
+ *   （`console0828Model.propagationForecast`），零度数计算。
+ */
+function layersFromEdges(es: readonly Edge[]): { stateVar: string; layer: string; label: string }[] {
+  const indeg = new Map<string, number>();
+  const outdeg = new Map<string, number>();
+  for (const e of es) {
+    outdeg.set(e.sourceStateVar, (outdeg.get(e.sourceStateVar) ?? 0) + 1);
+    indeg.set(e.targetStateVar, (indeg.get(e.targetStateVar) ?? 0) + 1);
+  }
+  const rows: { stateVar: string; layer: string; label: string }[] = [];
+  for (const v of new Set([...indeg.keys(), ...outdeg.keys()])) {
+    const i = indeg.get(v) ?? 0;
+    const o = outdeg.get(v) ?? 0;
+    if (i === 0 && o === 0) continue;
+    rows.push({ stateVar: v, layer: o === 0 ? "末端" : i === 0 ? "根源" : "枢纽", label: v });
+  }
+  return rows.sort((a, b) => a.stateVar.localeCompare(b.stateVar));
+}
+
+/**
+ * 层级桩的三种模式（`null` = 按 `edges` 现算）：
+ *   · 一组真实层级 —— **反向金丝雀**用：边还在、层级却说它是末端，组件若自己判度数必红；
+ *   · `"pending"` —— 这一跳没回来，屏上必须说「不猜」，⛔ 不许拿 `[]` 兜底成「不在图里」。
+ */
+let layerStub: { stateVar: string; layer: string; label: string }[] | "pending" | null = null;
+
 function cfg(): SandboxViewConfig {
   return {
     tenantId: "demo",
@@ -386,7 +419,11 @@ vi.mock("@/api/endpoints", () => ({
     ],
   })),
   fetchSimPerturbations: vi.fn(async () => ({ items: [] })),
-  fetchDrillStateVarLayers: vi.fn(async () => ({ layers: [], ruleCount: edges.length })),
+  // WO-C0828-FORECAST：层级读数与 `edges` **同源** —— 否则「文案跟着层级变」咬到的是桩自己。
+  fetchDrillStateVarLayers: vi.fn(async () => {
+    if (layerStub === "pending") return await new Promise<never>(() => undefined);
+    return { layers: layerStub ?? layersFromEdges(edges), ruleCount: edges.length };
+  }),
   patchSimSessionStatus: vi.fn(),
   previewChangeImpact: vi.fn(),
   fetchWorkspace: vi.fn(),
@@ -454,6 +491,7 @@ async function addEvent(eventId: string, objectId: string, magnitude?: number): 
 beforeEach(() => {
   nodeObjectIds = baseNodeObjectIds();
   edges = baseEdges();
+  layerStub = null;
   tickFails = false;
   solverFails = false;
   perturbCalls = [];
@@ -1201,9 +1239,12 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
       for (const s of MUST_KEEP) {
         expect(text, `表单里丢了「${s}」—— 降层允许，删除不允许`).toContain(s);
       }
-      // `ev.detail`（这件事先推动什么）整句仍在第二层。
-      const ev = BUSINESS_EVENTS.find((e) => e.id === SUSTAINED_ID) as { detail: string };
-      expect(text).toContain(ev.detail);
+      /**
+       * 「这件事会推动什么」这一句仍在，但**换了来源**：原来是 `ev.detail`（手写两跳承诺），
+       * 2026-09-29 删除（与规则图两套真相源），改由**后端下发的层级**现算。
+       * 逐条判据（含反向金丝雀）在下面 ⑫；此处只咬「这一格没被删掉、非空」。
+       */
+      expect(screen.getByTestId(`c0828-forecast-${SUSTAINED_ID}`).textContent ?? "").not.toBe("");
 
       // 三段式的三个抬头都在，且就是仓主说的那三个词、那个顺序。
       const i1 = text.indexOf("什么事");
@@ -1217,6 +1258,59 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
       const detailsText = (form.querySelector("details")?.textContent ?? "");
       expect(detailsText).toContain("Base");
       expect(detailsText).toContain("loadIndex");
+    });
+
+    it("⑫ 「这件事会推动什么」现算：层级变则文案变（反向金丝雀），没回来时不许猜", async () => {
+      sessionTickDays = 1;
+      const headlineOf = async (): Promise<string> => {
+        mount();
+        await railReady();
+        openForm(SUSTAINED_ID);
+        await screen.findByTestId(`c0828-form-${SUSTAINED_ID}`);
+        // 层级那一跳是异步的：等它落定再读，否则读到的是「还没回来」那一帧。
+        const p = await screen.findByTestId(`c0828-forecast-${SUSTAINED_ID}`);
+        await waitFor(() => {
+          expect(p.textContent ?? "").not.toContain("还没回来就不猜");
+        });
+        return p.textContent ?? "";
+      };
+
+      // ── 臂 1（正向）：默认边集下 `Base.loadIndex` 入度 0、出度 1 ⇒ 根源，会继续传导 ──
+      // 断言按**语义单位**写，不咬整句措辞（措辞本身就是要改的东西）。
+      const relay = await headlineOf();
+      expect(relay).toContain("根源");
+      expect(relay).toContain("会继续传导");
+
+      // ── 臂 2（反向金丝雀）：**边一条没动**，只把层级那一跳改口说它是「末端」──
+      // 组件若偷偷自己按入度/出度判层级（或把这句写死），这一臂必红。
+      // ⚠ 它同时咬住「两份读数打架时不编折中说法」：层级说末端、规则表里却有出边，
+      //   此刻必须**信层级**（`propagationForecast` 先判 layer），不是信自己数出来的度数。
+      cleanup();
+      layerStub = [{ stateVar: "loadIndex", layer: "末端", label: "负载指数" }];
+      const sink = await headlineOf();
+      expect(sink).toContain("末端");
+      expect(sink).toContain("不会继续传导");
+      // 同时反向咬一次：这一句里**不许**出现内部字段名（判据 4，内部名降到第二层）。
+      expect(sink).not.toContain("loadIndex");
+      expect(sink).not.toContain("Line.utilPressure");
+
+      // ── 臂 3：后端不下发这一项（两头都是 0 = 不在传导图里，与「末端」是两个命题）──
+      cleanup();
+      layerStub = [];
+      const absent = await headlineOf();
+      expect(absent).toContain("不在当前传导图里");
+      expect(absent).not.toContain("末端");
+
+      // ── 臂 4：层级那一跳**没回来** ⇒ 说「不猜」，⛔ 不许拿 `[]` 兜底成「不在图里」──
+      cleanup();
+      layerStub = "pending";
+      mount();
+      await railReady();
+      openForm(SUSTAINED_ID);
+      await screen.findByTestId(`c0828-form-${SUSTAINED_ID}`);
+      const pending = screen.getByTestId(`c0828-forecast-${SUSTAINED_ID}`).textContent ?? "";
+      expect(pending).toContain("还没回来就不猜");
+      expect(pending).not.toContain("不在当前传导图里");
     });
   });
 });

@@ -56,6 +56,7 @@ import type { PropagationRulesResponse, SandboxViewConfig, SimRunDisclosure, Sol
 import {
   createSimPerturbation,
   fetchAllObjects,
+  fetchDrillStateVarLayers,
   fetchObjectTypes,
   fetchPropagationRules,
   fetchSimPerturbations,
@@ -101,9 +102,13 @@ import {
   tickLabel,
   tickUnitWord,
   candidateToAdoptLevers,
+  forecastFull,
+  forecastHeadline,
+  propagationForecast,
   type AdoptLever,
   type CellDelta,
   type OrderRow,
+  type StateVarLayerRow,
   type TickCalendar,
   type WorldCells,
   isSettledOrder,
@@ -460,6 +465,19 @@ export default function Console0828({
     retry: false,
   });
   /**
+   * 状态变量的层级（根源 / 枢纽 / 末端）—— 由传导图入度出度**后端现算**
+   * （唯一实现 `sim/drill-scan.ts` 的 `layerOfStateVars`），前端只读不判。
+   *
+   * 它回答的是「这件事会推动什么」这个问题的**前半句**：末端 = 出度 0 ⇒ 推不动别人。
+   * 这与「这一格没有读数」是两个不同的命题，别合并。
+   */
+  const layersQ = useQuery({
+    queryKey: ["a", "sim-drill-state-var-layers"],
+    queryFn: fetchDrillStateVarLayers,
+    staleTime: Infinity,
+    retry: false,
+  });
+  /**
    * 订单**全量**。`fetchAllObjects` 按服务端回显的 `hasMore` 翻到底并拿 `total` 对账 ——
    * ⛔ 不许换成一次 `pageSize=500` 了事：那在 `Order`（恰好 500）上看着是对的，
    *    换个类型就静默少一半（本仓 `WO-PAGING-SILENT-TRUNCATION-SCAN` 记过这笔账）。
@@ -489,6 +507,16 @@ export default function Console0828({
     }
     return m as ReadonlyMap<string, ReadonlySet<string>>;
   }, [rulesQ.data]);
+
+  /**
+   * 「这件事会推动什么」的两份输入，**分开拿**：
+   *  · `layers` **唯一来源是后端**（`layerOfStateVars` 现算），`null` = 这一跳没回来
+   *    （⛔ 不许拿 `[]` 兜底 —— 「还没回来」与「回来了但没有这一项」是两个命题）；
+   *  · `rules` 只用来列一跳目标，层级判断仍然走上面那份。
+   * 见 `console0828Model.propagationForecast` 的段头注（那里记着这次为什么删掉手写文案）。
+   */
+  const forecastLayers = (layersQ.data?.layers ?? null) as readonly StateVarLayerRow[] | null;
+  const forecastRules = (rulesQ.data as PropagationRulesResponse | undefined)?.items ?? null;
 
   const countOf = useMemo(
     () => (t: string): number => (nodeObjectIds?.[t] ?? []).length,
@@ -2028,8 +2056,12 @@ export default function Console0828({
                             后端仍会受理（201）而世界态不变，该情形后端不返回任何提示，故在此说明。
                           </p>
                         )}
+                        {/* 第二层：把结论落到**内部字段名**上（落点是哪个量 · 一跳传到哪几个量）。
+                            ⛔ 这里曾是 `{ev.detail}` —— 手写的两跳承诺，2026-09-29 删除；
+                            现在两句读的是**同一份**后端层级读数（`forecastFull`）。 */}
                         <p>
-                          本事件落到 {L.typeKey} 的 {L.stateVar} 上；{ev.detail}
+                          本事件落到 {L.typeKey} 的 {L.stateVar} 上；
+                          {forecastFull(propagationForecast(L.stateVar, forecastLayers, forecastRules))}
                         </p>
                       </div>
                     </details>
@@ -2050,6 +2082,17 @@ export default function Console0828({
                         <span className={styles.unit}>{ev.unit}</span>
                       </span>
                     </div>
+
+                    {/* 「这件事会推动什么」的**结论**在第一层（不是 details）——
+                        它答的不是实现细节，而是「我按下加入之后该期待什么」：实测 12 件事里
+                        3 件的默认落点是末端（出度 0），推演后只有它自己那一格动，
+                        用户会把**正确的读数**读成「推演没生效」。
+                        落点的 `typeKey.stateVar` 与一跳目标名单仍在第二层（判据 4，见下 details）。
+                        层级走后端现算的那一份；⛔ 别再在这里写一句手写的传导承诺 ——
+                        那正是 2026-09-29 删掉的那 12 句（文案与规则图两套真相源，见模型层段头注）。 */}
+                    <p className={styles.calibre} data-testid={`c0828-forecast-${ev.id}`}>
+                      {forecastHeadline(propagationForecast(L.stateVar, forecastLayers, forecastRules))}
+                    </p>
 
                     <div className={styles.acts}>
                       <button
