@@ -1,0 +1,4 @@
+
+> @platform/llm-adapters@0.1.0 build /Users/apple/deploy/complete/packages/llm-adapters
+> tsc -p tsconfig.json
+

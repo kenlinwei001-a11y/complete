@@ -1,0 +1,28 @@
+HEAD=51a13d002 START=09-28 17:45:24
+cmd: vitest related --run src/app.ts src/sim/option-pricing.ts src/solvers/impediment-options.ts (真模块图)
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/apps/datacore
+
+ ✓ test/action-adopt-scheme.seam.test.ts (8 tests) 108209ms
+   ✓ 采纳经营方案 · 审批后真落 scheme_adoptions 台账 + AOP 读端（非假 MO 号） > 头号效果断言：EXECUTED 后回仓储另一条路读，台账字段逐个 = 采纳的那份快照（targetRef 非 MO 形态）  13059ms
+   ✓ 采纳经营方案 · 审批后真落 scheme_adoptions 台账 + AOP 读端（非假 MO 号） > AOP 读端：采纳后 GET /plan/aop?year=2026 带 schemeAdoption（无 tenantId）；未采纳年份（1999）字段缺省  13688ms
+   ✓ 采纳经营方案 · 审批后真落 scheme_adoptions 台账 + AOP 读端（非假 MO 号） > SUPERSEDED 轮换：同年采纳方案乙 → 方案甲置 SUPERSEDED、乙 ACTIVE，台账恰 2 条；AOP 只给乙  10995ms
+   ✓ 采纳经营方案 · 审批后真落 scheme_adoptions 台账 + AOP 读端（非假 MO 号） > 幂等：同一 payload 走两次完整审批链（两张草稿）→ 台账仍 1 条同 adoptionId 覆盖，actionDraftId 更新为第二张  9816ms
+   ✓ 采纳经营方案 · 审批后真落 scheme_adoptions 台账 + AOP 读端（非假 MO 号） > 诚实失败：targets 空壳过不了契约 → EXECUTION_FAILED 含「payload 不合契约」，台账零条（宁可不写不许猜）  15132ms
+   ✓ 采纳经营方案 · 审批后真落 scheme_adoptions 台账 + AOP 读端（非假 MO 号） > 诚实失败（类型变异）：outcome.gm 传字符串 "0.16"（0-1 小数被换成字符串）→ EXECUTION_FAILED，台账零条  28476ms
+   ✓ 采纳经营方案 · 审批后真落 scheme_adoptions 台账 + AOP 读端（非假 MO 号） > 基线未动：采纳后 PLAN_GOAL_TARGETS 相关读端（AOP scenarios/triggers/decomposition + PlanTarget 对象）与采纳前逐字段一致  15091ms
+   ✓ 采纳经营方案 · 审批后真落 scheme_adoptions 台账 + AOP 读端（非假 MO 号） > R9 双实现不漂：pg.ts 的表名与 037 migration 的 CREATE TABLE 逐字相同（memory 单测证明不了这一行）  1939ms
+ ✓ test/audit-timeline.test.ts (9 tests) 144050ms
+   ✓ audit_timeline 每审计项时序（L1 + L6） > L1：按 kind 出 90 天逐日 series + 4 阶段 + 越线日/峰值  13968ms
+   ✓ audit_timeline 每审计项时序（L1 + L6） > L1：不同 kind 出不同曲线（形状 kind 派生）  11074ms
+   ✓ audit_timeline 每审计项时序（L1 + L6） > L6：同 kind 字节一致  11823ms
+   ✓ audit_timeline 每审计项时序（L1 + L6） > L1：plan_audit 每项带 kind（9 种口径之一）  10828ms
+   ✓ audit_timeline 每审计项时序（L1 + L6） > L1：audit_timeline 带当日事件 + 受影响订单（复用 risk 引擎）  14841ms
+   ✓ WO-AUDIT-TIMELINE-LIVESOURCE · 真源接线（产销 LIVE · 其余 MOCK 诚实披露） > A1 接缝：产销 → dataMode LIVE + source 披露 attainment:base + series 为真逐日数据  28985ms
+   ✓ WO-AUDIT-TIMELINE-LIVESOURCE · 真源接线（产销 LIVE · 其余 MOCK 诚实披露） > A2 验收判据：同一真源数据换 kind 名 ⇒ series 逐字节相同（不再由 hashString(kind) 派生）  14922ms
+   ✓ WO-AUDIT-TIMELINE-LIVESOURCE · 真源接线（产销 LIVE · 其余 MOCK 诚实披露） > A3 独立 oracle：series 逐日 = clamp(round(40+(target−当日跨基地均值)×k),40,97)（映射表实参·非引擎自证）  14433ms
+   ✓ WO-AUDIT-TIMELINE-LIVESOURCE · 真源接线（产销 LIVE · 其余 MOCK 诚实披露） > A4 MOCK 半不回退：无真源 kind（毛利）仍 dataMode MOCK + 哈希投影披露 + 无 source 字段  23147ms
+undefined
+/Users/apple/deploy/complete/apps/datacore:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 143: vitest related --run src/app.ts src/sim/option-pricing.ts src/solvers/impediment-options.ts --maxWorkers=2 --testTimeout=1500000
+RELATED_RC=1 END=09-28 17:48:24

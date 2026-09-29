@@ -1,0 +1,4 @@
+
+> @platform/contracts@0.1.0 build /Users/apple/deploy/complete/packages/contracts
+> tsc -p tsconfig.json
+
