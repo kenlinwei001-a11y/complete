@@ -309,9 +309,12 @@ describe("§4 ShadowMemo 与指纹的自身契约", () => {
     const m = new ShadowMemo();
     const queued = { arriveTick: 2, targetObjectId: "b1", targetStateVar: "demandLoad", amount: 5, ruleKey: "r" };
     m.put("k", 0, { state: { a1: { demandPressure: 1 } }, pending: [queued] });
+    // ⚠ `!` 与 `.at(0)!` 不是装饰：本仓 tsconfig 开了 `noUncheckedIndexedAccess`，
+    //   而 **vitest 不做类型检查** —— 少了这两处，测试照样绿，红的是 `pnpm -r typecheck`
+    //   （TS2532，实测被它拦下）。这正是本仓那条「两个信号度量的不是同一件事」。
     const got = m.get("k", 0)!;
-    got.pending[0].amount = 999;
-    expect(m.get("k", 0)!.pending[0].amount,
+    got.pending.at(0)!.amount = 999;
+    expect(m.get("k", 0)!.pending.at(0)!.amount,
       "改返回值的 pending 污染了备忘录里那一格 ⇒ 下一次命中会拿到被改过的延迟队列").toBe(5);
   });
 
