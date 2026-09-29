@@ -1,7 +1,20 @@
-# WO-C0828-P2 收编附记（反事实定价 · 2026-09-29）
+# WO-C0828-P2 收编附记（反事实定价 · 2026-09-29 · 收编方：审核方）
 
 被验 commit：51a13d002（ab3e045a5 P2 merge no-ff 干净零冲突 + 本体回写 51a13d002）
 分支 claude/handoff-wo-c0828-p2 tip 4dfc8b595 全量并入；PRD 依据 docs/PRD-sim-options-decision-surface.md 终稿 canonical 4a8e02fc6。
+
+## ⛔ 收编结论（置顶 · 不藏在文末）
+
+**四包电池不全绿。** frontend-shell 全包 `8 failed / 314 passed / 1 skipped`，其中
+**10 条为继承红（R5 同文件同条，P2 之前就在）、1 条为 P2 引入的真红**：
+
+> `apps/datacore/src/sim/option-pricing.ts` 新起字段名 `p50` / `p90`（**小写裸名**），
+> 撞上 P2 之前就存在的全仓门 `quantile-unit-onscreen §2b`（规格：小写 `p50`/`p90` = 数据键，本仓已全部改名）。
+> **同树 A/B：P2 的父提交 `b4cd399c4` 该文件 RC=0 · 8/8 全绿；含 P2 的树 1 failed。**
+> 裁定：**真回归，记 P2 账**，详见下文「P2 引入的那一条红」。
+
+**因此本附记当下不构成一份可放行的收编记录。** 修法（字段改名 + 13 处调用点 + 重跑证据）已列明，
+**字段名定名待裁决**，未定名前不 push。
 
 ## 复验结果（全部独立重跑，不采信实施方数值）
 
@@ -56,21 +69,30 @@ branch 重放 → simAdvanceTicks persist:false + ephemeralPerturbations 语义�
 | vle-acceptance | **环境红 · 已定性** | 有对照实验，见下 |
 | 路由族线 32 文件 | **第二次启动：全绿 · RC=0** | 32/32 文件、**339 用例全过**、933.6s；见下 |
 
-#### ⚠️ 取证窗口内 canonical 前进了一格（如实登记）
+#### ⚠️ 取证窗口内 canonical 前进了四格（如实登记 —— 铁律 3「LOOP 取证期间正线还在被推进」的实例）
 
-`51a13d002` --ff--> `964070665`（2026-09-28 **18:53:12**，另一张单 WO-CONSOLE-COPY 的收编）。delta 三条：
-① `packages/contracts/src/sim-drill.ts` 8 行 —— **仅 payloadKey 的 hint 文案**（如
-`"插哪个型号 —— 这一格决定算出来的数，必填"` → `"插单型号（型号 id）"`），schema / 行为零变化；
-② `apps/frontend-shell/src/views/sim/`（DecisionConsoleView.tsx / decisionConsoleModel.ts / .module.css）
-+ `test/decision-console-model.test.ts`；③ `docs/evidence/wo-console-copy/**`。
+`51a13d002` → `cdc85e69c` → `964070665` → `57918bad8` → `d68ad6ed6`（**直线，逐格 ff，非 rebase**）：
+
+| 提交 | 性质 | 内容 |
+|---|---|---|
+| `cdc85e69c` | **源码** | fix(frontend/sim) 对策区结果口径改结构化表 + 术语与话术通俗化（**仓主令 2026-09-28**）：前端 `DecisionConsoleView.tsx` / `decisionConsoleModel.ts` / `.module.css` / `test/decision-console-model.test.ts` + `packages/contracts/src/sim-drill.ts` 8 行（**仅 payloadKey 的 hint 文案**）+ 自带证据 |
+| `964070665` | 纯 docs | `docs/evidence/wo-console-copy/**` |
+| `57918bad8` | 纯 docs | `docs/evidence/wo-console-copy/verify/**`（部署态轻量验收） |
+| `d68ad6ed6` | **源码** | perf(capacity)：`apps/datacore/src/solvers/capacity.ts` **+327 / −131**（WO-CAPMEMO，候选枚举不再重算产能金字塔） |
+
+⚠️ **对我证据面的影响，逐格说**：前三格（`cdc85e69c`/`964070665`/`57918bad8`）在我**全部取证之前或之中**落地，
+本报告的 datacore 定向集（`964070665`）与路由族线（`57918bad8` 起跑）**都含它们**；
+**最后一格 `d68ad6ed6`（datacore 源码）落在我 datacore 取证之后** ⇒
+**本报告的 datacore 结论不含这一格**。它是别人的 WO、有自己的复验，本轮不越界重验；
+如实标注边界。（`cdc85e69c` 的前端改动**在**我前端定向集覆盖内。）
 
 **对本次电池的影响已逐条核过**：
-- **datacore / agentcore 源码在该 commit 里零改动**（`git diff --name-only 51a13d002 964070665 -- apps/datacore/ apps/agentcore/` 为空）⇒ 这两包结论不受影响。
+- 前三格里 **`apps/datacore/` `apps/agentcore/` 源码零改动**（`git diff --name-only 51a13d002 57918bad8 -- apps/datacore/ apps/agentcore/` 为空）⇒ 只改前端与契约文案。
 - 契约侧唯一风险是「有测试咬着旧文案」。**三条旧 hint 串在全仓测试里零命中**；
   `插哪个型号` 命中的唯一一处在 **doc 注释**里（剥注释看语法位置才敢下这个结论，见铁律 0.6 第 6 条）。
 - 窗口内混线如实登记：datacore 全包前半 + 6 红 solo 的前两个文件在 `51a13d002` 上跑；
-  contracts dist 于 **18:55** 重建（晚 ff 2 分钟）；**前端全包跑在新树 `964070665`** ——
-  即「将要部署的那棵树」，比钉 `51a13d002` 更贴部署面。
+  contracts dist 于 **18:55** 重建（晚 ff 2 分钟）；**前端全包跑在 `57918bad8`**（起跑时 HEAD，
+  含前三格全部改动）—— 即「将要部署的那棵树」，比钉 `51a13d002` 更贴部署面。
 
 #### 对照实验：`vle-acceptance` 的红是负载放大，不是 P2 引入（同一文件、同一时段、两棵树）
 
@@ -104,7 +126,7 @@ branch 重放 → simAdvanceTicks persist:false + ephemeralPerturbations 语义�
 轻载复跑（`drill-recheck/`）给出同一结论的另一面：它连 transform 都没走完
 （transform **1346s**、collect 0ms、`Tests no tests`）—— 机器连「把测试装载起来」都做不到。
 
-#### ⚠️ 机器降级：全包 / 路由族线 / 前端包**未能完成**（本段是本轮最该被看见的）
+#### ⚠️ 机器降级：重线一度全部停摆（本段是本轮最该被看见的）
 
 不是「慢」，是近乎停摆。取证窗口实测：
 
@@ -144,7 +166,7 @@ branch 重放 → simAdvanceTicks persist:false + ephemeralPerturbations 语义�
 判据 = `git diff --name-status b4cd399c4 ab3e045a5 -- '*/test/*'`：**P2 改过的每一个测试文件**。
 覆盖 datacore `option-pricing.test.ts` + frontend 5 个（`console0828-decision.seam`（P2 新增 ⑦c/⑦c-gap
 定价用例）/ `exposure-responds-to-perturbation` / `sim-session-lifecycle` / `sim-unified-shell` /
-`sim-rail-forms`）；证据 `targeted/`，被验 commit `964070665`（= 将要部署的那棵树）。
+`sim-rail-forms`）；证据 `targeted/`，被验 commit `964070665`（起跑时 HEAD；现 tip 已到 `d68ad6ed6`）。
 **明说它的边界：这一面替不掉全包的「无附带损伤」结论 —— 全包面本轮未取得证据。**
 
 **顺带登记的覆盖缺口（不是本轮引入，是被本轮发现的）**：P2 新增的
@@ -154,14 +176,64 @@ datacore 侧只有 `option-pricing.test.ts` 这种直接 import 模块的纯函�
 它今天的端到端覆盖**只来自本报告的 E2 live 真后端实探（23/23 PASS）**。
 ⇒ 未来这条路由若被改坏，**机器不会先说话**。建议后续补一条打真路由的接缝测试（本轮不新增门，遵禁令 3）。
 
+#### frontend-shell 全包 11 红的逐条裁定（同树 A/B · 被验树 `57918bad8`）
+
+**这是本轮唯一一批「算错了」族的红**（超时 0 / 断言 4），与 datacore 那批形态相反，故逐条裁。
+
+| 文件 | 红 | 归因 | 判据 |
+|---|---|---|---|
+| `sandbox-three-zone.seam` | 4 | **继承红** | R5 在 `6e47c0efb`（P2 之前）同文件同 4 条 |
+| `sandbox-config-ux.seam` | 1 | **继承红** | 同上，R5 同文件同 1 条 |
+| `sandbox-config-collapse` | 1 | **继承红** | 同上 |
+| `sandbox-kpi-layer.seam` | 1 | **继承红** | 同上 |
+| `sim-rail-forms.seam` | 1 | **继承红** | 同上（工单在案） |
+| `disruption-cards.seam` | 1 | **继承红** | 同上 |
+| `stale-claims.seam` | 1 | **继承红** | 同上 |
+| `quantile-unit-onscreen.seam` | 1 | ⛔ **P2 引入** | 见下 |
+
+R5（`6e47c0efb`，P2 之前）同包 `8 failed / 314 passed / 1 skipped`，与本轮**逐文件重合 7 个**；
+R5 的 `references-family`（唯一那条 30 分钟超时的）本轮转绿，而本轮多出 `quantile-unit-onscreen`。
+⇒ **10 条继承 + 1 条 P2 引入，分离干净。**
+
+#### ⛔ P2 引入的那一条红：新增字段名撞上 P2 之前就存在的全仓门
+
+门 `quantile-unit-onscreen.seam.test.tsx §2b`（规格：**小写 `p50`/`p90` = 字段名/数据键，本仓已全部改名 ⇒ 不该再有**；
+大写 = 屏上标签，合法）。它报出 **13 处**，**逐处都落在 P2 改过的文件里**：
+
+| 文件 | 处 | P2 的改动性质 |
+|---|---|---|
+| `apps/datacore/src/sim/option-pricing.ts` | `readonly p50` / `readonly p90` | **P2 新增文件** |
+| `apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx` `:385/:425` | `after.displacement.p90` | P2 改，**这两行系新增** |
+| `apps/frontend-shell/test/exposure-responds-to-perturbation.seam.test.ts` `:189/:192` | 同上 | P2 改 |
+| `apps/datacore/test/option-pricing.test.ts` ×9 | `expect(d.p50)` … | **P2 新增文件** |
+
+**同树 A/B 对照（本轮新跑）**：
+
+| 树 | 该文件 |
+|---|---|
+| `b4cd399c4`（**P2 的父提交**） | **RC=0 · 8/8 全绿** |
+| `57918bad8`（含 P2） | **1 failed / 8** |
+
+证据 `baseline-quantile/baseline-gate.txt+.rc`（RC=0）。
+**PRD 未指定字段名** —— PRD 只把 `p50/p90` 当业务口径文字用；PRD 里唯一点名过的字段是 `magnitudeP90Before`（**大写式**）。
+⇒ 字段名是 P2 实现时自起，起成了本仓已废止的形状。**裁定：真回归，记 P2 账。**
+
+#### ⚠️ 本条红的方法论意义（它修正了本附记前面「全包低价值」的定性）
+
+**这条红只有全包抓得到。** 本报告的**定向集覆盖了 P2 改过的每一个测试文件**，那 6 个文件全绿；
+路由族线（datacore 32 文件）也抓不到（门在前端包）。
+因为**这道门扫全仓**，而定向面是按改动面取的子集 ——
+**横切型检查结构上不可能被「按改动面取子集」的定向面覆盖：改动面与检查面不是一个维度。**
+故本附记前文「机器降级 ⇒ 全包低价值」的定性**只适用于「继承红」那一族**（它们可由历史读数外推），
+**不适用于新引入的红** —— 后者只能由全量面发现。这一条如实回写，不因为先前说过相反的话就含糊过去。
+
 ### agentcore / frontend-shell
 
 | 包 | 结果 | 说明 |
 |---|---|---|
 | agentcore 全包 | **未完成（85/209 · 40%）** | 已跑的 85 个文件里 **零 FAIL 文件**（5 超时 / 0 断言）；停线原因见上「机器降级」。P2 对 agentcore **零文件改动** |
-| frontend-shell 全包 | **未启动** | 排在 agentcore 之后，agentcore 未收口故未开始；由**定向集**里的 5 个 P2 触碰文件顶替，见上 |
-| 已知红基线（供后续复跑参照） | — | P1 全包 323 文件 / 8 红：`disruption-cards` / `references-family` / `sandbox-config-collapse` / `sandbox-config-ux` / `sandbox-kpi-layer` / `sandbox-three-zone` / `sim-rail-forms` / `stale-claims`；另 `sandbox-ia-consolidate` |
-
+| frontend-shell 全包 | **已收口 · 8 文件 / 11 红**（52.9 分钟） | `Test Files 8 failed \| 314 passed \| 1 skipped (323)` · `Tests 11 failed \| 2300 passed \| 4 skipped (2315)` · **超时 0 · 断言 4** —— 与 datacore 那批（超时 26 / 断言 0）**形态相反**，这批是「算错了」不是「跑不完」。归因见下「11 红的逐条裁定」 |
+| 已知红参照名单 | **已由同树读数取代** | 原 P1 名单（`disruption-cards`/`references-family`/`sandbox-config-collapse`/`sandbox-config-ux`/`sandbox-kpi-layer`/`sandbox-three-zone`/`sim-rail-forms`/`stale-claims`）**量的不是本树**（P1 跑在 `/Users/apple/deploy/wo-edge-wire`，`HEAD=6e47c0efb`）⇒ 只作历史参照。本树实测见上「11 红的逐条裁定」 |
 **A/B 对照树的口径（原计划用的那棵树已被证伪，记账）**：原打算用 `/tmp/wt-base-front`
 （@`4a8e02fc6`）当基线 —— 实测**它早于 P2 的父提交**（缺 1 个测试文件，`18 vs 19`），
 拿它做 A/B 会把「基线里没有这个文件」误读成红。改用 **P2 的父提交 `b4cd399c4`**（= P1 验过的收口树）
@@ -171,4 +243,12 @@ datacore 侧只有 `option-pricing.test.ts` 这种直接 import 模块的纯函�
 
 ## 收编动作
 
-merge（no-ff ab3e045a5 干净）→ 本体回写（51a13d002）→ 电池 → 本附记 → SSH push canonical（一次性 URL 不改 remote）。
+| 步骤 | 状态 |
+|---|---|
+| ① merge（no-ff `ab3e045a5` 零冲突） | ✅ 已推 |
+| ② 本体回写（`51a13d002`） | ✅ 已推 |
+| ③ 四包电池 | ⛔ **不全绿** —— 1 条 P2 引入的真红，见置顶 |
+| ④ 本附记 | ⏳ 已写，含该红的完整裁定与证据 |
+| ⑤ SSH push canonical（一次性 URL 不改 remote） | ⛔ **阻塞** —— 待字段定名裁决 |
+
+A/B 基线树：`/tmp/wt-base-dc`（datacore）与 `/tmp/wt-base-fe`（frontend），均为 **P2 的父提交 `b4cd399c4`**；证据 `baseline-trees/`、`baseline-quantile/`。
