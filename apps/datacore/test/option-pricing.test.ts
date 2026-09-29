@@ -171,8 +171,8 @@ describe("orderDisplacement（⑤ 位移分布，与 buildMoneyView.magnitude �
     expect(d.touchedOrders).toBe(3);
     expect([...d.touchedOrderIds].sort()).toEqual(["o2", "o3", "o4"]);
     // mags 升序 [0.005, 0.02, 5, 12]：p50 = 第 floor(4×0.5)=2 个 = 5；p90 = 第 floor(4×0.9)=3 个 = 12
-    expect(d.p50).toBe(5);
-    expect(d.p90).toBe(12);
+    expect(d.deltaMagnitudeP50).toBe(5);
+    expect(d.deltaMagnitudeP90).toBe(12);
     expect(d.max).toBe(12);
     expect(d.buckets.map((b) => [b.label, b.n])).toEqual([
       ["微弱 ≤0.01", 1],
@@ -186,8 +186,8 @@ describe("orderDisplacement（⑤ 位移分布，与 buildMoneyView.magnitude �
     expect(d.ordersSeen).toBe(1);
     expect(d.touchedOrders).toBe(0);
     expect(d.faintOnly).toBe(0);
-    expect(d.p50).toBeNull();
-    expect(d.p90).toBeNull();
+    expect(d.deltaMagnitudeP50).toBeNull();
+    expect(d.deltaMagnitudeP90).toBeNull();
     expect(d.max).toBeNull();
     expect(d.buckets.every((b) => b.n === 0)).toBe(true);
   });
@@ -237,7 +237,7 @@ describe("priceCandidate（④⑤⑥ 装配）", () => {
     if (r.kind !== "priced") return;
     expect(r.after.touchedOrders).toBe(0);
     expect(r.after.exposureYuan).toBe(0);
-    expect(r.after.displacement.p50).toBeNull();
+    expect(r.after.displacement.deltaMagnitudeP50).toBeNull();
     expect(r.after.displacement.ordersSeen).toBe(2);
     // 基准 ≡ 对照 ≡ 候选（无场景扰动）⇒ 对照读数同样诚实零，不是「没算」
     expect(r.control.touchedOrders).toBe(0);
@@ -290,12 +290,12 @@ describe("priceCandidate（④⑤⑥ 装配）", () => {
     expect(r.after.touchedOrders).toBe(2);
     expect(r.after.faintOnly).toBe(0);
     expect(r.after.exposureYuan).toBe(3_000_000);
-    expect(r.after.displacement.p50).toBe(5);
-    expect(r.after.displacement.p90).toBe(5);
+    expect(r.after.displacement.deltaMagnitudeP50).toBe(5);
+    expect(r.after.displacement.deltaMagnitudeP90).toBe(5);
     expect(r.after.displacement.max).toBe(5);
     // 对照 = diff(基准, 不处置世界)；本夹具基准 ≡ 对照 ⇒ 诚实零（场景在 E0 口径见 E2-a 用例）
     expect(r.control.touchedOrders).toBe(0);
-    expect(r.control.displacement.p50).toBeNull();
+    expect(r.control.displacement.deltaMagnitudeP50).toBeNull();
     expect(r.disclosure.targetObjectId).toBe("obj_line_A1");
     expect(r.disclosure.targetStateVar).toBe("utilPressure");
     expect(r.disclosure.agentInvolved).toBe(false);
@@ -366,7 +366,7 @@ describe("priceCandidate（④⑤⑥ 装配）", () => {
     expect(r.control.touchedOrders).toBe(2);
     expect(r.control.faintOnly).toBe(0);
     expect(r.control.exposureYuan).toBe(3_000_000);
-    expect(r.control.displacement.p50).toBe(0.02);
+    expect(r.control.displacement.deltaMagnitudeP50).toBe(0.02);
     expect(r.after.touchedOrders).toBe(1); // o2 仍 0.02；o1 残余 0.009 ≤ 0.01 → faint
     expect(r.after.faintOnly).toBe(1);
     expect(r.after.exposureYuan).toBe(2_000_000);
@@ -388,8 +388,8 @@ describe("priceCandidate（④⑤⑥ 装配）", () => {
     // 同一夹具：扰动幅度 = toValue（formula this.utilization 代入），aft p90 逐剂量传递
     expect(r10.perturbation.magnitude).toBe(10);
     expect(r25.perturbation.magnitude).toBe(25);
-    expect(r10.after.displacement.p90).toBe(10);
-    expect(r25.after.displacement.p90).toBe(25);
+    expect(r10.after.displacement.deltaMagnitudeP90).toBe(10);
+    expect(r25.after.displacement.deltaMagnitudeP90).toBe(25);
     // 同屏要报的两个数（越线张数 + p90）都在读数里
     expect(r10.after.touchedOrders).toBe(1);
     expect(r25.after.touchedOrders).toBe(1);
@@ -414,12 +414,12 @@ describe("priceCandidate（④⑤⑥ 装配）", () => {
     if (r.kind !== "priced") return;
     // E0 报出：2 张越线、p90 0.02
     expect(r.control.touchedOrders).toBe(2);
-    expect(r.control.displacement.p90).toBe(0.02);
+    expect(r.control.displacement.deltaMagnitudeP90).toBe(0.02);
     // 候选把敞口压到 ≈0：越线 2→0 张 + faint 分账 2 张；p90 从 0.02 掉到 0.003（地板下残余，
     // 不是 null —— null 只留给「零移动」，0.003 是「动过但已无越线」的诚实读数）
     expect(r.after.touchedOrders).toBe(0);
     expect(r.after.faintOnly).toBe(2);
-    expect(r.after.displacement.p90).toBe(0.003);
+    expect(r.after.displacement.deltaMagnitudeP90).toBe(0.003);
     expect(r.after.exposureYuan).toBe(0);
   });
 

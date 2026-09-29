@@ -382,7 +382,7 @@ function PricingReadout({
         <>
           拨后仍受影响 <b>{outcome.after.touchedOrders}</b> 张 · <b>{fmtMoney(outcome.after.exposureYuan, "元")}</b>
           {" · "}位移 p90{" "}
-          <b>{outcome.after.displacement.p90 === null ? "无实质读数" : outcome.after.displacement.p90.toFixed(2)}</b>
+          <b>{outcome.after.displacement.deltaMagnitudeP90 === null ? "无实质读数" : outcome.after.displacement.deltaMagnitudeP90.toFixed(2)}</b>
         </>
       )}
     </p>
@@ -422,7 +422,7 @@ function PricingReadoutDetail({
       {/* PRD §4.2 明定的口径声明文案 —— 一字不落，且 p90 必须用本次真读数，⛔ 不许写死。 */}
       <p className={styles.calibre} data-testid={`c0828-price-claim-${outcome.candidateId}`}>
         口径声明：受影响张数按 0.01 位移门槛计；本次位移 p90 ={" "}
-        {d.p90 === null ? "无实质读数（全部 ≤ 门槛）" : d.p90.toFixed(2)} —— 位移离门槛越近，张数对门槛越敏感。
+        {d.deltaMagnitudeP90 === null ? "无实质读数（全部 ≤ 门槛）" : d.deltaMagnitudeP90.toFixed(2)} —— 位移离门槛越近，张数对门槛越敏感。
       </p>
       <p className={styles.calibre}>
         对照（不处置）读数 {outcome.control.touchedOrders} 张 · {fmtMoney(outcome.control.exposureYuan, "元")} —— 差分基准；

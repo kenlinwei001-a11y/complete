@@ -1095,8 +1095,8 @@ export interface PricingReading {
     readonly touchedOrders: number;
     /** 金丝雀：世界里的订单总数（0 ⇒ 遍历坏了，不许报「没有波及」）。 */
     readonly ordersSeen: number;
-    readonly p50: number | null;
-    readonly p90: number | null;
+    readonly deltaMagnitudeP50: number | null;
+    readonly deltaMagnitudeP90: number | null;
     readonly max: number | null;
     readonly buckets: readonly { readonly label: string; readonly n: number }[];
   };

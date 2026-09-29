@@ -950,7 +950,7 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
         fingerprint: "f".repeat(64),
         perturbation: { targetObjectId: "mat_x", targetStateVar: "shortageRisk", mode: "set", magnitude: 2 },
         horizon: 3,
-        control: { touchedOrders: 0, faintOnly: 0, exposureYuan: 0, displacement: { faintOnly: 0, touchedOrders: 0, ordersSeen: 500, p50: null, p90: null, max: null, buckets: [] } },
+        control: { touchedOrders: 0, faintOnly: 0, exposureYuan: 0, displacement: { faintOnly: 0, touchedOrders: 0, ordersSeen: 500, deltaMagnitudeP50: null, deltaMagnitudeP90: null, max: null, buckets: [] } },
         after: {
           touchedOrders: 3,
           faintOnly: 2,
@@ -959,8 +959,8 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
             faintOnly: 2,
             touchedOrders: 3,
             ordersSeen: 500,
-            p50: 1.2,
-            p90: 1.8,
+            deltaMagnitudeP50: 1.2,
+            deltaMagnitudeP90: 1.8,
             max: 12,
             buckets: [
               { label: "微弱 ≤0.01", n: 2 },

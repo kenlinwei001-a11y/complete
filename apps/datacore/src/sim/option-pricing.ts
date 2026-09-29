@@ -160,8 +160,8 @@ export interface OrderDisplacement {
   readonly touchedOrderIds: readonly string[];
   /** 金丝雀：世界里的订单总数（0 ⇒ 遍历坏了，不许报「没有波及」）。 */
   readonly ordersSeen: number;
-  readonly p50: number | null;
-  readonly p90: number | null;
+  readonly deltaMagnitudeP50: number | null;
+  readonly deltaMagnitudeP90: number | null;
   readonly max: number | null;
   readonly buckets: readonly DisplacementBucket[];
 }
@@ -201,8 +201,8 @@ export function orderDisplacement(
     touchedOrders: touchedOrderIds.length,
     touchedOrderIds,
     ordersSeen: orderIds.size,
-    p50: quant(0.5),
-    p90: quant(0.9),
+    deltaMagnitudeP50: quant(0.5),
+    deltaMagnitudeP90: quant(0.9),
     max: mags.length === 0 ? null : (mags[mags.length - 1] ?? null),
     buckets: [
       { label: `微弱 ≤${eFaint}`, n: inRange(0, eFaint) },
