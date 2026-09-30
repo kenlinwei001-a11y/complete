@@ -18,6 +18,7 @@
  */
 import {
   applyPerturbationToState,
+  buildCellRoles,
   expectedCadenceWaitDays,
   isPerturbationActiveAt,
   type Cadence,
@@ -718,8 +719,23 @@ export function propagateTick(
   //    更要命的是它的终局：`forecastBias`/`priceShock`/`equipmentFailure` 这些**根源**（入度 0）
   //    也会衰减到 0 ⇒ 整个世界失去驱动、一起归零。「零扰动空转」应当收敛到一个**非零的常态**，
   //    不是收敛到死。衰减建模的是"**累加器会漏**"，而一个没有任何流入的量纲根本不是累加器。
-  const writtenVars = new Set<string>();
-  for (const r of rules) writtenVars.add(r.targetStateVar);
+  //
+  // ⚠ 判据**出自契约**（`buildCellRoles`），引擎不再自己算一遍 —— 见 `sim.ts` §外生格判据。
+  //    **这条判据同时也是「扰动落点该选哪一格」的判据**（`CellRole.drivable`）；
+  //    2026-09-29 之前它只活在本函数里、没有出口，于是落点侧看不见它，
+  //    12 类业务事件有 8 类打在内生格上、扰动被本相位抹掉 ⇒ 屏上结论逐字相同。
+  //    同一件事只留一个出处（照 `isReactionRule` 的「唯一判据」纪律），⛔ 不许在这里另写一份。
+  //
+  // ⚠ 名级 vs 格级：`domains` 那本取值域册子是**按量名**登记衰减率/静息点的，故
+  //    「要不要解析衰减率 / 要不要进披露」这一步只能是名级（`writtenStateVars`）；
+  //    而**逐格动不动**在下面施加处按 `(objType, stateVar)` 判（`isExogenous`）——
+  //    名级会漏判跨类型同名量（`Order.shortageRisk` 被写过 ≠ `Material.shortageRisk` 也被写过）。
+  const cellRoles = buildCellRoles(rules);
+  // 对象类型索引：衰减相要按〔类型·量〕格判外生，故**提前到本相位之前**建
+  //（原本只在 §0) 索引段建一次，而 §0'' 在它之前 ⇒ 那里拿不到类型）。全函数仍只建一份。
+  const typeOf = new Map<string, string>();
+  for (const o of graph.objects) typeOf.set(o.id, o.typeKey);
+  const writtenVars = cellRoles.writtenStateVars;
   const decayApplied: Record<string, number> = {};
   const decayUnresolved: StateVarDisclosure["decayUnresolved"] = [];
   const decayRateOf = new Map<string, number | null>(); // stateVar -> λ（null = 拿不到，不衰减）
@@ -749,6 +765,10 @@ export function propagateTick(
       for (const stateVar of Object.keys(bucket)) {
         const lambda = decayApplied[stateVar];
         if (lambda === undefined) continue;
+        // 逐格判外生：这一格从不是任何规则的 target ⇒ 外生输入，引擎无权让它自己变小（同 §0''）。
+        // 类型取不到（对象不在传导图里）⇒ 判不了，按旧行为衰减，⛔ 不拿"未知"当"外生"。
+        const typeKey = typeOf.get(objId);
+        if (typeKey !== undefined && cellRoles.isExogenous(typeKey, stateVar)) continue;
         const rest = domains[stateVar]!.restPoint;
         const cur = bucket[stateVar];
         if (typeof cur !== "number") continue;
@@ -777,9 +797,8 @@ export function propagateTick(
    */
   const reactionActors: { ruleKey: string; actorObjectId: string }[] = [];
 
-  // ── 0) 对象类型索引 + 链路导航索引（复用 recompute 的 "linkKey|id" 思路） ──
-  const typeOf = new Map<string, string>();
-  for (const o of graph.objects) typeOf.set(o.id, o.typeKey);
+  // ── 0) 链路导航索引（复用 recompute 的 "linkKey|id" 思路） ──
+  // ⚠ 对象类型索引 `typeOf` 已在 §0'' 之前建好（衰减相要用它），此处不重建 —— 全函数只一份。
   // navOut: "linkKey\u0000fromId" -> 该边的 toId 列表（source 视角下游 target）。用 \u0000 分隔避免 key 撞车。
   const navKey = (linkKey: string, fromId: string) => `${linkKey}\u0000${fromId}`;
   const navOut = new Map<string, string[]>();

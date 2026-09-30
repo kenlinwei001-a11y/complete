@@ -742,11 +742,32 @@ export interface CellRole {
 export interface CellRoles {
   /** 规范键 → 角色。 */
   readonly byCell: ReadonlyMap<string, CellRole>;
+  /**
+   * **被写过的状态量名**集合（存在入度>0 的格）。
+   *
+   * ⚠ 这是**名级**视图，比 `byCell` 粗 —— 只在「这一个量名在这套本体里有没有归属」这类
+   * **按量名登记**的场合用（今天只有一处：引擎的取值域册子 `StateVarDomainLookup` 是按量名
+   * 登记衰减率/静息点的，故"要不要解析衰减率、要不要进披露"这一步只能是名级）。
+   * **判「这一格会不会被引擎重算」一律用 `byCell` / `isExogenous`（格级）** ——
+   * 名级会漏判跨类型同名量（`Order.shortageRisk` 被写过，不等于 `Material.shortageRisk` 也被写过）。
+   */
+  readonly writtenStateVars: ReadonlySet<string>;
   /** 某类型上**可作落点**的状态量，**按字母序**（确定性 R6；⛔ 不用 `Set` 迭代序）。 */
   drivableStateVarsOf(typeKey: string): readonly string[];
-  /** 这一格能不能当落点。 */
+  /**
+   * 这一格能不能当落点。**图里没有这一格 ⇒ `false`**（没有出边，传不出去）。
+   */
   isDrivable(typeKey: string, stateVar: string): boolean;
-  /** 这一格是不是外生输入。 */
+  /**
+   * 这一格是不是**外生输入**。
+   *
+   * ⚠ **图里没有这一格 ⇒ `true`** —— 规则的 source/target 就是图的全部内容，
+   * 一格不在图里即「从没有任何规则写过它」，入度 0 的定义域上就是外生。
+   * 这不是"查不到就给个默认值"，是判据本身（判据是**入度 0**，不是"查表命中"）。
+   * （2026-09-29 实测踩过：第一版写成"查不到 ⇒ false"，于是 `B.foo` 这种
+   *  「量名被别处写过、但这一格从不是 target」的格子被引擎当内生衰减掉了 ——
+   *  差分实验 `b1.foo` 期望 100 实得 50，当场红。）
+   */
   isExogenous(typeKey: string, stateVar: string): boolean;
 }
 
@@ -778,14 +799,16 @@ export function buildCellRoles(rules: readonly CellRoleRule[]): CellRoles {
   const roles = new Map<string, CellRole>();
   /** typeKey → 可落点的 stateVar（用 Set 去重，出参再排序 ⇒ 迭代序不外泄）。 */
   const drivableByType = new Map<string, Set<string>>();
+  const writtenStateVars = new Set<string>();
   for (const [key, d] of byCell) {
     const exogenous = d.inDegree === 0;
     const drivable = exogenous && d.outDegree > 0;
     roles.set(key, { inDegree: d.inDegree, outDegree: d.outDegree, exogenous, drivable });
-    if (!drivable) continue;
     const dot = key.indexOf(".");
     const typeKey = key.slice(0, dot);
     const stateVar = key.slice(dot + 1);
+    if (d.inDegree > 0) writtenStateVars.add(stateVar);
+    if (!drivable) continue;
     const s = drivableByType.get(typeKey) ?? new Set<string>();
     s.add(stateVar);
     drivableByType.set(typeKey, s);
@@ -796,9 +819,11 @@ export function buildCellRoles(rules: readonly CellRoleRule[]): CellRoles {
   const roleOf = (typeKey: string, stateVar: string): CellRole | undefined => roles.get(simCellKey(typeKey, stateVar));
   return {
     byCell: roles,
+    writtenStateVars,
     drivableStateVarsOf: (typeKey) => sorted.get(typeKey) ?? [],
     isDrivable: (typeKey, stateVar) => roleOf(typeKey, stateVar)?.drivable === true,
-    isExogenous: (typeKey, stateVar) => roleOf(typeKey, stateVar)?.exogenous === true,
+    // 图里没有这一格 ⇒ 从没被任何规则写过 ⇒ 入度 0 ⇒ 外生（判据是入度，不是"查表命中"）。
+    isExogenous: (typeKey, stateVar) => roleOf(typeKey, stateVar)?.exogenous ?? true,
   };
 }
 
