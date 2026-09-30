@@ -167,6 +167,32 @@ describe("WO-SIM-SESSIONS-PROJECTION 件一 · 列表投影", () => {
     expect(putSql).toContain("SCALE_OBJECTS_SQL");
     expect(putSql).toContain("SCALE_CELLS_SQL");
   });
+
+  it("⑥ R9 的反方向：memory 侧也不许读时现算（pg 走预存列，memory 却每次列表重算 = 漂移）", async () => {
+    // ⚠ 上面 ⑤ 咬的是 **pg 那一半**；本条咬的是**内存这一半**。两条缺一条，漂移就从另一头长回来。
+    // 实测（2026-09-30 · 真前端 → 真后端 · demo 231 个会话）：每会话 `simSessionScaleOf` **6.8ms**
+    // ⇒ 单次列表约 **1.6s 纯 CPU**，而这条列表是**控制台的闸门**（拿不到它「开始推演」就是灰的）。
+    const t = await makeApp();
+    await enableSim(t);
+    const id = await createSession(t, world(3, 2));
+    const list = () => t.repos.sim.listSessionSummaries("demo");
+    const scaleOfIn = async () => (await list()).find((x) => x.id === id)!.baseSnapshotScale;
+
+    const a = await scaleOfIn();
+    // 金丝雀：先把「量法有鉴别力」证掉 —— 摘要本身得与真世界逐值对上，否则下面全是废话。
+    expect(a, "摘要在第一次就要算对（错值也会「稳定」地错下去）").toEqual({ objects: 3, cells: 6 });
+    const b = await scaleOfIn();
+    // ── 判据一：两次列表复用**同一个实例** ⇒ 第二次没重算 ──────────────────────────
+    expect(b, "第二次列表又算了一遍 ⇒ O(会话数 × 世界规模) 仍在闸门请求上").toBe(a);
+
+    // ── 判据二（反向金丝雀，缺了它上面那条一个「永不失效的错缓存」也能过）────────────
+    // `putSession` 会 `set(id, clone(s))` —— **换一个记录对象**；换了快照就必须重算。
+    const s = (await t.repos.sim.getSession("demo", id))!;
+    await t.repos.sim.putSession({ ...s, baseSnapshot: world(5, 4) });
+    const c = await scaleOfIn();
+    expect(c, "putSession 换了 baseSnapshot 却仍回旧摘要 ⇒ 屏上按旧规模显示，且看不出来").toEqual({ objects: 5, cells: 20 });
+    expect(c, "换了记录却复用了旧实例 ⇒ 失效判据没生效").not.toBe(a);
+  });
 });
 
 describe("WO-SIM-SESSIONS-PROJECTION 件二 · 播种原子性（判据落在「播完了」不是「有东西」）", () => {
