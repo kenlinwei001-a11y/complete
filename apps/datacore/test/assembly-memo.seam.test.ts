@@ -403,19 +403,73 @@ describe("§6 准确不降级：改规则 params（指纹看不见它）⇒ 必�
   it("机制：装配路径上读过的每一个仓，都必须出现在备忘录的修订号列表里", async () => {
     // 判据是**源码**级的（接缝上观察不到「少盖了一个仓」——它只在恰好改那一个仓时才发作），
     // 所以这里扫源码。⚠ 扫之前先剥注释（铁律 0.6 第 6 条：注释里的串不度量赋值）。
-    const src = stripComments(readFileSync(fileURLToPath(new URL("../src/sim/propagation-inputs.ts", import.meta.url)), "utf8"));
-    const pwSrc = stripComments(readFileSync(fileURLToPath(new URL("../src/sim/pair-weights.ts", import.meta.url)), "utf8"));
+    const simDir = new URL("../src/sim/", import.meta.url);
+    const readSrc = (spec: string) =>
+      stripComments(readFileSync(fileURLToPath(new URL(spec.replace(/\.js$/, ".ts"), simDir)), "utf8"));
+    const bodySrc = readSrc("./propagation-inputs.ts");
 
-    // 装配路径 = 本函数体 + 它调用的权重装配器（后者也读仓）。
-    const body = src.slice(src.indexOf("export async function buildPropagationInputs"));
+    // ── 装配路径 = 哪些单元？**由源码自己说**，不由我记得几份 ──────────────────────
+    // ⛔ 上一版这里是**手写的两文件清单**（`propagation-inputs` 函数体 + `pair-weights` 整文件），
+    //   而装配的**真实**读集跨**三个**模块 —— 少写的 `seed-world.ts` 当时恰好不漏（它那个函数读的
+    //   正是已盖住的 `ontologyTypes`/`objects`），于是清单的**声称**大于它的**度量**。
+    //   同一个形态：**「我用『我列了这几个文件』当作『装配读的仓都盖到了』的证据。」**
+    //   ⇒ 现在改成自点名：**凡本函数值导入的本地模块，只要剥注释后碰过 `repos.`，就必须出现在下面**。
+    //     新加一处读、或新 import 一个读仓的模块，这里当场红，不靠人想起来。
+    const UNITS: { spec: string | null; sliceAt: string | null; calledAs: string | null }[] = [
+      { spec: null, sliceAt: "export async function buildPropagationInputs", calledAs: null },
+      // 整文件扫：它每个导出函数读的都是同两个仓；`calledAs` 只用来证明「装配真的调了它」。
+      { spec: "./pair-weights.js", sliceAt: null, calledAs: "buildPairWeights" },
+      // ⚠ **必须按函数切**，不能整文件扫：`seed-world.ts` 同时装着播种/写入路
+      //   （`repos.derivationSpecs` / `repos.sim`），整文件扫会把那两个仓误判成「装配读了却没盖」。
+      { spec: "./seed-world.js", sliceAt: "export async function listSimWorldObjects", calledAs: "listSimWorldObjects" },
+    ];
+
+    const sliceFn = (s: string, anchor: string): string => {
+      const i = s.indexOf(anchor);
+      expect(i, `切片锚点找不到：「${anchor}」⇒ 量法坏了（函数改名了？），不是「没有漏」`).toBeGreaterThan(-1);
+      const rest = s.slice(i);
+      const next = rest.indexOf("\nexport ", 1);
+      return next === -1 ? rest : rest.slice(0, next);
+    };
+
+    // 覆盖自查：本地**值**导入（`import type` 不进运行时，不算）里，凡剥注释后读仓的模块都必须被点名。
+    const localValueImports = [...bodySrc.matchAll(/^import\s+(?!type\b)[\s\S]*?from\s+"(\.[^"]+)"/gm)].map((m) => m[1]!);
+    expect(localValueImports.length, "一个本地值导入都没扫到 ⇒ 量法坏了（正则没匹配上）").toBeGreaterThan(0);
+    const repoReads = localValueImports.filter((spec) => /\brepos\./.test(readSrc(spec)));
+    expect(repoReads.length, "本地值导入里一个读仓的都没有 ⇒ 量法坏了（装配不可能不读仓）").toBeGreaterThan(0);
+    const named = new Set(UNITS.map((u) => u.spec).filter((s): s is string => s !== null));
+    const unnamed = repoReads.filter((spec) => !named.has(spec));
+    expect(
+      unnamed,
+      `这些本地模块装配会导入、且剥注释后确实读仓，却没被扫 ⇒ 它们的仓不进键（静默错答）：${unnamed.join(", ")}\n` +
+        `修法：把它的 spec 加进上面的 \`UNITS\`；若该文件是「读路 + 写路混装」，用 \`sliceAt\` 只切读的那个函数。`,
+    ).toEqual([]);
+
     const readStores = (s: string): Set<string> =>
       new Set([...s.matchAll(/\brepos\.(\w+)\.(?:list|listByType|get|revision)\s*\(/g)].map((m) => m[1]!));
-    const read = new Set([...readStores(body), ...readStores(pwSrc)]);
+
+    const read = new Set<string>();
+    for (const u of UNITS) {
+      const src = u.spec === null ? bodySrc : readSrc(u.spec);
+      const sliced = u.sliceAt === null ? src : sliceFn(src, u.sliceAt);
+      // `calledAs` 存在的意义：证明**装配真的调了**这个函数 —— 否则切出来的是一段装饰品
+      // （它读的仓与装配无关，却让 `read` 变大、把真漏掉的那一个淹掉）。
+      if (u.calledAs !== null) {
+        expect(
+          bodySrc.includes(`${u.calledAs}(`),
+          `装配函数体里没有调用 \`${u.calledAs}\` ⇒ 扫它没意义（函数搬走了？第二套真相源？）`,
+        ).toBe(true);
+      }
+      // 逐单元金丝雀：切出来一片空 ⇒ 是**量法坏了**，不是「这个单元不读仓」。
+      const got = readStores(sliced);
+      expect(got.size, `单元「${u.spec ?? "buildPropagationInputs 函数体"}」一个仓都没扫到 ⇒ 量法坏了（切片切空了？）`).toBeGreaterThan(0);
+      for (const s of got) read.add(s);
+    }
     // 金丝雀：上面这个正则必须真的抓得到东西（抓不到 ⇒ 是量法坏了，不是「读的仓少」）。
-    expect(read.size, "一个仓都没扫到 ⇒ 量法坏了（正则没匹配上），不是「没有漏」").toBeGreaterThan(0);
     expect(read.has("rules"), "扫不到 repos.rules ⇒ 量法坏了（它确实是装配读的第四个仓）").toBe(true);
 
     // 键上盖了哪些：`Promise.all` 里那几条 revision + 规则指纹（实参那一半）。
+    const body = bodySrc.slice(bodySrc.indexOf("export async function buildPropagationInputs"));
     const keyed = new Set([...body.matchAll(/repos\.(\w+)\.revision\s*\(/g)].map((m) => m[1]!));
     expect(keyed.size, "一个 revision 都没扫到 ⇒ 量法坏了").toBeGreaterThan(0);
 
