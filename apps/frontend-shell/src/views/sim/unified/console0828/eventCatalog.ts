@@ -100,7 +100,18 @@ export interface BusinessEvent {
   readonly hint: string;
   /** 落点对象类型（按「先问哪个」排序，取第一个今天真有实例的）。 */
   readonly targetTypeKeys: readonly string[];
-  /** 候选落点量，按业务优先级；真正落哪个由 `resolveLanding` 与后端交集决定。 */
+  /**
+   * 候选落点量，**按业务优先级排序**；真正落哪个由 `resolveLanding` 与**可落点集合**求交决定。
+   *
+   * ⚠ 候选**必须落在可落点（外生 ∧ 有出边）上**才可能被选中 —— 写一个不可落点的量进来
+   * 等于白写（它永远不会被选中）。可落点集合由契约 `buildCellRoles(已发布规则)` **现算**，
+   * ⛔ 不在这里手抄（手抄就是第二套真相源）。
+   *
+   * 判据为什么是这两条（2026-09-29 实测定案，见 `packages/contracts/src/sim.ts` §外生格判据）：
+   *  · **外生**（入度 0）：世界每拍把内生格按入边重算 `x ← rest+(1−λ)(x−rest)`，
+   *    扰动打在内生格上会被抹掉 —— 实测 `Material.shortageRisk` 打 +30 剩 **0.00e+0**。
+   *  · **有出边**：留住了也得传得出去 —— 零出边的叶子实测世界差分恒为 1 格。
+   */
   readonly preferStateVars: readonly string[];
   /** 契约 `PerturbationKindSchema` 的五类之一（**不是**我另造的词）。 */
   readonly kind: PerturbationKind;
@@ -141,8 +152,15 @@ export interface BusinessEvent {
 //  · 每条里的数值只有 `defaultMagnitude`（表单预填值，用户随手可改），
 //    **不对世界断言任何事实** —— 它不说「碳酸锂涨了 20%」，只说「这个输入框从 20 起步」。
 //  · 真正的业务量（落点候选、实例数、金额）全部来自 `GET /a/v1/objects`，本表一个都不带。
-// ⚠ 待办（不因豁免而消失）：`targetTypeKeys` / `preferStateVars` 今天是人工填的，
-//    它们其实可由后端 47 条传导规则派生。派生化之后本豁免应当撤掉。
+// ✅ 2026-09-30 那次「待办」已办掉**一半**，剩下的一半**不是欠账、是设计**：
+//  · `preferStateVars` 的**可达性**已派生 —— `resolveLanding` 拿它与契约 `buildCellRoles(已发布规则)`
+//    现算的**可落点集合**求交，人工只负责「先试哪个」这个**业务排序**，不再负责「能不能落」。
+//    换言之：填错了不会静默生效 —— 不可落点的候选**永远不会被选中**，最坏退化成可见的
+//    `no-statevar`（屏上照实说），而不是「选了、201、然后一动不动」。
+//  · `targetTypeKeys` **仍应保持人工**：它是「这件事在业务上该找谁」的**分类法**，
+//    由传导规则派生会得到「凡在图里相邻的类型」—— 那是拓扑，不是语义（改交付地点该找
+//    `CustomerLocation`，不是找图里恰好连着的那几个）。派生它等于把这层业务判断删掉。
+//  ⇒ 本豁免保留，但理由从「没法派生」改成「派生会丢语义」。
 export const BUSINESS_EVENTS: readonly BusinessEvent[] = [ // hardcoded-data-allow
   {
     id: "material-price-up",
@@ -177,7 +195,10 @@ export const BUSINESS_EVENTS: readonly BusinessEvent[] = [ // hardcoded-data-all
     name: "临时插单",
     hint: "选择订单 · 增量",
     targetTypeKeys: ["Order"],
-    preferStateVars: ["demandPressure"],
+    // `qty` 首选的依据不是「能落点」而是**它就是这件事本身**：插单 = 往订单簿里加量。
+    // `demandPressure` 是同义的**内生**派生量（入度>0）—— 引擎下一拍就按入边把它重算掉，
+    // 打上去等于没打（实测残 5.6e-3 < 阈值）。它留在表里是业务排序的痕迹，不是落点。
+    preferStateVars: ["qty", "demandPressure"],
     kind: "demand_shift",
     mode: "delta",
     // once：插单是往订单簿里**加一笔单**：单加进去就在那里等着被排产、被交付，
@@ -191,7 +212,11 @@ export const BUSINESS_EVENTS: readonly BusinessEvent[] = [ // hardcoded-data-all
     name: "订单改交期",
     hint: "选择订单 · 提前天数",
     targetTypeKeys: ["OrderPromise", "Order"],
-    preferStateVars: ["promiseRisk", "shortageRisk"],
+    // `leadDays` 首选 —— 契约层量这件事的**本来就是「天」**：
+    // `packages/contracts/src/sim-drill.ts` 的 ORDER_RESCHEDULE 写死 `magnitudeFrom: "advanceDays"`，
+    // 落点选 `leadDays` 时前后端量的是同一个物理量；选 `promiseRisk` 则两端各量各的。
+    // ⚠ `OrderPromise` 整个类型今天**没有可落点格**（其量全是内生派生），故最终会顺延到 `Order`。
+    preferStateVars: ["leadDays", "promiseRisk", "shortageRisk"],
     kind: "demand_shift",
     mode: "delta",
     // once：改交期是把承诺日期**改成另一个日期**：新日期一经确认即长期有效，
@@ -289,7 +314,9 @@ export const BUSINESS_EVENTS: readonly BusinessEvent[] = [ // hardcoded-data-all
     name: "订单改价",
     hint: "选择订单 · 价格变动",
     targetTypeKeys: ["Order"],
-    preferStateVars: ["costPressure"],
+    // `unitPrice` 首选：改价 = 改单价本身。`costPressure` 是内生派生量（由 Model.costPressure
+    // 沿边算出来），打上去下一拍被重算掉。
+    preferStateVars: ["unitPrice", "costPressure"],
     kind: "cost_shock",
     mode: "delta",
     // once：重议价格落到合同上即**长期有效**，不存在「到期回到旧价」——
@@ -320,35 +347,49 @@ export type LandingState =
   | { readonly kind: "ok"; readonly typeKey: string; readonly stateVar: string; readonly instanceCount: number }
   /** 这些对象类型今天一个实例都没有 ⇒ 没东西可选。 */
   | { readonly kind: "no-instance"; readonly triedTypes: readonly string[] }
-  /** 有实例，但候选量一个都不在已发布规则里 ⇒ 扰了也没有传导路径。 */
+  /** 有实例，但候选量一个都不可落点 ⇒ 扰了也留不住／传不出去。 */
   | { readonly kind: "no-statevar"; readonly typeKey: string; readonly triedVars: readonly string[] };
 
 /** 三态各自的屏上措辞 —— **唯一出处**，组件不在渲染处拼串。 */
 export const LANDING_ABSENCE_TEXT: Readonly<Record<"no-instance" | "no-statevar", string>> = {
   "no-instance":
     "该事件的落点对象类型，本世界中无任何实例 —— 是世界中不存在此类对象，不是取数失败。",
+  // ⚠ 这句话 2026-09-30 改写：旧文案说「没有本事件要推的那一项」，暗示**是选型没配**。
+  //    真实原因是**世界结构性的**：外生输入量缺席，或它在图里没有出边 ⇒ 扰动存不住/传不出去。
+  //    两者修法完全不同（前者要补规则或补对象，后者是这件事今天在世界里没有传导路径），
+  //    故文案必须指向结构，不指向取数。
   "no-statevar":
-    "该类对象有实例，但它今天记着的指标里没有本事件要推的那一项 —— 施加扰动亦无传导路径（不是「取不到数据」）。",
+    "该类对象有实例，但它今天没有任何**可承载外部冲击的量**（外生输入且能向下传导）—— " +
+    "这件事在本世界的传导图里没有落点，**无传导路径**，扰动既留不住也传不动（不是「取不到数据」）。",
 };
 
 /**
  * 把一件事**翻译**成今天真能落的〔类型 · 量〕。
  *
- * @param varsByType  typeKey → 该类型在**已发布传导规则**里承载的量（`buildVarsByType` 现算）
- * @param countOf     typeKey → 该类型今天的实例条数（`view-config.nodeObjectIds` 现算）
+ * @param drivableByType  typeKey → 该类型**可落点**的量（= 契约 `buildCellRoles(已发布规则)`
+ *                        里 `drivable` 的那些；⛔ **不是**「规则里提到过的量」）
+ * @param countOf         typeKey → 该类型今天的实例条数（`view-config.nodeObjectIds` 现算）
+ *
+ * **判据是「可落点」不是「提到过」** —— 这两个集合差得很远，实测 52 格只 12 格可落点，
+ * 而 12 件事里有 8 件原先落在这 12 格之外。区别是三件事：
+ *   · 提到过但**入度>0**（内生）：引擎下一拍按入边把它重算掉，扰动残值 5.6e-3 ~ **0** ⇒ 白打；
+ *   · 提到过但**零出边**（叶子）：留下了也一步都传不出去 ⇒ 世界差分恒 1 格；
+ *   · 可落点（外生 ∧ 有出边）：留得住且传得动。
+ * 判据的**唯一出处**是 `packages/contracts/src/sim.ts` §格的「外生性」判据，
+ * ⛔ 本文件不许自己再判一遍（那正是本仓反复防的「第二套真相源」）。
  *
  * ⛔ 候选量一个都不中时**返回 `no-statevar`，不随便挑一个量顶上** ——
  *    顶上去的后果是「选了、请求 201、下游一动不动」，本仓已点名过这一形态。
  */
 export function resolveLanding(
   ev: BusinessEvent,
-  varsByType: ReadonlyMap<string, ReadonlySet<string>>,
+  drivableByType: ReadonlyMap<string, ReadonlySet<string>>,
   countOf: (typeKey: string) => number,
 ): LandingState {
   const withInstances = ev.targetTypeKeys.filter((t) => countOf(t) > 0);
   if (withInstances.length === 0) return { kind: "no-instance", triedTypes: ev.targetTypeKeys };
   for (const t of withInstances) {
-    const live = varsByType.get(t);
+    const live = drivableByType.get(t);
     if (live === undefined) continue;
     const hit = ev.preferStateVars.find((v) => live.has(v));
     if (hit !== undefined) return { kind: "ok", typeKey: t, stateVar: hit, instanceCount: countOf(t) };

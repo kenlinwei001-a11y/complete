@@ -71,7 +71,7 @@ import {
   type PricingOutcomeItem,
   type SimProposalResponse,
 } from "@/api/endpoints";
-import { BASE_REGISTRY } from "@platform/contracts";
+import { BASE_REGISTRY, buildCellRoles } from "@platform/contracts";
 import { formatScope } from "../../chainImpediment";
 import {
   BUSINESS_EVENTS,
@@ -492,18 +492,27 @@ export default function Console0828({
   const cfg = cfgQ.data as SandboxViewConfig | undefined;
   const nodeObjectIds = cfg?.nodeObjectIds as Record<string, readonly string[]> | undefined;
 
-  /** typeKey → 它在**已发布规则**里承载的量。业务事件靠它落地。 */
+  /**
+   * typeKey → 该类型**可落点**（外生 ∧ 有出边）的量。业务事件靠它落地。
+   *
+   * ⛔ **判据在契约层，本组件不自己判** —— `buildCellRoles` 是 `packages/contracts/src/sim.ts`
+   *    §格的「外生性」判据的**唯一出处**，引擎衰减相用的是同一份（`sim/propagation.ts`）。
+   *    在这里另写一遍判断 = 第二套真相源，正是本仓反复防的那个东西。
+   *
+   * ⚠ 旧版曾把**每条规则两端的量都**收进这张表（`touch(source)` ⊕ `touch(target)`），
+   *    那是「规则里提到过」不是「可落点」，两个集合差得很远：实测 52 格只有 12 格可落点，
+   *    而旧表把**只作 target 的格**也放了进来 ⇒ 12 件事里 8 件落在内生格或零出边叶子上，
+   *    扰动留不住也传不动，屏上恒报「0 张 / 0.0 元」。这是本次修的那个根因。
+   */
   const varsByType = useMemo(() => {
     const m = new Map<string, Set<string>>();
     const rules = (rulesQ.data as PropagationRulesResponse | undefined)?.items ?? [];
-    const touch = (t: string, v: string): void => {
-      const s = m.get(t) ?? new Set<string>();
-      s.add(v);
-      m.set(t, s);
-    };
+    const roles = buildCellRoles(rules);
     for (const r of rules) {
-      touch(r.sourceTypeKey, r.sourceStateVar);
-      touch(r.targetTypeKey, r.targetStateVar);
+      for (const t of [r.sourceTypeKey, r.targetTypeKey]) {
+        if (m.has(t)) continue;
+        m.set(t, new Set(roles.drivableStateVarsOf(t)));
+      }
     }
     return m as ReadonlyMap<string, ReadonlySet<string>>;
   }, [rulesQ.data]);
@@ -2125,7 +2134,11 @@ export default function Console0828({
                       <div className={styles.moreBody}>
                         {L.kind === "no-instance"
                           ? `找过这些对象类型：${L.triedTypes.join(" / ")}，本世界里都没有实例。`
-                          : `${L.typeKey} 有实例，但这类对象今天记着的指标里没有这几项：${L.triedVars.join(" / ")}。`}
+                          : /* ⚠ 旧文案是「这类对象今天记着的指标里没有这几项」—— 它把原因说成「选型没配」，
+                               读者会以为换个量就好。真实原因是结构的：这几个量要么**入度>0**（引擎每拍按入边重算，
+                               扰动留不住），要么**零出边**（留下了也传不动）。两者都不是「取不到数据」。*/
+                            `${L.typeKey} 有实例，但本事件想推的这几项都落不了点：${L.triedVars.join(" / ")}` +
+                            ` —— 它们要么不是本世界的外部输入（会被每一拍重算掉），要么在传导图里没有出边。`}
                       </div>
                     </details>
                   </div>
