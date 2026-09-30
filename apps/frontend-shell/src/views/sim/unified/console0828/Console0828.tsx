@@ -569,7 +569,47 @@ export default function Console0828({
   /** 对策四栏「放大」弹窗。页签里可视仅 ~364px，四栏被切一半，比不了。 */
   const [optionsZoom, setOptionsZoom] = useState(false);
   const [staged, setStaged] = useState<readonly StagedEvent[]>([]);
-  const [horizon, setHorizon] = useState(3);
+  /* ══ 默认推演时长 = 图上最慢的那条路（派生，不写死）══════════════════════════
+   *
+   * ── 原值为什么必须换（2026-09-30）─────────────────────────────────────────
+   * 原值 `useState(3)` 追到引入提交 `259309f1c`（标题 `WIP·未验`，**正文空白**）⇒ 无出处；
+   * 设计稿 `docs/design/UI-sim-console-20260828.html` 里**根本没有「推演时长」这个控件**；
+   * 同产品另一端 `DecisionConsoleView` 用的是 `HORIZON_DAYS = 30` —— **差 10 倍**。
+   *
+   * 它决定「用户不改那一格时，屏上给他看哪一句话」。真后端实测：
+   *   · 物料到货延迟 3 拍时 0 张（150 张每张 4.783e-3 在动、跨不过 0.01 门槛），
+   *     **第 5 拍起 150 张全部过线** —— 这条的结论完全由窗口决定；
+   *   · 设备故障到订单要 6 拍，3 拍时信号还停在 `Process.queuePressure`。
+   * ⇒ 原值把这两件事**都**印成「0 张」，而它们要用户做的事恰好相反。
+   *
+   * ── 判据：够图上最慢的那个可落点走到结论 ──────────────────────────────────
+   * 取所有可落点格里**最大的**最短到达拍数。这样任何可落点的扰动在默认窗口下都至少
+   * **到得了**结论 ⇒ 屏上的「0 张」结构上不可能是「还在路上」那一档（`zeroReasonKind`
+   * 四档里最会误导人的那种）从默认路径上被删掉。且它是**现算的**：图变了（新增一条更长的
+   * 落点边）它自己跟着变，不需要有人想起来改一个常数 —— 那正是原值出问题的方式。
+   * （真图实测 = 8，最慢的是 `FinishedGoodsInventory.coverDays`；夹具图 = 2，见 ⑮。）
+   *
+   * ⚠ 「至少够」不是「一定够」：`minTransitTicksTo` 是**下界不是预言**。设备故障即使推到
+   *   12 拍，订单侧也只有 8.796e-5（比门槛低 114 倍）—— 它该落在「门下」那一档由
+   *   `zeroReasonKind` 照实说，不是靠调窗口解决的，本条也不声称解决它。
+   *
+   * ⚠ 用户拨过就听用户的：`horizonOverride` 一旦非空派生值不再参与（与 `aiPinned` 同一条
+   *   纪律 —— 自动行为可以帮人，但不许覆盖人刚做的选择）。
+   */
+  const derivedHorizon = useMemo(() => {
+    let slowest = 0;
+    for (const t of transitByCell.values()) if (t !== null && t > slowest) slowest = t;
+    return slowest;
+  }, [transitByCell]);
+
+  /** 用户手拨的窗口；`null` = 还没拨过。 */
+  const [horizonOverride, setHorizonOverride] = useState<number | null>(null);
+  /**
+   * 规则还没回来时输入框先摆的值。**是占位不是缺省** —— 缺省是上面派生的那个，一到就换
+   * （`transitByCell` 空 ⇒ 派生值为 0）。取 1 而不是原值 3：3 恰恰因为「看着挺合理」
+   * 才一路活到今天，占位值就该一眼看出不像真值。
+   */
+  const horizon = horizonOverride ?? (derivedHorizon > 0 ? derivedHorizon : 1);
   const [result, setResult] = useState<RunResult | null>(null);
   const [pickedFix, setPickedFix] = useState<string | null>(null);
   /** 当前页签。默认「受阻环节」—— 它是「怎么办」那几行的宿主，点进去接着往下走。 */
@@ -2227,7 +2267,7 @@ export default function Console0828({
               min={1}
               aria-label="推演时长"
               data-testid="c0828-horizon"
-              onChange={(e) => setHorizon(Math.max(1, Number(e.target.value)))}
+              onChange={(e) => setHorizonOverride(Math.max(1, Number(e.target.value)))}
             />
             <span className={styles.unit}>{tickUnitWord(cal)}</span>
           </span>

@@ -937,7 +937,11 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     mount();
     await railReady();
     await addEvent("material-price-up", "mat_licarb", 15);
-    fireEvent.click(screen.getByTestId("c0828-go")); // 窗口仍是默认 3
+    /* ⛔ 窗口**显式**钉 3，不许骑在缺省上。本条咬的是 `zeroReasonKind` 的判据，不是缺省值；
+       而 ⑮ 一改派生缺省，这张图的最慢落点正好是 7 ⇒ 缺省也变 7 ⇒ `7 > 7` 不成立，
+       「还没传到」会**静默**换成「够得着却没动」，红在一个与本条无关的地方。 */
+    fireEvent.change(screen.getByTestId("c0828-horizon"), { target: { value: "3" } });
+    fireEvent.click(screen.getByTestId("c0828-go"));
     await screen.findByTestId("c0828-money");
 
     // 跳数没变（仍是 2 跳），只有那一条边的延迟变了 ⇒ 2 → 1 + (1+5) = 7。
@@ -953,7 +957,9 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     mount();
     await railReady();
     await addEvent("material-price-up", "mat_licarb", 15);
-    fireEvent.click(screen.getByTestId("c0828-go")); // 默认窗口 3 ≥ 最短 2
+    // ⛔ 同上：显式钉 3，不骑缺省。本条只主张「窗口 ≥ 最短 ⇒ 不许说还没传到」。
+    fireEvent.change(screen.getByTestId("c0828-horizon"), { target: { value: "3" } });
+    fireEvent.click(screen.getByTestId("c0828-go")); // 窗口 3 ≥ 最短 2
     await screen.findByTestId("c0828-money");
 
     const reason = screen.getByTestId("c0828-zero-reason").textContent ?? "";
@@ -961,6 +967,26 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     expect(reason).toContain("最短 2 拍可达、窗口已够得着");
     // 这两句是**互斥**的：够得着还说「还没传到」就是把责任推给一个不存在的原因。
     expect(reason).not.toContain("还没传到订单");
+  });
+
+  it("⑮ 默认推演时长**从图上派生**：图变则缺省跟着变（⛔ 不许是一个写死的常数）", async () => {
+    /* 原值 `useState(3)` 追到引入提交 `259309f1c`（标题 `WIP·未验`，正文空白）—— 无出处；
+       设计稿里根本没有「推演时长」这个控件；同产品另一端 `DecisionConsoleView` 是 30。 */
+    mount();
+    await railReady();
+    /* 夹具图的可落点格：`Material.priceShock`（2 跳）与 `Model.forecastBias`（1 跳）⇒ 缺省 = 2。
+       ⚠ 2 是**这张夹具图**的答案，不是屏上写死的值 —— 真图实测是 8（9 个可落点格里最慢的
+         `FinishedGoodsInventory.coverDays`）。本臂咬的正是「它随图算」这件事。 */
+    await waitFor(() => expect(screen.getByTestId("c0828-horizon")).toHaveValue(2));
+
+    cleanup();
+    /* 反向金丝雀（对照实验，铁律 1.5 判据一）：**只**把进 `Order` 那条边的 `delayTicks`
+       拨到 5 ⇒ 最慢落点 2 → 7，缺省必须跟着变。若缺省是个常数/编的/没算，这里当场红。 */
+    edges = baseEdges().map((e) => (e.targetTypeKey === "Order" && e.sourceStateVar === "costPressure" ? { ...e, delayTicks: 5 } : e));
+    expect(edges.filter((e) => (e.delayTicks ?? 0) > 0)).toHaveLength(1); // 金丝雀：真拨到了那一条
+    mount();
+    await railReady();
+    await waitFor(() => expect(screen.getByTestId("c0828-horizon")).toHaveValue(7));
   });
 
   it("⑤ 诚实态 · 三行钱：算不出来的画「这次算不出来」——⛔ 不许显示 0，也不许留空", async () => {
