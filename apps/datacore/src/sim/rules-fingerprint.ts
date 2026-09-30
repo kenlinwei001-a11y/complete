@@ -29,7 +29,15 @@ export function rulesFingerprint(rules: readonly PropagationRule[]): string {
     h.update(
       `${r.key}${SEP}${String(r.coefficient)}${SEP}${String(r.delayTicks)}${SEP}${r.combine}${SEP}` +
         `${String(r.decay)}${SEP}${JSON.stringify(r.clamp)}${SEP}${String(r.coefficientRef)}${SEP}` +
-        `${String(r.cadenceNodeId)}${SEP}${r.status}${SEP}${JSON.stringify(r.reaction ?? null)}${SEP}`,
+        `${String(r.cadenceNodeId)}${SEP}${r.status}${SEP}${JSON.stringify(r.reaction ?? null)}${SEP}` +
+        // ⚠ `weightRef` 是 `PropagationRule` 上的**顶层字段**（不是 `params` 里的），
+        //   而 `buildPairWeights` 真读它（`r.weightRef.basis` / `.field`）来分摊逐实例权重。
+        //   漏了它 ⇒ 只改分摊口径时指纹不变 ⇒ **命中**，引擎吃到按旧口径算出来的权重表，
+        //   而屏上是看不出来的错数。
+        //   📌 这一条是实测抓出来的，不是想起来的：`assembly-memo.seam.test.ts` §4b 的
+        //   金丝雀当场报红（`weightRef: null` 与 `{basis:"bom_cost_share"}` 算出同一个指纹
+        //   `2cca7a2680…`），本行是它的修。**两向金丝雀留在 §4b，别删。**
+        `${JSON.stringify(r.weightRef ?? null)}${SEP}`,
     );
   }
   return h.digest("hex");

@@ -34,6 +34,7 @@ import { fileURLToPath } from "node:url";
 import { makeApp, ADMIN, seedBattery, type TestApp } from "./helpers.js";
 import { seedDemoPropagationRules } from "../src/seed.js";
 import { assemblyMemoStats, AssemblyMemo, deepFreeze, stableStringify } from "../src/sim/assembly-memo.js";
+import { rulesFingerprint } from "../src/sim/rules-fingerprint.js";
 
 // ══ 夹具 ═══════════════════════════════════════════════════════════════════
 
@@ -87,7 +88,7 @@ interface ScopeReportLike {
   objects: number; links: number; droppedObjects: number; droppedLinks: number;
   unresolved: string | null;
 }
-interface TickResp { curTick: number; scopeReport?: ScopeReportLike }
+interface TickResp { curTick: number; scope?: ScopeReportLike }
 
 async function newSession(t: TestApp): Promise<string> {
   const created = await t.app.inject({
@@ -151,13 +152,13 @@ describe("§2 头号判据：命中那一跑的产物，与冷装那一跑逐字
     const t1 = await tick(t, sid);
     const t2 = await tick(t, sid);
 
-    expect(t1.scopeReport, "tick 回包没带范围回执 ⇒ 本门没有可比的读数").toBeDefined();
+    expect(t1.scope, "tick 回包没带范围回执 ⇒ 本门没有可比的读数").toBeDefined();
     expect(
-      md5(t2.scopeReport),
-      `复用出来的装配与重装不同 —— 备忘录给错了世界：\n冷装 ${JSON.stringify(t1.scopeReport)}\n命中 ${JSON.stringify(t2.scopeReport)}`,
-    ).toBe(md5(t1.scopeReport));
+      md5(t2.scope),
+      `复用出来的装配与重装不同 —— 备忘录给错了世界：\n冷装 ${JSON.stringify(t1.scope)}\n命中 ${JSON.stringify(t2.scope)}`,
+    ).toBe(md5(t1.scope));
     // 范围回执还得是**有内容**的（全 0 的话上面那条 md5 相等什么都没证明）。
-    expect(t1.scopeReport!.objects, "范围回执是空的 ⇒ 上面那条相等没有鉴别力").toBeGreaterThan(0);
+    expect(t1.scope!.objects, "范围回执是空的 ⇒ 上面那条相等没有鉴别力").toBeGreaterThan(0);
 
     // 冻结：命中时多个请求共用同一个实例，就地改它必须**当场抛**（而不是静默污染后面的请求）。
     const frozen = await (async () => {
@@ -185,7 +186,7 @@ describe("§3 反向金丝雀：判据必须真的看着世界与规则", () => 
     const sid = await newSession(t);
 
     const before = await tick(t, sid);
-    const n0 = before.scopeReport!.objects;
+    const n0 = before.scope!.objects;
 
     // 世界写：把一个对象并走 ⇒ 它**退出推演世界成员集合**（`entersSimWorld` 判 `mergedInto`）。
     // ⚠ 走 `repos.objects.put` 就是走**真写入漏斗**（20+ 个生产调用点全部经过它）。
@@ -199,10 +200,10 @@ describe("§3 反向金丝雀：判据必须真的看着世界与规则", () => 
 
     expect(a.misses - b.misses, "世界写过却仍然命中 ⇒ 引擎吃的是旧图，而屏上看不出来").toBeGreaterThan(0);
     expect(
-      after.scopeReport!.objects,
-      `世界写过但图没变（${n0} → ${after.scopeReport!.objects}）⇒ 要么判据没看着这个仓，要么成员判据没生效`,
+      after.scope!.objects,
+      `世界写过但图没变（${n0} → ${after.scope!.objects}）⇒ 要么判据没看着这个仓，要么成员判据没生效`,
     ).not.toBe(n0);
-    expect(after.scopeReport!.objects, "并走一个对象之后成员数应当**变少**").toBeLessThan(n0);
+    expect(after.scope!.objects, "并走一个对象之后成员数应当**变少**").toBeLessThan(n0);
   });
 
   it("规则集变了之后不命中（规则不是对象 ⇒ 必须靠规则指纹那一半判据）", async () => {
@@ -269,6 +270,33 @@ describe("§4 机制：全量性由源码扫描咬着，不靠注释", () => {
 });
 
 // ══ §5 备忘录用例（接缝上观察不到的那部分）═════════════════════════════════════
+describe("§4b 规则指纹必须覆盖引擎真读的每一个规则字段", () => {
+  it("只改 weightRef ⇒ 指纹必须变（它是 PropagationRule 上的字段，不是 params 里的）", async () => {
+    const base = {
+      id: "r1", tenantId: "demo", key: "k", sourceTypeKey: "A", targetTypeKey: "B",
+      sourceStateVar: "x", targetStateVar: "y", coefficient: 1, delayTicks: 0,
+      combine: "ADD" as const, decay: null, clamp: null, coefficientRef: null,
+      cadenceNodeId: null, status: "PUBLISHED" as const, reaction: null,
+      weightRef: null,
+    };
+    const fp = (r: unknown): string => rulesFingerprint([r as never]);
+
+    // 金丝雀①：同一个规则 ⇒ 同一个指纹（不然下面那条「变了」没有鉴别力）。
+    expect(fp(base), "同一条规则两次算出不同指纹 ⇒ 指纹本身不稳").toBe(fp(base));
+    // 金丝雀②：换一个**别的**字段（系数）必须变 —— 证明它真的在看规则内容。
+    expect(fp({ ...base, coefficient: 2 }), "系数变了指纹却没变").not.toBe(fp(base));
+    // ★ 主判据：`weightRef` 从 null 变成一份口径 —— 引擎按它分摊逐实例权重，图/系数一个都没动。
+    //   指纹若漏了它 ⇒ 命中，而权重表是**按旧口径**算的（屏上看不出来的错数）。
+    expect(
+      fp({ ...base, weightRef: { basis: "bom_cost_share" } }),
+      "只改了 weightRef 却算出同一个指纹 ⇒ 引擎会吃到按旧分摊口径算出来的权重表",
+    ).not.toBe(fp(base));
+    // 口径内换字段名同样要变（`weightRef.field` 决定量取值取自哪一列）。
+    expect(fp({ ...base, weightRef: { basis: "bom_cost_share", field: "quantity" } }))
+      .not.toBe(fp({ ...base, weightRef: { basis: "bom_cost_share", field: "amount" } }));
+  });
+});
+
 describe("§5 备忘录自身的语义：修订号一变即作废、容量有界", () => {
   it("同一个键、修订号不同 ⇒ 不命中；键不同 ⇒ 不命中", () => {
     const m = new AssemblyMemo<string>(4);

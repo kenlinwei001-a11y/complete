@@ -303,6 +303,9 @@ function memStore<T extends { id: string; tenantId: string }>(): Store<T> {
     async putMany(items) { for (const item of items) m.set(k(item.tenantId, item.id), structuredClone(item)); },
     async remove(t, id) { m.delete(k(t, id)); },
     async list(t, pred) { return [...m.values()].filter((v) => v.tenantId === t && (!pred || pred(v))).map((v) => structuredClone(v)); },
+    // 写入修订号：本替身**不数写入**，故按契约回 `null`（= 给不出全量信号）。
+    // 不回 0：那等于宣称「从没写过」，任何拿它做缓存判据的调用方都会静默吃到旧值。
+    async revision() { return null; },
   };
 }
 

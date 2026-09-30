@@ -78,6 +78,14 @@ export interface PropagationInputs {
 }
 
 /**
+ * 进程级装配备忘录 —— 病历、为什么安全、为什么**不会**给出旧世界，全在 `assembly-memo.ts` 头注。
+ *
+ * ⚠ 模块级常量而不是 `buildApp` 里的局部量：装配的**唯一入口**是下面这个函数，
+ *   备忘录跟着它走，才不会出现「两个 app 实例各一份缓存」那种第二真相源。
+ */
+const assemblyMemo = new AssemblyMemo<PropagationInputs>(4);
+
+/**
  * 从库里现读并装配传导相的全部入参。
  *
  * @param scope **已解析**的范围（调用方走契约唯一实现 `resolveSimScope`，不在这里再写一套 if）。
@@ -93,14 +101,6 @@ export interface PropagationInputs {
  *   屏上看到的是"这条边今天没动"，而不是"有人漏传了一个参数"。必填 ⇒ **typecheck 当场报红**，
  *   机器先说话。（同源教训：本仓有过「Trial Tick 另抄一份装配」导致两处输入不同源的账。）
  */
-/**
- * 进程级装配备忘录 —— 病历、为什么安全、为什么**不会**给出旧世界，全在 `assembly-memo.ts` 头注。
- *
- * ⚠ 模块级常量而不是 `buildApp` 里的局部量：装配的**唯一入口**是下面这个函数，
- *   备忘录跟着它走，才不会出现「两个 app 实例各一份缓存」那种第二真相源。
- */
-const assemblyMemo = new AssemblyMemo<PropagationInputs>(4);
-
 export async function buildPropagationInputs(
   repos: Repos,
   c: AuthCtx,
@@ -118,7 +118,12 @@ export async function buildPropagationInputs(
   //   不许「拿两个真的 + 一个已知不可信的凑合」—— 判据上有一个洞，缓存就会从那个洞漏出旧世界。
   const worldRev =
     revs.some((r) => r === null) ? null : `${revs.join("|")}|${rulesFingerprint(rules)}`;
-  const memoKey = worldRev === null ? null : `${c.tenantId} ${stableStringify(scope)}`;
+  // ⚠ 键里**不许**用 NUL 这类控制字符做分隔：
+  //   写成字面字节会让 git 把整个源文件判成 binary
+  //   （`git diff` 只剩「Binary files differ」）——那这个文件的每一次改动都没人能看见。
+  //   本行第一版就是这么写坏的，被本单 §4 的源码扫描当场咬住。
+  //   用 JSON 数组：既无控制字符，也不会因为「租户名里恰好含分隔符」而撞键。
+  const memoKey = worldRev === null ? null : JSON.stringify([c.tenantId, stableStringify(scope)]);
   if (memoKey === null || worldRev === null) {
     assemblyMemoStats.skipped += 1;
   } else {

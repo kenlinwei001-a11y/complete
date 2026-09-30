@@ -161,7 +161,7 @@ export function buildExplainSlice(
         nodes.set(e.fromObjectId, { objectId: e.fromObjectId, hop, contribution: 0 });
         next.push(e.fromObjectId);
       }
-      const k = `${e.fromObjectId} ${e.toObjectId} ${e.ruleKey} ${e.viaLinkKey}`;
+      const k = `${e.fromObjectId}\u0000${e.toObjectId}\u0000${e.ruleKey}\u0000${e.viaLinkKey}`;
       if (keptEdgeKeys.has(k)) continue;
       keptEdgeKeys.add(k);
       keptEdges.push({
