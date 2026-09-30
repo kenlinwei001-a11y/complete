@@ -799,7 +799,13 @@ export interface CellRoles {
    */
   reachesTypes(typeKey: string, stateVar: string): ReadonlySet<string>;
   /**
-   * 从这一格到 `toTypeKey` **任意一格**的**最短到达拍数**；到不了 ⇒ `null`。
+   * 从这一格**传出去**、到 `toTypeKey` 任意一格的**最短到达拍数**；到不了 ⇒ `null`。
+   *
+   * ⚠ **起点自己不算**（`typeKey === toTypeKey` 也不算 0）：0 条边 = 没有发生传导。
+   *   与 `reachesTypes` **同进同出** —— 对任意格、任意类型，
+   *   `reachesTypes(t,v).has(X) === (minTransitTicksTo(t,v,X) !== null)` 恒成立。
+   *   两者若不一致，`landableVarsByType`（用前者）与 `zeroReasonKind`（用后者）
+   *   就会对**同一格**给出相反判断。实测过的反例与出处见下方实现里的注。
    *
    * ── 为什么落点判据还需要第三个量（2026-09-30 实测）─────────────────────────
    * `reachesTypes` 答的是「**够不够得到**」，它**不含时间**。于是「可达」被读成了
@@ -959,8 +965,19 @@ export function buildCellRoles(rules: readonly CellRoleRule[]): CellRoles {
       return s;
     },
     minTransitTicksTo: (typeKey, stateVar, toTypeKey) => {
+      const start = simCellKey(typeKey, stateVar);
       let best: number | null = null;
-      for (const [k, v] of distFrom(simCellKey(typeKey, stateVar))) {
+      for (const [k, v] of distFrom(start)) {
+        /* ⛔ 起点自己不算「传到」——`distFrom` 把 `start` 播成 0 只是为了起松弛（松弛要有种子），
+           而 **0 条边 = 没有发生传导**。不排掉它，任何 `typeKey === toTypeKey` 的格都会答 0。
+           实测（2026-09-30）：`Order.qty → Order` 答 **0**，而同一张图上
+           `reachesTypes(Order,"qty").has("Order")` 是 **false** —— **同文件两个函数对同一格
+           给出相反答案**：`landableVarsByType` 据后者判它不可落点，而 `zeroReasonKind`
+           若拿到前者那个 0 会说「够得着却没动」。两者必须同进同出（守它的是
+           `test/sim-cell-roles.test.ts` ③）。
+           ⚠ 排的是**起点那一格**，不是「同类型的格」：环回到同型**另一个**格（`A.x → … → A.z`）
+           是真传到了，照样算 —— 见该测试 ⑤。 */
+        if (k === start) continue;
         if (typeOfKey(k) !== toTypeKey) continue;
         if (best === null || v < best) best = v;
       }
