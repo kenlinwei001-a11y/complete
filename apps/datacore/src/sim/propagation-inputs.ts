@@ -109,13 +109,22 @@ export async function buildPropagationInputs(
 ): Promise<PropagationInputs> {
   // ── 复用判据：世界修订号 × 规则内容指纹 × 范围 ────────────────────────────────
   // 三者都没变 ⇒ 这一跑的产物与上一跑**逐字节相同**，直接还回去（实测省掉 1374ms 里的绝大部分）。
+  // ⚠ **四个仓，一个都不能少** —— 判据必须盖住本函数体内**读过的每一个仓**，不是「主要的几个」。
+  //   漏掉的那个就是一条静默错答的路：改它不会让判据变，于是引擎继续吃上一跑的旧值，而屏上一切正常。
+  //   📌 `repos.rules` 这一格是**实测**补上来的：它装的是 `ruleParams`（`coefficientRef` 解析表），
+  //   而 `rulesFingerprint(rules 实参)` 那一半**明确不含 `params`**（见 `rules-fingerprint.ts` 头注）
+  //   ⇒ 只改系数值时指纹不变 ⇒ 命中 ⇒ 引擎按**旧系数**算。
+  //   抓它的是 `assembly-memo.seam.test.ts` §6：金丝雀当场报红（0.185 改成 0.555，产物仍是 0.185）。
+  //   **§6 那条机制扫描别删** —— 它咬的是「装配路径上读过的每个仓都进了键吗」，下次给这里加一处读，
+  //   机器先说话，不用靠人想起来。
   const revs = await Promise.all([
     repos.objects.revision(c.tenantId),
     repos.links.revision(c.tenantId),
     repos.ontologyTypes.revision(c.tenantId),
+    repos.rules.revision(c.tenantId),
   ]);
-  // ⚠ 三个仓**都要**给得出修订号才缓存：任一个回 `null`（pg 模式）⇒ 整体退回不缓存。
-  //   不许「拿两个真的 + 一个已知不可信的凑合」—— 判据上有一个洞，缓存就会从那个洞漏出旧世界。
+  // ⚠ 四个仓**都要**给得出修订号才缓存：任一个回 `null`（pg 模式）⇒ 整体退回不缓存。
+  //   不许「拿三个真的 + 一个已知不可信的凑合」—— 判据上有一个洞，缓存就会从那个洞漏出旧世界。
   const worldRev =
     revs.some((r) => r === null) ? null : `${revs.join("|")}|${rulesFingerprint(rules)}`;
   // ⚠ 键里**不许**用 NUL 这类控制字符做分隔：

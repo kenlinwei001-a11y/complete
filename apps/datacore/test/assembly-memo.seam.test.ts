@@ -35,6 +35,9 @@ import { makeApp, ADMIN, seedBattery, type TestApp } from "./helpers.js";
 import { seedDemoPropagationRules } from "../src/seed.js";
 import { assemblyMemoStats, AssemblyMemo, deepFreeze, stableStringify } from "../src/sim/assembly-memo.js";
 import { rulesFingerprint } from "../src/sim/rules-fingerprint.js";
+import { PROPAGATION_COEF_RULE_KEY } from "../src/synthetic/battery.js";
+import { resolveSimScope } from "@platform/contracts";
+import { buildPropagationInputs } from "../src/sim/propagation-inputs.js";
 
 // ══ 夹具 ═══════════════════════════════════════════════════════════════════
 
@@ -88,7 +91,15 @@ interface ScopeReportLike {
   objects: number; links: number; droppedObjects: number; droppedLinks: number;
   unresolved: string | null;
 }
-interface TickResp { curTick: number; scope?: ScopeReportLike }
+/** 这一拍推出来的边。§6 咬的就是这里的 `amount`（用户看得见的那个数）。 */
+interface TraceEntry { ruleKey: string; fromObjectId: string; toObjectId: string; amount: number; viaLinkKey: string }
+interface TickResp {
+  curTick: number;
+  scope?: ScopeReportLike;
+  trace?: TraceEntry[];
+  /** 披露层：`?disclose=1` 才下发（默认回包形状逐字节同旧 · RL9），`trace` 在这里面。 */
+  disclosure?: { trace?: TraceEntry[]; timings?: { phase: string; ms: number }[] };
+}
 
 async function newSession(t: TestApp): Promise<string> {
   const created = await t.app.inject({
@@ -322,5 +333,100 @@ describe("§5 备忘录自身的语义：修订号一变即作废、容量有界
     expect(stableStringify({ a: [1, { d: 4, c: 3 }] })).toBe(stableStringify({ a: [1, { c: 3, d: 4 }] }));
     // 反向金丝雀：内容真的不同就不许相等（否则上面那两条只证明了「它回常量」）。
     expect(stableStringify({ a: 1 })).not.toBe(stableStringify({ a: 2 }));
+  });
+});
+
+// ══ §6 准确不降级：装配体内读过的每一样东西，都必须进得来判据 ═══════════════════
+/**
+ * ── 这一节是怎么来的（病历，别删）──────────────────────────────────────────────
+ * §1~§5 全绿之后才发现的一处**真缺陷**：`buildPropagationInputs` 的体内还读了
+ * **第四个仓** `repos.rules`（拿来建 `ruleParams` —— 即「改规则即改推演」那张
+ * `coefficientRef` 解析表），而备忘录的键上**只有 `rulesFingerprint(rules 实参)`**，
+ * 那个指纹**明确不含 `params`**（见 `rules-fingerprint.ts` 头注）。
+ *
+ * ⇒ 只改一条规则的 `params`（**系数值**），实参一字不动 ⇒ 指纹不变 ⇒ **命中** ⇒
+ *   引擎拿到的是**上一跑的旧系数表**。而 `effectiveCoefficient` 就吃这张表
+ *   （`propagation.ts`：`ruleParams[ref.ruleKey][ref.paramKey]`）——
+ *   **推出来的数是错的，屏上一切正常**。这正是本仓反复栽的静默错答。
+ *
+ * 形态（照铁律 0.6 句式）：
+ * > **「我用『键上盖了三样』当作『装配读到的东西都盖全了』的证据，
+ * >   而前者并不度量后者 —— 它体内还读了第四样。」**
+ *
+ * 所以本节不测「备忘录语义」（那是 §5），测的是**判据的完备性**，且判据落在
+ * **用户看得见的那个数**上：系数 ×3 ⇒ 推出来的 amount 必须 ×3。
+ */
+describe("§6 准确不降级：改规则 params（指纹看不见它）⇒ 必须不命中，且推出来的数跟着变", () => {
+  /** 取披露层里的 trace（`?disclose=1` 才下发；默认回包不含它，RL9 形状不变）。 */
+  const traceOf = (r: TickResp): TraceEntry[] => r.disclosure?.trace ?? r.trace ?? [];
+  /** 带披露地推一拍 —— §6 咬的是披露层里的那个数，所以必须走 disclose=1。 */
+  const tickD = async (t: TestApp, sid: string, n = 1): Promise<TickResp> => {
+    const r = await t.app.inject({
+      method: "POST", url: `/a/v1/sim/sessions/${sid}/tick?disclose=1`, headers: ADMIN, payload: { n },
+    });
+    expect(r.statusCode, `tick(disclose) 失败：${JSON.stringify(r.json()).slice(0, 300)}`).toBe(200);
+    return r.json() as TickResp;
+  };
+
+  it("只改 C36.params ⇒ 装配产物里的 ruleParams 必须是**新的那一份**（命中则给旧系数 = 红）", async () => {
+    const t = await seededApp();
+    // 直接咬装配契约本身：它的职责就是「按**当前**的世界与规则产出输入」。
+    // 这里不需要让某条边真的响 —— `ruleParams` 是引擎 `effectiveCoefficient` 唯一吃的表，
+    // 它给了旧值，推出来的数就是错的，与哪条边响不响无关。
+    // ⚠ `rules` 实参刻意传 `[]`：`ruleParams` 是从**存储**里现读建的（与实参无关），
+    //   传常量数组 ⇒ 规则指纹那一半恒定 ⇒ 这一条只测「存储里的规则改了有没有进判据」。
+    const scope = resolveSimScope(null);
+
+    const a1 = await buildPropagationInputs(t.repos, t.adminCtx, scope, []);
+    const readCoef = (x: typeof a1): number | undefined =>
+      (x.ruleParams[PROPAGATION_COEF_RULE_KEY] as Record<string, unknown> | undefined)?.[RULE_KEY] as number | undefined;
+    const before = readCoef(a1);
+    expect(before, `装配产物里没有 ${PROPAGATION_COEF_RULE_KEY}.${RULE_KEY} ⇒ 夹具过期`).toBeTypeOf("number");
+
+    // 走真写入漏斗改存储里那条系数规则（与运营方改规则同一条路）。
+    const row = (await t.repos.rules.list("demo", (r) => r.key === PROPAGATION_COEF_RULE_KEY))[0]!;
+    await t.repos.rules.put({
+      ...row,
+      params: { ...(row.params as Record<string, number>), [RULE_KEY]: before! * 3 },
+    });
+
+    const a2 = await buildPropagationInputs(t.repos, t.adminCtx, scope, []);
+    expect(
+      readCoef(a2),
+      `只改了存储里 ${PROPAGATION_COEF_RULE_KEY}.params["${RULE_KEY}"]（${before} → ${before! * 3}），` +
+        `装配产物却还是旧值 ⇒ **命中了旧世界**：引擎按旧系数算，屏上数字看着正常。`,
+    ).toBe(before! * 3);
+    // 反向金丝雀：上面那条如果不是「取到了新值」而是「恒等于 before×3」也要能看出来。
+    expect(a2, "产物仍是同一个实例 ⇒ 根本没重装，上面那条只是碰巧对上了").not.toBe(a1);
+  });
+
+  it("机制：装配路径上读过的每一个仓，都必须出现在备忘录的修订号列表里", async () => {
+    // 判据是**源码**级的（接缝上观察不到「少盖了一个仓」——它只在恰好改那一个仓时才发作），
+    // 所以这里扫源码。⚠ 扫之前先剥注释（铁律 0.6 第 6 条：注释里的串不度量赋值）。
+    const src = stripComments(readFileSync(fileURLToPath(new URL("../src/sim/propagation-inputs.ts", import.meta.url)), "utf8"));
+    const pwSrc = stripComments(readFileSync(fileURLToPath(new URL("../src/sim/pair-weights.ts", import.meta.url)), "utf8"));
+
+    // 装配路径 = 本函数体 + 它调用的权重装配器（后者也读仓）。
+    const body = src.slice(src.indexOf("export async function buildPropagationInputs"));
+    const readStores = (s: string): Set<string> =>
+      new Set([...s.matchAll(/\brepos\.(\w+)\.(?:list|listByType|get|revision)\s*\(/g)].map((m) => m[1]!));
+    const read = new Set([...readStores(body), ...readStores(pwSrc)]);
+    // 金丝雀：上面这个正则必须真的抓得到东西（抓不到 ⇒ 是量法坏了，不是「读的仓少」）。
+    expect(read.size, "一个仓都没扫到 ⇒ 量法坏了（正则没匹配上），不是「没有漏」").toBeGreaterThan(0);
+    expect(read.has("rules"), "扫不到 repos.rules ⇒ 量法坏了（它确实是装配读的第四个仓）").toBe(true);
+
+    // 键上盖了哪些：`Promise.all` 里那几条 revision + 规则指纹（实参那一半）。
+    const keyed = new Set([...body.matchAll(/repos\.(\w+)\.revision\s*\(/g)].map((m) => m[1]!));
+    expect(keyed.size, "一个 revision 都没扫到 ⇒ 量法坏了").toBeGreaterThan(0);
+
+    // ⛔ 这里**不许开例外**（上一版给 `rules` 开了个口子，理由是「它走指纹那一半」——
+    //    而指纹那一半**不含 `params`**，那个口子正好放过本次的真缺陷）。
+    //    规则那一半的指纹不是替代品：它盖的是**实参**，而 `repos.rules` 是**体内另读的存储**。
+    const missing = [...read].filter((s) => !keyed.has(s));
+    expect(
+      missing,
+      `这些仓装配时读了、却没进备忘录的键 ⇒ 改它们会让引擎吃到旧值（静默错答）：${missing.join(", ")}\n` +
+        `修法：把 \`repos.<仓>.revision(tenantId)\` 加进上面的 \`Promise.all\`（那是唯一判据，别改成 epochs）。`,
+    ).toEqual([]);
   });
 });
