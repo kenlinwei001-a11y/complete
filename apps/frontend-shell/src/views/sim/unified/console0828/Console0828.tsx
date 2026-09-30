@@ -71,11 +71,13 @@ import {
   type PricingOutcomeItem,
   type SimProposalResponse,
 } from "@/api/endpoints";
-import { BASE_REGISTRY, buildCellRoles } from "@platform/contracts";
+import { BASE_REGISTRY } from "@platform/contracts";
 import { formatScope } from "../../chainImpediment";
 import {
   BUSINESS_EVENTS,
+  CONCLUSION_TYPE,
   LANDING_ABSENCE_TEXT,
+  landableVarsByType,
   resolveLanding,
   type BusinessEvent,
   type CatalogCanary,
@@ -85,7 +87,6 @@ import {
   buildCustomerView,
   buildMoneyView,
   buildRunExposureDeltas,
-  CONCLUSION_TYPE,
   buildTickCalendar,
   candidateEffectShort,
   candidateEffectWhy,
@@ -496,40 +497,18 @@ export default function Console0828({
   /**
    * typeKey → 该类型**够得着结论的落点量**。业务事件靠它落地。
    *
-   * ⛔ **判据在契约层，本组件不自己判** —— `buildCellRoles` 是 `packages/contracts/src/sim.ts`
-   *    §格的「外生性」判据的**唯一出处**，引擎衰减相用的是同一份（`sim/propagation.ts`）。
-   *    在这里另写一遍判断 = 第二套真相源，正是本仓反复防的那个东西。
-   *
-   * **落点是两步判据，缺一不可**（2026-09-30 实测把第二步补上）：
-   *   ① 契约的 `drivable`（外生 ∧ 有出边）—— 扰动**留得住、出得去**；
-   *   ② `reachesTypes(...).has(CONCLUSION_TYPE)` —— 出得去还得**到得了**用户要看的那些格。
-   * 只做 ① 会漏掉这一类（实测）：`Order.qty` / `Order.leadDays` / `Order.unitPrice` 入度 0、
-   * 出度 1，①判真 —— 但唯一出边指向的 `Model.backlog*Top` **自己也零出边**，可达集大小 1，
-   * 是与主图不相连的孤岛对。三件事因此给出逐字节相同的「1 张 / 1.61 亿」，
-   * 而那一张就是**被扰动的那张单本身** —— 用户的「结论不随输入变」又回来了。
-   *
-   * ⚠ 旧版连 ① 都没有：它把**每条规则两端的量都**收进来（`touch(source)` ⊕ `touch(target)`），
-   *    那是「规则里提到过」不是「可落点」。实测 「提到过」有 32 型 / 55 条边涉及，
-   *    而两条件筛完只剩 9 格 —— 12 件事里 8 件原先落在这 9 格之外。
+   * ⛔ **判据不在本组件里** —— 两步都在别处，且各只有一个出处：
+   *   ① `buildCellRoles`（`packages/contracts/src/sim.ts` §格的「外生性」判据）——
+   *      引擎衰减相用的是同一份（`sim/propagation.ts`）；
+   *   ② `landableVarsByType`（`./eventCatalog`）—— 把 ① 与「够不够得到本屏的结论」求交。
+   *     ⚠ 提到目录模块而不是留在这里，是因为**跨进程的复验脚本也要问同一个问题**
+   *     （真后端跑 12 件事的端到端差分），而脚本只能 import 纯函数。
+   *     留在组件里 ⇒ 脚本要么复刻一遍（第二套真相源）、要么量出来的数与屏上不是一回事。
    */
-  const varsByType = useMemo(() => {
-    const m = new Map<string, Set<string>>();
-    const rules = (rulesQ.data as PropagationRulesResponse | undefined)?.items ?? [];
-    const roles = buildCellRoles(rules);
-    for (const r of rules) {
-      for (const t of [r.sourceTypeKey, r.targetTypeKey]) {
-        if (m.has(t)) continue;
-        // ⚠ 先塞空集再填：`m.has(t)` 用作"这个类型处理过了"的哨兵，
-        //    漏掉这一步会让下面每次命中都重复算一遍可达性。
-        const s = new Set<string>();
-        m.set(t, s);
-        for (const v of roles.drivableStateVarsOf(t)) {
-          if (roles.reachesTypes(t, v).has(CONCLUSION_TYPE)) s.add(v);
-        }
-      }
-    }
-    return m as ReadonlyMap<string, ReadonlySet<string>>;
-  }, [rulesQ.data]);
+  const varsByType = useMemo(
+    () => landableVarsByType((rulesQ.data as PropagationRulesResponse | undefined)?.items ?? [], CONCLUSION_TYPE),
+    [rulesQ.data],
+  );
 
   /**
    * 「这件事会推动什么」的两份输入，**分开拿**：

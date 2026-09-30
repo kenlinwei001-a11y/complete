@@ -132,21 +132,10 @@ export function buildRunExposureDeltas(controlState: WorldCells, afterState: Wor
 }
 
 /**
- * ══ 本屏的**结论对象类型** —— 推演到底在回答谁的账 ══════════════════════════
- *
- * 这一个串不是配置、不是偏好，是**本页资金口径的定义**：下面 `buildMoneyView` 的
- * 「波及订单 N 张 / 敞口 X 元」只对 `Order` 及其 `value` 求和，别的一概不进算式。
- * 故「扰动有没有用」在本屏 = **它能不能走到 `Order` 的格上**。
- *
- * ⛔ 为什么放在这里而不是放进 `@platform/contracts`：契约层只该回答「图长什么样」
- *   （谁能到达谁），**不该知道这一屏在算哪门子账** —— 换个屏幕（成本屏 / 产能屏）
- *   结论对象就不同。把 `Order` 写进契约 = 让通用图论设施替业务页面定结论。
- *   ⇒ 契约给 `reachesTypes`（通用），本屏给它自己的结论类型（这里），**两侧各答各的**。
- *
- * 复验：`grep -n "Order" console0828Model.ts` —— `buildMoneyView` 读的全是 Order 单/金额；
- *   屏上三行拆解的分子分母也全部来自订单簿（`bookTotal` / `bookOrders`）。
+ * 本屏的**结论对象类型**（= `"Order"`）的**唯一出处**在 `./eventCatalog` 的
+ * `CONCLUSION_TYPE`，理由与复验方式写在那里。此处只留一个指针，
+ * ⛔ 不要再定义一个同名字面量 —— 两个 `"Order"` 就是两份口径。
  */
-export const CONCLUSION_TYPE = "Order";
 
 /** 一个金额在屏上的三态。**「算不出来」与「是 0」必须分得开**（稿上删除线的语义）。 */
 export type MoneyCell =

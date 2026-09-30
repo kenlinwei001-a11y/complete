@@ -1,3 +1,5 @@
+import { buildCellRoles, type PropagationRule } from "@platform/contracts";
+
 /**
  * ══ WO-SIM-CONSOLE-0828 · 区① 左栏「**12 件事**」的登记表 ═══════════════════════
  *
@@ -362,6 +364,65 @@ export const LANDING_ABSENCE_TEXT: Readonly<Record<"no-instance" | "no-statevar"
     "该类对象有实例，但它今天没有任何**可承载外部冲击的量**（外生输入且能向下传导）—— " +
     "这件事在本世界的传导图里没有落点，**无传导路径**，扰动既留不住也传不动（不是「取不到数据」）。",
 };
+
+/**
+ * ══ 本屏的**结论对象类型** —— 推演到底在回答谁的账 ══════════════════════════
+ *
+ * 这一个串不是配置、不是偏好，是**本页资金口径的定义**：`console0828Model.buildMoneyView`
+ * 的「波及订单 N 张 / 敞口 X 元」只对 `Order` 及其 `value` 求和，别的一概不进算式。
+ * 故「扰动有没有用」在本屏 = **它能不能走到 `Order` 的格上**。
+ *
+ * ⛔ 为什么不放进 `@platform/contracts`：契约层只该回答「图长什么样」（谁能到达谁），
+ *   **不该知道这一屏在算哪门子账** —— 换个屏幕（成本屏 / 产能屏）结论对象就不同。
+ *   把 `Order` 写进契约 = 让通用图论设施替业务页面定结论。
+ *   ⇒ 契约给 `reachesTypes`（通用），本屏给它自己的结论类型（这里），**两侧各答各的**。
+ *
+ * ⛔ 也**不放在 `console0828Model`**：那个文件会 import `ParetoChart`（React 组件树），
+ *   让跨进程的复验脚本没法只取这一个常量 —— 脚本取不到就会自己写一个 `"Order"`，
+ *   于是复刻出来的判据与屏上不是同一份。**放在纯模块里，脚本与屏吃同一个符号。**
+ *
+ * 复验：`buildMoneyView` 读的全是 Order 单/金额；屏上三行拆解的分子分母也全部来自
+ *   订单簿（`bookTotal` / `bookOrders`）。
+ */
+export const CONCLUSION_TYPE = "Order";
+
+/**
+ * 已发布规则 + 本屏的结论对象类型 → **可落点量**表（`typeKey → stateVar` 集合）。
+ *
+ * ── 判据两步，缺一不可（2026-09-29/30 两步都是实测定案，不是推的）──────────────
+ * **① 外生 ∧ 有出边**（契约 `buildCellRoles` 的 `drivable`）—— 扰动留得住、出得去。
+ *   缺外生 ⇒ 引擎每拍按入边重算，实测 `Material.shortageRisk` 打 +30 剩 **0.00e+0**；
+ *   缺出边 ⇒ 留下了也一步传不出去，实测世界差分恒 1 格。
+ * **② 可达结论**（`reachesTypes(...).has(conclusionTypeKey)`）—— 出得去还得**到得了**。
+ *   ⚠ 只做 ① 会漏掉这一类（实测）：`Order.qty` / `Order.leadDays` / `Order.unitPrice`
+ *   入度 0、出度 1，① 判真 —— 但唯一出边指向的 `Model.backlog{QtyTop,HorizonDays,PriceTop}`
+ *   **自己也零出边**，可达集大小 = 1，是与主图不相连的孤岛对。三件事因此给出
+ *   **逐字节相同**的「1 张 / 1.61 亿」，而那一张就是被扰动的那张单本身。
+ *
+ * ⚠ **为什么不是「规则里提到过」**（更早那版）：那个集合大得多也松得多 ——
+ *   实测真后端 55 条边涉及 32 个类型，而两步筛完只剩 **9 格**。「提到过」的格里，
+ *   只作 target 的那些既留不住也传不动，正是「选了、请求 201、然后一动不动」那一形态。
+ *
+ * 复杂度 O(规则数)（可达性是记忆化 DFS）；调用方一次算好复用。
+ */
+export function landableVarsByType(
+  rules: readonly PropagationRule[],
+  conclusionTypeKey: string,
+): ReadonlyMap<string, ReadonlySet<string>> {
+  const roles = buildCellRoles(rules);
+  const m = new Map<string, ReadonlySet<string>>();
+  for (const r of rules) {
+    for (const t of [r.sourceTypeKey, r.targetTypeKey]) {
+      if (m.has(t)) continue; // 先塞空集：`has` 用作「这个类型处理过了」的哨兵，否则可达性会重复算
+      const s = new Set<string>();
+      m.set(t, s);
+      for (const v of roles.drivableStateVarsOf(t)) {
+        if (roles.reachesTypes(t, v).has(conclusionTypeKey)) s.add(v);
+      }
+    }
+  }
+  return m;
+}
 
 /**
  * 把一件事**翻译**成今天真能落的〔类型 · 量〕。
