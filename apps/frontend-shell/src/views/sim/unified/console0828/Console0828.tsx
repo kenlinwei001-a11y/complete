@@ -71,7 +71,7 @@ import {
   type PricingOutcomeItem,
   type SimProposalResponse,
 } from "@/api/endpoints";
-import { BASE_REGISTRY } from "@platform/contracts";
+import { BASE_REGISTRY, simCellKey } from "@platform/contracts";
 import { formatScope } from "../../chainImpediment";
 import {
   BUSINESS_EVENTS,
@@ -79,6 +79,8 @@ import {
   LANDING_ABSENCE_TEXT,
   landableVarsByType,
   resolveLanding,
+  transitTicksToConclusion,
+  zeroReasonKind,
   type BusinessEvent,
   type CatalogCanary,
   type LandingState,
@@ -95,6 +97,7 @@ import {
   candidateRungShort,
   candidateRungWhy,
   IMPEDIMENT_KIND_PLAIN,
+  fmtMagnitude,
   fmtMoney,
   NOCALC_WHY,
   ORDER_STATUS_TEXT,
@@ -389,7 +392,7 @@ function PricingReadout({
         <>
           拨后仍受影响 <b>{outcome.after.touchedOrders}</b> 张 · <b>{fmtMoney(outcome.after.exposureYuan, "元")}</b>
           {" · "}位移 p90{" "}
-          <b>{outcome.after.displacement.deltaMagnitudeP90 === null ? "无实质读数" : outcome.after.displacement.deltaMagnitudeP90.toFixed(2)}</b>
+          <b>{outcome.after.displacement.deltaMagnitudeP90 === null ? "无实质读数" : fmtMagnitude(outcome.after.displacement.deltaMagnitudeP90)}</b>
         </>
       )}
     </p>
@@ -429,7 +432,7 @@ function PricingReadoutDetail({
       {/* PRD §4.2 明定的口径声明文案 —— 一字不落，且 p90 必须用本次真读数，⛔ 不许写死。 */}
       <p className={styles.calibre} data-testid={`c0828-price-claim-${outcome.candidateId}`}>
         口径声明：受影响张数按 0.01 位移门槛计；本次位移 p90 ={" "}
-        {d.deltaMagnitudeP90 === null ? "无实质读数（全部 ≤ 门槛）" : d.deltaMagnitudeP90.toFixed(2)} —— 位移离门槛越近，张数对门槛越敏感。
+        {d.deltaMagnitudeP90 === null ? "无实质读数（全部 ≤ 门槛）" : fmtMagnitude(d.deltaMagnitudeP90)} —— 位移离门槛越近，张数对门槛越敏感。
       </p>
       <p className={styles.calibre}>
         对照（不处置）读数 {outcome.control.touchedOrders} 张 · {fmtMoney(outcome.control.exposureYuan, "元")} —— 差分基准；
@@ -531,6 +534,18 @@ export default function Console0828({
     for (const ev of BUSINESS_EVENTS) out.set(ev.id, resolveLanding(ev, varsByType, countOf));
     return out;
   }, [varsByType, countOf]);
+
+  /**
+   * 每个可落点格 **最快第几拍**才咬得到结论（键 = `simCellKey`）。
+   *
+   * ⚠ 与 `varsByType` 同源（同一份已发布规则），**不是**第二套判据 ——
+   *   `landableVarsByType` 答「够不够得到」，本表答「要几拍」，都由契约 `buildCellRoles` 现算。
+   *   ⛔ 别在组件里自己 walk 图：那正是本仓反复防的第二套真相源。
+   */
+  const transitByCell = useMemo(
+    () => transitTicksToConclusion((rulesQ.data as PropagationRulesResponse | undefined)?.items ?? [], CONCLUSION_TYPE),
+    [rulesQ.data],
+  );
 
   const canary: CatalogCanary = useMemo(() => {
     const landable = [...landings.values()].filter((l) => l.kind === "ok").length;
@@ -920,6 +935,67 @@ export default function Console0828({
     () => (result === null ? null : buildMoneyView(result.deltas, orders, causeOf)),
     [result, orders, causeOf],
   );
+
+  /**
+   * ══ 「被推动的单 = 0」时，**这是哪一种 0** ══════════════════════════════════════
+   *
+   * ── 今天的行为是 X ──
+   * 屏上那个 `0 张` 是**三义合一**的，三条完全不同的真相印成同一个 0：
+   *   ① 图上压根没有通往订单的路（**今天已诚实报出**，走左栏 `no-statevar` 那条路）；
+   *   ② **信号还在路上** —— 本次窗口比「最短到达拍数」短；
+   *   ③ **到了、也在动，但幅度低于判定门槛** —— 有对象在动却全被 `NOISE_FLOOR`（0.01）滤掉。
+   * 三者要用户做的事**恰好相反**：② 加「推演时长」有用，③ 加了也没用（实测设备故障推 12 拍
+   * 订单侧仍只有 8.796e-5，比门槛低 114 倍）。
+   *
+   * ── 应该是 Y ──
+   * 0 必须带出**它是哪一种**，且两个判据都来自**本次真跑出来的数**，⛔ 不猜：
+   *   · ② 用 `transitByCell`（契约现算的下界）与本次 `horizon` 比 —— 只在 `horizon < 下界`
+   *     这个**恒真的方向**上断言（下界说「至少 N 拍」，窗口比它短 ⇒ 一定还没到）；
+   *   · ③ 用 `money.faintOnly`（读数动了、幅度在噪声级的那批）与 `money.magnitude.max`。
+   *     ⚠ 这一格**自 WO-EXPOSURE-MAGNITUDE 起就声明「必须上屏」，此前**零消费方** ——
+   *       本行是它的第一个读者。
+   *
+   * ⛔ 措辞不许出现「无影响」「没有波及」：本次窗口内没读出变化 ≠ 没有影响，
+   *   这两句话在业务上是不同的承诺，而本屏只量得到前者。
+   */
+  const zeroReason = useMemo((): string | null => {
+    if (money === null) return null;
+    const stagedOne = (result?.staged.length ?? 0) === 1 ? result?.staged[0] : undefined;
+    const l = stagedOne === undefined ? undefined : landings.get(stagedOne.eventId);
+    const cell = l !== undefined && l.kind === "ok" ? simCellKey(l.typeKey, l.stateVar) : null;
+    const minTicks = cell === null ? undefined : (transitByCell.get(cell) ?? undefined);
+    // ⛔ 分支判定**不在这里** —— 唯一出处在 `eventCatalog.zeroReasonKind`（屏与复验脚本同一符号）。
+    const kind = zeroReasonKind({
+      exposedOrders: money.exposedOrders,
+      magnitudeMax: money.magnitude.max,
+      minTransitTicks: minTicks,
+      horizon,
+    });
+    if (kind === null) return null;
+    const where = stagedOne === undefined ? "这几件事" : `「${stagedOne.name}」`;
+
+    switch (kind) {
+      case "below-floor": {
+        const mx = money.magnitude.max;
+        return (
+          `${where}传到了订单：${money.faintOnly} 张单的读数在动，最大幅度 ${mx === null ? "—" : fmtMagnitude(mx)}，` +
+          `未越过 0.01 的判定门槛，故不计入「被推动」。门下这批不是「没影响」，是「幅度低于本屏的判定线」。`
+        );
+      }
+      case "in-transit":
+        return (
+          `${where}还没传到订单：这条扰动在传导图上最短 ${String(minTicks)} 拍才咬得到订单，本次只推了 ${horizon} 拍 —— ` +
+          `零不是「没有影响」，是「信号还在路上」。把「推演时长」加到 ${String(minTicks)} 拍或以上再推一次（再往上直到读数不再变，就是这条链条的稳态）。`
+        );
+      case "reached-no-change":
+        return minTicks === undefined || minTicks === null
+          ? `${where}在本次 ${horizon} 拍窗口内，订单侧一格未动（图上这条路径的可达性取不到，无法判断是「没到」还是「被抹平」）。`
+          : `${where}在本次 ${horizon} 拍窗口内，订单侧一格未动。图上最短 ${minTicks} 拍可达、窗口已够得着 —— ` +
+            `走到了但没读出变化：沿途系数连乘把它压到了读数以下。`;
+      case "unreachable":
+        return `${where}在传导图上到不了订单 —— 与左栏「无传导路径」是同一件事，那条路已单独说明。`;
+    }
+  }, [money, result, landings, transitByCell, horizon]);
   const custView = useMemo(
     () => (orders.length === 0 ? null : buildCustomerView(orders, touchedOrderIds)),
     [orders, touchedOrderIds],
@@ -2505,6 +2581,15 @@ export default function Console0828({
                           <span>被推动的单</span>
                           <span className={styles.late}>{money.exposedOrders} 张</span>
                         </li>
+                        {/* 0 必须带出它是哪一种 0（在途 / 门下 / 真没动）—— 否则三条不同真相
+                            印成同一个数，而它们要用户做的事恰好相反。见 `zeroReason` 段头注。 */}
+                        {zeroReason === null ? null : (
+                          <li data-testid="c0828-zero-reason">
+                            <span className={styles.na} style={{ gridColumn: "1 / -1", lineHeight: 1.6 }}>
+                              {zeroReason}
+                            </span>
+                          </li>
+                        )}
                         {/* WO-EXPOSURE-STATUS：排除掉的那批必须上屏。只报 150 不报「另有 350 已完成
                             不计入」，读者无法判断少掉的单去哪了 —— 那和原来报 500 一样不可核。 */}
                         {money.settledExcluded > 0 ? (
@@ -2517,10 +2602,11 @@ export default function Console0828({
                             不是「动多少」），换扰动不变。真正随扰动变的是**幅度分布**，必须上屏，
                             否则屏上那个 150 读起来像「这次影响了 150 张」，而它其实是「全集」。 */}
                         {money.magnitude.max !== null ? (
-                          <li>
+                          <li data-testid="c0828-magnitude">
                             <span>变化幅度 p90 / 最大</span>
                             <span className={styles.mono}>
-                              {money.magnitude.deltaMagnitudeP90?.toFixed(2) ?? "—"} / {money.magnitude.max.toFixed(2)}
+                              {money.magnitude.deltaMagnitudeP90 === null ? "—" : fmtMagnitude(money.magnitude.deltaMagnitudeP90)} /{" "}
+                              {fmtMagnitude(money.magnitude.max)}
                             </span>
                           </li>
                         ) : null}

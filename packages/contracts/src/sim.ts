@@ -798,6 +798,28 @@ export interface CellRoles {
    * 拼格键的规则留在本包内（⛔ 消费方不许自己 `split(".")`）。
    */
   reachesTypes(typeKey: string, stateVar: string): ReadonlySet<string>;
+  /**
+   * 从这一格到 `toTypeKey` **任意一格**的**最短到达拍数**；到不了 ⇒ `null`。
+   *
+   * ── 为什么落点判据还需要第三个量（2026-09-30 实测）─────────────────────────
+   * `reachesTypes` 答的是「**够不够得到**」，它**不含时间**。于是「可达」被读成了
+   * 「本次推演里会到达」，而引擎里每一跳都要吃掉一拍：
+   *   `propagation.ts` 的 `arriveTick = releaseTick + rule.delayTicks`，且下游边**只在源非零时**
+   *   才放行 ⇒ 源必须先在上一拍变成非零，第 k 跳的目标最早在第 k 拍非零。
+   * ⇒ 代价 = **每条边 1 拍 + 该边自己的 `delayTicks`**。
+   *
+   * 真后端实测四臂，公式与「订单侧首动于第几拍」**逐臂精确吻合**（见下方 `?? 0` 注）：
+   *   预测偏差 1/1 · 原材料涨价 2/2 · 物料到货延迟 3/3 · 设备故障 6/6（5 跳 + 1 延迟）。
+   * 不吻合的那一臂当场推翻公式（第一版只累加 `delayTicks`、不算跳数，四条臂**全错**：
+   * 算出 1/2/0/1，实测 6/3/3/1 —— 差的那部分正是「每跳一拍」）。
+   *
+   * ⚠ **这是下界，不是预言**：系数连乘小到 `round12` 归零、`clamp` 夹到 0、闸门未开、
+   *   源在到达前就被衰减抹平 —— 任一条都会让实际到达**更晚或永远不到**。
+   *   ⇒ 消费方只许在**一个方向**上用它（那个方向下它恒真）：
+   *   **`窗口 < 最短` ⇒ 「本次窗口内不可能到达」是确定的**；
+   *   反过来说「窗口 ≥ 最短 ⇒ 一定会到达」是错的，⛔ 不许那么用。
+   */
+  minTransitTicksTo(typeKey: string, stateVar: string, toTypeKey: string): number | null;
 }
 
 /** `buildCellRoles` 只读这四个字段 —— 用 `Pick` 而非整个 `PropagationRule`，
@@ -805,7 +827,17 @@ export interface CellRoles {
 export type CellRoleRule = Pick<
   PropagationRule,
   "sourceTypeKey" | "sourceStateVar" | "targetTypeKey" | "targetStateVar"
->;
+> & {
+  /**
+   * 该边的行程延迟（拍）。**可选**，理由与 `PropagationRule.version` 那段同源：
+   * `repo/pg.ts` 是 `row.doc as PropagationRule` **裸 cast、不过 zod parse**，
+   * 本字段引入前落库的行读回来就是 `undefined`。声明成必填等于对读回路撒谎。
+   *
+   * 缺失一律读作 **0** —— 那不是"给个默认值"，是与本字段引入前的行为对齐：
+   * 那时边是**即时到达**的，等价于 `delayTicks = 0`。
+   */
+  readonly delayTicks?: number;
+};
 
 /**
  * 从传导规则现算每个格的角色。**纯函数**（R6 确定性）。
@@ -871,6 +903,45 @@ export function buildCellRoles(rules: readonly CellRoleRule[]): CellRoles {
     return seen;
   };
 
+  // ── 到达拍数：代价 = **1 拍/边** + 该边 `delayTicks` ──────────────────────
+  // ① 「每跳一拍」的出处不是估的：下游边有 `if (sourceVal === 0) continue`，
+  //    而源最早在**上一拍**才变成非零 ⇒ 第 k 跳的目标最早第 k 拍非零。
+  // ② `delayTicks` 是在此之上额外等的（`arriveTick = releaseTick + rule.delayTicks`）。
+  const costed = new Map<string, { to: string; c: number }[]>();
+  for (const r of rules) {
+    const from = simCellKey(r.sourceTypeKey, r.sourceStateVar);
+    const to = simCellKey(r.targetTypeKey, r.targetStateVar);
+    const c = 1 + (r.delayTicks ?? 0);
+    const a = costed.get(from);
+    if (a === undefined) costed.set(from, [{ to, c }]);
+    else {
+      const hit = a.find((e) => e.to === to);
+      // 同一对格有多条边 ⇒ 取**最快**那条（下界语义：任意一条通就够了）
+      if (hit === undefined) a.push({ to, c });
+      else if (c < hit.c) hit.c = c;
+    }
+  }
+  /** 记忆化：一次 build 内每个起点最多跑一次。 */
+  const distCache = new Map<string, ReadonlyMap<string, number>>();
+  const distFrom = (start: string): ReadonlyMap<string, number> => {
+    const cached = distCache.get(start);
+    if (cached !== undefined) return cached;
+    const dist = new Map<string, number>([[start, 0]]);
+    // 松弛到不再变小。边权恒 ≥1（整数）⇒ 严格递减且有下界 ⇒ 必停，故**不设轮数上限**
+    // （设了就是一个静默截断：图一大就悄悄给错数，而屏上照样打印）。
+    for (let changed = true; changed; ) {
+      changed = false;
+      for (const [k, d] of [...dist]) {
+        for (const e of costed.get(k) ?? []) {
+          const nd = d + e.c;
+          if (nd < (dist.get(e.to) ?? Number.POSITIVE_INFINITY)) { dist.set(e.to, nd); changed = true; }
+        }
+      }
+    }
+    distCache.set(start, dist);
+    return dist;
+  };
+
   const roleOf = (typeKey: string, stateVar: string): CellRole | undefined => roles.get(simCellKey(typeKey, stateVar));
   /** 规范键 → 类型名。`simCellKey` 的逆，**只在本包内用**（消费方拿 `reachesTypes`）。 */
   const typeOfKey = (key: string): string => key.slice(0, key.indexOf("."));
@@ -886,6 +957,14 @@ export function buildCellRoles(rules: readonly CellRoleRule[]): CellRoles {
       const s = new Set<string>();
       for (const k of descendantsRaw(simCellKey(typeKey, stateVar))) s.add(typeOfKey(k));
       return s;
+    },
+    minTransitTicksTo: (typeKey, stateVar, toTypeKey) => {
+      let best: number | null = null;
+      for (const [k, v] of distFrom(simCellKey(typeKey, stateVar))) {
+        if (typeOfKey(k) !== toTypeKey) continue;
+        if (best === null || v < best) best = v;
+      }
+      return best;
     },
   };
 }

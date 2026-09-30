@@ -1,4 +1,4 @@
-import { buildCellRoles, type PropagationRule } from "@platform/contracts";
+import { buildCellRoles, simCellKey, type PropagationRule } from "@platform/contracts";
 
 /**
  * ══ WO-SIM-CONSOLE-0828 · 区① 左栏「**12 件事**」的登记表 ═══════════════════════
@@ -422,6 +422,84 @@ export function landableVarsByType(
     }
   }
   return m;
+}
+
+/**
+ * 「这个落点**最快第几拍**才咬得到结论」—— 判据 ② 的**带时间版本**。
+ *
+ * ── 为什么落点判据够了、这个还得单独给（2026-09-30 实测）────────────────────
+ * `landableVarsByType` 的 ② 答的是「**够不够得到**」，它**不含时间**。于是屏上把
+ * 「可达」读成了「本次推演里会到达」，而默认窗口只有 **3 拍**、引擎每跳要吃一拍。
+ * 实测两条零臂因此都报「0 张」而真相完全不同：
+ *   · 物料到货延迟：第 3 拍**到了**订单，幅度 4.78e-3 < 门槛 0.01（第 5 拍全过线）—— 差 **2 拍**；
+ *   · 设备故障：到订单要 **6 拍**（5 跳 + 1 延迟），3 拍时信号还停在 `Process.queuePressure`。
+ * 两者在屏上是**逐字节相同**的「0 张 / 0.00」，而可采取的动作完全不同（一个加拍数、一个加也没用）。
+ *
+ * ⇒ 返回值 = 契约 `minTransitTicksTo` 现算的**最短到达拍数**（下界，含义见那边的注）。
+ *   契约层只答「这条格到那条格」，**「结论是哪一型」由本屏定**（`conclusionTypeKey` 传进来）。
+ *
+ * ⛔ 只许用在**下界成立的那个方向**：`窗口 < 最短 ⇒ 本次窗口内到不了`（恒真）。
+ *   反过来说 `窗口 ≥ 最短 ⇒ 一定会到`是**错的**（系数连乘/钳制/闸门都会让它更晚或永远不到）。
+ *
+ * 复杂度 O(规则数 + 可落点格数 × 图规模)；调用方一次算好复用。
+ */
+export function transitTicksToConclusion(
+  rules: readonly PropagationRule[],
+  conclusionTypeKey: string,
+): ReadonlyMap<string, number | null> {
+  const roles = buildCellRoles(rules);
+  const m = new Map<string, number | null>();
+  for (const r of rules) {
+    for (const t of [r.sourceTypeKey, r.targetTypeKey]) {
+      if (m.has(t)) continue; // 同 `landableVarsByType`：`has` 兼作「这一型处理过了」的哨兵
+      for (const v of roles.drivableStateVarsOf(t)) m.set(simCellKey(t, v), roles.minTransitTicksTo(t, v, conclusionTypeKey));
+    }
+  }
+  return m;
+}
+
+/**
+ * 「被推动的单 = 0」时，**这是哪一种 0**。判据是它，文案在屏上。
+ *
+ * ── 为什么必须是一个具名判据、而不是散在组件里的 if（2026-09-30）──────────────
+ * 跨进程的复验脚本要能说出「真后端的 12 件事各自落在哪一档」——判据留在组件里，
+ * 脚本就只能**复刻**一遍分支，而复刻出来的清单不度量屏上那个数（本仓记过这笔账）。
+ * ⇒ 与 `landableVarsByType` 同一条纪律：**判据唯一出处在本文件**，屏与脚本都 import 它。
+ *
+ * ⚠ 四档的**先后顺序是判据的一部分**，不许重排：
+ *   · 先看 `exposedOrders` —— 非 0 就没有「为什么是 0」这道题；
+ *   · 再看 `magnitudeMax` —— **有幅度读数就证明订单侧真的动过**，那比「图上几拍」
+ *     更硬（前者是本次实测，后者是图论下界）。实测物料到货延迟在默认 3 拍**正好**
+ *     `minTransit = 3 = horizon`（不满足 `>`），若把「在途」判在前面，它会落进「够得着却没动」
+ *     —— 而事实是它在动、只是没过门槛。顺序反了就会把有证据的那一档盖掉。
+ *   · `minTransit === null`（图上到不了）⇒ `unreachable`：与左栏 `no-statevar` 是两件事，
+ *     但**都表示「这次扰动没有落点」**，故屏上复用那句话，不再自己编一句。
+ */
+export type ZeroReasonKind =
+  /** 订单读数在动，但每张的最大幅度没过判定门槛。 */
+  | "below-floor"
+  /** 本次窗口短于图上最短到达拍数 —— 信号还在路上（**下界方向恒真**）。 */
+  | "in-transit"
+  /** 窗口够得着、也推够了，订单侧却一格未动（被沿途系数连乘抹平）。 */
+  | "reached-no-change"
+  /** 图上压根到不了结论类型 —— 与左栏 `no-statevar` 同一件事，屏上不另编话术。 */
+  | "unreachable";
+
+export function zeroReasonKind(input: {
+  /** 过门槛、被计入「被推动」的张数。非 0 ⇒ 没有这道题。 */
+  readonly exposedOrders: number;
+  /** 订单侧各单最大 |Δ|；`null` = 订单侧一格未动。 */
+  readonly magnitudeMax: number | null;
+  /** `transitTicksToConclusion` 的取值；`undefined` = 这个格压根没进表。 */
+  readonly minTransitTicks: number | null | undefined;
+  readonly horizon: number;
+}): ZeroReasonKind | null {
+  if (input.exposedOrders !== 0) return null;
+  if (input.magnitudeMax !== null) return "below-floor";
+  const t = input.minTransitTicks;
+  if (t === undefined) return "reached-no-change"; // 进不了表 ⇒ 不是落点，交给左栏那条路
+  if (t === null) return "unreachable";
+  return t > input.horizon ? "in-transit" : "reached-no-change";
 }
 
 /**

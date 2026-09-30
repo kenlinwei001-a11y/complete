@@ -87,6 +87,12 @@ interface Edge {
   sourceStateVar: string;
   targetTypeKey: string;
   targetStateVar: string;
+  /**
+   * 该边的行程延迟（拍）。缺省 0 —— 与 `rulesFromEdges` 引入本字段前逐字节同。
+   * ⑭b 拿它当**唯一被拨动的那一个变量**：只改这一个数，「最短到达拍数」必须跟着变，
+   * 否则屏上那个「最短 N 拍」就不是从图上算出来的（编的、常量、或者压根没算）。
+   */
+  delayTicks?: number;
 }
 
 /**
@@ -128,7 +134,7 @@ function rulesFromEdges(edges: readonly Edge[]): PropagationRule[] {
     targetTypeKey: e.targetTypeKey,
     targetStateVar: e.targetStateVar,
     coefficient: 0.65,
-    delayTicks: 0,
+    delayTicks: e.delayTicks ?? 0,
     combine: "sum",
     decay: null,
     clamp: null,
@@ -254,6 +260,15 @@ const WORLD_AFTER = {
   ord_3: { costPressure: 30 },
   mat_licarb: { priceShock: 20 },
 };
+/**
+ * 「推完那一态」的**可拨版本**（默认就是上面那个常量）。
+ *
+ * ⑬/⑭ 要造的是**订单侧幅度落在门槛之下**那一档（实测真后端：物料到货延迟 3 拍时
+ * 150 张单全在 4.783e-3，被 0.01 的门槛滤干净 ⇒ 屏上「0 张 / 0.00」）。
+ * ⛔ 不是新造一套夹具：默认值仍是 `WORLD_AFTER`，只有那两条用例拨它，
+ *   `beforeEach` 复位 —— 拨动幅度是这两条用例**唯一**与被测行为有关的那一个变量。
+ */
+let worldAfter: typeof WORLD_AFTER = WORLD_AFTER;
 
 /**
  * 披露层回包 —— **真后端一次真跑的原样回包**，不是手写夹具（复用既有
@@ -388,7 +403,7 @@ vi.mock("@/api/endpoints", () => ({
   ]),
   simWorld: vi.fn(async () => ({
     tick: perturbCalls.length === 0 ? 0 : 3,
-    state: perturbCalls.length === 0 ? WORLD_BEFORE : WORLD_AFTER,
+    state: perturbCalls.length === 0 ? WORLD_BEFORE : worldAfter,
   })),
   /* WO-EXPOSURE-CONTRIB：对照世界桩。`runM` 的差分基准 = 它的 `counterfactualState`
      （同会话 active 规则集 · 同 N 拍 · 无本批扰动）。桩成 `WORLD_BEFORE` ⇒ 差分与
@@ -410,7 +425,7 @@ vi.mock("@/api/endpoints", () => ({
   }),
   simTick: vi.fn(async (_sid: string, n: number) => {
     if (tickFails) throw new Error("推进这一跳没走通（桩：本用例刻意不回）");
-    return { curTick: n, state: WORLD_AFTER, disclosure: DISCLOSURE };
+    return { curTick: n, state: worldAfter, disclosure: DISCLOSURE };
   }),
   // WO-C0828-P2：定价读数是只读触发（选中卡点即调），桩回空清单 ⇒ 候选卡如实显示「未定价」，
   // 不侵入既有断言。⛔ 缺这一条的话组件拿到 undefined 当场抛错（手写导出清单不会自动跟上，见下注）。
@@ -524,6 +539,7 @@ beforeEach(() => {
   sessionCreatedAtRaw = "2026-09-10T00:00:00.000Z";
   withCandidates = false;
   pricingOutcomeFactory = null;
+  worldAfter = WORLD_AFTER;
 });
 afterEach(cleanup);
 
@@ -841,6 +857,110 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     const cause = screen.getByTestId("c0828-maincause").textContent ?? "";
     expect(cause).toContain("无法归因到单一事件");
     expect(cause).not.toContain("原材料涨价");
+  });
+
+  /**
+   * ══ ⑬⑭ 「0 张」必须带出它是哪一种 0 ══════════════════════════════════════════════
+   *
+   * ── 这四条臂治的是什么（2026-09-30 · 真后端实测逼出来的）───────────────────────
+   * 用户问「物料到货延迟、设备故障为何没有被推动单」。实测两条零臂**病因相反**：
+   *   · 物料到货延迟：第 3 拍**到了**订单，150 张全在动，幅度 **4.783e-3** —— 跨不过 0.01
+   *     的门槛，屏上报「0 张」；**第 5 拍起 150 张全过线**（加推演时长有用）。
+   *   · 设备故障：到订单要 **6 拍**（5 跳 + 1 延迟），3 拍时信号还在 `Process.queuePressure`；
+   *     **推到 12 拍订单侧也只有 8.796e-5**，比门槛低 114 倍（加推演时长没用）。
+   * 两者在改前屏上**逐字节相同**：「0 张 / 0.00 / 0.00」。而它们要做的事**恰好相反**。
+   *
+   * ── 每条臂咬的那一条，以及它凭什么会红 ──────────────────────────────────────
+   *  ⑬ 门下档：订单侧动了、幅度 0.0048 < 门槛 ⇒ 必须说「传到了订单」并给出真幅度。
+   *     **两条断言各自独立会红**：① 文案分支走错；② `fmtMagnitude` 退回 `toFixed(2)`
+   *     ⇒ 印成「0.00 / 0.00」，与「一格没动」同形（这正是本条要拆的那个假象）。
+   *  ⑭ 在途档：窗口 1 < 图上最短 2 拍 ⇒ 必须说「还没传到订单」且点到具体拍数。
+   *  ⑭b **反向金丝雀**：只把进 `Order` 那条边的 `delayTicks` 从 0 改成 5（跳数不变），
+   *     「最短」必须从 2 变成 **7**。⇒ 若那个数是从图上算的，它跟着动；若是编的/常量/
+   *     压根没算，这条当场红。⑭ 与 ⑭b 一起还证明**判据不是「有边就报到达」**。
+   *  ⑭c 够得着却没动档：窗口 3 ≥ 最短 2 ⇒ **不许**再说「还没传到」，必须换成第三句
+   *     （走到了但没读出变化）。⇒ ⑭/⑭b 的文案不是无条件成立的套话。
+   */
+  it("⑬ 门下档：订单在动但幅度没过门槛 ⇒ 必须说「传到了订单」并印出真幅度（⛔ 不许印成 0.00）", async () => {
+    // 每张单都动，但幅度都在 0.01 的门槛之下（真后端物料到货延迟 3 拍那一档的量级）。
+    worldAfter = {
+      ord_1: { costPressure: 10 + 0.0048 },
+      ord_2: { costPressure: 20 + 0.0031 },
+      ord_3: { costPressure: 30 },
+      mat_licarb: { priceShock: 20 },
+    };
+    mount();
+    await railReady();
+    await addEvent("material-price-up", "mat_licarb", 15);
+    fireEvent.click(screen.getByTestId("c0828-go"));
+    await screen.findByTestId("c0828-money");
+
+    // 主数字仍是 0（门槛语义不变）—— 本条**不**改判据，只改「0 有没有把话说完」。
+    const reason = screen.getByTestId("c0828-zero-reason").textContent ?? "";
+    expect(reason).toContain("传到了订单");
+    expect(reason).toContain("2 张单的读数在动");
+    expect(reason).toContain("0.0048");
+    expect(reason).toContain("门槛");
+    // 说清门下这批**不是**「没影响」—— 那是本屏量不到的承诺。
+    expect(reason).toContain("不是「没影响」");
+
+    /* 精度金丝雀：改前这里是「0.00 / 0.00」，而 4.783e-3 与「一格没动」在屏上同形。
+       ⛔ 只咬「不含 0.00 / 0.00」不够 —— 那一行若整块消失也会绿。两条一起咬。 */
+    const magRow = screen.getByTestId("c0828-magnitude").textContent ?? "";
+    expect(magRow).toContain("0.0048 / 0.0048");
+    expect(magRow).not.toContain("0.00 / 0.00");
+  });
+
+  it("⑭ 在途档：窗口短于图上最短到达拍数 ⇒ 必须说「还没传到订单」并点到具体拍数", async () => {
+    worldAfter = WORLD_BEFORE; // 订单侧一格未动
+    mount();
+    await railReady();
+    await addEvent("material-price-up", "mat_licarb", 15);
+    // 落点 Material.priceShock → Model.costPressure → Order.costPressure = **2 跳**、无延迟。
+    fireEvent.change(screen.getByTestId("c0828-horizon"), { target: { value: "1" } });
+    fireEvent.click(screen.getByTestId("c0828-go"));
+    await screen.findByTestId("c0828-money");
+
+    const reason = screen.getByTestId("c0828-zero-reason").textContent ?? "";
+    expect(reason).toContain("还没传到订单");
+    expect(reason).toContain("最短 2 拍");
+    expect(reason).toContain("只推了 1 拍");
+    // ⛔ 不许说成「没有传导路径」—— 那是左栏 `no-statevar` 那件事的措辞，两件事完全不同。
+    expect(reason).not.toContain("无传导路径");
+  });
+
+  it("⑭b 反向金丝雀：只把进 Order 那条边的 delayTicks 拨到 5，「最短」必须从 2 变成 7", async () => {
+    edges = baseEdges().map((e) => (e.targetTypeKey === "Order" && e.sourceStateVar === "costPressure" ? { ...e, delayTicks: 5 } : e));
+    // 金丝雀：拨的确实是那条边（没拨到 0 条，也没拨到一堆）。
+    expect(edges.filter((e) => (e.delayTicks ?? 0) > 0)).toHaveLength(1);
+    worldAfter = WORLD_BEFORE;
+    mount();
+    await railReady();
+    await addEvent("material-price-up", "mat_licarb", 15);
+    fireEvent.click(screen.getByTestId("c0828-go")); // 窗口仍是默认 3
+    await screen.findByTestId("c0828-money");
+
+    // 跳数没变（仍是 2 跳），只有那一条边的延迟变了 ⇒ 2 → 1 + (1+5) = 7。
+    // 那个数若来自图，它跟着动；若是编的/常量/没算，这里当场红。
+    const reason = screen.getByTestId("c0828-zero-reason").textContent ?? "";
+    expect(reason).toContain("最短 7 拍");
+    expect(reason).not.toContain("最短 2 拍");
+    expect(reason).toContain("只推了 3 拍");
+  });
+
+  it("⑭c 够得着却没动档：窗口已覆盖最短拍数 ⇒ 不许再说「还没传到」，必须换成第三句", async () => {
+    worldAfter = WORLD_BEFORE;
+    mount();
+    await railReady();
+    await addEvent("material-price-up", "mat_licarb", 15);
+    fireEvent.click(screen.getByTestId("c0828-go")); // 默认窗口 3 ≥ 最短 2
+    await screen.findByTestId("c0828-money");
+
+    const reason = screen.getByTestId("c0828-zero-reason").textContent ?? "";
+    expect(reason).toContain("一格未动");
+    expect(reason).toContain("最短 2 拍可达、窗口已够得着");
+    // 这两句是**互斥**的：够得着还说「还没传到」就是把责任推给一个不存在的原因。
+    expect(reason).not.toContain("还没传到订单");
   });
 
   it("⑤ 诚实态 · 三行钱：算不出来的画「这次算不出来」——⛔ 不许显示 0，也不许留空", async () => {
