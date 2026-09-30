@@ -5,6 +5,8 @@ import { stateVarDomains } from "../synthetic/battery.js";
 import { cadenceFromProps } from "../synthetic/cadence.js";
 import { buildPairWeights, type PairWeightReport } from "./pair-weights.js";
 import { listSimWorldObjects } from "./seed-world.js";
+import { AssemblyMemo, assemblyMemoStats, deepFreeze, stableStringify } from "./assembly-memo.js";
+import { rulesFingerprint } from "./rules-fingerprint.js";
 import {
   buildCadenceGates,
   scopePropagationGraph,
@@ -91,12 +93,38 @@ export interface PropagationInputs {
  *   屏上看到的是"这条边今天没动"，而不是"有人漏传了一个参数"。必填 ⇒ **typecheck 当场报红**，
  *   机器先说话。（同源教训：本仓有过「Trial Tick 另抄一份装配」导致两处输入不同源的账。）
  */
+/**
+ * 进程级装配备忘录 —— 病历、为什么安全、为什么**不会**给出旧世界，全在 `assembly-memo.ts` 头注。
+ *
+ * ⚠ 模块级常量而不是 `buildApp` 里的局部量：装配的**唯一入口**是下面这个函数，
+ *   备忘录跟着它走，才不会出现「两个 app 实例各一份缓存」那种第二真相源。
+ */
+const assemblyMemo = new AssemblyMemo<PropagationInputs>(4);
+
 export async function buildPropagationInputs(
   repos: Repos,
   c: AuthCtx,
   scope: ResolvedSimScope,
   rules: readonly PropagationRule[],
 ): Promise<PropagationInputs> {
+  // ── 复用判据：世界修订号 × 规则内容指纹 × 范围 ────────────────────────────────
+  // 三者都没变 ⇒ 这一跑的产物与上一跑**逐字节相同**，直接还回去（实测省掉 1374ms 里的绝大部分）。
+  const revs = await Promise.all([
+    repos.objects.revision(c.tenantId),
+    repos.links.revision(c.tenantId),
+    repos.ontologyTypes.revision(c.tenantId),
+  ]);
+  // ⚠ 三个仓**都要**给得出修订号才缓存：任一个回 `null`（pg 模式）⇒ 整体退回不缓存。
+  //   不许「拿两个真的 + 一个已知不可信的凑合」—— 判据上有一个洞，缓存就会从那个洞漏出旧世界。
+  const worldRev =
+    revs.some((r) => r === null) ? null : `${revs.join("|")}|${rulesFingerprint(rules)}`;
+  const memoKey = worldRev === null ? null : `${c.tenantId} ${stableStringify(scope)}`;
+  if (memoKey === null || worldRev === null) {
+    assemblyMemoStats.skipped += 1;
+  } else {
+    const hit = assemblyMemo.get(memoKey, worldRev);
+    if (hit !== null) return hit;
+  }
   // 物化图（走正门 R16/R4：从本体库读已物化对象 + 链路，任意行业；零硬编码）。
   //
   // ⚠ 成员集合走 `listSimWorldObjects`**唯一物化入口**（2026-09-15，来历见该函数头注）：
@@ -125,7 +153,7 @@ export async function buildPropagationInputs(
   // 吃的是**已裁剪的图**（`scoped.graph`）：权重只铺范围内的对，否则局部推演会拿到一张
   // 按全域算出来的表 —— 那就是范围裁剪白做了（#129 原样病样的另一种长法）。
   const pw = await buildPairWeights(repos, c.tenantId, rules, scoped.graph);
-  return {
+  const out: PropagationInputs = {
     graph: scoped.graph,
     scopeReport: scoped.report,
     ruleParams,
@@ -138,4 +166,23 @@ export async function buildPropagationInputs(
     // λ 本身**不在这里**——它由引擎经 `decayRef` 从上面那份 `ruleParams` 里现读（改 C35 即改推演）。
     stateVarDomains: stateVarDomains(),
   };
+  // 命中时多个请求共用**同一个实例** ⇒ 把「只读」从约定升级成机器先说话：谁就地改它，
+  // 当场 TypeError，而不是静默污染后面每一个请求（今天所有消费方都只读，逐条核过 —— 见
+  // `assembly-memo.ts` 头注 ③；`propagation.ts` 那处排序是 `[...graph.objects].sort`，先拷后排）。
+  //
+  // ⛔ 冻的是**这一跑新造出来的**那几份集合 —— 它们本来就每次都是新的，现在才被跨请求共享。
+  //   `stateVarDomains()` **刻意不冻**：它回的是模块级共享常量 `STATE_VAR_DOMAINS`，
+  //   冻它等于顺手改了**别人的**全局，超出本单半径（那份常数本来就被所有调用方共享，
+  //   不是本备忘录新引入的共享面）。
+  deepFreeze(out.graph);
+  deepFreeze(out.ruleParams);
+  deepFreeze(out.cadenceGates);
+  deepFreeze(out.gateSkipped);
+  deepFreeze(out.pairWeights);
+  deepFreeze(out.pairWeightReport);
+  deepFreeze(out.scopeReport);
+  // ⚠ 无判据（pg 模式）时也照样冻：契约必须在两种模式下**同款**，否则「改一下会不会炸」
+  //   在内存模式响、在 pg 模式静默 —— 那又是一种看不出来的差别。
+  if (memoKey !== null && worldRev !== null) assemblyMemo.put(memoKey, worldRev, out);
+  return out;
 }

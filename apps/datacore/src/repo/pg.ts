@@ -308,6 +308,22 @@ export class PgStore<T extends { id: string; tenantId: string }> implements Stor
     protected extraColumns: (item: T) => Record<string, string> = () => ({}),
   ) {}
 
+  /**
+   * ⛔ **恒回 `null`：本实现给不出全量写入信号。**
+   *
+   * 内存实现那边这个数是真的（`MemStore` 是那份 `items` 的唯一改写者 ⇒ 计数器全量）。
+   * pg 侧不行：写入可能来自**别的进程**（多副本部署），本进程自增的计数器**看不见它们**
+   * ⇒ 拿它当缓存判据会读到旧世界，而屏上**看不出来**（本仓反复栽的静默错答）。
+   *
+   * 为什么不索性用一条 SQL 现算（如 `SELECT max(updated_at)`）：那条路要求**每一张表**
+   * 都有可信的 `updated_at` 且在**每一次**语义变更时都动 —— 又是一处「靠约定守着」的判据。
+   * 给不出就诚实说给不出：调用方（`buildPropagationInputs`）见到 `null` 会**退回不缓存**
+   * —— 慢一点，但一定对。与 `gateSkipped` / `UnresolvedPairWeight` 是同一种诚实报缺。
+   */
+  async revision(): Promise<number | null> {
+    return null;
+  }
+
   async get(tenantId: string, id: string): Promise<T | undefined> {
     const r = await this.pool.query(
       `SELECT doc FROM ${this.table} WHERE id = $1 AND tenant_id = $2`,

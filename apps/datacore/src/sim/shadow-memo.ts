@@ -52,6 +52,7 @@ import type {
   RuleParamLookup,
 } from "./propagation.js";
 import type { PropagationRule } from "@platform/contracts";
+import { rulesFingerprint } from "./rules-fingerprint.js";
 
 /** 影子线在某一拍上的**全部**状态（态 + 延迟队列）。两者必须成对，故合成一个值。 */
 export interface ShadowSnapshot {
@@ -109,16 +110,12 @@ export function shadowFingerprint(i: {
   for (const o of i.graph.objects) h.update(`${o.id}${SEP}${o.typeKey}${SEP}`);
   h.update(`l${i.graph.links.length}${SEP}`);
   for (const l of i.graph.links) h.update(`${l.fromId}${SEP}${l.toId}${SEP}${l.linkKey}${SEP}`);
-  h.update(`r${i.rules.length}${SEP}`);
-  for (const r of i.rules) {
-    // ⚠ 这里**没有** `r.params`：引擎侧的 `PropagationRule` 上不带它（那是 Rule 领域类型上的字段），
-    //   规则参数是经 `ruleParams` 那张查找表喂进引擎的 —— 而那张表就在下面被哈希了。
-    h.update(
-      `${r.key}${SEP}${String(r.coefficient)}${SEP}${String(r.delayTicks)}${SEP}${r.combine}${SEP}` +
-        `${String(r.decay)}${SEP}${JSON.stringify(r.clamp)}${SEP}${String(r.coefficientRef)}${SEP}` +
-        `${String(r.cadenceNodeId)}${SEP}${r.status}${SEP}${JSON.stringify(r.reaction ?? null)}${SEP}`,
-    );
-  }
+  // 规则集走**共用的**指纹实现（`rules-fingerprint.ts`）——与装配备忘录同一份。
+  // 各写一份就是两套真相源：将来给 `PropagationRule` 加字段，改了这边漏了那边，
+  // 漏的那侧会「规则变了却仍然命中」，而屏上看不出来。
+  // ⚠ 它**不含** `r.params`：引擎侧的 `PropagationRule` 上不带它（那是 Rule 领域类型上的字段），
+  //   规则参数是经 `ruleParams` 那张查找表喂进引擎的 —— 而那张表就在下面被哈希了。
+  h.update(rulesFingerprint(i.rules));
   // 下面三张查找表按**键排序**后再哈希：它们的键集由上面的图与规则决定，
   // 排序只是消掉「同内容不同遍历序」这种假差异（这三张表都很小）。
   for (const k of Object.keys(i.ruleParams).sort()) {

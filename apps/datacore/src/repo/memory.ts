@@ -275,6 +275,24 @@ function memKey(tenantId: string, id: string): string {
 class MemStore<T extends { id: string; tenantId: string }> implements Store<T> {
   protected items = new Map<string, T>();
 
+  /**
+   * 租户级写入修订号（见 `repo.ts` 上 `Store.revision` 的接口注释）。
+   *
+   * ⚠ 内存实现里它是**全量**的 —— 本类（及其子类的 `removeWhere`）是这份 `items` 的
+   *   唯一改写者。谁要再加一条直接改 `this.items` 的路，**必须同时 `bump`**，
+   *   否则装配备忘录会吃旧世界；`assembly-memo.seam.test.ts` §4 用**写入后必须失效**
+   *   的对照实验咬着这一条（不是靠这段注释）。
+   */
+  private readonly revs = new Map<string, number>();
+
+  async revision(tenantId: string): Promise<number | null> {
+    return this.revs.get(tenantId) ?? 0;
+  }
+
+  protected bump(tenantId: string): void {
+    this.revs.set(tenantId, (this.revs.get(tenantId) ?? 0) + 1);
+  }
+
   async get(tenantId: string, id: string): Promise<T | undefined> {
     const item = this.items.get(memKey(tenantId, id));
     if (!item) return undefined;
@@ -283,6 +301,7 @@ class MemStore<T extends { id: string; tenantId: string }> implements Store<T> {
 
   async put(item: T): Promise<void> {
     this.items.set(memKey(item.tenantId, item.id), clone(item));
+    this.bump(item.tenantId);
   }
 
   /**
@@ -293,11 +312,15 @@ class MemStore<T extends { id: string; tenantId: string }> implements Store<T> {
    * 真正省 round-trip 的是 PgStore.putMany —— 见 repo.ts 上的接口注释。
    */
   async putMany(items: T[]): Promise<void> {
-    for (const item of items) this.items.set(memKey(item.tenantId, item.id), clone(item));
+    for (const item of items) {
+      this.items.set(memKey(item.tenantId, item.id), clone(item));
+      this.bump(item.tenantId);
+    }
   }
 
   async remove(tenantId: string, id: string): Promise<void> {
     this.items.delete(memKey(tenantId, id));
+    this.bump(tenantId);
   }
 
   async list(tenantId: string, pred?: (t: T) => boolean): Promise<T[]> {
@@ -341,6 +364,7 @@ class MemExecutionLockStore extends MemStore<ExecutionLockRecord> implements Exe
       rerunRequested: false,
     };
     this.items.set(key, clone(rec));
+    this.bump(input.tenantId);
     return clone(rec);
   }
 }
@@ -370,6 +394,7 @@ class MemObjectStore extends MemStore<ObjectInstance> implements ObjectStore {
         n++;
       }
     }
+    if (n > 0) this.bump(tenantId);
     return n;
   }
 }
@@ -383,6 +408,7 @@ class MemLinkStore extends MemStore<LinkInstance> implements LinkStore {
         n++;
       }
     }
+    if (n > 0) this.bump(tenantId);
     return n;
   }
 }
