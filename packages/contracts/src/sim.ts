@@ -731,9 +731,12 @@ export interface CellRole {
    *  · 缺 `outDegree>0` ⇒ 留住了也一步传不出去（`QualityLot.inspectBacklog` /
    *    `CustomerLocation.deliveryHoldRisk`，实测世界差分恒为 1 格）。
    *
-   * ⚠ 这是**落点的必要条件，不是「结论一定好看」的充分条件** —— 从落点到 Order 的
-   *   系数连乘仍可能小于披露阈值（实测 `Supplier.deliveryDelay` 4.01e-3 传得到但过不了
-   *   0.01）。那属于**度量口径**的问题，不该混进落点判据里一起解。
+   * ⚠ 这是**必要条件，且只是局部的**（只看这一格自己的度数）。它不回答
+   *   「扰动传出去之后**到不到得了结论**」—— 那是 `reachesTypes` 管的，两个问题别合并。
+   *
+   * ⚠ 也不是「结论一定好看」的充分条件：从落点到 Order 的系数连乘仍可能小于披露阈值
+   *   （实测 `Supplier.deliveryDelay` 4.01e-3 传得到但过不了 0.01）。那属于**度量口径**
+   *   的问题，不该混进落点判据里一起解。
    */
   readonly drivable: boolean;
 }
@@ -769,6 +772,32 @@ export interface CellRoles {
    *  差分实验 `b1.foo` 期望 100 实得 50，当场红。）
    */
   isExogenous(typeKey: string, stateVar: string): boolean;
+  /**
+   * 从这一格沿出边**能走到的全部格**（规范键，**不含自身**）。图里没有这一格 ⇒ 空集。
+   *
+   * ── 为什么落点判据只到 `drivable` 是不够的（2026-09-30 实测）──────────────────
+   * `drivable` 是**局部**属性（看这一格的入度/出度），而「扰动有没有用」是**全局**问题
+   * （它能不能走到用户要看的那些格）。两者在真实规则集上确实分得开：
+   *
+   * 实测 `Order.qty` / `Order.leadDays` / `Order.unitPrice` —— 入度 0、出度 1，**判 drivable 为真**，
+   * 但唯一的出边指向 `Model.backlog{QtyTop,HorizonDays,PriceTop}`，而那三格**自己也零出边**。
+   * ⇒ 可达集大小 = **1**，整块是与主图不相连的孤岛对。
+   * 真推演实测：只改动**它自己那一格**，一步都传不出去（`差异化结论` 里三件事
+   * 给出逐字节相同的「1 张 / 1.61 亿」—— 因为那一张就是被扰动的那张单本身）。
+   *
+   * ⇒ **判据是两步**：`drivable`（留得住、出得去）∧ **可达集咬得到结论**（到得了）。
+   *   ⛔ 第二步不在本函数里判 —— 「结论是哪几型」是**消费方**的问题
+   *   （统一推演控制台看 `Order`，别处可能看别的），契约层不替它定。
+   */
+  descendantsOf(typeKey: string, stateVar: string): ReadonlySet<string>;
+  /**
+   * 从这一格出发**能咬到的对象类型**集合（可达格的类型名去重，含传入类型自身若被回边咬到）。
+   *
+   * 消费方用它判「这个落点够不够得着我的结论」：
+   *   `roles.reachesTypes(t, v).has("Order")` —— 够不到 ⇒ 不该当落点报给用户。
+   * 拼格键的规则留在本包内（⛔ 消费方不许自己 `split(".")`）。
+   */
+  reachesTypes(typeKey: string, stateVar: string): ReadonlySet<string>;
 }
 
 /** `buildCellRoles` 只读这四个字段 —— 用 `Pick` 而非整个 `PropagationRule`，
@@ -816,7 +845,35 @@ export function buildCellRoles(rules: readonly CellRoleRule[]): CellRoles {
   const sorted = new Map<string, readonly string[]>();
   for (const [t, s] of drivableByType) sorted.set(t, [...s].sort((a, b) => a.localeCompare(b)));
 
+  // ── 出边邻接表（键级），供可达性用 ──────────────────────────────────────
+  const outs = new Map<string, string[]>();
+  for (const r of rules) {
+    const from = simCellKey(r.sourceTypeKey, r.sourceStateVar);
+    const to = simCellKey(r.targetTypeKey, r.targetStateVar);
+    const a = outs.get(from);
+    if (a === undefined) outs.set(from, [to]);
+    else if (!a.includes(to)) a.push(to); // 同一条边重复发布 ⇒ 只算一次（可达集与重数无关）
+  }
+  /** 记忆化：一次 build 内每格最多算一次。 */
+  const cache = new Map<string, ReadonlySet<string>>();
+  const descendantsRaw = (start: string): ReadonlySet<string> => {
+    const hit = cache.get(start);
+    if (hit !== undefined) return hit;
+    const seen = new Set<string>();
+    const stack = [...(outs.get(start) ?? [])];
+    while (stack.length > 0) {
+      const cur = stack.pop() as string;
+      if (seen.has(cur) || cur === start) continue; // 自环/回边不算"可达自身"
+      seen.add(cur);
+      for (const nxt of outs.get(cur) ?? []) if (!seen.has(nxt)) stack.push(nxt);
+    }
+    cache.set(start, seen);
+    return seen;
+  };
+
   const roleOf = (typeKey: string, stateVar: string): CellRole | undefined => roles.get(simCellKey(typeKey, stateVar));
+  /** 规范键 → 类型名。`simCellKey` 的逆，**只在本包内用**（消费方拿 `reachesTypes`）。 */
+  const typeOfKey = (key: string): string => key.slice(0, key.indexOf("."));
   return {
     byCell: roles,
     writtenStateVars,
@@ -824,6 +881,12 @@ export function buildCellRoles(rules: readonly CellRoleRule[]): CellRoles {
     isDrivable: (typeKey, stateVar) => roleOf(typeKey, stateVar)?.drivable === true,
     // 图里没有这一格 ⇒ 从没被任何规则写过 ⇒ 入度 0 ⇒ 外生（判据是入度，不是"查表命中"）。
     isExogenous: (typeKey, stateVar) => roleOf(typeKey, stateVar)?.exogenous ?? true,
+    descendantsOf: (typeKey, stateVar) => descendantsRaw(simCellKey(typeKey, stateVar)),
+    reachesTypes: (typeKey, stateVar) => {
+      const s = new Set<string>();
+      for (const k of descendantsRaw(simCellKey(typeKey, stateVar))) s.add(typeOfKey(k));
+      return s;
+    },
   };
 }
 

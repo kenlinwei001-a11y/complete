@@ -74,12 +74,13 @@ const FIX = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
  * 传导规则的边集。**只有这里定义**「哪个类型今天承载哪个量」——
  * `resolveLanding` 拿它与对象条数求交，三种落地态全部由此现算。
  *
- * 刻意让三态都非空（否则 ② 那条臂等于没跑）：
- *   · `Material.priceShock`          ⇒ `material-price-up` **ok**
- *   · `Base.loadIndex`               ⇒ `capacity-loss`     **ok**
- *   · `Order.costPressure`           ⇒ `order-reprice`     **ok**，
- *                                     而 `rush-order` 要的是 `demandPressure` ⇒ **no-statevar**
+ * 刻意让三态都非空（否则 ② 那条臂等于没跑）。**2026-09-30 判据换过之后重列一遍**：
+ *   · `Material.priceShock`（外生 · 出边 1 · 可达 `Order`）⇒ `material-price-up` **ok**
+ *   · `Model.forecastBias` （外生 · 出边 1 · 可达 `Order`）⇒ `forecast-bias`     **ok**
+ *   · `Material.shortageRisk`（**入度 1** ⇒ 引擎每拍重算，扰动留不住）⇒ `material-short` **no-statevar**
+ *   · `Order` 上三个外生量都只有一条通向孤岛对的边 ⇒ `rush-order` / `order-reprice` **no-statevar**
  *   · `Equipment` 压根不在 `nodeObjectIds` 里 ⇒ `equipment-down` **no-instance**
+ * ⚠ 两个判据都要（外生 ∧ 可达结论），只判前者会漏掉第三类、只判后者会漏掉第一类。
  */
 interface Edge {
   sourceTypeKey: string;
@@ -88,9 +89,29 @@ interface Edge {
   targetStateVar: string;
 }
 
+/**
+ * 边集桩。
+ *
+ * ⚠ **2026-09-30 补齐了两条进 `Order` 的边** —— 原来的三条边里**没有一条能走到 `Order`**，
+ *   于是 `Model.costPressure` 是末端、`Order.costPressure` 是根源，整张图是三个互不相干的
+ *   小段。这在旧判据（「规则里提到过」）下看不出来，因为旧判据根本不问「够不够得到结论」；
+ *   换成真判据（外生 ∧ 有出边 ∧ **可达结论**）之后，**12 件事一件都落不了地**，
+ *   本文件 21 条用例集体超时 —— 那是夹具不度量真实图，不是判据错了。
+ *
+ * 补的两条**都是真图里真有的边**（`GET /a/v1/sim/propagation-rules?published=true` 实测，
+ * 全图指向 `Order` 的边只有 4 条，其中 2 条就是下面这两条）：
+ *   · `Model.costPressure  → Order.costPressure`   —— 原材料涨价够到订单的**唯一那条路**
+ *   · `Model.forecastBias  → Order.demandPressure` —— 预测偏差够到订单的那条路
+ * ⛔ 不是为了让用例变绿而编的拓扑：编一条 `Line.utilPressure → Order.*` 也能让「产能损失」
+ *    重新落得了地，但那在真图里**不存在** —— 那样修出来的绿，正是本单要拆掉的那种假绿。
+ *    真实后果是诚实的：`capacity-loss` / `order-reprice` 等 8 件事**今天真的落不了地**，
+ *    用例就该照着这个事实改（见 ②b / ③ / ④b）。
+ */
 function baseEdges(): Edge[] {
   return [
     { sourceTypeKey: "Material", sourceStateVar: "priceShock", targetTypeKey: "Model", targetStateVar: "costPressure" },
+    { sourceTypeKey: "Model", sourceStateVar: "costPressure", targetTypeKey: "Order", targetStateVar: "costPressure" },
+    { sourceTypeKey: "Model", sourceStateVar: "forecastBias", targetTypeKey: "Order", targetStateVar: "demandPressure" },
     { sourceTypeKey: "Base", sourceStateVar: "loadIndex", targetTypeKey: "Line", targetStateVar: "utilPressure" },
     { sourceTypeKey: "Order", sourceStateVar: "costPressure", targetTypeKey: "Customer", targetStateVar: "receivablePressure" },
   ];
@@ -129,6 +150,9 @@ function baseNodeObjectIds(): Record<string, string[]> {
     Order: ["ord_1", "ord_2", "ord_3"],
     Customer: ["cust_a", "cust_b"],
     Line: ["line_1"],
+    // 「预测偏差」的落点类型（`Model.forecastBias`）—— 本夹具里第二个落得了地的事件。
+    // 原来这里没有 Model，是因为那时 `capacity-loss` 顶了这个位；它今天落不了地（见 baseEdges 头注）。
+    Model: ["model_lfp"],
   };
 }
 
@@ -210,6 +234,7 @@ const OBJECTS: Record<string, { id: string; props: Record<string, unknown> }[]> 
     { id: "cust_b", props: { name: "比亚迪" } },
   ],
   Line: [{ id: "line_1", props: { name: "常州 A 线" } }],
+  Model: [{ id: "model_lfp", props: { name: "方形-LFP" } }],
 };
 
 /**
@@ -609,8 +634,68 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     expect(whyStateVar).toContain("无传导路径");
     expect(noinst.textContent).not.toBe(statevar.textContent);
 
-    // 而同一个 Order 上换一个量就落得了地 ⇒ 上面那个 "0" 是**这个量**的结论，不是「Order 取不到数」。
-    expect(screen.getByTestId("c0828-ev-order-reprice").getAttribute("data-landable")).toBe("1");
+    /* ── 「0」是**逐格**判出来的，不是整屏坏了 ──────────────────────────────────
+     *
+     * ⚠ 本条断言于 2026-09-30 **反转**，原文是：
+     *   「而同一个 Order 上换一个量就落得了地 ⇒ 上面那个 "0" 是**这个量**的结论」
+     *   并断言 `order-reprice`（落到 `Order.costPressure`）`data-landable === "1"`。
+     *
+     * 那句在**当时的判据**下为真，而那个判据是错的：「规则里提到过」不等于「可落点」。
+     * 换成真判据（外生 ∧ 有出边 ∧ 可达结论）之后，`Order` 上**一个落得了地的量都没有**
+     * —— 它那三个外生量（`qty` / `leadDays` / `unitPrice`）各自只有一条出边，
+     * 指向的 `Model.backlog*Top` 自己也零出边；真后端实测可达集大小 **1**，是孤岛对。
+     * 所以今天正确的断言是：`Order` **有实例**却**没有落点**，且理由说的是**结构**不是取数。
+     *
+     * ⛔ 没有把这条删掉（删掉就等于把「Order 那一列为什么全 0」放行了），
+     *    而是换成**两条**更强的：① 逐格判 —— 同一个 `Material` 上，
+     *    `priceShock` 落得了地而 `shortageRisk`（入度>0）落不了；
+     *    ② 可达性真的参与判定 —— 见下一条 ②c 的反向金丝雀。
+     */
+    // ① 逐格：同一个 Material 上两种量结论相反 ⇒ "0"/"1" 是**格**的属性。
+    expect(screen.getByTestId("c0828-ev-material-price-up").getAttribute("data-landable")).toBe("1");
+    expect(screen.getByTestId("c0828-ev-material-short").getAttribute("data-landable")).toBe("0");
+    // ② 而 Order 这型：有实例（3 张）、却一个落点都没有 —— 上面那条 "0" 是**类型**的结论。
+    const mixed = screen.getByTestId("c0828-ev-rush-order");
+    fireEvent.click(mixed);
+    const mixedPanel = await screen.findByTestId("c0828-absent-rush-order");
+    expect(mixedPanel.textContent ?? "").toContain("Order 有实例");
+  });
+
+  /**
+   * ②c · **可达性真的参与判定**（反向金丝雀）。
+   *
+   * ②b 咬的是「落不了地」那几条；本条咬它的**另一半** —— 落得了地的那条，
+   * 依据是「从落点沿出边能走到 `Order`」。verification 的经典失败形态是：
+   * 断言只写了 positive 那一半，于是**把可达性判据整个删掉**也照样绿
+   * （其余 11 条本来就判 "0"）。故这里把那条通路**掐断**，同一个落点必须当场变 "0"。
+   *
+   * ⛔ 掐断的是 `Model.costPressure → Order.costPressure` —— 真图里指向 `Order` 的
+   *    4 条边之一，也是「原材料涨价」够到订单的**唯一那条路**（`Material.priceShock`
+   *    只出这一条边）。掐掉它之后 `Material.priceShock` 的可达集只剩 `{Model}`。
+   */
+  it("②c 反向金丝雀：掐断通往 Order 的那条边 ⇒ 同一个落点必须当场落不了地（可达性不是摆设）", async () => {
+    mount();
+    await railReady();
+    // 正臂先量一遍：边齐的时候它落得了地，否则下面那条"变 0"可能是别的原因造成的。
+    expect(screen.getByTestId("c0828-ev-material-price-up").getAttribute("data-landable")).toBe("1");
+    cleanup();
+
+    // 只删这一条边，其余一字不动。
+    edges = baseEdges().filter(
+      (e) => !(e.sourceTypeKey === "Model" && e.sourceStateVar === "costPressure"
+        && e.targetTypeKey === "Order" && e.targetStateVar === "costPressure"),
+    );
+    expect(edges).toHaveLength(baseEdges().length - 1); // 金丝雀：探针真的删到了，不是删了个不存在的模式
+
+    mount();
+    await railReady();
+    const btn = screen.getByTestId("c0828-ev-material-price-up");
+    expect(btn.getAttribute("data-landable")).toBe("0");
+    fireEvent.click(btn);
+    const panel = await screen.findByTestId("c0828-absent-material-price-up");
+    // 而且它说的是**结构**那句，不是「没有实例」那句 —— 两句话今天不许再被混为一谈。
+    expect(panel.textContent ?? "").toContain("无传导路径");
+    expect(panel.textContent ?? "").not.toContain("无任何实例");
   });
 
   it("③ 加事件 → 暂存：件数跟着变，**加两件必须显示 2 件**（1 件与多件在模型层不是同一段）", async () => {
@@ -628,11 +713,14 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     expect(screen.getByTestId("c0828-chip-material-price-up").textContent ?? "").toContain("碳酸锂");
     expect(screen.queryByTestId("c0828-staged-empty")).toBeNull();
 
-    await addEvent("capacity-loss", "base_cz");
+    // ⚠ 第二件从 `capacity-loss` 换成 `forecast-bias`：前者**今天落不了地**
+    //   （`Base` 上没有任何外生量够得到 `Order`），表单根本不会出现。
+    //   换的是**能落地**的那一件，不是把断言放松 —— 见 baseEdges 头注。
+    await addEvent("forecast-bias", "model_lfp");
     await waitFor(() => {
       expect(screen.getByTestId("c0828-staged-count").textContent ?? "").toContain("2 件");
     });
-    expect(screen.getByTestId("c0828-chip-capacity-loss").textContent ?? "").toContain("常州基地");
+    expect(screen.getByTestId("c0828-chip-forecast-bias").textContent ?? "").toContain("方形-LFP");
   });
 
   it("④ 算一下 → 出结果：一个按钮背后五跳走完，四块结果面板同时出现且读的是同一次结果", async () => {
@@ -741,7 +829,7 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     await railReady();
 
     await addEvent("material-price-up", "mat_licarb", 15);
-    await addEvent("capacity-loss", "base_cz");
+    await addEvent("forecast-bias", "model_lfp"); // 同 ③：`capacity-loss` 今天落不了地
     await waitFor(() => {
       expect(screen.getByTestId("c0828-staged-count").textContent ?? "").toContain("2 件");
     });
@@ -1099,7 +1187,10 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
      * 这两个样本会静悄悄地变成同一类，⑨ 的「反向臂」就名存实亡（两臂测的是同一件事，照样全绿）。
      */
     const ONCE_ID = "material-price-up";
-    const SUSTAINED_ID = "capacity-loss";
+    // ⚠ 2026-09-30 由 `capacity-loss` 换成 `forecast-bias`：前者**今天落不了地**，
+    //   表单不出现，这一整组「持续型才有那一格」的对照臂会全部退化成「查不到那一格」，
+    //   而那**恰好**与「一次性事件」的期望一致 ⇒ 反向臂全部假绿。理由见 baseEdges 头注。
+    const SUSTAINED_ID = "forecast-bias";
     function shapeOf(id: string): string {
       const ev = BUSINESS_EVENTS.find((e) => e.id === id);
       expect(ev, `目录里没有 ${id} —— 样本选错了，不是「这件事没有时间形态」`).toBeDefined();
@@ -1193,7 +1284,7 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
       await waitFor(() => {
         expect(within(sel as HTMLSelectElement).getAllByRole("option").length).toBeGreaterThan(1);
       });
-      fireEvent.change(sel, { target: { value: "base_cz" } });
+      fireEvent.change(sel, { target: { value: "model_lfp" } });
       fireEvent.change(screen.getByTestId(`c0828-dur-${SUSTAINED_ID}`), { target: { value: "3" } });
       fireEvent.click(screen.getByTestId(`c0828-add-${SUSTAINED_ID}`));
 
@@ -1202,7 +1293,7 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
 
       expect(perturbCalls).toHaveLength(2);
       const onceCall = perturbCalls.find((c) => String(c.targetObjectId) === "mat_licarb");
-      const sustCall = perturbCalls.find((c) => String(c.targetObjectId) === "base_cz");
+      const sustCall = perturbCalls.find((c) => String(c.targetObjectId) === "model_lfp");
       expect(onceCall, "一次性那条扰动没发出去 —— 后面的断言就不度量本条命题了").toBeDefined();
       expect(sustCall).toBeDefined();
       expect(Object.keys(onceCall as object)).toContain("durationTicks"); // 键必须在（不是 undefined 蒙混）
@@ -1231,8 +1322,11 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
       const MUST_KEEP = [
         "落点对象", // 选哪一个实体
         "幅度", // 加多少
-        "Base", // 落点类型（typeKey）—— 降到第二层，⛔ 不许删
-        "loadIndex", // 状态变量（stateVar）—— 同上
+        // ⚠ 下面两条是**当时那件事的** typeKey / stateVar，随 `SUSTAINED_ID` 一起换
+        //   （`capacity-loss`→`forecast-bias`，见 baseEdges 头注）。
+        //   咬的是「内部字段名降到第二层但不许删」这条规则本身，不是那两个具体字串。
+        "Model", // 落点类型（typeKey）—— 降到第二层，⛔ 不许删
+        "forecastBias", // 状态变量（stateVar）—— 同上
         "整段落在过去", // 「填了也不生效」那条诚实位
         "201", // 后端仍会受理这件事本身
       ];
@@ -1256,8 +1350,8 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
 
       // 内部字段名**降层不删**：typeKey / stateVar 必须在 `<details>` 里，不在第一层。
       const detailsText = (form.querySelector("details")?.textContent ?? "");
-      expect(detailsText).toContain("Base");
-      expect(detailsText).toContain("loadIndex");
+      expect(detailsText).toContain("Model");
+      expect(detailsText).toContain("forecastBias");
     });
 
     it("⑫ 「这件事会推动什么」现算：层级变则文案变（反向金丝雀），没回来时不许猜", async () => {
@@ -1275,7 +1369,7 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
         return p.textContent ?? "";
       };
 
-      // ── 臂 1（正向）：默认边集下 `Base.loadIndex` 入度 0、出度 1 ⇒ 根源，会继续传导 ──
+      // ── 臂 1（正向）：默认边集下 `Model.forecastBias` 入度 0、出度 1 ⇒ 根源，会继续传导 ──
       // 断言按**语义单位**写，不咬整句措辞（措辞本身就是要改的东西）。
       const relay = await headlineOf();
       expect(relay).toContain("根源");
@@ -1286,13 +1380,13 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
       // ⚠ 它同时咬住「两份读数打架时不编折中说法」：层级说末端、规则表里却有出边，
       //   此刻必须**信层级**（`propagationForecast` 先判 layer），不是信自己数出来的度数。
       cleanup();
-      layerStub = [{ stateVar: "loadIndex", layer: "末端", label: "负载指数" }];
+      layerStub = [{ stateVar: "forecastBias", layer: "末端", label: "预测偏差" }];
       const sink = await headlineOf();
       expect(sink).toContain("末端");
       expect(sink).toContain("不会继续传导");
       // 同时反向咬一次：这一句里**不许**出现内部字段名（判据 4，内部名降到第二层）。
-      expect(sink).not.toContain("loadIndex");
-      expect(sink).not.toContain("Line.utilPressure");
+      expect(sink).not.toContain("forecastBias");
+      expect(sink).not.toContain("Order.demandPressure");
 
       // ── 臂 3：后端不下发这一项（两头都是 0 = 不在传导图里，与「末端」是两个命题）──
       cleanup();
