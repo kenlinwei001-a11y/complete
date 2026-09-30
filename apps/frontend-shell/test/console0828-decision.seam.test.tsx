@@ -969,24 +969,30 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     expect(reason).not.toContain("还没传到订单");
   });
 
-  it("⑮ 默认推演时长**从图上派生**：图变则缺省跟着变（⛔ 不许是一个写死的常数）", async () => {
-    /* 原值 `useState(3)` 追到引入提交 `259309f1c`（标题 `WIP·未验`，正文空白）—— 无出处；
-       设计稿里根本没有「推演时长」这个控件；同产品另一端 `DecisionConsoleView` 是 30。 */
+  it("⑮ 默认推演时长 = 30（**两个独立来源都写 30**），且每次渲染受图上最慢落点复核", async () => {
+    /* 原值 `useState(3)` 追到引入提交 `259309f1c`（标题 `WIP·未验`，正文空白）—— 无出处。
+       30 的出处：设计稿 `UI-sim-console-20260828.html` **7 处**写 30 天（面包屑/加载语/
+       时间轴标题/刻度终点/结论句/对策页）、同产品另一端 `DecisionConsoleView` 的
+       `HORIZON_DAYS = 30`。⛔ 注意该设计稿里**没有「推演时长」这个控件** ——
+       别把「没有那个控件」读成「设计稿没对窗口表态」。 */
     mount();
     await railReady();
-    /* 夹具图的可落点格：`Material.priceShock`（2 跳）与 `Model.forecastBias`（1 跳）⇒ 缺省 = 2。
-       ⚠ 2 是**这张夹具图**的答案，不是屏上写死的值 —— 真图实测是 8（9 个可落点格里最慢的
-         `FinishedGoodsInventory.coverDays`）。本臂咬的正是「它随图算」这件事。 */
-    await waitFor(() => expect(screen.getByTestId("c0828-horizon")).toHaveValue(2));
+    await waitFor(() => expect(screen.getByTestId("c0828-horizon")).toHaveValue(30));
+    /* 夹具图最慢落点 2 拍 ≤ 30 ⇒ 不该报警（金丝雀：证明下面那条断言不是「永远不渲染」） */
+    expect(screen.queryByTestId("c0828-horizon-short")).toBeNull();
 
     cleanup();
-    /* 反向金丝雀（对照实验，铁律 1.5 判据一）：**只**把进 `Order` 那条边的 `delayTicks`
-       拨到 5 ⇒ 最慢落点 2 → 7，缺省必须跟着变。若缺省是个常数/编的/没算，这里当场红。 */
-    edges = baseEdges().map((e) => (e.targetTypeKey === "Order" && e.sourceStateVar === "costPressure" ? { ...e, delayTicks: 5 } : e));
+    /* 对照实验（铁律 1.5 判据一）：**只**把进 `Order` 那条边的 `delayTicks` 拨到 35
+       ⇒ 最慢落点 1 + (1+35) = **37 > 30**。常数 30 自己不会变，**复核必须说话** ——
+       否则将来图变慢了就又回到「缺省太短、屏上静默印 0」那个病。 */
+    edges = baseEdges().map((e) => (e.targetTypeKey === "Order" && e.sourceStateVar === "costPressure" ? { ...e, delayTicks: 35 } : e));
     expect(edges.filter((e) => (e.delayTicks ?? 0) > 0)).toHaveLength(1); // 金丝雀：真拨到了那一条
     mount();
     await railReady();
-    await waitFor(() => expect(screen.getByTestId("c0828-horizon")).toHaveValue(7));
+    // 缺省**没被悄悄改**（那会覆盖人的选择），改的是旁边那句话
+    await waitFor(() => expect(screen.getByTestId("c0828-horizon")).toHaveValue(30));
+    const warn = await screen.findByTestId("c0828-horizon-short");
+    expect(warn.textContent).toContain("37 拍");
   });
 
   it("⑤ 诚实态 · 三行钱：算不出来的画「这次算不出来」——⛔ 不许显示 0，也不许留空", async () => {

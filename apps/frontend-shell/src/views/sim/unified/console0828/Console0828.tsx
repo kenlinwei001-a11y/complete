@@ -318,6 +318,18 @@ const HEADLINE_KPIS: readonly string[] = ["exposure", "orders", "cust"];
 const PICK_LIMIT = 500;
 
 /**
+ * 「推演时长」的缺省拍数。**30 不是选的，是照着两个独立来源抄的**（2026-09-30）：
+ *   · 设计稿 `docs/design/UI-sim-console-20260828.html` **7 处**写 30 天
+ *     （面包屑 / 加载语 / 时间轴标题 / 刻度终点 / 结论句 / 对策页）；
+ *   · 同产品另一端 `DecisionConsoleView` 的 `HORIZON_DAYS = 30`。
+ * 原值 `useState(3)` 无任何来源（引入提交 `259309f1c`，标题 `WIP·未验`、正文空白）。
+ *
+ * ⚠ 这个常数**每次渲染都受 `derivedHorizon` 复核**（图上最慢的落点要几拍）——
+ *   不够时上屏明说，见 `horizonTooShort`。常数本身会过期，复核不会。
+ */
+const HORIZON_DEFAULT = 30;
+
+/**
  * 一条对策**改善最大的那一维**。
  *
  * ⛔⛔ **一个编出来的量都没有。** 逐行读过契约原文复核：
@@ -569,31 +581,37 @@ export default function Console0828({
   /** 对策四栏「放大」弹窗。页签里可视仅 ~364px，四栏被切一半，比不了。 */
   const [optionsZoom, setOptionsZoom] = useState(false);
   const [staged, setStaged] = useState<readonly StagedEvent[]>([]);
-  /* ══ 默认推演时长 = 图上最慢的那条路（派生，不写死）══════════════════════════
+  /* ══ 默认推演时长 = **30 拍**（设计稿与同产品另一屏都写 30），并以图上最慢落点为下限检查 ══
    *
-   * ── 原值为什么必须换（2026-09-30）─────────────────────────────────────────
-   * 原值 `useState(3)` 追到引入提交 `259309f1c`（标题 `WIP·未验`，**正文空白**）⇒ 无出处；
-   * 设计稿 `docs/design/UI-sim-console-20260828.html` 里**根本没有「推演时长」这个控件**；
-   * 同产品另一端 `DecisionConsoleView` 用的是 `HORIZON_DAYS = 30` —— **差 10 倍**。
-   *
+   * ── 原值 3 为什么必须换（2026-09-30）───────────────────────────────────────
+   * 原值 `useState(3)` 追到引入提交 `259309f1c`（标题 `WIP·未验`，**正文空白**）⇒ 无出处。
+   * **两个独立设计来源都写 30，实现却在跑 3**：
+   *   · 设计稿 `docs/design/UI-sim-console-20260828.html` 7 处写 30 天 ——
+   *     面包屑「往后 30 天」· 加载语「正在算未来 30 天…」· 时间轴标题「这 30 天…」
+   *     · 刻度终点「第 30 天」· 结论句「这 30 天里 53 张单全部逾期」· 对策页「对一个 30 天的窗口」。
+   *     ⚠ 该文件里**没有「推演时长」这个控件**（`时长`/`horizon` 均 0 命中，金丝雀：`订单` 11 命中）
+   *       —— 它用别的方式表的态。⛔ 别把「没有那个控件」读成「设计稿没对窗口表态」。
+   *   · 同产品另一端 `DecisionConsoleView` 的 `HORIZON_DAYS = 30`。
    * 它决定「用户不改那一格时，屏上给他看哪一句话」。真后端实测：
    *   · 物料到货延迟 3 拍时 0 张（150 张每张 4.783e-3 在动、跨不过 0.01 门槛），
    *     **第 5 拍起 150 张全部过线** —— 这条的结论完全由窗口决定；
    *   · 设备故障到订单要 6 拍，3 拍时信号还停在 `Process.queuePressure`。
    * ⇒ 原值把这两件事**都**印成「0 张」，而它们要用户做的事恰好相反。
    *
-   * ── 判据：够图上最慢的那个可落点走到结论 ──────────────────────────────────
-   * 取所有可落点格里**最大的**最短到达拍数。这样任何可落点的扰动在默认窗口下都至少
-   * **到得了**结论 ⇒ 屏上的「0 张」结构上不可能是「还在路上」那一档（`zeroReasonKind`
-   * 四档里最会误导人的那种）从默认路径上被删掉。且它是**现算的**：图变了（新增一条更长的
-   * 落点边）它自己跟着变，不需要有人想起来改一个常数 —— 那正是原值出问题的方式。
-   * （真图实测 = 8，最慢的是 `FinishedGoodsInventory.coverDays`；夹具图 = 2，见 ⑮。）
+   * ── `derivedHorizon` 留着干什么（它不是缺省值，是**下限检查**）──────────────
+   * 取所有可落点格里**最大的**最短到达拍数（`minTransitTicksTo`）—— 即「图上最慢的那条路
+   * 要几拍才咬得到结论」。真图实测 = **8**（最慢的是 `FinishedGoodsInventory.coverDays`）。
+   * 把它与 30 比：**30 ≥ 8** ⇒ 默认窗口下任何可落点的扰动都至少**到得了**结论，
+   * 屏上的「0 张」结构上不可能是「还在路上」那一档。
+   * ⚠ 留着它是防**今后漂移**：哪天图上长出一条比 30 更慢的落点边，缺省就又不够了 ——
+   *   而那正是原值出问题的方式（一个没人复核的常数）。比较结果直接**上屏**（见 `horizonEcho`
+   *   那段），不是躺在代码里等人想起来。⛔ 图变慢时**不悄悄改用户的窗口**，只明说。
    *
    * ⚠ 「至少够」不是「一定够」：`minTransitTicksTo` 是**下界不是预言**。设备故障即使推到
    *   12 拍，订单侧也只有 8.796e-5（比门槛低 114 倍）—— 它该落在「门下」那一档由
    *   `zeroReasonKind` 照实说，不是靠调窗口解决的，本条也不声称解决它。
    *
-   * ⚠ 用户拨过就听用户的：`horizonOverride` 一旦非空派生值不再参与（与 `aiPinned` 同一条
+   * ⚠ 用户拨过就听用户的：`horizonOverride` 一旦非空缺省不再参与（与 `aiPinned` 同一条
    *   纪律 —— 自动行为可以帮人，但不许覆盖人刚做的选择）。
    */
   const derivedHorizon = useMemo(() => {
@@ -604,12 +622,9 @@ export default function Console0828({
 
   /** 用户手拨的窗口；`null` = 还没拨过。 */
   const [horizonOverride, setHorizonOverride] = useState<number | null>(null);
-  /**
-   * 规则还没回来时输入框先摆的值。**是占位不是缺省** —— 缺省是上面派生的那个，一到就换
-   * （`transitByCell` 空 ⇒ 派生值为 0）。取 1 而不是原值 3：3 恰恰因为「看着挺合理」
-   * 才一路活到今天，占位值就该一眼看出不像真值。
-   */
-  const horizon = horizonOverride ?? (derivedHorizon > 0 ? derivedHorizon : 1);
+  const horizon = horizonOverride ?? HORIZON_DEFAULT;
+  /** 图上最慢的落点比当前窗口还慢 ⇒ 这次窗口**结构上到不了**结论。上屏明说，不悄悄改。 */
+  const horizonTooShort = derivedHorizon > horizon ? derivedHorizon : null;
   const [result, setResult] = useState<RunResult | null>(null);
   const [pickedFix, setPickedFix] = useState<string | null>(null);
   /** 当前页签。默认「受阻环节」—— 它是「怎么办」那几行的宿主，点进去接着往下走。 */
@@ -2279,6 +2294,13 @@ export default function Console0828({
               ? `= ${spanLabel(cal, horizon)}`
               : `= ${spanLabel(cal, horizon)}，推演至 ${tickLabel(cal, curTick + horizon)}`}
         </p>
+        {/* 图上最慢的落点比当前窗口还慢 ⇒ 这一跑**结构上**到不了结论（`derivedHorizon > horizon`）。
+            ⛔ 不悄悄替用户改窗口 —— 那会覆盖人刚做的选择；只明说，让他自己决定。 */}
+        {horizonTooShort === null ? null : (
+          <p className={styles.calibre} data-testid="c0828-horizon-short">
+            图上最慢的可落点要 {horizonTooShort} 拍才咬得到订单，当前窗口不够 —— 这一跑里它会显示成「还没传到」。
+          </p>
+        )}
         <button
           type="button"
           className={styles.go}
