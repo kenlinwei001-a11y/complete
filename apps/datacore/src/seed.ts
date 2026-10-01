@@ -2218,7 +2218,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     sourceStateVar: "leadDays", // = `Order.leadDays` 本尊（单位「天」，实测 150/150 有限数，−14–178）
     viaLinkKey: "order_for_model",
     targetTypeKey: "Model",
-    targetStateVar: "backlogHorizonDays",
+    targetStateVar: "demandLoad",
     // ⛔ 不过 `inflowCoefficient`（不乘 λ）—— 同 `backlogQtyTop` 那条的理由，原文见上；
     //   值同样在 `C36.params.<本边key>` = 1.0，字面量按单源纪律不写系数。
     // 实测病象：`backlogHorizonDays = 0.37 × max(Order.leadDays)`（110 天 → 40.7）。
@@ -2232,10 +2232,10 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     // 还没交（`dueDayForStatus` 的 IN_PRODUCTION 支 `(s%60)−14`）。夹到 0 会让「已逾期」
     // 与「今天到期」在屏上变成同一个数。
     description: "该型号在手订单里最远的一张交期还有几天（负数 = 合同交期已过去这么多天仍未交付）",
-    combine: "max",
+    combine: "sum",
     decay: null,
     clamp: null,
-    weightRef: null,
+    weightRef: { basis: "source_qty_relative" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
