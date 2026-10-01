@@ -1,0 +1,7 @@
+START=2026-10-01 09:59:03
+HEAD=eef63cf70
+BRANCH=claude/handoff-wo-dsh-p1a
+ 9:59  up 32 days,  5:19, 5 users, load averages: 75.05 85.42 77.21
+RC_CANARY=0
+RC_FULL=0
+END=10:07:35

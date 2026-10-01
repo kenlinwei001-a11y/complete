@@ -1,0 +1,12 @@
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/apps/agentcore
+
+ ↓ test/dsh-e2e-tenant-collision.test.ts > WO-DSH-E2E · L4 租户隔离穿透（双 tenant × 同 serverName 对撞） > L4.A1 对撞双成：各回各 whoami 标记 / 事件流零跨租户串字 / 工具表各只见各 / pidFile 恰 2 异 pid
+ ✓ test/dsh-e2e-tenant-collision.test.ts > WO-DSH-E2E · L4 租户隔离穿透（双 tenant × 同 serverName 对撞） > L4.A2 世界层互不可达：allow-list 误配异租户工具名 ⇒ 执行 isError（fail-closed），成功标记零出现 16844ms
+ ↓ test/dsh-e2e-tenant-collision.test.ts > WO-DSH-E2E · L4 租户隔离穿透（双 tenant × 同 serverName 对撞） > L4.A3 跨租户凭据解析 fail-closed（E3′ 前缀白名单形态）+ 凭据值零上帧
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 2 skipped (3)
+   Start at  09:54:52
+   Duration  28.82s (transform 3.71s, setup 0ms, collect 9.65s, tests 16.85s, environment 0ms, prepare 775ms)
+

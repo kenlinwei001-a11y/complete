@@ -1,0 +1,8 @@
+START=2026-09-30 17:49:26
+PWD=/Users/apple/deploy/complete/apps/agentcore
+DSH_HARNESS=0（显式）
+HEAD=eef63cf701da97cf794ed35cb32f83e2615c5c25
+BRANCH=claude/handoff-wo-dsh-p1a
+17:49  up 31 days, 13:11, 5 users, load averages: 504.14 420.07 301.95
+END=2026-09-30 19:04:14
+RC=1

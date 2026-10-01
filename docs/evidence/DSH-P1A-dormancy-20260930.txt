@@ -1,0 +1,9 @@
+
+> ontology-decision-platform@0.1.0 dsh-dormancy:check /Users/apple/deploy/complete
+> node scripts/check-dsh-dormancy.mjs
+
+✅ 金丝雀 28/28 全中（必咬 17 + 必不咬 11 · D1 8 + D2/D3 15 + 归类器 5）
+· 扫描面：部署面 9 文件 · 源码面 732 文件（下界 5 / 200，均已过 ⇒ 下面的「零处」是真的零，不是没扫到）
+· D1 部署面开 flag 0 处 · D2 白名单外静态 import 0 处 · D3 入口 动态 1（其中裸 0）/ 静态 0
+
+✓ dsh-dormancy:check 通过（部署面零 flag · 静态 import 未扩散 · 入口至多 1 处且有判断）

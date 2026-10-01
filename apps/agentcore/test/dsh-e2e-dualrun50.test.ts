@@ -124,7 +124,7 @@ interface ArmProducts {
   visibleToolNames?: string[];
 }
 
-function agentDef(task: DualRunTask): AgentDefinition {
+function agentDef(task: DualRunTask, flag: "off" | "on"): AgentDefinition {
   return {
     id: `agt_${task.id}`,
     tenantId: TENANT,
@@ -146,6 +146,11 @@ function agentDef(task: DualRunTask): AgentDefinition {
         : []),
     ],
     ruleBindings: task.ruleBindings,
+    // WO-DSH-P1A：臂选择钉在 per-agent kernel —— 这正是 ROLLOUT §0 指定的生产杠杆，
+    // 不再是进程级 env。off 臂显式钉 "NATIVE" 是**免疫位**：AgentDefinitionSchema.kernel 的契约
+    // 注释明文「显式值优先于 env」，故任何残留的 DSH_HARNESS=1（含上一条测试超时后孤儿体留下的）
+    // 都翻不动它 ⇒ 根除「超时污染下一条」的级联假红。
+    kernel: flag === "on" ? "EXTERNAL" : "NATIVE",
     skills: task.skills.map((s) => ({ skillId: skillIdOf(task.id, s.key), version: 1 as const })),
     mcpServers: task.mcp ? [{ mcpConfigId: task.mcp.configId }] : [],
     scopeDeclaration: {
@@ -260,14 +265,19 @@ async function runArm(task: DualRunTask, flag: "off" | "on"): Promise<ArmProduct
     });
   }
   for (const s of task.skills) await t.repos.skills.insert(skillDef(task, s));
-  await t.repos.agents.insert(agentDef(task));
+  await t.repos.agents.insert(agentDef(task, flag));
   patchRules(t, task);
   const events: CapturedEvent[] = [];
   const emit = async (event: string, payload: unknown) => {
     events.push({ event, payload: payload as Record<string, unknown> });
   };
   if (flag === "on") {
-    process.env.DSH_HARNESS = "1";
+    // WO-DSH-P1A：此处原有 `process.env.DSH_HARNESS = "1"` —— 已删，臂选择改由 per-agent kernel 承担
+    // （见 agentDef）。进程级写者有致命形态：测试超时后 vitest **不再 await 测试体**
+    //（@vitest/runner `withTimeout` 在超时瞬间 reject，测试体在后台继续跑），孤儿体还握着 "1" 不放，
+    // 下一条测试的 off 臂就会走进 dsh 分叉、在没有 providerDirectory 的测试 app 上抛
+    //「DataCore provider directory not configured」——**一条读起来像生产配置缺陷的假红**。
+    // 2026-09-30 E5 实测：dr50-ce / dr50-ch 即此形态（金丝雀见 docs/evidence/DSH-P1A-e5-canary-env1-20261001.txt）。
     process.env.DSH_HARNESS_DIR = HARNESS_DIR;
     if (task.dsh.govDeny) process.env.PLATFORM_GOV_DENY = task.dsh.govDeny.join(",");
   }
