@@ -2218,11 +2218,44 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     sourceStateVar: "leadDays", // = `Order.leadDays` 本尊（单位「天」，实测 150/150 有限数，−14–178）
     viaLinkKey: "order_for_model",
     targetTypeKey: "Model",
-    targetStateVar: "demandLoad",
-    // ⛔ 不过 `inflowCoefficient`（不乘 λ）—— 同 `backlogQtyTop` 那条的理由，原文见上；
-    //   值同样在 `C36.params.<本边key>` = 1.0，字面量按单源纪律不写系数。
-    // 实测病象：`backlogHorizonDays = 0.37 × max(Order.leadDays)`（110 天 → 40.7）。
-    // 本量可为负（−14 = 已逾期 14 天），乘 0.37 同样把「逾期多久」缩成 37%。
+    targetStateVar: "costPressure",
+    /**
+     * ⛔ **曾经指向 `Model.demandLoad`，2026-10-01 实测撤下 —— 那是个死端。**
+     *
+     * ── 为什么 `demandLoad` 是死端（实测，不是推断）──────────────────────────
+     * ① 该格**恒为 0**：本会话（真后端，会话 `sims_7tme9m36j7t1y8a8`）实测 6 个 Model
+     *    的 `demandLoad` 全部取值 `[0,0,0,0,0,0]`；`stateVarReport.saturations` 直接给出病因 ——
+     *    `raw = −6.058 / −8.478 / −5.595 / −7.180 / −4.661`，`value: 0`，`bound: "min"`。
+     *    **不是没写进去，是写进去的贡献全是负的、被域下界钳在 0。**
+     * ② 这一点**源码里早已记录在案**（`synthetic/battery.ts` 的 C36 注释块，原文「**该格恒被夹在
+     *    域下界 0**」「对照实验（已跑）…证明这不是分摊没重跑的问题，是**量级本身定错了**」）。
+     * ③ 后果：本边每 30 拍真跑 150 次（trace 实测，`viaLinkKey:"order_for_model"`，amount 有正有负），
+     *    而**扰动臂与零扰动对照臂逐格比：6375 格里只差 1 格**（就是源格 `Order.leadDays` 自己）。
+     *    `userContribution=17` 与这一格的差逐位吻合。**零传导。**
+     *
+     * ── 警示（这是本次真正的根因，比本条边大）──────────────────────────────
+     * 落点判据 `landableVarsByType`（`eventCatalog.ts:408`）只查**两步**：
+     * `drivable`（外生 ∧ 有出边）② `reachesTypes(t,v).has(conclusionTypeKey)`。
+     * **它答不了第三步：「这格今天动不动」。** 全表 33 个「有出边」的格里，
+     * 14 个在世界里连一个实测格都没有（`n=0`），另有 `Model.demandLoad`（6 格全 0）
+     * 与 `Order.demandPressure`（150 格全 0）两个**恒零** —— 判据把它们全部当成
+     * 「可落点」，而它们一个字节都传不下去。**「判据通过」不度量「靶格是活的」。**
+     *
+     * ── 应该的 Y（业务理由，不靠读代码）──────────────────────────────────────
+     * 交期压缩 ⇒ 赶工/加班/加急 ⇒ **成本压力上升**。落到 `Model.costPressure`：
+     *   · 它是**活的**（实测 6 格全非零 1.39–2.15，出边 1，无饱和）；
+     *   · 它在**金额链**上：`Model.costPressure → Order.costPressure
+     *     → Customer.receivablePressure →（4 条出边）→ ARInvoice/OverdueRecord`；
+     *   · 与既有边 `demo_material_price_to_model_cost`（物料涨价 ⇒ 成本压力）**同一形态**，
+     *     不新编因果骨架，只是给同一格补第二条真实入流。
+     * 对照实验（已跑）：直接扰动 `obj_model_2170-NCM.costPressure +1.0`，零扰动对照臂比对 ——
+     * **72 格差异**，其中 `ARInvoice.overduePressure` 24 格、`Customer.receivablePressure`、
+     * `OverdueRecord.collectionPressure` 全部跟着动 ⇒ **这条链是通的**（`ab-modelcost.txt`）。
+     *
+     * ⚠️ 保留 `key` 不改名：它同时出现在 `seed-demo-propagation.test.ts:538` 与
+     * `frontend-shell/test/fixtures/sim-disclosure.real.json:1611/1615`（后者是**字符串夹具**，
+     * 改名会静默坏）。但**名字里的 `horizon` 已不度量它的靶格** —— 键名是历史坐标，不是描述。
+     */
     delayTicks: 0,
     // ⚠ 「交付时间」是日期，日期不是数 ⇒ 折成**距计划起点的天数**才进得了世界态。
     // 折算式**不是本段新发明的**：`Order.leadDays` 在合成期就是这么算出来的
@@ -2231,11 +2264,15 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     // 负值有真实业务含义且**刻意保留**：在制单的 leadDays 可低至 −14 = 合同交期已过去 14 天
     // 还没交（`dueDayForStatus` 的 IN_PRODUCTION 支 `(s%60)−14`）。夹到 0 会让「已逾期」
     // 与「今天到期」在屏上变成同一个数。
-    description: "该型号在手订单里最远的一张交期还有几天（负数 = 合同交期已过去这么多天仍未交付）",
+    description: "订单交期压缩 ⇒ 该型号赶工/加班/加急 ⇒ 成本压力上升（交期越远 ⇒ 当前成本压力越低，故系数为负）",
     combine: "sum",
     decay: null,
     clamp: null,
-    weightRef: { basis: "source_qty_relative" },
+    // W=1（`equal_share`），与 `Model.costPressure` 组既有两条同口径 ——
+    // 不取 `source_qty_relative`（W=25）：那会把本组增益预算从 1.15 直接顶到 13.65，
+    // 把 `demo_material_price_to_model_cost`（本体登记的**金额链入口**）压掉 12 倍。
+    // 口径不一致不是"更精确"，是**拿一条新边改写一条已登记链路的权重**。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },

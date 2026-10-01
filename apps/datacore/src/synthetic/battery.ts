@@ -775,7 +775,7 @@ export const PROPAGATION_COEF_RULE_KEY = "C36";
 export const PROPAGATION_COEF_PARAMS: Record<string, number> = {
   // WO-COEF-LAMBDA 件B 整格重跑：稳态增益 0.5 × f_g(0.0377833753) = 0.018891 × λ0.37 ⇒ 本行
   // （旧值 0.00687645 对应 f_g=0.0372，是 churn 还是 |0.5| 那一版算出来的）。
-  "demo_order_demand_pressure": 0.004289026,
+  "demo_order_demand_pressure": 0.00698967,
   "demo_model_demand_to_base_load": 0.222,
   "demo_base_load_to_line_util": 0.185,
   "demo_supplier_delay_to_material_shortage": 0.08919627,
@@ -788,7 +788,7 @@ export const PROPAGATION_COEF_PARAMS: Record<string, number> = {
   // WO-PROP-REVIEW-V2 形态② 补登记 `decayRef: C35.queueDaysDecayPerTick` ⇒ 引擎**会衰减**
   // ⇒ 真稳态 = 0.6/0.37 = 1.62，比 description 承诺的「加急压力 × 0.6」大 2.70 倍。
   "demo_po_expedite_to_inspection_queue": 0.222,
-  "demo_material_price_to_model_cost": 0.15684781,
+  "demo_material_price_to_model_cost": 0.109318171,
   "demo_model_cost_to_order_cost": 0.2775,
   "demo_order_cost_to_customer_receivable": 0.03144963,
   "demo_customer_receivable_to_invoice_overdue": 0.148,
@@ -873,16 +873,16 @@ export const PROPAGATION_COEF_PARAMS: Record<string, number> = {
   //     ⇒ |意图增益| = 0.5 × 1/2 = **0.25**。取最弱解释是刻意的：没有第二处出处时，宁可低估折扣。
   // ⇒ 四条边按 `f_g = min(1, 0.75/S_g)` **整格重跑一次**（S_g=19.85 ⇒ f_g=0.0377833753），
   //   稳态增益 −0.009445 × λ(demandLoad)=0.37 ⇒ 本行。
-  "demo_order_churn_to_model_demand_load": -0.002144513,
+  "demo_order_churn_to_model_demand_load": -0.00349465,
   "demo_equipment_failure_to_process_queue": 0.12807661,
   "demo_process_queue_to_line_blocked": 0.2035,
   "demo_line_blocked_to_wo_release": 0.13875,
   "demo_wo_release_to_model_supply_risk": 0.115625,
-  "demo_wo_release_to_model_cost": 0.12065182,
+  "demo_wo_release_to_model_cost": 0.084090662,
   "demo_customer_reaction_cut_order": 0.1295,
   "demo_order_qty_to_model_top_qty": 1.0,
   "demo_order_price_to_model_top_price": 1.0,
-  "demo_order_leaddays_to_model_horizon": -0.004289026,
+  "demo_order_leaddays_to_model_horizon": -0.084090909,
   // 库存环两条出边（传导规则业务评审 v2 ②·2026-09-17·评审优先级 2「库存 buffer 必须能吸收需求」）：
   //  ① 覆盖天数 ⇒ 需求负载**下修**：现货可盖 N 天需求 ⇒ 在手订单簿对产线的即时压力被 buffer 吸收，
   //     符号为**负**（成品库存是需求的减震器，不是放大器）。这是 50 条边里第 3 个负系数
@@ -895,7 +895,7 @@ export const PROPAGATION_COEF_PARAMS: Record<string, number> = {
   // 变的只是 f_g —— 此前这条边 f_g=1（新边进场后没人重跑全格），与同格另两条 f_g≈0.037 的边
   // **不在同一把尺子上**，于是 W=1 的它反而压过了 W=25 的一阶驱动。
   // 稳态增益 −0.5 × 0.0377833753 = −0.018891 × λ0.37 ⇒ 本行。
-  "demo_fg_cover_days_to_model_demand": -0.004289026,
+  "demo_fg_cover_days_to_model_demand": -0.00698967,
   // ⛔ "demo_fg_drawdown_to_model_demand" 已删（WO-PROP-V2-REBASE 裁决，见 seed.ts 库存环段）
   // 物料环三条（传导规则业务评审 v2 ④·2026-09-17·评审优先级 4「物料是第二高频扰动源，今天零阻尼」）：
   //  ① 替代料切换压力 ⇒ 主料短缺风险**下修**（负）：有 Plan B 的料不该和无 Plan B 的料同等短缺。
@@ -931,7 +931,7 @@ export const PROPAGATION_COEF_PARAMS: Record<string, number> = {
   //   ✅ **那张单就是本单**（WO-COEF-LAMBDA 件B，2026-09-19）：意图增益仍是 **−0.6**
   //   （镜像 `demo_model_demand_to_fg_drawdown` 的定性不变），只把 f_g 与同格另三条对齐
   //   ⇒ −0.6 × 0.0377833753 = −0.022670 × λ0.37 ⇒ 本行。该格 Σ|增益|×W 自此 = 0.749961 ≤ 0.75。
-  "demo_fg_drawdown_relieves_model_demand": -0.005146831,
+  "demo_fg_drawdown_relieves_model_demand": -0.0083879,
 
 };
 
