@@ -1845,7 +1845,7 @@ export class Orchestrator {
       const role = detectSingleRole(task.query);
       const prof = role ? roleProfile(role) : undefined;
       if (prof?.agentId && (await this.deps.repos.agents.get(prof.agentId))) {
-        await this.runRolePathB(taskId, auth, task, prof, classification);
+        await this.runRolePathB(taskId, auth, task, prof, enabledFeatures, classification);
         return;
       }
     }
@@ -2391,6 +2391,13 @@ export class Orchestrator {
     auth: RequestAuth,
     task: QueryTask,
     prof: CeoAgentProfile,
+    /**
+     * WO-DSH-REFLECT-PARITY · 复盘门控的求值依据。**只能由调用方给** —— `reflectEnabled(set)` 要 feature set，
+     * 而取 feature set 是 orchestrator 的事（本方法此前不取，故由 `proceedWithIntent` 把已取到的那个传下来，
+     * 不在这里再取一次：多取一次 = 多一条会漂的第二来源）。
+     * 位置在 `classification?` **之前** —— TS 不许必选参数跟在可选参数后面。
+     */
+    enabledFeatures: FeatureSet,
     classification?: ClassificationResult,
   ): Promise<void> {
     await this.enterExecuting(taskId, { status: "EXECUTING_AGENT", path: "AGENT" }, `角色 agent 作答（${ROLE_LABELS[prof.role] ?? prof.role}）`); // D2 · 进门即挂终态看门狗
@@ -2413,6 +2420,8 @@ export class Orchestrator {
         isCancelled: () => this.cancelled.has(taskId),
         onResolvedRef: (r) => resolvedRefs.push(r),
         enforceObjectScope: true,
+        // WO-DSH-REFLECT-PARITY · 暗发门（`agent.critic`·默认关）⇒ 关时不传 = 角色 agent 收尾逐字节不变。
+        ...(reflectEnabled(enabledFeatures) ? { reflect: true } : {}),
         // WO-AGENTRUN-FANOUT-PERSIST：角色 path-B 是**这个任务本身**那次循环 ⇒ ROOT（`getByTask` 返的就是它）。
         placement: { origin: "ROOT" },
       });
@@ -2575,6 +2584,9 @@ export class Orchestrator {
     //   → 对照实验坐实：同一份 LLM 脚本、同样点亮 qos.reasoning-trace，path-B 单 agent 2 次往返发 1 条旁白，
     //   Coordinator 6 次往返发 0 条。多角色扇出恰恰是**最需要过程可见**的那条路（用户等的就是"三个角色分别在查什么"）。
     const narrationOn = reasoningTraceEnabled(enabledFeatures);
+    // WO-DSH-REFLECT-PARITY · 与 `reflectEnabled` 同款暗发门（`agent.critic`·defaultOn:false·"ALL"→false）
+    // ⇒ 关时下面不传 `reflect` ⇒ 多角色扇出的每个子 agent 收尾**逐字节不变**（复盘一步不跑）。
+    const reflectOn = reflectEnabled(enabledFeatures);
     // 每条旁白**带角色标识**（前端要分栏显示"供应链在查什么/生产在查什么"）。角色归属靠 workflow executor 的
     // **串行步序**确定性推导：executor 逐步 `for (const step of input.steps)` 串行执行并先发 `step.started`
     //（workflow/executor.ts:104-106）→ 记住当前 dispatch_i 即当前角色（R6 确定·无并发歧义）。
@@ -2617,6 +2629,7 @@ export class Orchestrator {
       trustLevel: "AGENT_EXPLORATORY",
       enforceAgentObjectScope: true, // 角色 scope 真隔离（越界读对象拒）
       ...(narrationOn ? { emitNarration: true } : {}), // 关 → 不传 → 既有 Coordinator 行为逐字节不变
+      ...(reflectOn ? { reflect: true } : {}), // WO-DSH-REFLECT-PARITY：关 → 不传 → 扇出子 agent 收尾逐字节不变
       onResolvedRef: (r) => {
         if (r.kind === "agent") invokedAgentKeys.push(r.key);
       },
@@ -2661,6 +2674,10 @@ export class Orchestrator {
     await this.deps.events.emit(task.id, "routing.completed", { path: "AGENT", note: `场景入口模式 ${scene.mode}` });
 
     const budget = new BudgetTracker(this.residualBudgetFromConfig()); // WO-Phase4 §6：子 agent/角色/场景/工作流 path 同受硬预算（env 未设→宽松 DEFAULT 不变）
+    // WO-DSH-REFLECT-PARITY · 与 `runCoordinator` 同款：本方法签名不带 feature set（调用点在本文件靠前处、
+    // 取 feature set 的那行在其后），故在此**就地取一次**，而不是把上游那行往前挪 —— 往前挪会让
+    // 「scene 缺 defaultAgentId 提前 return」这条错误路径也多发一次 `enabledSet`，是无谓的行为增量。
+    const enabledFeatures = await this.deps.features.enabledSet(task.tenantId, auth);
     try {
       // 增量 §1.4：场景入口 agent 同样注入前情摘要（共用同一构建器）
       const priorSummary = agentPriorSummary(await this.previousConversationTasks(task));
@@ -2675,6 +2692,8 @@ export class Orchestrator {
         emit: (e, p) => this.deps.events.emit(task.id, e, p).then(() => undefined),
         isCancelled: () => this.cancelled.has(task.id),
         onResolvedRef: (r) => resolvedRefs.push(r),
+        // WO-DSH-REFLECT-PARITY · 暗发门（`agent.critic`·默认关）⇒ 关时不传 = 场景入口 agent 收尾逐字节不变。
+        ...(reflectEnabled(enabledFeatures) ? { reflect: true } : {}),
         // WO-AGENTRUN-FANOUT-PERSIST：场景入口 agent 是**这个任务本身**那次循环 ⇒ ROOT。
         placement: { origin: "ROOT" },
       });
