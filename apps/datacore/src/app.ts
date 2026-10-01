@@ -2403,6 +2403,19 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
        */
       fromState?: TickState;
       fromTick?: number;
+      /**
+       * 要不要跑**影子线**（`signalToNoise` 的原料）。缺省 `true` —— 与旧行为逐字节同（RL9）。
+       *
+       * ⚠ 传 `false` 的只许是**不消费 `signalToNoise` 的路由**。全仓消费方只有
+       * `POST …/tick` 一处（`app.ts` 里 `...(r.signalToNoise ? … : {})` 那行，回包 + 披露层）。
+       * 对照跑与定价都不消费它，却为准每一次请求从 `baseSnapshot` 零扰动重放 `curTick` 拍 ——
+       * 2026-10-01 实测（curTick=9、会话有 2 条扰动）：`/counterfactual` = 2400~3500ms，
+       * 其中**每条影子线约 0.9s、两条都算完就丢**；而 `/tick` 同刻只要 287ms。
+       * 形态（铁律 0.6 句式）：
+       * > **「我用『这个函数算出了 `signalToNoise`』当作『这一跑需要它』的证据，
+       * >   而前者并不度量后者 —— 这个路由的回包结构里根本没有这个字段。」**
+       */
+      needDrift?: boolean;
     },
   ) => {
     const { rules: propRules, n, persist } = opts;
@@ -2543,7 +2556,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     //    实测 `userContribution: 0 / changedCells: 0`，而同一格的读数明明从 99.9868 变成了 99.9938。
     //    形态正是本仓那句：**「我用『这一跑没传扰动』当作『这一跑不含扰动』的证据，而前者并不度量后者。」**
     //    从 `baseSnapshot` 零扰动重放 `curTick` 拍，得到的才是"完全没有我这笔输入的那个世界"。
-    const wantDrift = sessionPerturbations.length > 0 && engineTick;
+    // `needDrift:false` 的调用方（对照跑 / 定价）只拿 `state`，`signalToNoise` 一个字节都不消费
+    // ⇒ 影子线整段不跑。这是**唯一**关掉它的开关，别在别处再抄一个条件。
+    const wantDrift = opts.needDrift !== false && sessionPerturbations.length > 0 && engineTick;
     let driftState: TickState | null = null;
     let driftPending: DelayedContribution[] = [];
     /**
@@ -2882,8 +2897,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     }
     const { active, suppressed, disabled } = await sessionPropRules(c, s, body.disabledRuleKeys);
     // 基线 = 全部已发布规则（"边开着"）；反事实 = 减去屏蔽集（"边关掉"）。两版同一起点、同一算法。
-    const baseline = await simAdvanceTicks(c, s, { rules: published, n, persist: false });
-    const counterfactual = await simAdvanceTicks(c, s, { rules: active, n, persist: false });
+    // `needDrift:false` —— 本路由回包只有 `baselineState` / `counterfactualState` / `diffs` /
+    // `suppressedRulesFiredInBaseline`，**没有 `signalToNoise`**（消费方只有 `…/tick` 一处）。
+    // 前面不关时：两版各跑一条影子线（各自从 `baseSnapshot` 零扰动重放 `curTick` 拍）算完就丢。
+    const baseline = await simAdvanceTicks(c, s, { rules: published, n, persist: false, needDrift: false });
+    const counterfactual = await simAdvanceTicks(c, s, { rules: active, n, persist: false, needDrift: false });
     const result: SimCounterfactualResult = {
       fromTick: s.curTick,
       ticks: n,
@@ -2938,6 +2956,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         rules: active,
         n: opts.n,
         persist: false,
+        // 同 `/counterfactual`：这条回调只取 `r.state`，`signalToNoise` 无人消费 ⇒ 影子线整段不跑。
+        // 定价一次要跑 ≤4 个候选 + 基准，是这一轮里最容易撞上这个白烧的地方。
+        needDrift: false,
         ephemeralPerturbations: opts.ephemeral ?? [],
         excludeSessionPerturbations: opts.excludeSessionPerturbations,
         fromState: opts.fromState,

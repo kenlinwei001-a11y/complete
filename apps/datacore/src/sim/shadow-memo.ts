@@ -60,11 +60,34 @@ export interface ShadowSnapshot {
   readonly pending: readonly DelayedContribution[];
 }
 
-/** 备忘录的一格。 */
+/**
+ * 备忘录的一格：一个 key 上最近物化的**若干拍**（按 tick 取用，最多 `MAX_TICKS_PER_KEY` 格）。
+ */
 interface Slot {
-  readonly tick: number;
-  readonly snap: ShadowSnapshot;
+  readonly byTick: Map<number, ShadowSnapshot>;
 }
+
+/**
+ * 每个 key 最多留几拍。**必须是 2，不是 1** —— 这是 2026-10-01 实测修掉的一格。
+ *
+ * 一次请求在 tick `T` 上跑完，落进备忘的是**两拍**：冷启重放补出来的 `T`
+ * （`app.ts` 的 `put(shadowKey, s.curTick, …)`）与主循环推进出来的 `T+1`
+ * （同文件 `put(shadowKey, beforeTick + 1, …)`）。只留「最后一拍」时，`put(T+1)` 把 `put(T)` 顶掉，
+ * 于是**同一拍上的第二次请求永远 miss**：
+ *   · `/tick` **会进位** ⇒ 下一请求问 `T+1` ⇒ 命中（实测 shadow 692ms → 55ms，总耗时 2.6× 预热）；
+ *   · 一切 `persist:false` 的路（对照跑 / 定价）**不进位** ⇒ 下一请求仍在 `T`，而槽里是 `T+1`
+ *     ⇒ **一次都不命中**（实测 `/counterfactual` 连打 2400 / 3500 / 2870 / 3480 / 4270 ms，毫无预热）。
+ * ⇒ 本备忘录的全部收益，在它**本来要服务的那条路上**（控制台一轮 8 个请求里 counterfactual×2
+ *   + pricing×≤4 全是 `persist:false`）曾经是 **0**。
+ *
+ * 形态（铁律 0.6 句式）：
+ * > **「我用『我按拍存了备忘录』当作『同一拍上的重复请求会命中』的证据，
+ * >   而前者并不度量后者 —— 存进去的是 `T+1`，来问的是 `T`。」**
+ *
+ * 内存代价（有界，写在这里以免将来被当成回归）：一格多留的是**已经算出来的**那个态对象
+ * （`put` 存引用不深拷），边际成本 = 至多 `cap` 个世界态，不是把重放成本换个地方付。
+ */
+const MAX_TICKS_PER_KEY = 2;
 
 /**
  * 延迟队列的**逐条拷贝**。
@@ -143,12 +166,13 @@ export function shadowFingerprint(i: {
 export const shadowMemoStats = { hits: 0, misses: 0 };
 
 /**
- * 有界 LRU：`(租户, 会话, 指纹)` → 最近物化的那一拍。
+ * 有界 LRU：`(租户, 会话, 指纹)` → 最近物化的**两拍**（见 `MAX_TICKS_PER_KEY`）。
  *
- * 为什么**只留最近一拍**而不是每一拍都留：一个世界态是「12,499 对象 × 若干格」，
- * 逐拍全留会在长会话里把一个进程的内存吃穿。控制台的实际访问形状是
- * 「在同一拍上连打几次，然后进一拍」，所以最近一拍的命中率就是主要收益；
- * 未命中只是**退化成今天的行为**（重放），不会算错。
+ * 为什么是**有界的两拍**而不是每一拍都留：一个世界态是「12,499 对象 × 若干格」，
+ * 逐拍全留会在长会话里把一个进程的内存吃穿。两拍恰好覆盖控制台的实际访问形状
+ * ——「在同一拍上连打几次，然后进一拍」：同一拍重复请求问的是 `T`（冷启补出来的那格），
+ * 进一拍之后问的是 `T+1`（主循环推进出来的那格），两格都在。留第三拍就再也问不到了。
+ * 未命中只是**退化成旧行为**（重放），不会算错。
  *
  * ── ⛔ 这里**没有**「baseSnapshot 换过没有」的运行期判据，这是实测改掉的（别加回去）──────
  * 第一版拿 `s.baseSnapshot` 的**对象引用**当判据（同引用=没换过）。实测**恒不成立**：
@@ -176,19 +200,31 @@ export class ShadowMemo {
   get(key: string, tick: number): ShadowSnapshot | null {
     const s = this.slots.get(key);
     if (s === undefined) { shadowMemoStats.misses += 1; return null; }
-    if (s.tick !== tick) { shadowMemoStats.misses += 1; return null; }
-    // LRU：命中即提到最新。
+    const snap = s.byTick.get(tick);
+    if (snap === undefined) { shadowMemoStats.misses += 1; return null; }
+    // LRU：命中即把这个 key 提到最新（**拍不参与 LRU** —— 同一个 key 的几拍是一起用的）。
     this.slots.delete(key);
     this.slots.set(key, s);
     shadowMemoStats.hits += 1;
     // 返回**值**不是内部那一格：状态对象本身逐拍重放时是新建的（`propagateTick` 返回 `cloneState`），
     // 但数组与元素都是共享引用，故两样都要拷（见 `clonePending` 的理由）。
-    return { state: s.snap.state, pending: clonePending(s.snap.pending) };
+    return { state: snap.state, pending: clonePending(snap.pending) };
   }
 
   put(key: string, tick: number, snap: ShadowSnapshot): void {
+    const slot = this.slots.get(key) ?? { byTick: new Map<number, ShadowSnapshot>() };
+    slot.byTick.set(tick, { state: snap.state, pending: clonePending(snap.pending) });
+    // 只留 tick 最大的 `MAX_TICKS_PER_KEY` 拍。按 **tick** 淘汰、不按插入序：
+    // Map 保的是插入序，而同一 key 上先写 `T+1` 再补 `T` 是可能的写法，
+    // 那时按插入序淘汰会把刚推进出来的那一拍踢掉 —— 淘汰的是错的那一格。
+    while (slot.byTick.size > MAX_TICKS_PER_KEY) {
+      let minTick = Number.POSITIVE_INFINITY;
+      for (const t of slot.byTick.keys()) if (t < minTick) minTick = t;
+      if (minTick === Number.POSITIVE_INFINITY) break;
+      slot.byTick.delete(minTick);
+    }
     this.slots.delete(key);
-    this.slots.set(key, { tick, snap: { state: snap.state, pending: clonePending(snap.pending) } });
+    this.slots.set(key, slot);
     while (this.slots.size > this.cap) {
       const oldest = this.slots.keys().next();
       if (oldest.done === true) break;
