@@ -448,7 +448,15 @@ async function reflectWithCritic(
   if (!opts.critic) return base;
   try {
     const c = await opts.critic({ blocks: answer.blocks, userContent: opts.userContent });
-    if (!c.ok) return { ok: false, reasons: [...base.reasons, `LLM critic：${c.reason ?? "复核未过"}`] };
+    if (!c.ok)
+      return {
+        ok: false,
+        reasons: [...base.reasons, `LLM critic：${c.reason ?? "复核未过"}`],
+        // ★ critic 的 `reason` 是**无受众约束的自由文本**（LLM 生成的复核意见，可能含内部术语）——
+        // 它进 `reasons`（回注给模型 / replanReason 审计），⛔ 不进 `userReasons`。
+        // 上屏只给这句固定文案；要追 critic 原话去 replanReason 取。
+        userReasons: [...base.userReasons, "复核认为这个回答的论据还不够充分"],
+      };
   } catch {
     // fail-open：critic 抛错不影响确定性主判（R6 复盘仍生效）。
   }
@@ -557,7 +565,13 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
   const replanBudget = Math.max(0, opts.replanBudget ?? 1);
   let replansUsed = 0;
   let reflected = false;
+  /**
+   * 复盘未过关的原因 · **两份，受众不同**（WO-REFLECT-JARGON-SPLIT）。
+   *   · `lastReplanReason`      → 回注给模型的 `tool_result` + `replanReason` 审计字段（可含内部术语）
+   *   · `lastReplanReasonUser`  → **上屏**的答案块正文（只有这一份许进 blocks）
+   */
   let lastReplanReason = "";
+  let lastReplanReasonUser = "";
   // WO-LOOP-CONTROL-P1 · Loop Detector 环检测状态（opt-in·repeatCap≤0 = 禁用 = 现行为字节兼容）。
   const repeatCap = opts.loopRepeatCap && opts.loopRepeatCap > 0 ? opts.loopRepeatCap : 0;
   const callSignatureCounts = new Map<string, number>();
@@ -1095,6 +1109,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
           if (!verdict.ok) {
             reflected = true;
             lastReplanReason = verdict.reasons.join("；");
+            lastReplanReasonUser = verdict.userReasons.join("；");
             const canReplan = replansUsed < replanBudget && !finalizePending && !opts.budget.exhausted && !opts.budget.roundTripsExceeded();
             if (canReplan) {
               replansUsed += 1;
@@ -1115,7 +1130,12 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
             // 重规划预算尽仍不过关 → 诚实收尾：附「反思发现的残余缺口」块（不静默发半成品·KILL-MOCK-RED）。
             const gapBlocks: AnswerBlock[] = [
               ...accepted.answer.blocks,
-              { type: "text", markdown: `【反思发现的残余缺口（已尽重规划预算 ${replanBudget}）】${lastReplanReason}` },
+              // ★ WO-REFLECT-JARGON-SPLIT：上屏用 `lastReplanReasonUser`（用户可读），
+              // ⛔ 不许用 `lastReplanReason` —— 那是回注给模型的诊断串（含 invoke_solver / ⟦ref:N⟧ /
+              // 「求解纪律」这类内部术语与补齐指令），用户读了无法据此做任何决定。
+              // 标题里的「重规划预算 ${replanBudget}」同属内部循环术语，一并不上屏；
+              // 该计数仍随 `replanReason` 进审计字段，要查去那里查。
+              { type: "text", markdown: `【本次回答的已知不足】${lastReplanReasonUser}` },
             ];
             iterations.push({ index: i, toolCalls: [] });
             return {

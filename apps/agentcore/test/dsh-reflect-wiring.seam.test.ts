@@ -33,6 +33,9 @@ import { createTestApp, submitQuery, waitForTask, lastToolCallId, ADMIN, TENANT,
 import { text, toolUse } from "../src/llm/mock.js";
 import { defaultOnKeys } from "../src/features/registry.js";
 import { seedRegistry } from "../src/mocks/seed.js";
+// 上屏标题 / 开发术语禁表 —— 与另两个 reflect 测试**共用单一来源**（各抄一份即装饰品）。
+// 判据、反向哨兵、为何单独成文件，全写在 `reflect-jargon.ts` 头注。
+import { DEV_JARGON, GAP_HEADER, MODEL_GAP_HEADER } from "./reflect-jargon.js";
 
 /** 把 seed 注册表 agents 灌入测试 repos（helpers 默认只种 package/intents/plans）。与 coordinator-a2a 同款。 */
 async function seedAgents(t: TestApp): Promise<void> {
@@ -104,6 +107,10 @@ const SOLVER_ASK = "帮我看看物料齐套现在到底怎么样";
 /** 干净收尾：非占位（不撞 ①）、带范围内 ⟦ref:0⟧（不撞 ②）、无裸数（不撞红线）。 */
 const CLEAN_FINAL = "物料库存目前处于正常水位 ⟦ref:0⟧。";
 
+// 上屏标题 / 开发术语禁表 —— 与另两个 reflect 测试**共用单一来源**（各抄一份即装饰品）。
+// 判据、反向哨兵、为何单独成文件，全写在 `reflect-jargon.ts` 头注。
+import { DEV_JARGON, GAP_HEADER, MODEL_GAP_HEADER } from "./reflect-jargon.js";
+
 function cleanFinalTurn(req: { messages: { content: unknown }[] }) {
   return {
     content: [
@@ -122,7 +129,7 @@ describe("WO-DSH-REFLECT-PARITY · 接线 SEAM：orchestrator 求门 × engine �
     expect(task.classification?.model, "路由金丝雀：必须真走角色 agent，否则本文件测的不是注册 agent 路").toBe("agent:role:supply-chain");
     const txt = answerText(task);
     expect(txt).toContain(PLACEHOLDER_ANSWER);
-    expect(txt, "门关却出现了残余缺口块 ⇒ 暗发门漏了（既有行为被改变）").not.toContain("反思发现的残余缺口");
+    expect(txt, "门关却出现了缺口块 ⇒ 暗发门漏了（既有行为被改变）").not.toContain(GAP_HEADER);
     await t.app.close();
   });
 
@@ -130,9 +137,10 @@ describe("WO-DSH-REFLECT-PARITY · 接线 SEAM：orchestrator 求门 × engine �
     const { t, task } = await runRegisteredAgent(true);
     expect(task.classification?.model, "路由金丝雀：必须真走角色 agent").toBe("agent:role:supply-chain");
     const txt = answerText(task);
-    expect(txt, "门开了却没跑复盘 ⇒ engine 没把 reflect 透传到注册 agent 路（本文件要咬的那根线）").toContain("反思发现的残余缺口");
+    expect(txt, "门开了却没跑复盘 ⇒ engine 没把 reflect 透传到注册 agent 路（本文件要咬的那根线）").toContain(GAP_HEADER);
     // 缺口块里写的必须是 reflectAnswer 给出的**真原因**，不是空的占位块。
-    expect(txt).toContain("未真正作答");
+    // ⚠ 断言的是 **user 一侧**的文案（上屏只许这一份）；模型一侧的「未真正作答」不许上屏，见 §3。
+    expect(txt).toContain("本次没能给出有效回答");
     await t.app.close();
   });
 });
@@ -183,7 +191,7 @@ describe("WO-DSH-REFLECT-PARITY · §2 ④ 在真实注入语料下会不会误�
     expect(
       txt,
       "④ 在用户没问排产/优化类问题时也报了 ⇒ 判据又吃回了拼接材料（导航切片/本体语义上下文自带那族词）",
-    ).not.toContain("反思发现的残余缺口");
+    ).not.toContain(GAP_HEADER);
     await t.app.close();
   });
 
@@ -192,8 +200,24 @@ describe("WO-DSH-REFLECT-PARITY · §2 ④ 在真实注入语料下会不会误�
     // 问句含 `齐套`（SOLVER_REQUIRED_RE 成员）且能路由到供应链角色 agent。
     const { t, task } = await run(SOLVER_ASK);
     const txt = canary(task);
-    expect(txt, "真排产问句却不咬 ⇒ ④ 被关掉了，不是在读用户原话").toContain("反思发现的残余缺口");
-    expect(txt, "缺口块的理由必须是求解纪律（即 ④）").toContain("求解纪律");
+    expect(txt, "真排产问句却不咬 ⇒ ④ 被关掉了，不是在读用户原话").toContain(GAP_HEADER);
+    // ★ 修前此处断言的是 `toContain("求解纪律")` —— 那条断言**把开发术语钉在了用户的屏上**，
+    //   它本身就是本单要修的病的一部分。现在改咬 **user 一侧**的文案。
+    expect(txt, "缺口块的理由必须是 ④ 求解器那条（用户可读版）").toContain("本次没有走求解器");
+    // ★ 本句是 `WO-REFLECT-JARGON-SPLIT` 的**真路径**半边：④ 真咬住的时候（本句之前已证），
+    //   上屏的字里**一个开发术语都不许有**。另一半（两个数组确有鉴别力）在
+    //   `reflect-loop-seam.test.ts` 的单测里咬 —— 两半缺一，「没术语」与「文案根本没出来」就分不开。
+    //
+    // ⚠ **只扫平台追加的那一块**（自 `GAP_HEADER` 起），⛔ 不扫全文：
+    //   全文里还有**模型自己写的**溯源记号 `⟦ref:N⟧` —— 那是答案正文的引用语法，本条 §1.1 已钉它必须在。
+    //   本句初版扫的是全文，被 `⟦ref:0⟧` 当场咬红，形态（铁律 0.6 第 6 条同族）：
+    // > 「我用『这个记号在屏上出现了』当作『模型口径的 reasons 上了屏』的证据，
+    // >   而前者并不度量后者 —— 它也可能是答案正文里本来就有的溯源记号。」
+    const gap = txt.slice(txt.indexOf(GAP_HEADER));
+    for (const w of DEV_JARGON) {
+      expect(gap, `开发术语「${w}」上了用户屏 ⇒ 模型口径的 reasons 被渲染成了答案正文`).not.toContain(w);
+    }
+    expect(txt, "模型口径的旧标题又上屏了").not.toContain(MODEL_GAP_HEADER);
     await t.app.close();
   });
 

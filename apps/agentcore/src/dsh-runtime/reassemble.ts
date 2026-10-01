@@ -709,7 +709,11 @@ export function reassembleDshRun(events: readonly DshSessionEvent[], opts: Reass
         ...blocks,
         {
           type: "text",
-          markdown: `【反思发现的残余缺口（dsh 路·收束后不可回注重规划）】${verdict.reasons.join("；")}`,
+          // ★ WO-REFLECT-JARGON-SPLIT：上屏只用 `userReasons`。原串还用 `reasons` 并把
+          // 「dsh 路·收束后不可回注重规划」印在用户屏上 —— 内核名 + 内部循环机制，用户读了做不了任何决定
+          //（与原生路同一形态，故一并按同一判据处置）。
+          // `replanReasons` 审计字段仍留 `verdict.reasons`（模型口径），要追病因去那里追。
+          markdown: `【本次回答的已知不足】${verdict.userReasons.join("；")}`,
         },
       ];
     }

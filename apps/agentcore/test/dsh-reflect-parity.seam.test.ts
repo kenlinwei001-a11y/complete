@@ -33,6 +33,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { reassembleDshRun, type DshSessionEvent } from "../src/dsh-runtime/reassemble.js";
+import { DEV_JARGON, GAP_HEADER } from "./reflect-jargon.js";
 
 // ---------------------------------------------------------------------------
 // 帧构造（形态照 dsh-runtime-reassemble.test.ts / numeric-redline-block.seam.test.ts，不另立第二套）
@@ -105,7 +106,17 @@ describe("§1 四查逐项", () => {
     // 诚实收尾：缺口块进答案（不静默发半成品·KILL-MOCK-RED 同口径）
     const tail = r.answer.blocks.at(-1);
     expect(tail?.type).toBe("text");
-    expect(tail && "markdown" in tail ? tail.markdown : "").toContain("反思发现的残余缺口");
+    const tailMd = tail && "markdown" in tail ? tail.markdown : "";
+    expect(tailMd, "缺口块必须真在 —— 否则下面『无术语』是空断言").toContain(GAP_HEADER);
+    // ★ `WO-REFLECT-JARGON-SPLIT`：dsh 臂的块**只许渲染 userReasons**。
+    //   修前它印的是 `verdict.reasons` 全文 + 字面量「dsh 路·收束后不可回注重规划」（内核名 + 内部机制）。
+    for (const w of DEV_JARGON) {
+      expect(tailMd, `dsh 臂把开发术语「${w}」印上了用户屏 ⇒ 渲染的是 reasons 不是 userReasons`).not.toContain(w);
+    }
+    expect(tailMd, "上屏的必须是用户可读版的理由").toContain("本次没有走求解器");
+    // 反向半边（同一跑内）：**审计字段**仍留模型口径 —— 证明上面那条不是「术语压根没生成」。
+    // 两边同真，才说明「不术语」是因为分了受众，不是因为把机制做废了。
+    expect((r.replanReasons ?? []).join("；"), "审计字段丢了模型口径 ⇒ 病因再没人追得到").toContain("求解纪律");
     // 反身金丝雀：平台自己拼的缺口文案不得自触数字红线（它里面没有业务数字）
     expect(r.answer.unverifiedNumerics).toBe(false);
   });
