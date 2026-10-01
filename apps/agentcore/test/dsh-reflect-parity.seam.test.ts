@@ -216,3 +216,50 @@ describe("§2 反向对照", () => {
     expect(off.answer.blocks[0]).toEqual({ type: "text", markdown: SOLVER_ACK });
   });
 });
+
+// ===========================================================================
+// §3 已知过度触发面 · ④ 吃的是**拼接串**，钉住防静默改变
+// ===========================================================================
+describe("§3 已知过度触发面（钉住·非修复）", () => {
+  /**
+   * 引擎传给本层的 `userContent` **不是用户那句话**，而是
+   * `opts.prompt + 导航切片(renderNavigationSlice) + 本体语义上下文` 的拼接串（见 `engine.ts` 该局部量定义）。
+   *
+   * 实测（读 `renderNavigationSlice` 渲染体，不是数文件里出现过几次词）：它的输出**本来就带**
+   * solver capability 文案、solver/规则 roster 的 `brief`、以及 `slice.rules` 原文 ——
+   * 这个域的这些文案天然含「产能」「优化」「缺口」「承诺」这一族词，**正是 ④ 的判据语料**。
+   *
+   * ⇒ 用户问一句与求解纪律**无关**的话，④ 也可能因**注入语料**而命中（**多报**，不是漏报）。
+   *
+   * ⚠ 这**不是本单引入的**：原生臂 `runAgentLoop` 收到的 `opts.userContent` 是**同一个局部量**，
+   *   `reflectWithCritic` 把它原样喂给 `reflectAnswer` —— 两条臂同病。故本条钉的是**路的既有性质**。
+   * ⚠ 收紧（让 ④ 吃「用户原话」而非拼接串）= 动原生路既有语义 = **产品裁决**，不在本单内。
+   */
+  const NAV_SLICE_TAIL = [
+    "· 本题最相关的求解器·详情（invoke_solver·输出形状告诉你结果长什么样/取哪个字段溯源）：",
+    "  ★ capacity_gap：按产能缺口与可行性做资源分配与优化｜输出 { gapQty, feasible }",
+  ].join("\n");
+  /** 用户原话本身**不含** SOLVER_REQUIRED_RE 的任何词。 */
+  const UNRELATED_ASK = "介绍一下常州基地的基本情况。";
+
+  it("3.1 用户问句本身无关，但拼接串里带注入语料 ⇒ ④ 仍会咬（多报方向·钉住现状）", () => {
+    const r = reassembleDshRun(noSolver(), {
+      reflect: { userContent: `${UNRELATED_ASK}\n\n${NAV_SLICE_TAIL}` },
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    // 今天的真实行为：咬。钉住它 —— 哪天 ④ 改成只吃用户原话，这条会红，逼人来读这段说明。
+    expect(
+      r.reflected,
+      "若此处变红：④ 的判据输入已收紧（或注入语料已不含该族词），属行为变更，需连同原生路语义一起裁决",
+    ).toBe(true);
+    expect((r.replanReasons ?? []).join("；")).toContain("求解纪律");
+  });
+
+  it("3.2 反身金丝雀：同一条轨迹 + 纯用户原话 ⇒ 必不咬（证明 3.1 咬的是注入语料，不是轨迹本身）", () => {
+    const r = reassembleDshRun(noSolver(), { reflect: { userContent: UNRELATED_ASK } });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.reflected, "纯无关问句也咬 ⇒ 3.1 证不出「是注入语料造成的」").toBeUndefined();
+  });
+});
