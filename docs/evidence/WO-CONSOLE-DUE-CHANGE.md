@@ -72,3 +72,17 @@
 - `docs/evidence/WO-SIM-ORDER-ISLANDS-spec.md`：其修法（三条边指向 `Model.demandLoad` 之外的方案）
   与**假证据**（「参考量级 = 各量实测中位数量级 110/16000/18000」，实测真中位数
   `qty` **4548.5** / `leadDays` **−56** / `unitPrice` **21406**）**均须作废**。
+
+## 七、改动点全清单（实测 grep，含会静默坏的那处）
+
+| # | 位置 | 现状 | 要改成 |
+|---|---|---|---|
+| 1 | `apps/datacore/src/seed.ts:2214-2241` | `targetStateVar:"backlogHorizonDays"` · `combine:"max"` · `weightRef:null` | `"demandLoad"` · `"sum"` · `{basis:"source_qty_relative"}` |
+| 2 | `apps/datacore/src/synthetic/battery.ts:885` | `"demo_order_leaddays_to_model_horizon": 1.0` | 标定值 `-0.004289026`（**带符号**） |
+| 3 | `apps/datacore/src/synthetic/battery.ts:883-884` | 另两条 `1.0` | 同格重跑后四条的 C36 系数一起换（见 calibration） |
+| 4 | `apps/datacore/src/synthetic/battery.ts:3689` | `backlogHorizonDays:"在手订单最远交期天数（天）"` | 靶格消失 ⇒ 该显示名随之失效，须处置 |
+| 5 | `apps/datacore/test/seed-demo-propagation.test.ts:538` | 断言里引该 ruleKey | 随目标改动更新 |
+| 6 | ⚠️ `apps/frontend-shell/test/fixtures/sim-disclosure.real.json:1611/1615` | 真回包夹具含该 ruleKey + `coefficientRef:"C36.demo_order_leaddays_to_model_horizon"` | **不 grep 会静默坏** —— 前端测试拿旧夹具比对，改后不知哪条红 |
+
+⚠️ 另：该段头注释（`seed.ts:2145-2158`）整段是**为 `backlog*` 三个存量读数写的**（「为什么三条都用 `combine:"max"`」）
+—— 靶格改压力格后**那段注释全部失效**，必须重写，否则下一个人会照它把 `combine` 改回 `max`。
