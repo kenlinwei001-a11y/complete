@@ -616,6 +616,121 @@ function applyContribution(
  *          / unresolvedWeights（声明了分摊口径却拿不到整张权重表的规则）
  *          / appliedPerturbations（本 tick **处于生效期**的扰动 id，输入序 —— 溯源：这个结果是哪几次扰动造成的）
  */
+
+/**
+ * 图的**静态导航索引** —— 「从某对象沿某条规则能走到哪些对象」的**唯一实现**。
+ *
+ * `propagateTick` 的每拍推进与本文件的 `reachHopsToOrder`（静态可达性）**共用本函数**。
+ * ⛔ 不许各写一份 `navKey` / `navOut` / `targetsOf`：键格式（`linkKey\u0000fromId`）与
+ * `targetTypeKey` 过滤合起来就是「**什么算一条边**」的定义，写两份 = 两套真相源 ——
+ * 改了一处漏了另一处，可达性算出来的跳数与引擎实际走的路就不是同一张图，而屏上看不出来。
+ *
+ * ⚠ 分隔符是 NUL（U+0000），**必须写成转义**（见本文件下方 `navKey` 那行的写法），
+ *   不许写成字面 NUL 字节：字面 NUL 会让 git 把本文件判成 binary、grep 也只回
+ *   「Binary file matches」⇒ **这个文件的每一次改动都没人能看见**（本文件 2026-10-01 实测踩过一次）。
+ */
+function buildNav(graph: PropagationGraph): {
+  readonly typeOf: Map<string, string>;
+  readonly navOut: Map<string, string[]>;
+  targetsOf(rule: PropagationRule, sourceId: string): string[];
+} {
+  const typeOf = new Map<string, string>();
+  for (const o of graph.objects) typeOf.set(o.id, o.typeKey);
+  // navOut: "linkKey\u0000fromId" -> 该边的 toId 列表（source 视角下游 target）。用 NUL 分隔避免 key 撞车。
+  const navKey = (linkKey: string, fromId: string) => `${linkKey}\u0000${fromId}`;
+  const navOut = new Map<string, string[]>();
+  for (const l of graph.links) {
+    const ko = navKey(l.linkKey, l.fromId);
+    (navOut.get(ko) ?? navOut.set(ko, []).get(ko)!).push(l.toId);
+  }
+  return {
+    typeOf,
+    navOut,
+    targetsOf: (rule, sourceId) =>
+      (navOut.get(navKey(rule.viaLinkKey, sourceId)) ?? [])
+        .filter((toId) => typeOf.get(toId) === rule.targetTypeKey)
+        .sort((a, b) => a.localeCompare(b)),
+  };
+}
+
+/**
+ * 落点到订单格的**静态可达性**（WO-PRICING-REACH）。
+ *
+ * ── 为什么要它 ──────────────────────────────────────────────────────────────
+ * `/pricing` 的读数（`orderDisplacement`）**只数 Order 对象上的格**，而候选的落点是压力格
+ * （`Material.shortageRisk` / `Line.utilPressure` / …），到订单隔着若干条传播边。
+ * 引擎每拍只推进**一跳**（贡献写进 `next`，而边的源读 `effState`），于是 `horizon < 跳数` 时
+ * 订单格**一个都没动**，`after` 与 `control` **逐字节相同**。
+ *
+ * 2026-10-01 真服务实测（会话 `sims_demo_seed_world`，canonical `bc62fc33f`）：
+ * `Material.shortageRisk →[material_used_by_model]→ Model.supplyRisk →[model_demanded_by_order]→
+ * Order.shortageRisk`，两条边 `delayTicks` 都是 0，实需 **2 拍**：`horizon=1` 时 `after` 与
+ * `control` 的 md5 相同（`898461a824e6`），`horizon=2` 起立刻分开。
+ * **那个零在字面上是真的，但屏上它和「这个杠杆没接线」长得一模一样** —— 正是本仓
+ * `noCandidateKind`（NONE vs UNAVAILABLE）那一整套 doctrine 要防的病。本函数就是给定价侧
+ * 那个「为什么是零」的机器判据。
+ *
+ * ── ⚠ 它是**下界**，不是到达时刻 ─────────────────────────────────────────────
+ * 只沿 `sourceTypeKey/sourceStateVar/viaLinkKey/targetTypeKey` 走拓扑，**不读闸门、不读系数**：
+ * 声明了 `cadenceNodeId` 的边只在开闸那拍才放行（`cadenceGateWaitTicks`），系数量级太小也会让
+ * 位移落进 0.01 噪声地板。⇒ `hops` 是「**最快几拍能到**」，实际到达可能更晚，
+ * ⛔ 不许把 `hops` 反过来当成「到了」的承诺。
+ *
+ * ── 三态必须可分辨（⛔ 不许塌成一个 null）────────────────────────────────────
+ * `unassessed`（起点根本不在图里）与 `unreachable`（走得遍、就是走不到订单）**修法相反**：
+ * 前者是调用方给了个不在当前范围里的落点，后者是规则/链路缺口。混成一个 null
+ * 就是 `noCandidateReason` 那个事故的第二次。
+ */
+export type ReachToOrders =
+  | { readonly kind: "unassessed"; readonly reason: "START_NOT_IN_GRAPH" }
+  | { readonly kind: "unreachable"; readonly visited: number }
+  | { readonly kind: "reachable"; readonly hops: number; readonly visited: number };
+
+export function reachHopsToOrder(args: {
+  readonly graph: PropagationGraph;
+  readonly rules: readonly PropagationRule[];
+  /**
+   * 算作「到达」的目标对象 id 集（定价侧传订单 id 集 —— 与 `orderDisplacement` 的判据**同一个集合**，
+   * 不许另取一份：读数数哪些格、可达性就该认哪些对象）。
+   */
+  readonly targetIds: ReadonlySet<string>;
+  readonly fromObjectId: string;
+  readonly fromStateVar: string;
+}): ReachToOrders {
+  const { typeOf, targetsOf } = buildNav(args.graph);
+  // 起点不在图里 ⇒ **未评估**。⛔ 不许落进 unreachable：那是「走遍了、走不到」，
+  // 与「压根没走」是两回事，而它们在后端与屏上都会读成同一个「够不着」。
+  if (!typeOf.has(args.fromObjectId)) return { kind: "unassessed", reason: "START_NOT_IN_GRAPH" };
+
+  const seen = new Set<string>();
+  const key = (id: string, sv: string) => `${id}\u0000${sv}`;
+  let frontier: { id: string; sv: string }[] = [{ id: args.fromObjectId, sv: args.fromStateVar }];
+  seen.add(key(args.fromObjectId, args.fromStateVar));
+  let hops = 0;
+  if (args.targetIds.has(args.fromObjectId)) return { kind: "reachable", hops, visited: seen.size };
+
+  while (frontier.length > 0) {
+    hops += 1;
+    const next: { id: string; sv: string }[] = [];
+    for (const cur of frontier) {
+      const typeKey = typeOf.get(cur.id);
+      for (const rule of args.rules) {
+        if (rule.sourceTypeKey !== typeKey || rule.sourceStateVar !== cur.sv) continue;
+        for (const toId of targetsOf(rule, cur.id)) {
+          if (args.targetIds.has(toId)) return { kind: "reachable", hops, visited: seen.size };
+          const k = key(toId, rule.targetStateVar);
+          if (seen.has(k)) continue;
+          seen.add(k);
+          next.push({ id: toId, sv: rule.targetStateVar });
+        }
+      }
+    }
+    frontier = next;
+  }
+  return { kind: "unreachable", visited: seen.size };
+}
+
+
 export function propagateTick(
   graph: PropagationGraph,
   state: TickState,
@@ -777,25 +892,13 @@ export function propagateTick(
    */
   const reactionActors: { ruleKey: string; actorObjectId: string }[] = [];
 
-  // ── 0) 对象类型索引 + 链路导航索引（复用 recompute 的 "linkKey|id" 思路） ──
-  const typeOf = new Map<string, string>();
-  for (const o of graph.objects) typeOf.set(o.id, o.typeKey);
-  // navOut: "linkKey\u0000fromId" -> 该边的 toId 列表（source 视角下游 target）。用 \u0000 分隔避免 key 撞车。
-  const navKey = (linkKey: string, fromId: string) => `${linkKey}\u0000${fromId}`;
-  const navOut = new Map<string, string[]>();
-  for (const l of graph.links) {
-    const ko = navKey(l.linkKey, l.fromId);
-    (navOut.get(ko) ?? navOut.set(ko, []).get(ko)!).push(l.toId);
-  }
+  // ── 0) 图索引（对象类型 + 链路导航）—— 与 `reachHopsToOrder` **共用 `buildNav` 一份实现** ──
+  const { targetsOf } = buildNav(graph);
   // sourceTypeKey -> 该类型对象 id（稳定排序，遍历确定）。
   const idsByType = new Map<string, string[]>();
   for (const o of [...graph.objects].sort((a, b) => a.id.localeCompare(b.id))) {
     (idsByType.get(o.typeKey) ?? idsByType.set(o.typeKey, []).get(o.typeKey)!).push(o.id);
   }
-  const targetsOf = (rule: PropagationRule, sourceId: string): string[] =>
-    (navOut.get(navKey(rule.viaLinkKey, sourceId)) ?? [])
-      .filter((toId) => typeOf.get(toId) === rule.targetTypeKey)
-      .sort((a, b) => a.localeCompare(b));
 
   // ── 1) 先结算 pending 中 arriveTick === tick 的延迟贡献（确定性：稳定排序后累加） ──
   // 延迟贡献是已定型的标量，统一 sum 累加（其规则 combine 在落 pending 前已定值）。

@@ -72,7 +72,7 @@ import { SchemeAdoptionPayloadSchema } from "@platform/contracts"; // WO-ADOPT-S
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
 import { ADVERSARY_FEATURE_KEY, adversaryMoveNameOf, applyPerturbationToState, diffTickStates, isPerturbationActiveAt, partitionAdversaryRules, partitionPropagationRules, PerturbationSchema, PropagationRulePatchSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, SolutionCandidateSchema, unknownPropagationRuleKeys, type CellProvenance, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimCounterfactualResult, type SimSession, type SimSessionStatus, type StateVarDomainLookup, type TickState } from "@platform/contracts";
 import { diffEnterpriseStates, ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 企业状态快照（差分口径与 StateDelta 同一份纯函数）
-import { PERTURBATION_TRACE_PREFIX, firedPropagationRuleKeys, propagateTick, type CadenceGateLookup, type PairWeightLookup, type PerturbationInTick, type PropagationGraph, type RuleParamLookup, type ScopeReport, type StateVarDisclosure, type UnresolvedCadenceGate, type UnresolvedPairWeight } from "./sim/propagation.js";
+import { PERTURBATION_TRACE_PREFIX, firedPropagationRuleKeys, propagateTick, reachHopsToOrder, type CadenceGateLookup, type PairWeightLookup, type PerturbationInTick, type PropagationGraph, type ReachToOrders, type RuleParamLookup, type ScopeReport, type StateVarDisclosure, type UnresolvedCadenceGate, type UnresolvedPairWeight } from "./sim/propagation.js";
 import type { PairWeightReport } from "./sim/pair-weights.js";
 // 影子线的按拍备忘录（WO-SIM-PERF-SHADOW）：把「每请求重放 curTick 拍」换成「同一拍只算一次」。
 import { ShadowMemo, shadowFingerprint } from "./sim/shadow-memo.js";
@@ -101,7 +101,7 @@ import { buildExplainSlice } from "./sim/explain-slice.js";
 // WO-C0828-P2 · D2 逐候选反事实定价的**模型层**（PRD-sim-options-decision-surface §4.2）。
 // 六步装配全在那边（对照与候选世界都走 persist:false 临时扰动路 ⇒ 零写入）；
 // 本文件只负责「取数据 → 交给它 → 回包」这三件事（同 change-impact / impact-analysis 的分层）。
-import { priceCandidate, pricingFingerprint, scenarioPerturbationsHash, type PricingOutcome } from "./sim/option-pricing.js";
+import { findPricingBinding, priceCandidate, pricingFingerprint, scenarioPerturbationsHash, type PricingOutcome } from "./sim/option-pricing.js";
 // 定价的业务键 → 内部 id 解析单源（枚举器的唯一键逻辑；见 resolver 的「先 load 再调」警告）。
 import { resolveBusinessRefToObjectId, type BusinessRefMemo } from "./solvers/impediment-options.js";
 // WO-SIM-SEED-WORLD · 建会话/推拍两条生产写路径的**契约**（定义住在播种侧，本文件只 import type ⇒ 运行时零依赖、不成环）。
@@ -2937,7 +2937,12 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       }),
       req.body ?? {},
     );
-    const horizon = body.horizon ?? 1;
+    // 🔴 `horizon` 缺省**不是 1**（WO-PRICING-REACH）。引擎每拍只推进一跳，落点隔 `hops` 条边时
+    // 订单格要 `hops` 拍才动 ⇒ 缺省取 1 会让「没给时长的调用方」**必然**读到全零，
+    // 而那个零与「这个杠杆没接线」逐字节同形。缺省改为**现算**：本请求各候选落点到订单格的
+    // **最大跳数**（下限 1）。⛔ 不内联常数 —— 今天 demo 世界是 2（Material→Model→Order），
+    // 世界的边一改这个默认值自己就跟着变。显式给了时长就照给的算（给少了 ⇒ 诚实 gap，见 §③.5）。
+    const requestedHorizon = body.horizon;
     const specs = await repos.derivationSpecs.list(c.tenantId, (r) => r.status === "ACTIVE");
     const scenarioPerts = await repos.sim.listPerturbations(c.tenantId, s.id);
     const scenarioHash = scenarioPerturbationsHash(scenarioPerts);
@@ -2971,6 +2976,25 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       const v = o.props.value;
       if (typeof v === "number" && Number.isFinite(v)) orderValues.set(o.id, v);
     }
+    /**
+     * 落点格 → 订单格的静态跳数（WO-PRICING-REACH）。
+     *
+     * ⚠ **必须与上面 `advance` 同一份图与规则** —— 走的是同一个唯一装配口
+     * `buildPropagationInputs`（`simAdvanceTicks` 内部那处，逐字节同参），故「跳数」与
+     * 「真的推几拍」是同一张图上的两个读法，不是两份真相源。装配有备忘，四个候选只付一次。
+     * 判据集用**同一个 `orderIds`**（下面 `orderDisplacement` 也是它）—— 否则「数哪些格」
+     * 与「认哪些对象」会各说各话。
+     */
+    const reachToOrders = async (fromObjectId: string, fromStateVar: string): Promise<ReachToOrders> => {
+      const inp = await buildPropagationInputs(repos, c, resolveSimScope(s.scope), active);
+      return reachHopsToOrder({
+        graph: inp.graph,
+        rules: active,
+        targetIds: new Set(orderIds),
+        fromObjectId,
+        fromStateVar,
+      });
+    };
     // 业务键 → 内部 id（单源：枚举器同一条 uniqueKeyProps/businessRef 链，见
     // `resolveBusinessRefToObjectId`）。候选 lever.objectId 是业务键（matId/lineId/processId），
     // 世界态与对象库按内部 `o.id` 寻址 —— 不解析就全灭成 TARGET_CELL_ABSENT（E2 取证实抓）。
@@ -2983,6 +3007,22 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       typeArrays.set(typeKey, arr);
       return arr;
     };
+    // 缺省时长 = 各候选落点到订单格的**最大跳数**（现算，下限 1）。见本路由头部那条注释：
+    // 缺省 1 是「注定读不出东西」的值。解析顺序与下面主循环**逐句相同**
+    // （先 `objectsOfType` 再 resolve）—— 唯一键解析带 memo，调用顺序不同会钉出不同的结果。
+    let horizon = requestedHorizon ?? 1;
+    if (requestedHorizon === undefined) {
+      for (const cand of body.candidates) {
+        const b = findPricingBinding(specs, cand.lever.objectType, cand.lever.prop);
+        if (b === null) continue; // 该候选本来就走 NO_BINDING 诚实缺格，与时长无关
+        const typeObjs = await objectsOfType(cand.lever.objectType);
+        const oid =
+          resolveBusinessRefToObjectId(cand.lever.objectType, cand.lever.objectId, typeObjs, typeArrays, refMemo) ??
+          cand.lever.objectId;
+        const r = await reachToOrders(oid, b.targetProp);
+        if (r.kind === "reachable") horizon = Math.max(horizon, r.hops);
+      }
+    }
     const items: PricingOutcome[] = [];
     for (const candidate of body.candidates) {
       const fp = pricingFingerprint({
@@ -2990,6 +3030,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         curTick: s.curTick,
         scenarioHash,
         candidateId: candidate.candidateId,
+        // ⚠ 必须带上本次问的推演拍数：漏了它，同一候选换个时长会命中上一条缓存，
+        // 回包连 `horizon` 都是上一次的（真服务实测，见 `pricingFingerprint` 头注）。
+        horizon,
       });
       const cached = pricingCache.get(fp);
       if (cached !== undefined) {
@@ -3019,6 +3062,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
               ? s.baseSnapshot
               : ((await repos.sim.getTickState(c.tenantId, s.id, tick))?.state ?? s.baseSnapshot),
           advanceTicks: advance,
+          reachToOrders,
           now: () => performance.now(),
           makeId: (prefix) => newId(prefix),
         },
