@@ -87,6 +87,28 @@ function answerText(task: { answer?: unknown }): string {
   return blocks.filter((b) => b.type === "text").map((b) => b.markdown ?? "").join("\n");
 }
 
+/**
+ * ④ 过度触发的**真实路径探针**参数（见下方 §2）。
+ *
+ * 问句选「物料库存」：`ROLE_KEYWORDS` 的 supply-chain 组命中（能路由到角色 agent），
+ * 而它**一个 `SOLVER_REQUIRED_RE` 触发词都不含**（该正则收的是 排产/排程/优化/最优/齐套/承诺/接单/
+ * 产能…可行·缺口·穿仓/可行性 这一族）。故 ④ 若在这条上咬了，咬的只能是**引擎注入的语料**，不是用户问的话。
+ */
+const CLEAN_ASK = "帮我看看物料库存现在什么情况";
+/** 干净收尾：非占位（不撞 ①）、带范围内 ⟦ref:0⟧（不撞 ②）、无裸数（不撞红线）。 */
+const CLEAN_FINAL = "物料库存目前处于正常水位 ⟦ref:0⟧。";
+
+function cleanFinalTurn(req: { messages: { content: unknown }[] }) {
+  return {
+    content: [
+      toolUse("final_answer", {
+        blocks: [{ type: "text", markdown: CLEAN_FINAL }],
+        provenance: [{ toolCallId: lastToolCallId(req), outputPath: "$" }],
+      }),
+    ],
+  };
+}
+
 describe("WO-DSH-REFLECT-PARITY · 接线 SEAM：orchestrator 求门 × engine 透传 × 注册 agent 路真跑复盘", () => {
   it("门关（无 agent.critic）⇒ 答案逐字节不变：只有模型自己那句，没有平台追加的缺口块", async () => {
     const { t, task } = await runRegisteredAgent(false);
@@ -107,4 +129,68 @@ describe("WO-DSH-REFLECT-PARITY · 接线 SEAM：orchestrator 求门 × engine �
     expect(txt).toContain("未真正作答");
     await t.app.close();
   });
+});
+
+// ===========================================================================
+// §2 ④ 过度触发的真实路径探针（把「推理出来的担心」换成「测出来的事实」）
+// ===========================================================================
+describe("WO-DSH-REFLECT-PARITY · §2 ④ 在真实注入语料下会不会误报", () => {
+  /**
+   * 由来：`dsh-reflect-parity.seam.test.ts` §3 钉住的那个过度触发面，当时用的是**手搓的**导航切片样例。
+   * 手搓样例只能证明「若注入语料含触发词则会咬」——**它不度量真实渲染体含不含**。
+   * > **「我用『我编的样例里命中』当作『生产注入的语料里命中』的证据，而前者并不度量后者。」**
+   * 本组把它换成**真路径实测**：真 HTTP → 真 orchestrator → 真 engine（真 `renderNavigationSlice`
+   * + 真本体语义上下文）→ 四查，问句本身一个触发词都没有。
+   *
+   * 这一步是**决策输入**：`agent.critic` 默认关、开不开属产品裁决，而「开了会不会给用户屏上灌噪声」
+   * 只有这条能答。
+   */
+  async function runClean() {
+    const t = await createTestApp();
+    t.deps.features.mock.set(TENANT, [...defaultOnKeys(), "agent.coordinator", "agent.critic"]);
+    await seedAgents(t);
+    t.llm.queueClassification({ candidates: [], outOfCatalog: true, extractedSlots: {} });
+    t.llm.queueAgentTurn(
+      () => ({ content: [text("先查物料。"), toolUse("query_objects", { objectType: "Material", filter: {} })] }),
+      cleanFinalTurn,
+      cleanFinalTurn, // 若 ④ 误报且重规划一轮仍不过关，第二次收尾会走「诚实收尾」支
+    );
+    const { taskId } = await submitQuery(t, ADMIN, CLEAN_ASK, { view: "risk" });
+    const task = await waitForTask(t, taskId, (x) => x.status === "COMPLETED");
+    return { t, task };
+  }
+
+  it("2.1 **实测：④ 在真实路径上会误报** —— 用户没问排产/优化类问题，屏上却多出一条说他在问的缺口块", async () => {
+    const { t, task } = await runClean();
+    // 路由金丝雀：没走到角色 agent，测的就不是注册 agent 路。
+    expect(task.classification?.model, "路由金丝雀：必须真走角色 agent").toBe("agent:role:supply-chain");
+    const txt = answerText(task);
+    // 收尾金丝雀：模型那句必须原样在（证明走的不是某个提前降级出口）。
+    expect(txt).toContain(CLEAN_FINAL);
+
+    // ── 实测到的**真实行为**（2026-10-01 亲手跑·非推理）────────────────────────────
+    // 问句 `CLEAN_ASK` 一个 SOLVER_REQUIRED_RE 触发词都没有、收尾干净利落，
+    // 而答案末尾**确实**被追加了缺口块。故此处**钉住现状**而不是钉住期望：
+    expect(
+      txt,
+      "若此处变红：④ 的判据输入已收紧（改吃用户原话），或注入语料已不含该族词 —— 属行为变更，"
+        + "正是本组要逼人来看的那种变化。届时请连同 native 臂 `reflectWithCritic` 一起核。",
+    ).toContain("反思发现的残余缺口");
+    // 钉住的是**误报的内容**：它把用户没问过的问题当成"他在问"——
+    expect(txt, "缺口块的理由说的必须是求解纪律（即 ④），不是 ①②③ 里别的查").toContain("求解纪律");
+    await t.app.close();
+  });
+
+  /**
+   * ⚠ 这条事实的**处置含义**（写给下一个读到它的人，省得重新推一遍）：
+   *
+   * `agent.critic` **默认关**，开不开是产品裁决。而本条实测给出一份**否决性输入**：
+   * **以今天的 ④ 判据，开门会让正常答案的屏上多出一段说用户"在问排产/优化题"的错误陈述** ——
+   * 不是"噪声/多报"那么轻：它是一句**关于用户自己所问内容的事实性错误**。
+   *
+   * ⇒ 建议顺序：**先让 ④ 吃「用户原话」而非拼接串，再谈开门**。
+   * ⚠ 而收紧 ④ 的输入面 = 动**原生臂**既有语义（`runAgentLoop` 收的 `userContent` 是同一个拼接串）
+   *   ⇒ 仍是产品裁决，不是实现细节。本单把它从"推理出来的担心"变成"测出来的两个数"，
+   *   正是为了把这个裁决从"要不要"推进到"先修哪个"。
+   */
 });
