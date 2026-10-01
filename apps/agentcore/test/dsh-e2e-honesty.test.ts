@@ -231,9 +231,10 @@ describe("WO-DSH-E2E · L5 诚实层穿透", () => {
     });
     await t.repos.skills.insert(skillDef({ provenancePolicy: "required" }));
     await t.repos.agents.insert(
-      agentDef({ id: "agt_l5_req", model: STUB_DCP_SPEC, skills: [{ skillId: "skl_l5", version: 1 }] }),
+      // WO-DSH-P1B-prep：臂选择钉 per-agent kernel（= ROLLOUT §0 的生产杠杆），不再靠进程 env。
+      // 进程级写者会被测试超时后的孤儿体带过界 ⇒ 污染同 worker 的下一条测试。
+      agentDef({ id: "agt_l5_req", kernel: "EXTERNAL", model: STUB_DCP_SPEC, skills: [{ skillId: "skl_l5", version: 1 }] }),
     );
-    process.env.DSH_HARNESS = "1";
     process.env.DSH_HARNESS_DIR = HARNESS_DIR;
     try {
       const result = await t.deps.engine.runRegisteredAgent({
@@ -276,9 +277,9 @@ describe("WO-DSH-E2E · L5 诚实层穿透", () => {
     });
     await t.repos.skills.insert(skillDef({ id: "skl_l5w", key: "l5_write", sideEffect: "WRITE" }));
     await t.repos.agents.insert(
-      agentDef({ id: "agt_l5_wr", model: STUB_DCP_SPEC, skills: [{ skillId: "skl_l5w", version: 1 }] }),
+      // WO-DSH-P1B-prep：同 agt_l5_req —— 臂选择走 per-agent kernel，进程 env 恒关。
+      agentDef({ id: "agt_l5_wr", kernel: "EXTERNAL", model: STUB_DCP_SPEC, skills: [{ skillId: "skl_l5w", version: 1 }] }),
     );
-    process.env.DSH_HARNESS = "1";
     process.env.DSH_HARNESS_DIR = HARNESS_DIR;
     try {
       const result = await t.deps.engine.runRegisteredAgent({

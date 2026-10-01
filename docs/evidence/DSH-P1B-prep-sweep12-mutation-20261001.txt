@@ -1,0 +1,63 @@
+# WO-DSH-P1B-prep · 变异对照（预期红）：dualrun-reconcile 的 off 臂 kernel 改回 undefined
+# 变异已自证落下：MUT_HIT=1（见 meta），跑测前先 grep 标记非空
+# ⚠ 预言文案订正：我预言抛 providers.ts:437（缺 directory），实际抛 :435（非 dcp spec）。
+#   原因：两道守卫 :435 先于 :437，off 臂 model=claude-opus-4-8 非 dcp spec，死在第一道。
+#   dualrun50 的 off 臂 model 恰是 dcp spec，故那一次死在 :437 —— 同族指纹、不同守卫。
+#   机制结论不变：抛点在 engine.ts:698，而 :698 位于 :633 的 dsh 分叉块内部。
+
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/apps/agentcore
+
+ × test/dsh-dualrun-reconcile.test.ts > WO-DSH-N2 · A5/A6 双跑逐字节对账（flag off/on 同剧本） > A5：滤收缩白名单 + 删 stats 键后序列逐项相等；差集实际项 ⊆ ALLOWED_PSEUDO_TYPES（白名单不膨胀） 156ms
+   → dsh 路要求 DataCore 用途绑定（dcp:{providerId}:{modelId} spec），拒绝非 dcp spec: claude-opus-4-8
+ × test/dsh-dualrun-reconcile.test.ts > WO-DSH-N2 · A5/A6 双跑逐字节对账（flag off/on 同剧本） > A6：answer.final 附加键限 {stats}（dsh 臂 answer 键集 == native 臂 ∪ {stats}） 63ms
+   → expected [ 'blocks', 'provenance', …(2) ] to deeply equal [ 'blocks', 'provenance', …(3) ]
+ ✓ test/dsh-dualrun-reconcile.test.ts > WO-DSH-N2 · A5/A6 双跑逐字节对账（flag off/on 同剧本） > A6b：mapper 全部 event 字面值 ∈ KNOWN_EVENTS 十名（全映射分支覆盖） 2ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/dsh-dualrun-reconcile.test.ts > WO-DSH-N2 · A5/A6 双跑逐字节对账（flag off/on 同剧本） > A5：滤收缩白名单 + 删 stats 键后序列逐项相等；差集实际项 ⊆ ALLOWED_PSEUDO_TYPES（白名单不膨胀）
+Error: dsh 路要求 DataCore 用途绑定（dcp:{providerId}:{modelId} spec），拒绝非 dcp spec: claude-opus-4-8
+ ❯ LlmSettings.resolveConnectionFacts src/llm/providers.ts:435:13
+    433|     const dc = parseDataCoreSpec(spec);
+    434|     if (!dc) {
+    435|       throw new Error(`dsh 路要求 DataCore 用途绑定（dcp:{providerId}:{modelId…
+       |             ^
+    436|     }
+    437|     if (!this.directory) throw new Error("DataCore provider directory …
+ ❯ ExecutionEngine.runRegisteredAgent src/engine.ts:698:49
+ ❯ runArm test/dsh-dualrun-reconcile.test.ts:128:20
+ ❯ test/dsh-dualrun-reconcile.test.ts:168:19
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  test/dsh-dualrun-reconcile.test.ts > WO-DSH-N2 · A5/A6 双跑逐字节对账（flag off/on 同剧本） > A6：answer.final 附加键限 {stats}（dsh 臂 answer 键集 == native 臂 ∪ {stats}）
+AssertionError: expected [ 'blocks', 'provenance', …(2) ] to deeply equal [ 'blocks', 'provenance', …(3) ]
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  [[22m
+[2m    "blocks",[22m
+[2m    "provenance",[22m
+[32m-   "stats",[39m
+[2m    "trustLevel",[22m
+[2m    "unverifiedNumerics",[22m
+[2m  ][22m
+
+ ❯ test/dsh-dualrun-reconcile.test.ts:224:22
+    222|       const keysOff = Object.keys(off.events.find((e) => e.event === "…
+    223|       const keysOn = Object.keys(on.events.find((e) => e.event === "an…
+    224|       expect(keysOn).toEqual([...keysOff, "stats"].sort());
+       |                      ^
+    225|     },
+    226|   );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 1 passed (3)
+   Start at  10:15:15
+   Duration  4.81s (transform 2.04s, setup 0ms, collect 4.04s, tests 222ms, environment 0ms, prepare 110ms)
+

@@ -64,7 +64,7 @@ const KNOWN_EVENTS = [
 
 const ctx = { tenantId: TENANT, userId: "user-planner", roles: ["planner"] };
 
-function agentDef(id: string, model = "claude-opus-4-8"): AgentDefinition {
+function agentDef(id: string, model = "claude-opus-4-8", kernel: "NATIVE" | "EXTERNAL" = "NATIVE"): AgentDefinition {
   return {
     id,
     tenantId: TENANT,
@@ -73,6 +73,10 @@ function agentDef(id: string, model = "claude-opus-4-8"): AgentDefinition {
     name: id,
     description: "N2 dual-run reconcile agent",
     model,
+    // WO-DSH-P1B-prep：臂选择钉 per-agent kernel（= ROLLOUT §0 的生产杠杆），不再靠进程 env。
+    // off 臂显式 NATIVE 是免疫位：契约明文「显式值优先于 env」⇒ 任何残留的 DSH_HARNESS=1
+    // （含上一条测试超时后孤儿体留下的）都翻不动它。
+    kernel,
     systemPrompt: "你是 N2 双跑对账 agent。",
     tools: [{ kind: "BUILTIN", name: "query_objects" }],
     ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
@@ -109,13 +113,15 @@ async function runArm(flag: "off" | "on"): Promise<{ t: TestApp; events: Capture
     stub ? { providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never, env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" } } : {},
   );
   const agentId = `agt_dual_${flag}`;
-  await t.repos.agents.insert(agentDef(agentId, stub ? STUB_DCP_SPEC : "claude-opus-4-8"));
+  await t.repos.agents.insert(agentDef(agentId, stub ? STUB_DCP_SPEC : "claude-opus-4-8", stub ? "EXTERNAL" : "NATIVE"));
   const events: CapturedEvent[] = [];
   const emit = async (event: string, payload: unknown) => {
     events.push({ event, payload: payload as Record<string, unknown> });
   };
   if (flag === "on") {
-    process.env.DSH_HARNESS = "1";
+    // WO-DSH-P1B-prep：原有 `process.env.DSH_HARNESS = "1"` 已删 —— 分叉来源改由 per-agent kernel
+    // 承担（见 agentDef）。进程级写者会被测试超时后的孤儿体带过界，污染下一条测试的 off 臂
+    // ⇒ 造出「读起来像产品缺陷」的假红（dualrun50 上已实测并金丝雀复现）。
     process.env.DSH_HARNESS_DIR = HARNESS_DIR;
   }
   try {

@@ -1,0 +1,21 @@
+# WO-DSH-P1B-prep · 两文件常规复跑（DSH_HARNESS=0）
+HEAD=9f88d2e1f BRANCH=claude/handoff-wo-dsh-p1b-prep
+
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/apps/agentcore
+
+ ✓ test/dsh-e2e-honesty.test.ts > WO-DSH-E2E · L5 诚实层穿透 > L5.P1 provenance 溯源到真对象（load_skill 实调可回查）+ ⟦ref:1⟧ 标记逐字保真 2191ms
+ ✓ test/dsh-dualrun-reconcile.test.ts > WO-DSH-N2 · A5/A6 双跑逐字节对账（flag off/on 同剧本） > A5：滤收缩白名单 + 删 stats 键后序列逐项相等；差集实际项 ⊆ ALLOWED_PSEUDO_TYPES（白名单不膨胀） 2235ms
+ ✓ test/dsh-dualrun-reconcile.test.ts > WO-DSH-N2 · A5/A6 双跑逐字节对账（flag off/on 同剧本） > A6：answer.final 附加键限 {stats}（dsh 臂 answer 键集 == native 臂 ∪ {stats}） 2024ms
+ ✓ test/dsh-dualrun-reconcile.test.ts > WO-DSH-N2 · A5/A6 双跑逐字节对账（flag off/on 同剧本） > A6b：mapper 全部 event 字面值 ∈ KNOWN_EVENTS 十名（全映射分支覆盖） 2ms
+ ✓ test/dsh-e2e-honesty.test.ts > WO-DSH-E2E · L5 诚实层穿透 > L5.P2a governance 负向（engine 级·engine.ts:520 锚）：provenancePolicy=required 缺 provenance ⇒ FAILED + 诚实文案 2365ms
+ ✓ test/dsh-e2e-honesty.test.ts > WO-DSH-E2E · L5 诚实层穿透 > L5.P2b governance 负向：writeMode 技能缺 action_draft ⇒ FAILED + 诚实文案 1298ms
+ ✓ test/dsh-e2e-honesty.test.ts > WO-DSH-E2E · L5 诚实层穿透 > L5.P3 EMPTY 口径保真：软收尾逐字 == 末 assistant 文本；空文本 ⇒ 诚实兜底逐字；provenance 空 1875ms
+ ✓ test/dsh-e2e-honesty.test.ts > WO-DSH-E2E · L5 诚实层穿透 > L5.P4 拒绝口径帧保真：deny 理由帧流逐字 + SSE 面 ERROR 不漂白 1222ms
+ ✓ test/dsh-e2e-honesty.test.ts > WO-DSH-E2E · L5 诚实层穿透 > L5.P5 降级链：finish_reason=length ⇒ turn/end max-tokens ⇒ BUDGET_EXHAUSTED + degraded 原值 + 诚实复述 + narration 保真 1123ms
+
+ Test Files  2 passed (2)
+      Tests  9 passed (9)
+   Start at  10:14:23
+   Duration  17.30s (transform 3.48s, setup 0ms, collect 12.89s, tests 14.34s, environment 2ms, prepare 483ms)
+
