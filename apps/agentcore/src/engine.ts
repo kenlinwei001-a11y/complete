@@ -262,6 +262,15 @@ export interface RunRegisteredAgentOpts {
    * 模型已退出，结构上做不到第一支「回注 reasons + 有界重规划」——**不许读成已对齐原生路完整语义**。
    */
   reflect?: boolean;
+  /**
+   * ★ WO-REFLECT-INPUT-FIX · 复盘判据要读的**用户原话**（见 `agent/loop.ts` 同名字段的病灶说明）。
+   *
+   * 调用方（orchestrator）手上有 `task.query`，本层手上的 `userContent` 是**拼接材料**
+   * （`prompt + 导航切片 + 本体语义上下文`）—— 材料里混着 engine 自己注入的 solver/规则文案，
+   * 而 ④ 的判据词表正是那一族 ⇒ 拿拼接材料当判据输入会让 ④ 在无关问句上误报。
+   * 缺省（不传）= 退回拼接材料 = 修复前行为（字节兼容）。
+   */
+  reflectUserContent?: string;
 }
 
 /**
@@ -764,7 +773,7 @@ export class ExecutionEngine {
             // ⇒ 即便用户问的是一句无关的话，④ 也可能因**注入语料**而命中（过度触发，方向是"多报"不是"漏报"）。
             // 接缝测试 `dsh-reflect-parity.seam.test.ts` §3 把这个面钉住防静默改变。
             // 收紧它（④ 改吃"用户原话"而非拼接串）= 动原生路语义，**属产品裁决**，不在本单内。
-            ...(opts.reflect ? { reflect: { userContent } } : {}),
+            ...(opts.reflect ? { reflect: { userContent: opts.reflectUserContent ?? userContent } } : {}),
             // W9-full：宿主侧表（活引用——端点 run 期间累积，run 终 fold 时读全）。
             hostToolCalls,
           },
@@ -891,6 +900,9 @@ export class ExecutionEngine {
       // WO-DSH-REFLECT-PARITY · 纯透传：不传 = 逐字节沿用既有（loop 侧 `opts.reflect` 缺省 false → 收尾不跑复盘步）。
       // 与上面 dsh 臂的 `reassemble.reflect` **同源门控、同判据**（同一份 `agent/reflect.ts` 的 `reflectAnswer`）。
       ...(opts.reflect ? { reflect: true } : {}),
+      // ★ WO-REFLECT-INPUT-FIX：④ 判「用户在问排产/优化题吗」必须读**用户原话**，
+      // 不能读本层的 `userContent`（拼接材料里混着自己注入的 solver/规则文案 ⇒ 误报）。
+      ...(opts.reflectUserContent ? { reflectUserContent: opts.reflectUserContent } : {}),
       executor,
       budget: opts.nesting.budget,
       llmCallTimeoutMs: cfg.QOS_AGENT_LLM_TIMEOUT_MS,
@@ -1047,6 +1059,8 @@ export class ExecutionEngine {
      * 差异被点名登记，不是漏写：路径 A 的 `invoke_agent` 步不在本单的目标半径内（见本单证据档「边界」段）。
      */
     reflect?: boolean;
+    /** ★ WO-REFLECT-INPUT-FIX · 同上：本工作流内 `invoke_agent` 步复盘判据要读的**用户原话**。 */
+    reflectUserContent?: string;
   }): Promise<WorkflowResult> {
     const executor = this.makeExecutor(opts.taskId, opts.ctx, opts.budgetForTools);
     return runWorkflow(
@@ -1076,6 +1090,8 @@ export class ExecutionEngine {
             ...(opts.emitNarration ? { emitNarration: true } : {}),
             // WO-DSH-REFLECT-PARITY · 纯透传：多角色扇出的每个子 agent 收尾都过一遍复盘（不传 = 既有行为字节不变）。
             ...(opts.reflect ? { reflect: true } : {}),
+            // ★ WO-REFLECT-INPUT-FIX：同上——判据读用户原话，不读拼接材料。
+            ...(opts.reflectUserContent ? { reflectUserContent: opts.reflectUserContent } : {}),
             // WO-AGENTRUN-FANOUT-PERSIST：这一步跑出来的是**子** agent 的运行（父任务的 taskId，但不是父任务那条）。
             placement: { origin: "FANOUT", stepId: params.stepId },
           });

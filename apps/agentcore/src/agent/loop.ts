@@ -210,6 +210,31 @@ export interface AgentLoopOpts {
    * 仅 path-B `runAgentLoop` 生效（path-A/compose 直出不经此循环）。生产接线（据 entitlement 开关）由 orchestrator 侧注入（WO-0 领域·本单不碰）。
    */
   reflect?: boolean;
+  /**
+   * ★ WO-REFLECT-INPUT-FIX · **反思判据要读的那段文本（用户原话）**。
+   *
+   * ── 为什么需要它（病灶·2026-10-01 真路径实测坐实）──────────────────────────────
+   * `reflectAnswer` 的四查里，④「Solver-first」拿 `userContent` 去撞
+   * `SOLVER_REQUIRED_RE`（排产/排程/优化/最优/齐套/承诺/接单/产能…可行·缺口/可行性…），
+   * 语义是「**用户在问排产/优化类问题吗**」。
+   * 而 `opts.userContent` 在本仓**不是用户原话** —— 它是
+   * `[baseUser, 导航切片, 本体语义上下文, DRIL 包].join("\n\n")` 的**拼接材料**，
+   * 里面 engine 自己注入的 solver capability 文案 / solver·规则 roster 的 `brief` /
+   * `slice.rules` 原文**天然就带那一族词**。
+   *
+   * ⇒ 实测：用户问「帮我看看物料库存现在什么情况」（一个触发词都没有）且答案干净利落，
+   *   屏上仍被追加「【反思发现的残余缺口】排产/优化/可行性类问题未调用对口 solver」——
+   *   **一句关于用户自己所问内容的事实性错误**。demo 租户 `agent.critic` 是**点亮的**
+   *   （`datacore/src/seed.ts` `DEMO_LIGHTUP`），故这不是将来风险，是**当时正在发生**的缺陷。
+   *
+   * ⚠ 形态：「我用『这段材料里出现了排产/优化字样』当作『用户在问排产/优化题』的证据，
+   *   而前者并不度量后者 —— 材料里混着我自己注入的语料。」
+   * ⚠ **修的是判据的输入，不是判据本身**。调正则属打地鼠：下一个同义词立刻重演。
+   *
+   * 缺省（不传）= 退回 `opts.userContent`（= 修复前的行为·字节兼容）——
+   * 不把「没人传」静默变成「④ 永不生效」，那样会把目标判据悄悄关掉。
+   */
+  reflectUserContent?: string;
   /** 反思不过关时的重规划轮次上界（硬有界·默认 1）。 */
   replanBudget?: number;
   /**
@@ -415,7 +440,10 @@ async function reflectWithCritic(
     blocks: answer.blocks,
     provenanceCount: answer.provenance.length,
     iterations,
-    userContent: opts.userContent,
+    // ★ WO-REFLECT-INPUT-FIX：④ 判「用户在问排产/优化题吗」，它要读的是**用户原话**，
+    // 不是 engine 拼给模型看的那段材料（材料里混着我们自己注入的语料 → 误报）。
+    // 缺省退回 `opts.userContent` = 修复前行为（字节兼容），调用方逐个改传原话。
+    userContent: opts.reflectUserContent ?? opts.userContent,
   });
   if (!opts.critic) return base;
   try {

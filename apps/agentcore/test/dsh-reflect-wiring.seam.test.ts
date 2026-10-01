@@ -95,6 +95,12 @@ function answerText(task: { answer?: unknown }): string {
  * 产能…可行·缺口·穿仓/可行性 这一族）。故 ④ 若在这条上咬了，咬的只能是**引擎注入的语料**，不是用户问的话。
  */
 const CLEAN_ASK = "帮我看看物料库存现在什么情况";
+/**
+ * 2.2 反身金丝雀用的**真·排产类**问句：含 `齐套`（`SOLVER_REQUIRED_RE` 成员），
+ * 且同样能路由到供应链角色 agent（`ROLE_KEYWORDS` supply-chain 组命中）。两条问句走同一条路、同一份脚本，
+ * 差别**只在用户原话** —— 于是「一个咬一个不咬」才归因得到判据的输入面上。
+ */
+const SOLVER_ASK = "帮我看看物料齐套现在到底怎么样";
 /** 干净收尾：非占位（不撞 ①）、带范围内 ⟦ref:0⟧（不撞 ②）、无裸数（不撞红线）。 */
 const CLEAN_FINAL = "物料库存目前处于正常水位 ⟦ref:0⟧。";
 
@@ -142,10 +148,14 @@ describe("WO-DSH-REFLECT-PARITY · §2 ④ 在真实注入语料下会不会误�
    * 本组把它换成**真路径实测**：真 HTTP → 真 orchestrator → 真 engine（真 `renderNavigationSlice`
    * + 真本体语义上下文）→ 四查，问句本身一个触发词都没有。
    *
-   * 这一步是**决策输入**：`agent.critic` 默认关、开不开属产品裁决，而「开了会不会给用户屏上灌噪声」
-   * 只有这条能答。
+   * ⚠ **本组初版有一处推断判反了，照实留在这里当教训**：初版写「`agent.critic` 默认关 ⇒ 这是将来风险」。
+   *   `registry.ts` 的 `defaultOn:false` 是 **L1 平台默认**，**不度量 demo 的运行态** ——
+   *   demo 经 L3 显式 override（`datacore/src/seed.ts` `DEMO_LIGHTUP` 里 `"agent.critic": true`）早已点亮，
+   *   自由问答路**当天就在跑 ④**。形态：
+   * > **「我用『注册表里 defaultOn:false』当作『生产上是关的』的证据，而前者并不度量后者。」**
+   *   仓里甚至已有一个测试（`demo-lightup-reflect-parity.seam.test.ts` 头注）专门警告这件事，我没读到。
    */
-  async function runClean() {
+  async function run(ask: string) {
     const t = await createTestApp();
     t.deps.features.mock.set(TENANT, [...defaultOnKeys(), "agent.coordinator", "agent.critic"]);
     await seedAgents(t);
@@ -153,44 +163,57 @@ describe("WO-DSH-REFLECT-PARITY · §2 ④ 在真实注入语料下会不会误�
     t.llm.queueAgentTurn(
       () => ({ content: [text("先查物料。"), toolUse("query_objects", { objectType: "Material", filter: {} })] }),
       cleanFinalTurn,
-      cleanFinalTurn, // 若 ④ 误报且重规划一轮仍不过关，第二次收尾会走「诚实收尾」支
+      cleanFinalTurn, // 若 ④ 咬住且重规划一轮仍不过关，第二次收尾会走「诚实收尾」支
     );
-    const { taskId } = await submitQuery(t, ADMIN, CLEAN_ASK, { view: "risk" });
+    const { taskId } = await submitQuery(t, ADMIN, ask, { view: "risk" });
     const task = await waitForTask(t, taskId, (x) => x.status === "COMPLETED");
     return { t, task };
   }
-
-  it("2.1 **实测：④ 在真实路径上会误报** —— 用户没问排产/优化类问题，屏上却多出一条说他在问的缺口块", async () => {
-    const { t, task } = await runClean();
-    // 路由金丝雀：没走到角色 agent，测的就不是注册 agent 路。
+  /** 路由 + 收尾双金丝雀：没走到角色 agent、或走了某个提前降级出口 ⇒ 下面的断言测的不是本机制。 */
+  function canary(task: { classification?: { model?: string }; answer?: unknown }): string {
     expect(task.classification?.model, "路由金丝雀：必须真走角色 agent").toBe("agent:role:supply-chain");
     const txt = answerText(task);
-    // 收尾金丝雀：模型那句必须原样在（证明走的不是某个提前降级出口）。
-    expect(txt).toContain(CLEAN_FINAL);
+    expect(txt, "收尾金丝雀：模型那句必须原样在（否则走的是提前降级出口）").toContain(CLEAN_FINAL);
+    return txt;
+  }
 
-    // ── 实测到的**真实行为**（2026-10-01 亲手跑·非推理）────────────────────────────
-    // 问句 `CLEAN_ASK` 一个 SOLVER_REQUIRED_RE 触发词都没有、收尾干净利落，
-    // 而答案末尾**确实**被追加了缺口块。故此处**钉住现状**而不是钉住期望：
+  it("2.1 无关问句 + 干净收尾 ⇒ ④ 不许咬（**修前此处会咬**，屏上给用户加一句说他问了排产题的假话）", async () => {
+    const { t, task } = await run(CLEAN_ASK);
+    const txt = canary(task);
     expect(
       txt,
-      "若此处变红：④ 的判据输入已收紧（改吃用户原话），或注入语料已不含该族词 —— 属行为变更，"
-        + "正是本组要逼人来看的那种变化。届时请连同 native 臂 `reflectWithCritic` 一起核。",
-    ).toContain("反思发现的残余缺口");
-    // 钉住的是**误报的内容**：它把用户没问过的问题当成"他在问"——
-    expect(txt, "缺口块的理由说的必须是求解纪律（即 ④），不是 ①②③ 里别的查").toContain("求解纪律");
+      "④ 在用户没问排产/优化类问题时也报了 ⇒ 判据又吃回了拼接材料（导航切片/本体语义上下文自带那族词）",
+    ).not.toContain("反思发现的残余缺口");
+    await t.app.close();
+  });
+
+  it("2.2 **反身金丝雀**：真·排产类问句 + 同样的干净收尾 ⇒ ④ **必须**咬", async () => {
+    // 没有这一条，2.1 的「不咬」与「④ 被彻底关掉」在屏上完全一样（那才是把目标判据悄悄废掉）。
+    // 问句含 `齐套`（SOLVER_REQUIRED_RE 成员）且能路由到供应链角色 agent。
+    const { t, task } = await run(SOLVER_ASK);
+    const txt = canary(task);
+    expect(txt, "真排产问句却不咬 ⇒ ④ 被关掉了，不是在读用户原话").toContain("反思发现的残余缺口");
+    expect(txt, "缺口块的理由必须是求解纪律（即 ④）").toContain("求解纪律");
     await t.app.close();
   });
 
   /**
-   * ⚠ 这条事实的**处置含义**（写给下一个读到它的人，省得重新推一遍）：
+   * ── 本组的来历（写清楚，免得下一个读者把 2.1 当成一条普通断言）────────────────────
    *
-   * `agent.critic` **默认关**，开不开是产品裁决。而本条实测给出一份**否决性输入**：
-   * **以今天的 ④ 判据，开门会让正常答案的屏上多出一段说用户"在问排产/优化题"的错误陈述** ——
-   * 不是"噪声/多报"那么轻：它是一句**关于用户自己所问内容的事实性错误**。
+   * 2.1 最初钉的是**当时的真实行为：会误报**。根因：`reflectAnswer` 的 `userContent` 参数
+   * 一个参数担了两个身份 —— 语义是「用户在问什么」，喂进去的却是 engine 拼给模型看的整段材料
+   * （`baseUser + 导航切片 + 本体语义上下文 + DRIL 包`），而那批注入语料**自带** 排产/优化/
+   * 产能缺口/可行性 这一族词（④ 的判据词表正是那一族）。
    *
-   * ⇒ 建议顺序：**先让 ④ 吃「用户原话」而非拼接串，再谈开门**。
-   * ⚠ 而收紧 ④ 的输入面 = 动**原生臂**既有语义（`runAgentLoop` 收的 `userContent` 是同一个拼接串）
-   *   ⇒ 仍是产品裁决，不是实现细节。本单把它从"推理出来的担心"变成"测出来的两个数"，
-   *   正是为了把这个裁决从"要不要"推进到"先修哪个"。
+   * ⚠ demo 租户 `agent.critic` 是**点亮的**（`datacore/src/seed.ts` `DEMO_LIGHTUP`）——
+   *   故这不是将来风险，是**当时正在发生**的缺陷；`registry.ts` 的 `defaultOn:false`
+   *   只是 L1 平台默认，**不度量 demo 的运行态**。
+   *
+   * 修法（`WO-REFLECT-INPUT-FIX`）：**修判据的输入，不改判据本身**。
+   * `AgentLoopOpts.reflectUserContent` / `RunRegisteredAgentOpts.reflectUserContent` 由
+   * orchestrator 传 `task.query`；缺省仍退回拼接串（字节兼容，不把「没人传」静默变成「④ 永不生效」）。
+   * 调正则是打地鼠：下一个同义词立刻重演。
+   *
+   * 2.2 是这次修复**必须**同时加的反向金丝雀 —— 证明「不咬」是因为读了原话，不是因为 ④ 没了。
    */
 });

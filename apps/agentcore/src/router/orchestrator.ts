@@ -2055,6 +2055,11 @@ export class Orchestrator {
       ...(reflectEnabled(enabledFeatures)
         ? {
             reflect: true,
+            // ★ WO-REFLECT-INPUT-FIX：④「Solver-first」判「用户在问排产/优化题吗」，读**用户原话**。
+            // 此前它读的是本函数拼的 `userContent`（baseUser + 导航切片 + 语义上下文 + DRIL）——
+            // 那批注入语料自带 solver/规则文案（排产/优化/产能缺口/可行性…），④ 因此在**无关问句**上也误报，
+            // 屏上会给用户加一句说他问了排产题的假话。demo 上 `agent.critic` 是点亮的 ⇒ 当时就在发生。
+            reflectUserContent: task.query,
             critic: async ({ blocks, userContent: uc }: { blocks: AnswerBlock[]; userContent: string }) => {
               try {
                 const out = await this.deps.engine.deps.llm.compose({
@@ -2421,7 +2426,7 @@ export class Orchestrator {
         onResolvedRef: (r) => resolvedRefs.push(r),
         enforceObjectScope: true,
         // WO-DSH-REFLECT-PARITY · 暗发门（`agent.critic`·默认关）⇒ 关时不传 = 角色 agent 收尾逐字节不变。
-        ...(reflectEnabled(enabledFeatures) ? { reflect: true } : {}),
+        ...(reflectEnabled(enabledFeatures) ? { reflect: true, reflectUserContent: task.query } : {}),
         // WO-AGENTRUN-FANOUT-PERSIST：角色 path-B 是**这个任务本身**那次循环 ⇒ ROOT（`getByTask` 返的就是它）。
         placement: { origin: "ROOT" },
       });
@@ -2629,7 +2634,7 @@ export class Orchestrator {
       trustLevel: "AGENT_EXPLORATORY",
       enforceAgentObjectScope: true, // 角色 scope 真隔离（越界读对象拒）
       ...(narrationOn ? { emitNarration: true } : {}), // 关 → 不传 → 既有 Coordinator 行为逐字节不变
-      ...(reflectOn ? { reflect: true } : {}), // WO-DSH-REFLECT-PARITY：关 → 不传 → 扇出子 agent 收尾逐字节不变
+      ...(reflectOn ? { reflect: true, reflectUserContent: task.query } : {}), // WO-DSH-REFLECT-PARITY：关 → 不传 → 扇出子 agent 收尾逐字节不变
       onResolvedRef: (r) => {
         if (r.kind === "agent") invokedAgentKeys.push(r.key);
       },
@@ -2693,7 +2698,7 @@ export class Orchestrator {
         isCancelled: () => this.cancelled.has(task.id),
         onResolvedRef: (r) => resolvedRefs.push(r),
         // WO-DSH-REFLECT-PARITY · 暗发门（`agent.critic`·默认关）⇒ 关时不传 = 场景入口 agent 收尾逐字节不变。
-        ...(reflectEnabled(enabledFeatures) ? { reflect: true } : {}),
+        ...(reflectEnabled(enabledFeatures) ? { reflect: true, reflectUserContent: task.query } : {}),
         // WO-AGENTRUN-FANOUT-PERSIST：场景入口 agent 是**这个任务本身**那次循环 ⇒ ROOT。
         placement: { origin: "ROOT" },
       });
