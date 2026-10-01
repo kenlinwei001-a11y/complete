@@ -82,7 +82,17 @@ interface Emitted {
 async function makeAgent(
   t: TestApp,
   id: string,
-  overrides: { mcpServers?: { mcpConfigId: string }[]; scopeToolNames?: string[]; skills?: { skillId: string; version: number }[] } = {},
+  overrides: {
+    mcpServers?: { mcpConfigId: string }[];
+    scopeToolNames?: string[];
+    skills?: { skillId: string; version: number }[];
+    /**
+     * WO-DSH-P1B-prep：dsh 臂钉 per-agent kernel（= ROLLOUT §0 的生产杠杆）。
+     * **不给**（缺省）= 走 env 回退 —— A3a 那条两臂对齐用例**故意**要它（同一 agent 跑两臂，
+     * 靠 env 区分并断言徽标 NATIVE/EXTERNAL），故此处保留可选，不强制。
+     */
+    kernel?: "EXTERNAL" | "NATIVE";
+  } = {},
 ): Promise<string> {
   const agent = {
     id,
@@ -92,6 +102,7 @@ async function makeAgent(
     name: `L3 Seam Agent ${id}`,
     description: "wo-dsh-e2e l3 seam",
     model: "",
+    ...(overrides.kernel ? { kernel: overrides.kernel } : {}),
     systemPrompt: "你是 L3 降级穿透测试助手。",
     tools: [],
     ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
@@ -167,7 +178,8 @@ describe("WO-DSH-E2E · L3 降级路径穿透（后端半）", () => {
         usage: PLAIN_USAGE,
       }));
       const stub = await startStubOpenAi(script);
-      const restore = withEnv({ DSH_HARNESS: "1", DSH_HARNESS_DIR: HARNESS_DIR, [CAP_KEY]: "3" });
+      // WO-DSH-P1B-prep：DSH_HARNESS 不再经 env —— 本臂臂选择走下方 makeAgent 的 kernel:"EXTERNAL"。
+      const restore = withEnv({ DSH_HARNESS_DIR: HARNESS_DIR, [CAP_KEY]: "3" });
       try {
         const t = await createTestApp({
           providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), FAKE_LLM_KEY) as never,
@@ -179,6 +191,7 @@ describe("WO-DSH-E2E · L3 降级路径穿透（后端半）", () => {
         const agentId = await makeAgent(t, "agt_l3_stall", {
           mcpServers: [{ mcpConfigId: MCP_CONFIG_ID }],
           scopeToolNames: [ECHO_TOOL], // 进 setup.tools 允许表（pre-execute 闸放行，stall 由 watchdog post-execute 计数）
+          kernel: "EXTERNAL", // WO-DSH-P1B-prep：臂选择钉 per-agent kernel，不再靠进程 env
         });
         const emitted: Emitted[] = [];
         const result = await runAgent(t, agentId, "task_l3_stall", emitted);
@@ -249,6 +262,10 @@ describe("WO-DSH-E2E · L3 降级路径穿透（后端半）", () => {
       const nativeEmitted: Emitted[] = [];
       const nativeResult = await runAgent(t, agentId, "task_l3_deny_native", nativeEmitted);
 
+      // ⚠ 本臂**故意**保留 env 杠杆（WO-DSH-P1B-prep 清扫的例外，同 agent-run-attribution 性质）：
+      // 它验的就是「flag off/on 两臂对齐」本身，且**同一个 agent** 要跑出 NATIVE 与 EXTERNAL 两个
+      // 徽标 —— per-agent kernel 在这里结构上做不到（同一份 agent 定义只能有一个 kernel 值）。
+      // BLOCK 早退在分叉**之前**，故 dsh 臂不起子进程，env 的作用仅限 run 记录的徽标取值。
       const restore = withEnv({ DSH_HARNESS: "1", DSH_HARNESS_DIR: HARNESS_DIR });
       let dshResult: Awaited<ReturnType<typeof runAgent>>;
       try {
@@ -282,8 +299,8 @@ describe("WO-DSH-E2E · L3 降级路径穿透（后端半）", () => {
         { text: "stub final answer", usage: PLAIN_USAGE },
       ];
       const stub = await startStubOpenAi(script);
+      // WO-DSH-P1B-prep：DSH_HARNESS 不再经 env —— 本臂臂选择走下方 makeAgent 的 kernel:"EXTERNAL"。
       const restore = withEnv({
-        DSH_HARNESS: "1",
         DSH_HARNESS_DIR: HARNESS_DIR,
         PLATFORM_GOV_DENY: ECHO_TOOL, // mock 裁决器 deny 清单（env 优先于 config.deny）
       });
@@ -298,6 +315,7 @@ describe("WO-DSH-E2E · L3 降级路径穿透（后端半）", () => {
         const agentId = await makeAgent(t, "agt_l3_deny_dsh", {
           mcpServers: [{ mcpConfigId: MCP_CONFIG_ID }],
           scopeToolNames: [ECHO_TOOL], // 过允许表 → deny 落在 governance 裁决器（非 allow-list 闸）
+          kernel: "EXTERNAL", // WO-DSH-P1B-prep：臂选择钉 per-agent kernel，不再靠进程 env
         });
         const emitted: Emitted[] = [];
         const result = await runAgent(t, agentId, "task_l3_deny_dsh", emitted);

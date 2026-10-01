@@ -1,0 +1,32 @@
+# WO-DSH-P1B-prep · 清扫 9/9：dsh-e2e-degradation-screen.test.ts（**枚举盲区补漏**）
+
+## 这个文件为什么起初不在清单里
+原清单是从「直接赋值行」grep 推出来的：^[[:space:]]*process\.env\.DSH_HARNESS = "1"。
+本文件的写者藏在**泛型助手**里：withEnv(patch) → for (k of keys) process.env[k] = patch[k]。
+⇒ 赋值行正则看不见它。形态：「我用『直接赋值行命中数』当作『写者全集』的证据，
+   而前者并不度量后者 —— 经过助手/动态键的写者一次都不会被数到。」
+补漏手段：改扫**字面量出现位**（grep DSH_HARNESS 全量，再逐个判读/写），
+   并附同扫法金丝雀（delete 行 12 文件命中）。
+
+## 改动
+makeAgent 加可选 overrides.kernel（dsh 臂传 EXTERNAL）；A1/A3b 的 withEnv 去掉 DSH_HARNESS。
+A3a **保留** env 杠杆（故意例外，同 agent-run-attribution 性质）：它验的就是 flag off/on 两臂对齐，
+   且同一个 agent 要跑出 NATIVE 与 EXTERNAL 两个徽标 —— per-agent kernel 结构上做不到。
+
+## 最终写者全集（两形态合并扫）—— 4 处，全部故意
+  agent-run-attribution.seam.test.ts:310/394/446  免疫位反向用例（不在清扫面）
+  dsh-e2e-degradation-screen.test.ts:269          A3a flag off/on 对位（故意保留）
+
+## 读数 —— 3 passed / RC=0 / 8.33s（A1 自带 run.kernel==="EXTERNAL" 正向锚）
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/apps/agentcore
+
+ ✓ test/dsh-e2e-degradation-screen.test.ts > WO-DSH-E2E · L3 降级路径穿透（后端半） > A1 · dsh 臂同参工具环 + cap=3 ⇒ degraded{STALL_LOOP} + 诚实块 + tool/call===cap（dsh 口径）+ G-9 段源码锚直证 1700ms
+ ✓ test/dsh-e2e-degradation-screen.test.ts > WO-DSH-E2E · L3 降级路径穿透（后端半） > A3a · 两臂对齐规则 deny：skill precondition BLOCK（分叉前预检·两臂对称）⇒ flag off/on 拒绝 Answer 逐字节等 50ms
+ ✓ test/dsh-e2e-degradation-screen.test.ts > WO-DSH-E2E · L3 降级路径穿透（后端半） > A3b · dsh PRE_CHECK 执行点：governance mock deny ⇒ tool/result isError ∧ 理由原串到模型面 ∧ 工具体零执行 1576ms
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  10:26:34
+   Duration  8.33s (transform 2.41s, setup 0ms, collect 4.38s, tests 3.33s, environment 0ms, prepare 146ms)
+
