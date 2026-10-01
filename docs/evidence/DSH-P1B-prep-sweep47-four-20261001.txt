@@ -1,0 +1,62 @@
+# WO-DSH-P1B-prep · 清扫 4-7/7：四个文件的臂选择改 per-agent kernel
+#   deploy-governance-seam / engine-mcp-forward / provider-seam / real-triad
+# 形态差异：前两者是具名 env 助手（setHarnessEnv / withHarnessEnv），后两者是内联 save/restore。
+# 本组无 native 对位臂（除 real-triad 被 KIMI 门控跳过），故"绿"本身即对照：
+#   若 kernel 未生效，dsh 臂退回 native ⇒ 拿不到 stub/providerDirectory 语义 ⇒ 当场红。
+# 另：mcp-forward 各例自带 expect(result.run.kernel).toBe("EXTERNAL") 正向锚（见下）。
+
+## 语法位复核（剥注释按赋值行）
+全 test 树剩余写者：仅 agent-run-attribution.seam.test.ts 3 处（**故意**的免疫位反向用例，不在清扫面）
+金丝雀（同族 DSH_HARNESS_DIR 赋值行）：15 处 ⇒ 正则咬得到赋值行
+
+## 四文件复跑 —— 32 passed | 2 skipped / RC=0 / 34.40s
+2 skipped = real-triad 的 KIMI 门控臂（L2.A1 / L2.A4），本机无真 key ⇒ NOT-MEASURED
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/apps/agentcore
+
+stdout | test/dsh-e2e-real-triad.test.ts
+[dsh-e2e-real-triad] 真供应商臂 skip：需 DSH_REAL_API_KEY + DSH_REAL_BASE_URL（旧名 KIMI_API_KEY/KIMI_BASE_URL 同样接受）；另可选 DSH_REAL_MODEL（缺省 kimi-k3）/ DSH_REAL_KIND（openai_compatible|anthropic）。L2.A1/L2.A4 跳过。
+
+ ↓ test/dsh-e2e-real-triad.test.ts > L2.A1 · 真 LLM：engine 分叉 → 绑定矩阵解析 → env 注入 → 真供应商端点 > 两问判别力金丝雀：换问题 ⇒ 回答必须跟着变（固定端点过不了）∧ ANSWERED ∧ 零 key 子串
+ ✓ test/dsh-engine-mcp-forward.seam.test.ts > WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发 > A1 · agent.mcpServers 配 mock stdio server ⇒ 子进程世界收到 mcp__fwdmock__echo 工具且解密凭据到达 server 进程 2949ms
+stdout | test/dsh-e2e-real-triad.test.ts > L2.A1′ · 判别力金丝雀的变异反证（免凭据） > 固定应答端点：两问回答相同 ⇒ isDiscriminating 必须判 false
+[L2.A1′ 变异反证] A=<<固定端点写死串>> B=<<固定端点写死串>>
+
+ ✓ test/dsh-e2e-real-triad.test.ts > L2.A1′ · 判别力金丝雀的变异反证（免凭据） > 固定应答端点：两问回答相同 ⇒ isDiscriminating 必须判 false 4637ms
+ ✓ test/dsh-engine-mcp-forward.seam.test.ts > WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发 > A2 · 阴性臂：agent.mcpServers 空 ⇒ stub 请求 tools 零 mcp__ 前缀工具，运行照常 ANSWERED（零扰） 2136ms
+ ✓ test/dsh-engine-mcp-forward.seam.test.ts > WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发 > A3 · fail-closed：credentialRef 凭据行缺失 ⇒ 诚实抛错 /credentialRef unresolvable/，不静默降级 38ms
+ ✓ test/dsh-e2e-real-triad.test.ts > L2.A2 · 真规则：platform-governance http → POST /b/v1/governance/adjudicate → deps.dataCore.rules.evaluate > allow 臂：C03 + {demandDelta:0.1} ⇒ 放行 ∧ 工具真执行（whoami 对位 only_t1:t1）∧ 端点→rules.evaluate 计数≥2 3315ms
+ ✓ test/dsh-engine-mcp-forward.seam.test.ts > WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发 > A4 · WO-DSH-PROD-READY W9-lite 审计骨架 e2e：dsh 臂 run.iterations 非空（两态+推导 duration）+ run.total* == 剧本 usage 折出和（B11 同源等值） 3379ms
+ ✓ test/dsh-e2e-real-triad.test.ts > L2.A2 · 真规则：platform-governance http → POST /b/v1/governance/adjudicate → deps.dataCore.rules.evaluate > deny 臂：C03 + {demandDelta:0.9} ⇒ BLOCK ⇒ 工具体不执行 ∧ reason 含真 verdict 文案（无 mock 前缀） 2623ms
+ ✓ test/dsh-engine-mcp-forward.seam.test.ts > WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发 > A5 · W8副 toolFilter 映射 e2e：滤一留一（echo 留 / echo2 全轮不可见）+ exotic 裸名 util.calc 注册期 fail-closed 丢弃，outcome ANSWERED 3063ms
+ ✓ test/dsh-e2e-real-triad.test.ts > L2.A3 · 真 MCP：SetupSpec.mcpServers 挂 mock-mcp-tenant ⇒ whoami 携租户标记 > whoami 应答 whoami:t1 ∧ pidFile 计数=1 ∧ 审计工具名 mcp__erp__whoami 在帧流 2875ms
+ ↓ test/dsh-e2e-real-triad.test.ts > L2.A4 · 组合臂：kimi-k3 真调 + C03 真裁决 + whoami 真 MCP 同会话 > 真 resolveConnectionFacts 注 env + PLATFORM_GOV_URL 真端点 ⇒ ANSWERED ∧ whoami:t1 ∧ 真 token 账 ∧ 裁决计数≥1 ∧ 零 key 泄漏
+ ✓ test/dsh-engine-mcp-forward.seam.test.ts > WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发 > A5b · W8副 toolFilter 全名形态（mcp__fwdmock2__echo）同断言成立：echo 留、echo2/exotic 全轮不可见 2742ms
+ ✓ test/dsh-e2e-real-triad.test.ts > L2.A5 · 变异负向臂（fail-closed 红位常设） > ⑤a PLATFORM_GOV_URL 指已关闭端口 ⇒ 裁决不可达 fail-closed deny ∧ 工具体不执行 2683ms
+ ✓ test/dsh-engine-mcp-forward.seam.test.ts > WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发 > A6-A · 零扰动锚 e2e：无 toolFilter ⇒ 三工具全含（含 exotic 规范化名 mcp__fwdmock2__util_calc），帧行为逐字节旧 2168ms
+ ✓ test/dsh-engine-mcp-forward.seam.test.ts > WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发 > A6-B · setup 层 toolAllowlist 键语义 unit：ref 无 filter ⇒ 键缺席（帧逐字节旧行为）；有 ⇒ 内容直通 1ms
+ ✓ test/dsh-e2e-real-triad.test.ts > L2.A5 · 变异负向臂（fail-closed 红位常设） > ⑤b 缺 PLATFORM_LLM_API_KEY ⇒ MISSING_CREDENTIAL 含 env 引用名 ∧ stub 零请求（fail 在出网前） 1780ms
+ ✓ test/dsh-provider-seam.test.ts > A1 · 生产 provider 单源常量与 mock 回退根除 > PRODUCTION_DSH_HARNESS_PROVIDER==='platform'（!=='mock'）；config 缺省=建议同值；engine 分叉段无 ?? "mock" 8ms
+ ✓ test/dsh-provider-seam.test.ts > A2 · cordis.yml 生产形态与部署治理门 > yml 含 platform-llm 且不含 mock-llm；poc 专档含 mock-llm 反向锚定；真仓门绿；compose 缺 DSH_HARNESS_PROVIDER 行的镜像 ⇒ 门必红 178ms
+ ✓ test/deploy-governance-seam.test.ts > #88 SEAM · 出货 compose 的治理开关 → 真管线里的真早停 > ① 五个 Loop Control 开关都在出货 compose 里（缺一即出货容器少一层治理） 3ms
+ ✓ test/deploy-governance-seam.test.ts > #88 SEAM · 出货 compose 的治理开关 → 真管线里的真早停 > ② 真 config 解析出货值 → 真 BudgetTracker：轮次/盲扫/per-tool 三道上界按出货值生效（效果层） 12ms
+ ✓ test/deploy-governance-seam.test.ts > #88 SEAM · 出货 compose 的治理开关 → 真管线里的真早停 > ③ 用出货 env 起真 app：病态同签名循环被出货 cap 早停（STALL_LOOP），不烧满 maxIterations=24 476ms
+ ✓ test/dsh-provider-seam.test.ts > A3 · SEAM 端到端：engine 分叉 → 绑定矩阵解析 → env 注入 → stub OpenAI 端点 > dcp spec 剥出 modelId；provider=PRODUCTION_DSH_HARNESS_PROVIDER；stub 见 model 无前缀、Authorization=Bearer key 2640ms
+ ✓ test/deploy-governance-seam.test.ts > #88 SEAM · 出货 compose 的治理开关 → 真管线里的真早停 > ④ 归属取证：同病态同 mock，去掉出货 env（= 修前出货态）→ 烧满 24 轮不早停（证③的早停来自 compose 那几行） 295ms
+ ✓ test/dsh-provider-seam.test.ts > A4 · usage 缓存透传 > prompt_cache_hit_tokens=60 ⇒ usage 块 inputTokens=40/cacheReadTokens=60/outputTokens=20；usage 在 finish 前 2307ms
+ ✓ test/deploy-governance-seam.test.ts > #88 SEAM · ③′④′ DSH_HARNESS=1 对位副本（N3 看门狗·engine 级缝） > ③′ 出货 env（含 cap）+ DSH_HARNESS=1：病态同签名循环被 watchdog 在 cap 处打断（STALL_LOOP），不烧满 8 轮剧本 2469ms
+ ✓ test/deploy-governance-seam.test.ts > #88 SEAM · ③′④′ DSH_HARNESS=1 对位副本（N3 看门狗·engine 级缝） > ④′ 归因臂：同剧本仅去掉 QOS_AGENT_LOOP_REPEAT_CAP → 无 STALL_LOOP ∧ metric 0 ∧ 烧满 8 轮（差值=compose 那行字节买到的治理） 2651ms
+ ✓ test/dsh-provider-seam.test.ts > A5 · 凭据红线 > 注入 key：事件流/结果/stub 请求体零 key 子串；runner 参数构造无 key；缺 key ⇒ MISSING_CREDENTIAL 含 env 引用名 4180ms
+ ✓ test/dsh-provider-seam.test.ts > A6 · resolveConnectionFacts 绑定矩阵解析 > dcp:llmp_stub:kimi-k3 ⇒ {providerId, modelId 剥前缀, kind, baseUrl, apiKey} 1ms
+ ✓ test/dsh-provider-seam.test.ts > A6 · resolveConnectionFacts 绑定矩阵解析 > provider DISABLED ⇒ 抛错 2ms
+ ✓ test/dsh-provider-seam.test.ts > A6 · resolveConnectionFacts 绑定矩阵解析 > hasApiKey 而凭据取不到 ⇒ 抛错（fail-closed，不静默 keyless） 0ms
+ ✓ test/dsh-provider-seam.test.ts > A6 · resolveConnectionFacts 绑定矩阵解析 > 非 dcp spec ⇒ 诚实抛错并指明 spec 1ms
+ ✓ test/dsh-provider-seam.test.ts > A6 · resolveConnectionFacts 绑定矩阵解析 > custom_http kind ⇒ v1 诚实拒绝（不静默回落） 1ms
+ ✓ test/dsh-provider-seam.test.ts > A6 · resolveConnectionFacts 绑定矩阵解析 > anthropic kind ⇒ 通过（映射 anthropic-messages 协议路） 0ms
+ ✓ test/dsh-provider-seam.test.ts > A6 · resolveConnectionFacts 绑定矩阵解析 > 未知 provider ⇒ 抛错 0ms
+
+ Test Files  4 passed (4)
+      Tests  32 passed | 2 skipped (34)
+   Start at  10:18:29
+   Duration  34.40s (transform 2.59s, setup 0ms, collect 15.08s, tests 49.63s, environment 1ms, prepare 972ms)
+

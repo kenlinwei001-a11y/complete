@@ -107,6 +107,8 @@ async function makeAgent(
     name: `MCP Forward Seam Agent ${id}`,
     description: "wo-mcp-forward seam",
     model: "",
+    // WO-DSH-P1B-prep：臂选择钉 per-agent kernel（= ROLLOUT §0 的生产杠杆），不再靠进程 env。
+    kernel: "EXTERNAL",
     systemPrompt: "你是 MCP forward seam 测试助手。",
     tools,
     ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
@@ -163,17 +165,17 @@ async function seedMcpConfigMulti(t: TestApp, recordPath: string): Promise<void>
   });
 }
 
-/** engine 分叉 env 需要的进程级旗标；返回还原函数。 */
+/**
+ * harness 目录进程级旗标；返回还原函数。
+ * WO-DSH-P1B-prep：原有 `process.env.DSH_HARNESS = "1"` 已删 —— 臂选择改由 per-agent `kernel`
+ * 承担（见 makeAgent）。进程级写者会被测试超时后的孤儿体带过界，污染同 worker 下一条测试。
+ */
 function withHarnessEnv(): () => void {
   const prevHarnessDir = process.env.DSH_HARNESS_DIR;
-  const prevHarness = process.env.DSH_HARNESS;
   process.env.DSH_HARNESS_DIR = HARNESS_DIR;
-  process.env.DSH_HARNESS = "1"; // engine 守卫直读 process.env（D3 休眠门判据形态）
   return () => {
     if (prevHarnessDir === undefined) delete process.env.DSH_HARNESS_DIR;
     else process.env.DSH_HARNESS_DIR = prevHarnessDir;
-    if (prevHarness === undefined) delete process.env.DSH_HARNESS;
-    else process.env.DSH_HARNESS = prevHarness;
   };
 }
 

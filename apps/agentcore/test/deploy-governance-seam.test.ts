@@ -160,7 +160,9 @@ describe("#88 SEAM · 出货 compose 的治理开关 → 真管线里的真早�
 });
 
 /**
- * #88 SEAM · ③′④′ DSH_HARNESS=1 对位副本（WO-DSH-N3 · STALL_LOOP 看门狗销账）。
+ * #88 SEAM · ③′④′ dsh 臂对位副本（WO-DSH-N3 · STALL_LOOP 看门狗销账）。
+ * ⚠ WO-DSH-P1B-prep 起臂选择 = per-agent `kernel`；本段下文与标题里引用的「DSH_HARNESS=1」
+ * 是**当时的**杠杆写法，已废（见 echoAgentDef），保留原文只为不篡改历史记录。
  *
  * **plan 修订（builder 实证 fork 不在自由深问路径，裁决降为 engine 级缝）**：
  * 本 describe 初版按 plan 写成「HTTP submitQuery 自由深问 + SSE 断言」，实跑 builder 实证：
@@ -185,10 +187,10 @@ describe("#88 SEAM · 出货 compose 的治理开关 → 真管线里的真早�
  *   销 M5 存活变异）∧ emit 捕获 echo_tool step.started===cap 且 <8 ∧ answer 含诚实
  *   降级块（块内容断言不放松：「检测到无进度循环」+ 出货 cap 值）。
  *
- * env 卫生：engine fork 读的是**进程 env**（engine.ts:497 process.env.DSH_HARNESS），
- * createTestApp 的 env 只进 config 管不到这层 ⇒ 本 describe 显式 save/restore 进程 env。
+ * env 卫生：**臂选择不靠进程 env** —— WO-DSH-P1B-prep 起钉 per-agent `kernel`（engine 分叉守卫
+ * 显式值优先，见 echoAgentDef）；仍 save/restore 的是 watchdog cap 等 LOOP_KEYS（透传子进程）。
  */
-describe("#88 SEAM · ③′④′ DSH_HARNESS=1 对位副本（N3 看门狗·engine 级缝）", () => {
+describe("#88 SEAM · ③′④′ dsh 臂对位副本（N3 看门狗·engine 级缝）", () => {
   const HARNESS_DIR = join(ROOT, "packages/dsh-harness");
   const ENV_KEYS = ["DSH_HARNESS", "MOCK_SCENARIO", "DSH_HARNESS_DIR", ...LOOP_KEYS] as const;
   let savedEnv: Record<string, string | undefined>;
@@ -203,7 +205,8 @@ describe("#88 SEAM · ③′④′ DSH_HARNESS=1 对位副本（N3 看门狗·en
   });
 
   function setHarnessEnv(loopEnv: Record<string, string>) {
-    process.env.DSH_HARNESS = "1";
+    // WO-DSH-P1B-prep：原有 `process.env.DSH_HARNESS = "1"` 已删 —— 臂选择改由 per-agent `kernel`
+    // 承担（见 echoAgentDef）。进程级写者会被测试超时后的孤儿体带过界，污染同 worker 下一条测试。
     process.env.DSH_HARNESS_DIR = HARNESS_DIR; // vitest cwd=apps/agentcore，缺省解析不到 packages/dsh-harness
     for (const k of LOOP_KEYS) delete process.env[k];
     for (const [k, v] of Object.entries(loopEnv)) process.env[k] = v;
@@ -219,6 +222,8 @@ describe("#88 SEAM · ③′④′ DSH_HARNESS=1 对位副本（N3 看门狗·en
       name: "echo_agent",
       description: "dsh ③′④′ 对位 agent",
       model: STUB_DCP_SPEC, // 裁决 A：post-N1 engine 分叉强制 dcp spec（原 "claude-opus-4-8" 在 providers.ts:435 诚实抛）
+      // WO-DSH-P1B-prep：臂选择钉 per-agent kernel（= ROLLOUT §0 的生产杠杆），不再靠进程 env。
+      kernel: "EXTERNAL",
       systemPrompt: "你是回声测试 agent。",
       tools: [{ kind: "BUILTIN", name: "echo_tool" }],
       ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
@@ -273,7 +278,7 @@ describe("#88 SEAM · ③′④′ DSH_HARNESS=1 对位副本（N3 看门狗·en
     }
   }
 
-  it("③′ 出货 env（含 cap）+ DSH_HARNESS=1：病态同签名循环被 watchdog 在 cap 处打断（STALL_LOOP），不烧满 8 轮剧本", { timeout: 60_000 }, async () => {
+  it("③′ 出货 env（含 cap）+ dsh 臂（per-agent kernel）：病态同签名循环被 watchdog 在 cap 处打断（STALL_LOOP），不烧满 8 轮剧本", { timeout: 60_000 }, async () => {
     const cap = Number(SHIPPED_LOOP.QOS_AGENT_LOOP_REPEAT_CAP);
     const r = await runPathologicalDsh(SHIPPED_LOOP);
     expect(

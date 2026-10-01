@@ -353,6 +353,9 @@ async function makeBareAgent(t: TestApp): Promise<string> {
     name: "L2 Real LLM Agent",
     description: "l2 e2e",
     model: "",
+    // WO-DSH-P1B-prep：臂选择钉 per-agent kernel（= ROLLOUT §0 的生产杠杆），不再靠进程 env。
+    // ⚠ 本文件该臂受 KIMI_READY 门控，本机无真 key ⇒ 跳过，改动属 NOT-MEASURED（语法已验、语义未跑）。
+    kernel: "EXTERNAL",
     systemPrompt: "你是 L2 e2e 测试助手。",
     tools: [],
     ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
@@ -385,9 +388,9 @@ describe.skipIf(!KIMI_READY)("L2.A1 · 真 LLM：engine 分叉 → 绑定矩阵�
     { timeout: REAL_TIMEOUT },
     async () => {
       const prevHarnessDir = process.env.DSH_HARNESS_DIR;
-      const prevHarness = process.env.DSH_HARNESS;
+      // WO-DSH-P1B-prep：原有 `process.env.DSH_HARNESS = "1"` 已删 —— 臂选择改由 per-agent kernel
+      // 承担（见 makeBareAgent）。进程级写者会被超时孤儿体带过界，污染同 worker 下一条测试。
       process.env.DSH_HARNESS_DIR = HARNESS_DIR;
-      process.env.DSH_HARNESS = "1"; // engine 守卫直读 process.env（D3 休眠门判据形态）
       let t: TestApp | undefined;
       try {
         t = await createTestApp({
@@ -440,8 +443,6 @@ describe.skipIf(!KIMI_READY)("L2.A1 · 真 LLM：engine 分叉 → 绑定矩阵�
       } finally {
         if (prevHarnessDir === undefined) delete process.env.DSH_HARNESS_DIR;
         else process.env.DSH_HARNESS_DIR = prevHarnessDir;
-        if (prevHarness === undefined) delete process.env.DSH_HARNESS;
-        else process.env.DSH_HARNESS = prevHarness;
         await t?.app.close();
       }
     },
