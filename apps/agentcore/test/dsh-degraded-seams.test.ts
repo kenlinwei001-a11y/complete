@@ -19,9 +19,9 @@
  * （一次性·防循环重发）；outcome === reason 原值逐字（"STALL_LOOP"·不顶替不改写）；
  * agentLoopRepeat===1（engine/loop 侧已计·编排层不双计）。
  *
- * env 卫生：engine fork 直读 process.env.DSH_HARNESS（engine.ts:499·dormancy D3 判据），
- * watchdog cap 经 runner env spread 透传子进程——故显式 save/restore 进程 env
- * （形态复刻 deploy-governance-seam.test.ts ③′④′ :193-203）。
+ * env 卫生：**臂选择已不靠进程 env** —— WO-DSH-P1B-prep 起钉 per-agent `kernel`（engine 分叉
+ * 守卫显式值优先），dsh 臂 agent 带 `kernel:"EXTERNAL"`、native 臂带 `kernel:"NATIVE"`（免疫位）。
+ * 仍 save/restore 进程 env 的是 watchdog cap 等 LOOP_KEYS（经 runner env spread 透传子进程）。
  */
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -72,9 +72,13 @@ function varyingScript(): StubRound[] {
   return rounds;
 }
 
-/** dsh 臂进程 env：fork 直读 process.env（engine.ts:499）；LOOP_KEYS 先清后设（臂间隔离）。 */
+/**
+ * dsh 臂进程 env：LOOP_KEYS 先清后设（臂间隔离）。
+ * WO-DSH-P1B-prep：原有 `process.env.DSH_HARNESS = "1"` 已删 —— 臂选择改由 per-agent `kernel`
+ * 承担（见下方三个 agent 工厂）。进程级写者会被测试超时后的孤儿体带过界，污染同 worker
+ * 下一条测试的 native 臂（dualrun50 上已实测并金丝雀复现）。
+ */
 function setDshEnv(loopEnv: Record<string, string>): void {
-  process.env.DSH_HARNESS = "1";
   process.env.DSH_HARNESS_DIR = HARNESS_DIR; // vitest cwd=apps/agentcore，缺省解析不到 packages/dsh-harness
   for (const k of LOOP_KEYS) delete process.env[k];
   for (const [k, v] of Object.entries(loopEnv)) process.env[k] = v;
@@ -87,6 +91,8 @@ function roleAgentVariant(): AgentDefinition {
   return {
     ...seed!,
     model: STUB_DCP_SPEC, // 裁决 A：post-N1 engine 分叉强制 dcp spec（裸模型名 resolveConnectionFacts 诚实抛）
+    // WO-DSH-P1B-prep：臂选择钉 per-agent kernel（= ROLLOUT §0 的生产杠杆），不再靠进程 env。
+    kernel: "EXTERNAL",
     tools: [{ kind: "BUILTIN", name: "echo_tool" }],
     scopeDeclaration: { ...seed!.scopeDeclaration, toolNames: ["echo_tool"] },
   };
@@ -102,6 +108,7 @@ function sceneEchoAgent(id = "agt_echo_scene"): AgentDefinition {
     name: "echo_scene_agent",
     description: "degraded 缝② dsh 臂场景 agent",
     model: STUB_DCP_SPEC,
+    kernel: "EXTERNAL", // WO-DSH-P1B-prep：臂选择走 per-agent kernel，进程 env 恒关
     systemPrompt: "你是回声测试 agent。",
     tools: [{ kind: "BUILTIN", name: "echo_tool" }],
     ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
@@ -122,6 +129,9 @@ function sceneNativeAgent(id = "agt_native_scene"): AgentDefinition {
     name: "native_scene_agent",
     description: "degraded 缝② native 臂场景 agent",
     model: "claude-opus-4-8",
+    // WO-DSH-P1B-prep：显式 NATIVE 是**免疫位** —— 契约明文「显式值优先于 env」，故任何残留的
+    // DSH_HARNESS=1（含同 worker 上一条测试超时后孤儿体留下的）都翻不动这一臂。
+    kernel: "NATIVE",
     systemPrompt: "你是测试 agent。",
     tools: [{ kind: "BUILTIN", name: "query_objects" }],
     ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
@@ -182,7 +192,8 @@ describe("WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧�
   let savedEnv: Record<string, string | undefined>;
   beforeEach(() => {
     savedEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
-    delete process.env.DSH_HARNESS; // 臂间缺省 native；dsh 臂走 setDshEnv 显式注入
+    // 臂选择已由 per-agent kernel 承担；此处删除只为挡住同 worker 上一条测试可能残留的写者。
+    delete process.env.DSH_HARNESS;
   });
   afterEach(() => {
     for (const k of ENV_KEYS) {

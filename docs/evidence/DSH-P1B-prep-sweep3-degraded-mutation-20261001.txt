@@ -1,0 +1,72 @@
+# WO-DSH-P1B-prep · 清扫 3/7 变异对照（预期红）
+# 变异：把 roleAgentVariant / sceneEchoAgent 的 kernel:"EXTERNAL" 去掉（= 修前态，且不带 env 兜底）
+# 为什么要做：A4 的 native 对位臂跑出**同一组断言** ⇒ A1/A2 的绿本身不度量「走的是哪条臂」。
+#   变异若仍绿 ⇒ kernel 不是承重件 ⇒ 前面那次「绿」根本没在度量臂选择。
+# 读数：A1/A2 红、RC=1；失败文案 = agent_degraded 帧 0 条（期望 1）
+#   ⇒ 无 dsh 分叉时不产生 STALL_LOOP 降级帧 ⇒ 原绿确由 dsh 臂产出。
+
+MUT_HIT_AFTER=0
+RC_MUTATED=1
+DIFF_AFTER_RESTORE=0
+MUT_HIT_FINAL=2
+
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/apps/agentcore
+
+ × test/dsh-degraded-seams.test.ts > WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧序） > A1 缝①正例·角色路 dsh STALL_LOOP → agent_degraded 恰一条·早于 answer.final·reason 原值·不双计 241ms
+   → SSE 帧流缺 step.completed{type:agent_degraded} 伪帧（静默缝）或重发多于一条: expected +0 to be 1 // Object.is equality
+ × test/dsh-degraded-seams.test.ts > WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧序） > A2 缝②正例·场景路 dsh STALL_LOOP → 同断言组（无 classification·确证 path=AGENT + 场景入口 note） 51ms
+   → SSE 帧流缺 step.completed{type:agent_degraded} 伪帧（静默缝）或重发多于一条: expected +0 to be 1 // Object.is equality
+ ✓ test/dsh-degraded-seams.test.ts > WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧序） > A3 负向臂·异参剧本不触发降级 → 帧流零 agent_degraded ∧ COMPLETED 照常（咬守卫摘除 M5） 111ms
+ ✓ test/dsh-degraded-seams.test.ts > WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧序） > A4 native 对位臂·DSH_HARNESS 不设走缝② → agent_degraded 同在同序（证修复 fork 无关·帧出自编排消费段） 97ms
+ ✓ test/dsh-degraded-seams.test.ts > WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧序） > A5① 回归零扰·缝①角色路正常剧本 → 帧流零 agent_degraded（正常态逐字节不变） 61ms
+ ✓ test/dsh-degraded-seams.test.ts > WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧序） > A5② 回归零扰·缝②场景路正常剧本 → 帧流零 agent_degraded（正常态逐字节不变） 47ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/dsh-degraded-seams.test.ts > WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧序） > A1 缝①正例·角色路 dsh STALL_LOOP → agent_degraded 恰一条·早于 answer.final·reason 原值·不双计
+AssertionError: SSE 帧流缺 step.completed{type:agent_degraded} 伪帧（静默缝）或重发多于一条: expected +0 to be 1 // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 1[39m
+[31m+ 0[39m
+
+ ❯ assertDegradedFrameContract test/dsh-degraded-seams.test.ts:171:84
+    169|   const events = (await t.repos.events.listAfter(taskId, 0)) as TaskEv…
+    170|   const deg = degradedFrames(events);
+    171|   expect(deg.length, "SSE 帧流缺 step.completed{type:agent_degraded} 伪帧（静…
+       |                                                                                    ^
+    172|   expect(
+    173|     (deg[0]!.payload as { outcome?: string }).outcome,
+ ❯ test/dsh-degraded-seams.test.ts:222:7
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  test/dsh-degraded-seams.test.ts > WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧序） > A2 缝②正例·场景路 dsh STALL_LOOP → 同断言组（无 classification·确证 path=AGENT + 场景入口 note）
+AssertionError: SSE 帧流缺 step.completed{type:agent_degraded} 伪帧（静默缝）或重发多于一条: expected +0 to be 1 // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 1[39m
+[31m+ 0[39m
+
+ ❯ assertDegradedFrameContract test/dsh-degraded-seams.test.ts:171:84
+    169|   const events = (await t.repos.events.listAfter(taskId, 0)) as TaskEv…
+    170|   const deg = degradedFrames(events);
+    171|   expect(deg.length, "SSE 帧流缺 step.completed{type:agent_degraded} 伪帧（静…
+       |                                                                                    ^
+    172|   expect(
+    173|     (deg[0]!.payload as { outcome?: string }).outcome,
+ ❯ test/dsh-degraded-seams.test.ts:248:7
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 4 passed (6)
+   Start at  10:17:10
+   Duration  5.06s (transform 2.15s, setup 0ms, collect 3.97s, tests 610ms, environment 0ms, prepare 92ms)
+
