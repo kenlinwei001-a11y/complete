@@ -141,11 +141,21 @@ cd apps/agentcore && DSH_HARNESS=0 pnpm exec vitest run test/dsh-*.test.ts --max
 `dualrun50` 是没跟上约定的那一个，偏偏又是 #17 要骑的那一件。
 
 **同类残余（普查所得）—— 已就地清完（2026-10-01 · 分支 `claude/handoff-wo-dsh-p1b-prep`）**：
-那 7 个文件（`dsh-e2e-honesty` · `dsh-degraded-seams` · `deploy-governance-seam` · `dsh-e2e-real-triad` ·
-`dsh-engine-mcp-forward` · `dsh-provider-seam` · `dsh-dualrun-reconcile`）的臂选择全部改钉 per-agent `kernel`
-（dsh 臂 `EXTERNAL`；有 native 对位臂的显式钉 `NATIVE` 作免疫位）。
-全 test 树按语法位复扫：`^[[:space:]]*process\.env\.DSH_HARNESS = ` 只剩 `agent-run-attribution` 的 3 处
-（**故意**留的免疫位反向用例，不在清扫面）。
+除本单 swept 的 `dualrun50` 外，另有 **8 个**测试文件的臂选择改钉 per-agent `kernel`
+（`dsh-dualrun-reconcile` · `dsh-e2e-honesty` · `dsh-degraded-seams` · `deploy-governance-seam` ·
+`dsh-engine-mcp-forward` · `dsh-provider-seam` · `dsh-e2e-real-triad` · `dsh-e2e-degradation-screen`）；
+dsh 臂 `EXTERNAL`，有 native 对位臂的显式钉 `NATIVE` 作免疫位。
+
+⚠ **清单本身出过一次错，记下来防复发**：它初版由「**直接赋值行**」grep 推得
+（`^\s*process\.env\.DSH_HARNESS = "1"`），于是**漏掉了 `dsh-e2e-degradation-screen`** ——
+该文件的写者藏在泛型助手 `withEnv(patch)` 里（`process.env[k] = patch[k]`），赋值行正则一次都看不见。
+形态：**「我用『直接赋值行命中数』当作『写者全集』的证据，而前者并不度量后者。」**
+⇒ 正确扫法 = **扫字面量出现位**（`grep -rn DSH_HARNESS` 全量）再逐个判读/写，并附同扫法金丝雀。
+按此法收敛后的**写者全集 = 4 处，全部故意**：`agent-run-attribution` 3 处（免疫位反向用例）
++ `dsh-e2e-degradation-screen` A3a 1 处（flag off/on 两臂对齐——同一个 agent 要出 NATIVE 与 EXTERNAL
+两个徽标，per-agent kernel 结构上做不到）。
+`packages/dsh-harness/test` 那 3 个命中是**读方**（`run.mjs` 给 spawn 的子进程显式传 env；两个 `.mjs`
+是断言 env==1 的 A0 门），不同层，不在清扫面。
 `PLATFORM_GOV_DENY` / `DSH_HARNESS_DIR` 仍是进程级写者（后者经子进程 env 继承被消费，清扫中**保留**），
 同类形态对它仍成立，只是不再影响臂选择。
 ⚠ 一处 NOT-MEASURED：`dsh-e2e-real-triad` 的 `makeBareAgent` 受 `KIMI_READY` 门控，本机无真 key ⇒ 该臂跳过，

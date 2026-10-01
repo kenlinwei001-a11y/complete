@@ -1,0 +1,285 @@
+# WO-DSH-P1B-prep · 收口电池（终版）：9 文件清扫后重跑 19 文件锚子集
+# 与 da6fd3634 那次（8 文件清扫后）对照：读数逐项相同 ⇒ 第 9 个文件的改动行为保持。
+
+HEAD=f50551c83
+BRANCH=claude/handoff-wo-dsh-p1b-prep
+START=2026-10-01 10:26:57
+10:26  up 32 days,  5:47, 5 users, load averages: 6.84 12.70 36.53
+N_FILES_EXPANDED=19
+RC_ANCHOR=0
+END=10:30:52
+
+## da6fd3634（8 文件后）: 248 passed | 2 skipped · 180.51s
+## f50551c83（9 文件后）: 248 passed | 2 skipped · 233.63s   ← 本文件
+## 差异只在时长（负载 6.84 vs 12.40），绿/红与条数逐项相同。
+## 2 skipped = real-triad 的 KIMI 门控臂 L2.A1 / L2.A4 ⇒ NOT-MEASURED
+
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/apps/agentcore
+
+ ✓ test/dsh-engine-tool-bridge.seam.test.ts > W8主 · A 端点级：/b/v1/dsh/tool-execute 四态 + 鉴权 + 重放 + 截断 > A1 scope 门 DENIED（AGENT_SCOPE_VIOLATION）⇒ 审计行 DENIED + tc_ 回执 242ms
+ ✓ test/dsh-engine-tool-bridge.seam.test.ts > W8主 · A 端点级：/b/v1/dsh/tool-execute 四态 + 鉴权 + 重放 + 截断 > A2 IAM 门 DENIED（PERMISSION_DENIED） 64ms
+ ✓ test/dsh-engine-tool-bridge.seam.test.ts > W8主 · A 端点级：/b/v1/dsh/tool-execute 四态 + 鉴权 + 重放 + 截断 > A3 OBO 门 DENIED（OBO_TOKEN_EXPIRING，token 60s 内到期） 52ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > A0 语料自检：构成 / 四维覆盖 / gated 槽在册 11ms
+ ✓ test/dsh-engine-tool-bridge.seam.test.ts > W8主 · A 端点级：/b/v1/dsh/tool-execute 四态 + 鉴权 + 重放 + 截断 > A4 预算门 BUDGET_EXCEEDED（maxToolCalls=0）⇒ reason 原值 + budget.exhausted 置位 142ms
+ ✓ test/dsh-engine-tool-bridge.seam.test.ts > W8主 · A 端点级：/b/v1/dsh/tool-execute 四态 + 鉴权 + 重放 + 截断 > A5 OK×2 同参 ⇒ readCache 命中（queryObjects 真调 1 次）+ 双 OK 审计行（单实例反咬） 115ms
+ ✓ test/dsh-engine-tool-bridge.seam.test.ts > W8主 · A 端点级：/b/v1/dsh/tool-execute 四态 + 鉴权 + 重放 + 截断 > A6 鉴权 fail-closed：无头 401 / 错头 401 / runToken 不识 401——全部零执行零审计 46ms
+ ✓ test/dsh-engine-tool-bridge.seam.test.ts > W8主 · A 端点级：/b/v1/dsh/tool-execute 四态 + 鉴权 + 重放 + 截断 > A7 callId 重放 ⇒ 409（同 runToken 域内一次性） 31ms
+ ✓ test/dsh-engine-tool-bridge.seam.test.ts > W8主 · A 端点级：/b/v1/dsh/tool-execute 四态 + 鉴权 + 重放 + 截断 > A8 载荷畸形（缺 toolName）⇒ 400 VALIDATION_ERROR 19ms
+ ✓ test/dsh-engine-tool-bridge.seam.test.ts > W8主 · A 端点级：/b/v1/dsh/tool-execute 四态 + 鉴权 + 重放 + 截断 > A9 >8KB 工具结果 ⇒ payloadJson 与单源 truncateToolResultJson 逐字等 ∧ 审计行全量 43ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-aa [answer] 双臂四面对账 2390ms
+ ✓ test/dsh-engine-tool-bridge.seam.test.ts > W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B1 真工具三键合流：tc_ 上模型面 ∧ 审计行 OK ∧ 本体真调一次（缺省推导锚） 2108ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ab [answer] 双臂四面对账 2108ms
+ ✓ test/dsh-engine-tool-bridge.seam.test.ts > W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B2 IAM deny 过 wire：「无权访问」逐字（authored isError 通道，无 Error: 前缀） 1948ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ac [answer] 双臂四面对账 1769ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ad [answer] 双臂四面对账 1542ms
+ ✓ test/dsh-engine-tool-bridge.seam.test.ts > W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B3 B6 预算降级桥：BUDGET_EXCEEDED ⇒ cancel ⇒ BUDGET_EXHAUSTED + 诚实摘要头逐字 1843ms
+ ✓ test/dsh-engine-tool-bridge.seam.test.ts > W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B4 反向通道中途断（端点不可达）⇒ ERROR 回执不静默放行 ∧ 零审计行 1726ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ae [answer] 双臂四面对账 1641ms
+ ✓ test/dsh-engine-tool-bridge.seam.test.ts > W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B5 宿主工具慢于子进程 deadline：宿主 withTimeout 收敛 ERROR ⇒ 行 ERROR + 帧 ERROR 1568ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-af [answer] 双臂四面对账 1706ms
+ ✓ test/dsh-engine-tool-bridge.seam.test.ts > W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B6 孤儿审计行：桥 fetch 先放弃（100ms）< 宿主完成（400ms）⇒ 帧 ERROR 而宿主行 OK 2070ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ag [answer] 双臂四面对账 1666ms
+ ✓ test/dsh-engine-tool-bridge.seam.test.ts > W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B7 watchdog 咬在反向调用中途：drain 语义——已起步结果帧照落 + turn 步边界收束 1701ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ah [answer] 双臂四面对账 1633ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ai [answer] 双臂四面对账 1696ms
+ ✓ test/dsh-engine-tool-bridge.seam.test.ts > W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B8 对象 scope 回归（B8 修复回咬）：enforceObjectScope 真到 executor ⇒ 越界 DENIED 逐字 1693ms
+ ✓ test/dsh-engine-tool-bridge.seam.test.ts > W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B9 双侧无 SERVICE_TOKEN ⇒ 端点 401 fail-closed ⇒ ERROR 回执 ∧ 零审计行（mutation a 锚） 1605ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-aj [answer] 双臂四面对账 1825ms
+ ✓ test/dsh-engine-tool-bridge.seam.test.ts > W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B10 端点畸形应答（200 但无 outcome）⇒ ERROR 回执 ∧ 零审计行（mutation b 锚） 1816ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ak [answer] 双臂四面对账 1937ms
+ ✓ test/dsh-engine-tool-bridge.seam.test.ts > W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B11 >8KB 工具结果 e2e：子进程可见文案 = native 截断形逐字等 ∧ 审计行全量 1781ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-al [answer] 双臂四面对账 1746ms
+ ✓ test/dsh-engine-tool-bridge.seam.test.ts > W8.5 · C workflow 反向化：模型可见 + 同端点反向执行 + 治理/审计/预算同账 > C1 workflow e2e OK：可见 + 真过宿主引擎 + 审计行三键 + 侧表 iterations + emit 透传 1740ms
+ ✓ test/dsh-engine-tool-bridge.seam.test.ts > W8.5 · C workflow 反向化：模型可见 + 同端点反向执行 + 治理/审计/预算同账 > C2 端点级：绑定表 miss ⇒ ERROR fail-closed + ERROR 审计行（wire workflowId 被无视） 33ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-am [answer] 双臂四面对账 2010ms
+ ✓ test/dsh-engine-tool-bridge.seam.test.ts > W8.5 · C workflow 反向化：模型可见 + 同端点反向执行 + 治理/审计/预算同账 > C3 workflow 内部 FAILED ⇒ ERROR parity（两态词表 + ERROR 审计行 + isError 回执上模型面） 2261ms
+ ✓ test/dsh-engine-tool-bridge.seam.test.ts > W8.5 · C workflow 反向化：模型可见 + 同端点反向执行 + 治理/审计/预算同账 > C4 零扰动锚：无 WORKFLOW ref ⇒ setup 键缺席；wire 无 kind ⇒ tool 路逐字节旧；kind 畸形 ⇒ 400 56ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-an [answer] 双臂四面对账 2166ms
+ ✓ test/dsh-fault-injection.seam.test.ts > WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态 > F1 启动即死·缺 cordis 档（engine 级）⇒ 诚实抛错指名缺档，不挂起不静默 242ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ao [answer] 双臂四面对账 1744ms
+ ✓ test/dsh-fault-injection.seam.test.ts > WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态 > F2 启动即崩·bin 即死（engine 级）⇒ TransportClosedError 带 exit code + stderr tail，零残留 529ms
+ ✓ test/dsh-fault-injection.seam.test.ts > WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态 > F3 中途崩（runner 级）⇒ 百 ms 级收束 + outcome FAILED + 半截文本兜底不编造 245ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ap [answer] 双臂四面对账 1392ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-aq [answer] 双臂四面对账 1157ms
+ ✓ test/dsh-fault-injection.seam.test.ts > WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态 > F4① hang·prompt 后哑（runner 级）⇒ deadline 有界收束 + FAILED + 诚实空答文本 2130ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ar [answer] 双臂四面对账 1063ms
+ ✓ test/dsh-fault-injection.seam.test.ts > WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态 > F4② hang·全哑（runner 级）⇒ initialize 超时 RequestTimeoutError 诚实上抛 2055ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-as [answer] 双臂四面对账 1288ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-at [answer] 双臂四面对账 1300ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-au [answer] 双臂四面对账 1054ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-av [answer] 双臂四面对账 1204ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-aw [answer] 双臂四面对账 980ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ax [answer] 双臂四面对账 1182ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ay [answer] 双臂四面对账 1129ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-az [answer] 双臂四面对账 1199ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ba [answer] 双臂四面对账 989ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bb [answer] 双臂四面对账 1506ms
+ ✓ test/dsh-fault-injection.seam.test.ts > WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态 > F5 zombie 回收（runner 级）⇒ 健康×5 + 中途崩 + SIGTERM 抵抗，pgrep 计数恒 0 11210ms
+ ✓ test/dsh-fault-injection.seam.test.ts > WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态 > F6 多租户并发（engine 级）⇒ 独立子进程 × setup 帧 tenantId 各自正确 × 互不串话 249ms
+ ✓ test/dsh-fault-injection.seam.test.ts > WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态 > F7 资源形态（runner 级）⇒ 并发×4 各自独立子进程同时在跑（每 run 一进程·无池化上限 钉板） 582ms
+ ✓ test/dsh-fault-injection.seam.test.ts > WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态 > F8 编排级失败面（HTTP 级）⇒ 启动即崩 ⇒ task FAILED + 错误含子进程诊断（非挂起非空答案） 184ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bc [answer] 双臂四面对账 1958ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bd [answer] 双臂四面对账 1970ms
+stdout | test/dsh-e2e-real-triad.test.ts
+[dsh-e2e-real-triad] 真供应商臂 skip：需 DSH_REAL_API_KEY + DSH_REAL_BASE_URL（旧名 KIMI_API_KEY/KIMI_BASE_URL 同样接受）；另可选 DSH_REAL_MODEL（缺省 kimi-k3）/ DSH_REAL_KIND（openai_compatible|anthropic）。L2.A1/L2.A4 跳过。
+
+ ↓ test/dsh-e2e-real-triad.test.ts > L2.A1 · 真 LLM：engine 分叉 → 绑定矩阵解析 → env 注入 → 真供应商端点 > 两问判别力金丝雀：换问题 ⇒ 回答必须跟着变（固定端点过不了）∧ ANSWERED ∧ 零 key 子串
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-be [answer] 双臂四面对账 1957ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bf [answer] 双臂四面对账 2046ms
+stdout | test/dsh-e2e-real-triad.test.ts > L2.A1′ · 判别力金丝雀的变异反证（免凭据） > 固定应答端点：两问回答相同 ⇒ isDiscriminating 必须判 false
+[L2.A1′ 变异反证] A=<<固定端点写死串>> B=<<固定端点写死串>>
+
+ ✓ test/dsh-e2e-real-triad.test.ts > L2.A1′ · 判别力金丝雀的变异反证（免凭据） > 固定应答端点：两问回答相同 ⇒ isDiscriminating 必须判 false 3865ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bg [answer] 双臂四面对账 1977ms
+ ✓ test/dsh-e2e-real-triad.test.ts > L2.A2 · 真规则：platform-governance http → POST /b/v1/governance/adjudicate → deps.dataCore.rules.evaluate > allow 臂：C03 + {demandDelta:0.1} ⇒ 放行 ∧ 工具真执行（whoami 对位 only_t1:t1）∧ 端点→rules.evaluate 计数≥2 2152ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bh [answer] 双臂四面对账 2082ms
+ ✓ test/dsh-e2e-real-triad.test.ts > L2.A2 · 真规则：platform-governance http → POST /b/v1/governance/adjudicate → deps.dataCore.rules.evaluate > deny 臂：C03 + {demandDelta:0.9} ⇒ BLOCK ⇒ 工具体不执行 ∧ reason 含真 verdict 文案（无 mock 前缀） 1819ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bi [answer] 双臂四面对账 1960ms
+ ✓ test/dsh-e2e-real-triad.test.ts > L2.A3 · 真 MCP：SetupSpec.mcpServers 挂 mock-mcp-tenant ⇒ whoami 携租户标记 > whoami 应答 whoami:t1 ∧ pidFile 计数=1 ∧ 审计工具名 mcp__erp__whoami 在帧流 1911ms
+ ↓ test/dsh-e2e-real-triad.test.ts > L2.A4 · 组合臂：kimi-k3 真调 + C03 真裁决 + whoami 真 MCP 同会话 > 真 resolveConnectionFacts 注 env + PLATFORM_GOV_URL 真端点 ⇒ ANSWERED ∧ whoami:t1 ∧ 真 token 账 ∧ 裁决计数≥1 ∧ 零 key 泄漏
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bj [answer] 双臂四面对账 1788ms
+ ✓ test/dsh-e2e-real-triad.test.ts > L2.A5 · 变异负向臂（fail-closed 红位常设） > ⑤a PLATFORM_GOV_URL 指已关闭端口 ⇒ 裁决不可达 fail-closed deny ∧ 工具体不执行 2101ms
+ ✓ test/dsh-e2e-real-triad.test.ts > L2.A5 · 变异负向臂（fail-closed 红位常设） > ⑤b 缺 PLATFORM_LLM_API_KEY ⇒ MISSING_CREDENTIAL 含 env 引用名 ∧ stub 零请求（fail 在出网前） 1326ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bk [deny_pre] 双臂四面对账 2047ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bl [deny_pre] 双臂四面对账 2045ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bm [deny_pre] 双臂四面对账 2067ms
+ ✓ test/dsh-e2e-honesty.test.ts > WO-DSH-E2E · L5 诚实层穿透 > L5.P1 provenance 溯源到真对象（load_skill 实调可回查）+ ⟦ref:1⟧ 标记逐字保真 1810ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bn [deny_pre] 双臂四面对账 1600ms
+ ✓ test/dsh-e2e-honesty.test.ts > WO-DSH-E2E · L5 诚实层穿透 > L5.P2a governance 负向（engine 级·engine.ts:520 锚）：provenancePolicy=required 缺 provenance ⇒ FAILED + 诚实文案 1770ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bo [deny_mid] 双臂四面对账 2122ms
+ ✓ test/dsh-e2e-honesty.test.ts > WO-DSH-E2E · L5 诚实层穿透 > L5.P2b governance 负向：writeMode 技能缺 action_draft ⇒ FAILED + 诚实文案 2062ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bp [deny_mid] 双臂四面对账 1752ms
+ ✓ test/dsh-e2e-honesty.test.ts > WO-DSH-E2E · L5 诚实层穿透 > L5.P3 EMPTY 口径保真：软收尾逐字 == 末 assistant 文本；空文本 ⇒ 诚实兜底逐字；provenance 空 3128ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bq [deny_mid] 双臂四面对账 1718ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-br [deny_mid] 双臂四面对账 1733ms
+ ✓ test/dsh-e2e-honesty.test.ts > WO-DSH-E2E · L5 诚实层穿透 > L5.P4 拒绝口径帧保真：deny 理由帧流逐字 + SSE 面 ERROR 不漂白 1913ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bs [deny_all] 双臂四面对账 1919ms
+ ✓ test/dsh-e2e-honesty.test.ts > WO-DSH-E2E · L5 诚实层穿透 > L5.P5 降级链：finish_reason=length ⇒ turn/end max-tokens ⇒ BUDGET_EXHAUSTED + degraded 原值 + 诚实复述 + narration 保真 1796ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bt [deny_all] 双臂四面对账 2790ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bu [deny_all] 双臂四面对账 3269ms
+ ✓ test/dsh-engine-mcp-forward.seam.test.ts > WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发 > A1 · agent.mcpServers 配 mock stdio server ⇒ 子进程世界收到 mcp__fwdmock__echo 工具且解密凭据到达 server 进程 4120ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bv [deny_all] 双臂四面对账 2915ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bw [deny_prefork] 双臂四面对账 21ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bx [deny_prefork] 双臂四面对账 19ms
+ ✓ test/dsh-engine-mcp-forward.seam.test.ts > WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发 > A2 · 阴性臂：agent.mcpServers 空 ⇒ stub 请求 tools 零 mcp__ 前缀工具，运行照常 ANSWERED（零扰） 2950ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-by [answer] 双臂四面对账 3139ms
+ ✓ test/dsh-engine-mcp-forward.seam.test.ts > WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发 > A3 · fail-closed：credentialRef 凭据行缺失 ⇒ 诚实抛错 /credentialRef unresolvable/，不静默降级 46ms
+ ✓ test/dsh-engine-mcp-forward.seam.test.ts > WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发 > A4 · WO-DSH-PROD-READY W9-lite 审计骨架 e2e：dsh 臂 run.iterations 非空（两态+推导 duration）+ run.total* == 剧本 usage 折出和（B11 同源等值） 3295ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bz [answer] 双臂四面对账 3283ms
+ ✓ test/dsh-engine-mcp-forward.seam.test.ts > WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发 > A5 · W8副 toolFilter 映射 e2e：滤一留一（echo 留 / echo2 全轮不可见）+ exotic 裸名 util.calc 注册期 fail-closed 丢弃，outcome ANSWERED 3475ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ca [answer] 双臂四面对账 3068ms
+ ✓ test/dsh-engine-mcp-forward.seam.test.ts > WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发 > A5b · W8副 toolFilter 全名形态（mcp__fwdmock2__echo）同断言成立：echo 留、echo2/exotic 全轮不可见 3032ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-cb [answer] 双臂四面对账 3101ms
+ ✓ test/dsh-engine-mcp-forward.seam.test.ts > WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发 > A6-A · 零扰动锚 e2e：无 toolFilter ⇒ 三工具全含（含 exotic 规范化名 mcp__fwdmock2__util_calc），帧行为逐字节旧 3164ms
+ ✓ test/dsh-engine-mcp-forward.seam.test.ts > WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发 > A6-B · setup 层 toolAllowlist 键语义 unit：ref 无 filter ⇒ 键缺席（帧逐字节旧行为）；有 ⇒ 内容直通 1ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-cc [answer] 双臂四面对账 3915ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-cd [answer] 双臂四面对账 3425ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ce [answer] 双臂四面对账 3260ms
+ ✓ test/dsh-gov-production.seam.test.ts > WO-DSH-PROD-READY F-1 · 生产档 governance http 裁决接线（engine 级） > ① 真端点 + 双侧同 token + 规则 BLOCK ⇒ deny 理由逐字回灌模型面 ∧ 工具体零执行 ∧ step ERROR 4142ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-cf [answer] 双臂四面对账 3555ms
+ ✓ test/dsh-gov-production.seam.test.ts > WO-DSH-PROD-READY F-1 · 生产档 governance http 裁决接线（engine 级） > ② 同构放行 ⇒ 工具体真执行 ∧ 裁决覆盖 echo + final_answer ∧ 答案原样交付 3442ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-cg [answer] 双臂四面对账 3266ms
+ ✓ test/dsh-gov-production.seam.test.ts > WO-DSH-PROD-READY F-1 · 生产档 governance http 裁决接线（engine 级） > ③ PLATFORM_GOV_URL 指已关闭端口 ⇒ fail-closed deny（reason 含 unreachable）∧ 零执行 ∧ 零求值 3185ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ch [answer] 双臂四面对账 3358ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ci [answer] 双臂四面对账 2627ms
+ ✓ test/dsh-gov-production.seam.test.ts > WO-DSH-PROD-READY F-1 · 生产档 governance http 裁决接线（engine 级） > ④ SERVICE_TOKEN 缺失 ⇒ 端点 fail-closed 401 ⇒ 插件转 deny（reason 含 HTTP 401）∧ 零执行 ∧ 零求值 3528ms
+ ✓ test/dsh-gov-production.seam.test.ts > WO-DSH-PROD-READY F-1 · 生产档 governance http 裁决接线（engine 级） > ⑤ 不钉 DSH_GOV_URL ⇒ engine 缺省推导本进程裁决端点真被打到 ∧ 放行真执行 2724ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-cj [answer] 双臂四面对账 3141ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ck [answer] 双臂四面对账 2711ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-cl [answer] 双臂四面对账 3271ms
+ ✓ test/dsh-degraded-seams.test.ts > WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧序） > A1 缝①正例·角色路 dsh STALL_LOOP → agent_degraded 恰一条·早于 answer.final·reason 原值·不双计 3271ms
+ ✓ test/dsh-degraded-seams.test.ts > WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧序） > A2 缝②正例·场景路 dsh STALL_LOOP → 同断言组（无 classification·确证 path=AGENT + 场景入口 note） 2986ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-cm [answer] 双臂四面对账 2985ms
+ ✓ test/dsh-degraded-seams.test.ts > WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧序） > A3 负向臂·异参剧本不触发降级 → 帧流零 agent_degraded ∧ COMPLETED 照常（咬守卫摘除 M5） 3120ms
+ ✓ test/dsh-degraded-seams.test.ts > WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧序） > A4 native 对位臂·DSH_HARNESS 不设走缝② → agent_degraded 同在同序（证修复 fork 无关·帧出自编排消费段） 46ms
+ ✓ test/dsh-degraded-seams.test.ts > WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧序） > A5① 回归零扰·缝①角色路正常剧本 → 帧流零 agent_degraded（正常态逐字节不变） 85ms
+ ✓ test/dsh-degraded-seams.test.ts > WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧序） > A5② 回归零扰·缝②场景路正常剧本 → 帧流零 agent_degraded（正常态逐字节不变） 81ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > A5 确定性（同臂连跑两遍，比对器不得把噪声当差集） > dr50-ac 双臂各复跑一遍过同一比对器 5719ms
+ ✓ test/dsh-e2e-tenant-collision.test.ts > WO-DSH-E2E · L4 租户隔离穿透（双 tenant × 同 serverName 对撞） > L4.A1 对撞双成：各回各 whoami 标记 / 事件流零跨租户串字 / 工具表各只见各 / pidFile 恰 2 异 pid 5977ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > A5 确定性（同臂连跑两遍，比对器不得把噪声当差集） > dr50-ad 双臂各复跑一遍过同一比对器 5931ms
+ ✓ test/dsh-e2e-tenant-collision.test.ts > WO-DSH-E2E · L4 租户隔离穿透（双 tenant × 同 serverName 对撞） > L4.A2 世界层互不可达：allow-list 误配异租户工具名 ⇒ 执行 isError（fail-closed），成功标记零出现 5752ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > A5 确定性（同臂连跑两遍，比对器不得把噪声当差集） > dr50-an 双臂各复跑一遍过同一比对器 5902ms
+ ✓ test/dsh-e2e-tenant-collision.test.ts > WO-DSH-E2E · L4 租户隔离穿透（双 tenant × 同 serverName 对撞） > L4.A3 跨租户凭据解析 fail-closed（E3′ 前缀白名单形态）+ 凭据值零上帧 3351ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > A5 确定性（同臂连跑两遍，比对器不得把噪声当差集） > dr50-ag 双臂各复跑一遍过同一比对器 6142ms
+ ✓ test/dsh-postcheck.seam.test.ts > WO-DSH-PROD-READY W1 · DSH 路径 postcheck 后验对拍 > ① ruleBindings POST_CHECK BLOCK ⇒ DSH 答案同样被替换为 rule_violation（prov_post_check） 3287ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > A5 确定性（同臂连跑两遍，比对器不得把噪声当差集） > dr50-bk 双臂各复跑一遍过同一比对器 5725ms
+ ✓ test/dsh-postcheck.seam.test.ts > WO-DSH-PROD-READY W1 · DSH 路径 postcheck 后验对拍 > ② 对拍 · ruleBindings POST_CHECK 通过 ⇒ DSH 答案原样放行（后验真跑了但不冤枉好人） 2952ms
+ ✓ test/dsh-postcheck.seam.test.ts > WO-DSH-PROD-READY W1 · DSH 路径 postcheck 后验对拍 > ③ skill postcheck 引用 BLOCK ⇒ DSH 答案被替换（prov_skill_rule_check，先于 ruleBindings 段） 2891ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > A5 确定性（同臂连跑两遍，比对器不得把噪声当差集） > dr50-bs 双臂各复跑一遍过同一比对器 5628ms
+ ✓ test/dsh-postcheck.seam.test.ts > WO-DSH-PROD-READY W1 · DSH 路径 postcheck 后验对拍 > ④ 诚实位 · rules 引擎抛错 ⇒ fail-open 放行（与原生 catch 语义一致，不把后验故障变成答案故障） 2793ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > A5 确定性（同臂连跑两遍，比对器不得把噪声当差集） > dr50-cb 双臂各复跑一遍过同一比对器 5571ms
+ ✓ test/dsh-watchdog.test.ts > N3 · runner 级 stall_loop 剧本（B1-B4） > B1 正例：stall_loop + cap=3 → abort cause=stall-loop ∧ STALL_LOOP 降级 ∧ tool/call===3 2216ms
+ ✓ test/dsh-watchdog.test.ts > N3 · runner 级 stall_loop 剧本（B1-B4） > B2 异参对照（不误伤）：stall_loop_varying + cap=3 → 无 stall-loop ∧ ANSWERED ∧ tool/call===8 2836ms
+ ✓ test/dsh-watchdog.test.ts > N3 · runner 级 stall_loop 剧本（B1-B4） > B3 自定义 cap=4（≠缺省 3）：cause.cap===4 ∧ tool/call===4 —— cap 由 env 驱动非硬编码 2398ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > A5 确定性（同臂连跑两遍，比对器不得把噪声当差集） > dr50-ce 双臂各复跑一遍过同一比对器 6098ms
+ ✓ test/dsh-watchdog.test.ts > N3 · runner 级 stall_loop 剧本（B1-B4） > B4 无 cap env → 无 stall-loop ∧ tool/call===8 ∧ ANSWERED（opt-in 缺省禁用，对位 loop.ts:533） 2893ms
+ ✓ test/dsh-watchdog.test.ts > N3 · runner 级 stall_loop 剧本（B1-B4） > B5 meta 守卫（M2 补咬）：stall_loop_meta + cap=3 → 8 轮同参 final_answer **不触发** stall-loop ∧ ANSWERED 2822ms
+ ✓ test/dsh-watchdog.test.ts > N3 · D1 canonicalize 夹具（对位 stock 语义） > 键序打乱/嵌套对象/数组入参 → 同一 canonical 串；实差异 → 不同串 13ms
+ ✓ test/dsh-watchdog.test.ts > N3 · D2 cap 解析（opt-in，对位 loop.ts:533） > '3'→启用 cap=3；'0'/缺失/'abc'/'3.5'→禁用 0ms
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > A3c 事件族覆盖矩阵：15 族每族真触发或登记不可达，不冒充覆盖 9030ms
+stderr | test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > gated 槽鸣报：角色路/场景路 STALL_LOOP 覆盖维持 gated（缝已落线；缺口=编排层驱动级+触发通道缺，REC §3 #7 裁决口径）
+GATED dr50-gated-role-stall（runRolePathB STALL_LOOP）：gate 维持：缝① 886c436a7 已落线；缺口 = 编排层驱动级 + STALL_LOOP 确定性触发通道缺（非发射缝）；裁决不建编排层双跑驱动级，parity = 码对称论证，转 W7 输入
+GATED dr50-gated-scene-stall（runSceneAgent STALL_LOOP）：gate 维持：缝② 886c436a7 已落线；缺口 = 编排层驱动级 + STALL_LOOP 确定性触发通道缺（非发射缝）；裁决不建编排层双跑驱动级，parity = 码对称论证，转 W7 输入
+
+ ✓ test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > gated 槽鸣报：角色路/场景路 STALL_LOOP 覆盖维持 gated（缝已落线；缺口=编排层驱动级+触发通道缺，REC §3 #7 裁决口径） 1ms
+ ✓ test/dsh-provider-seam.test.ts > A1 · 生产 provider 单源常量与 mock 回退根除 > PRODUCTION_DSH_HARNESS_PROVIDER==='platform'（!=='mock'）；config 缺省=建议同值；engine 分叉段无 ?? "mock" 7ms
+ ✓ test/dsh-provider-seam.test.ts > A2 · cordis.yml 生产形态与部署治理门 > yml 含 platform-llm 且不含 mock-llm；poc 专档含 mock-llm 反向锚定；真仓门绿；compose 缺 DSH_HARNESS_PROVIDER 行的镜像 ⇒ 门必红 234ms
+ ✓ test/dsh-poc-acceptance.test.ts > E1 · 配置驱动行为（request/header 为观测点） > 改 persona/finalAnswer ⇒ header.system/header.tools 随之变；还原即复原 9831ms
+ ✓ test/dsh-provider-seam.test.ts > A3 · SEAM 端到端：engine 分叉 → 绑定矩阵解析 → env 注入 → stub OpenAI 端点 > dcp spec 剥出 modelId；provider=PRODUCTION_DSH_HARNESS_PROVIDER；stub 见 model 无前缀、Authorization=Bearer key 4069ms
+ ✓ test/dsh-provider-seam.test.ts > A4 · usage 缓存透传 > prompt_cache_hit_tokens=60 ⇒ usage 块 inputTokens=40/cacheReadTokens=60/outputTokens=20；usage 在 finish 前 3926ms
+ ✓ test/dsh-poc-acceptance.test.ts > E2 · 规则闸（PRE_CHECK deny ⇒ 执行计数 0 + 拦截入流） > deny ⇒ count 0 且 tool/result isError 带 deny 理由；基线 ⇒ count 1 6880ms
+ ✓ test/dsh-poc-acceptance.test.ts > E3/E3′ · 租户密钥路由（credentialRef 前缀白名单） > E3：本租户 ref 解析并注入 Bearer 0ms
+ ✓ test/dsh-poc-acceptance.test.ts > E3/E3′ · 租户密钥路由（credentialRef 前缀白名单） > E3′：租户 t2 持 t1 的 ref ⇒ undefined ⇒ MISSING_CREDENTIAL 类抛错（fail-closed） 1ms
+ ✓ test/dsh-poc-acceptance.test.ts > E4 · MCP 工具名零迁移（与上游 dist 逐字节对拍） > 全语料逐字节相等（含规整/截断/压线边界） 1ms
+ ✓ test/dsh-poc-acceptance.test.ts > E6 · 三档 verdict 表（帧 → 外壳语义） > tier1 帧可映射且形状正确；tier2/tier3 帧 createSseMapper 返回 undefined 3ms
+ ✓ test/dsh-provider-seam.test.ts > A5 · 凭据红线 > 注入 key：事件流/结果/stub 请求体零 key 子串；runner 参数构造无 key；缺 key ⇒ MISSING_CREDENTIAL 含 env 引用名 6715ms
+ ✓ test/dsh-provider-seam.test.ts > A6 · resolveConnectionFacts 绑定矩阵解析 > dcp:llmp_stub:kimi-k3 ⇒ {providerId, modelId 剥前缀, kind, baseUrl, apiKey} 0ms
+ ✓ test/dsh-provider-seam.test.ts > A6 · resolveConnectionFacts 绑定矩阵解析 > provider DISABLED ⇒ 抛错 1ms
+ ✓ test/dsh-provider-seam.test.ts > A6 · resolveConnectionFacts 绑定矩阵解析 > hasApiKey 而凭据取不到 ⇒ 抛错（fail-closed，不静默 keyless） 0ms
+ ✓ test/dsh-provider-seam.test.ts > A6 · resolveConnectionFacts 绑定矩阵解析 > 非 dcp spec ⇒ 诚实抛错并指明 spec 0ms
+ ✓ test/dsh-provider-seam.test.ts > A6 · resolveConnectionFacts 绑定矩阵解析 > custom_http kind ⇒ v1 诚实拒绝（不静默回落） 0ms
+ ✓ test/dsh-provider-seam.test.ts > A6 · resolveConnectionFacts 绑定矩阵解析 > anthropic kind ⇒ 通过（映射 anthropic-messages 协议路） 0ms
+ ✓ test/dsh-provider-seam.test.ts > A6 · resolveConnectionFacts 绑定矩阵解析 > 未知 provider ⇒ 抛错 0ms
+ ✓ test/dsh-deny-budget.seam.test.ts > WO-DSH-GOV-CREDENTIAL 修② · deny 侧上界（pre-execute 拒绝的有界终止） > ① 连续 deny 达 cap ⇒ 在**有界轮次内**终止，终态诚实且说清为什么 2644ms
+ ✓ test/dsh-deny-budget.seam.test.ts > WO-DSH-GOV-CREDENTIAL 修② · deny 侧上界（pre-execute 拒绝的有界终止） > ② 变异反证臂：显式禁用上界（cap=0）⇒ 同一剧本跑满 8 轮、无 abort ⇒ 证明喊停的确是上界 2531ms
+ ✓ test/dsh-deny-budget.seam.test.ts > WO-DSH-GOV-CREDENTIAL 修② · deny 侧上界（pre-execute 拒绝的有界终止） > ③ 不误伤：全程 allow 的正常 run 不受 deny 上界影响（cap=1 亦然） 2208ms
+ ✓ test/dsh-deny-budget.seam.test.ts > WO-DSH-GOV-CREDENTIAL 修② · deny 侧上界（pre-execute 拒绝的有界终止） > ④ 缺省**启用**：未设 env ⇒ 上界仍在（不许是「接了线没数据」） 4ms
+ ✓ test/dsh-deny-budget.seam.test.ts > WO-DSH-GOV-CREDENTIAL 修② · deny 侧上界（pre-execute 拒绝的有界终止） > ⑤ 计数不设 meta 豁免（这正是既有看门狗致盲的第二条原因） 1ms
+ ✓ test/dsh-dualrun-reconcile.test.ts > WO-DSH-N2 · A5/A6 双跑逐字节对账（flag off/on 同剧本） > A5：滤收缩白名单 + 删 stats 键后序列逐项相等；差集实际项 ⊆ ALLOWED_PSEUDO_TYPES（白名单不膨胀） 3480ms
+ ✓ test/dsh-dualrun-reconcile.test.ts > WO-DSH-N2 · A5/A6 双跑逐字节对账（flag off/on 同剧本） > A6：answer.final 附加键限 {stats}（dsh 臂 answer 键集 == native 臂 ∪ {stats}） 3152ms
+ ✓ test/dsh-dualrun-reconcile.test.ts > WO-DSH-N2 · A5/A6 双跑逐字节对账（flag off/on 同剧本） > A6b：mapper 全部 event 字面值 ∈ KNOWN_EVENTS 十名（全映射分支覆盖） 2ms
+ ✓ test/dsh-e2e-degradation-screen.test.ts > WO-DSH-E2E · L3 降级路径穿透（后端半） > A1 · dsh 臂同参工具环 + cap=3 ⇒ degraded{STALL_LOOP} + 诚实块 + tool/call===cap（dsh 口径）+ G-9 段源码锚直证 3540ms
+ ✓ test/dsh-e2e-degradation-screen.test.ts > WO-DSH-E2E · L3 降级路径穿透（后端半） > A3a · 两臂对齐规则 deny：skill precondition BLOCK（分叉前预检·两臂对称）⇒ flag off/on 拒绝 Answer 逐字节等 31ms
+ ✓ test/dsh-gov-datacore-credential.seam.test.ts > WO-AGENT-DSH-DEFAULT · DSH 治理带外通道 → DataCore 凭据接缝 > ① 裁决端点经**真 HTTP 客户端**问 DataCore 时，带着服务间凭据到达 ⇒ 拿得到裁决（断点已修·正向不变量） 530ms
+ ✓ test/dsh-gov-datacore-credential.seam.test.ts > WO-AGENT-DSH-DEFAULT · DSH 治理带外通道 → DataCore 凭据接缝 > ①b fail-closed 对照臂：`SERVICE_TOKEN` 未配置 ⇒ 仍旧裸请求 ⇒ 401 ⇒ 治理拒（不许退化成放行） 109ms
+ ✓ test/dsh-gov-datacore-credential.seam.test.ts > WO-AGENT-DSH-DEFAULT · DSH 治理带外通道 → DataCore 凭据接缝 > ② 对照臂：同一条链路只要 ctx 带上 debugUser 就能通 ⇒ 断的是**凭据装配**，不是 HTTP 客户端本身 43ms
+ ✓ test/dsh-gov-datacore-credential.seam.test.ts > WO-AGENT-DSH-DEFAULT · DSH 治理带外通道 → DataCore 凭据接缝 > ③ 出厂 seed agent 一个都不带 kernel ⇒ 今天默认落 NATIVE（翻默认之前的基准线） 9ms
+ ✓ test/dsh-gov-datacore-credential.seam.test.ts > WO-AGENT-DSH-DEFAULT · DSH 治理带外通道 → DataCore 凭据接缝 > ④ `cfg.DSH_HARNESS` 在 src 侧零消费方 ⇒ 改 config.ts 的 zod 缺省**翻不动**分叉（方案 A 是空操作） 8ms
+ ✓ test/dsh-e2e-degradation-screen.test.ts > WO-DSH-E2E · L3 降级路径穿透（后端半） > A3b · dsh PRE_CHECK 执行点：governance mock deny ⇒ tool/result isError ∧ 理由原串到模型面 ∧ 工具体零执行 3475ms
+ ✓ test/dsh-runtime-reassemble.test.ts > reassemble · block 类型 ① text > final_answer text blocks → Answer 原样出，provenance 空 5ms
+ ✓ test/dsh-runtime-reassemble.test.ts > reassemble · block 类型 ① text > 无 final_answer → 软收尾兜底最后 assistant 文本（诚实 NO_ANSWER 不造溯源） 0ms
+ ✓ test/dsh-runtime-reassemble.test.ts > reassemble · block 类型 ② tool_use 引用（provenance 回填） > provenance.toolCallId 从帧流 tool/call 回填 toolName；kpi/table 块带 provId 直通 5ms
+ ✓ test/dsh-runtime-reassemble.test.ts > reassemble · block 类型 ② tool_use 引用（provenance 回填） > provenance 引用未知 toolCallId → toolName unknown（loop.ts audit 缺失同口径） 1ms
+ ✓ test/dsh-runtime-reassemble.test.ts > reassemble · block 类型 ③ structured（expectsSchema） > expectsSchema 模式：final_answer raw input 直通 structured，不走 AnswerBlock 校验 0ms
+ ✓ test/dsh-runtime-reassemble.test.ts > reassemble · block 类型 ③ structured（expectsSchema） > expectsSchema 但无 final_answer → ok:false 显式错误 0ms
+ ✓ test/dsh-runtime-reassemble.test.ts > reassemble · block 类型 ③ structured（expectsSchema） > expectsSchema + invalid final_answer input → ok:false fail-closed（对位 loop.ts:1284 checkJsonSchema） 0ms
+ ✓ test/dsh-runtime-reassemble.test.ts > reassemble · block 类型 ③ structured（expectsSchema） > expectsSchema + 嵌套 invalid（数组元素缺键）→ ok:false（checkJsonSchema items 递归同语义） 0ms
+ ✓ test/dsh-runtime-reassemble.test.ts > reassemble · 治理拒证（loop.ts acceptFinalAnswer 同口径） > provenancePolicy=required 且 provenance 空 → ok:false 0ms
+ ✓ test/dsh-runtime-reassemble.test.ts > reassemble · 治理拒证（loop.ts acceptFinalAnswer 同口径） > writeMode 且 blocks 无 action_draft → ok:false；含则放行 1ms
+ ✓ test/dsh-runtime-reassemble.test.ts > reassemble · 治理拒证（loop.ts acceptFinalAnswer 同口径） > final_answer 入参畸形 → ok:false（单校验点严校验） 1ms
+ ✓ test/dsh-runtime-reassemble.test.ts > reassemble · turn/end → outcome > max-tokens → BUDGET_EXHAUSTED + degraded + 诚实摘要头（W2 批3 修复②钉死） 0ms
+ ✓ test/dsh-runtime-reassemble.test.ts > reassemble · turn/end → outcome > error → FAILED；aborted → FAILED 0ms
+ ✓ test/dsh-runtime-reassemble.test.ts > reassemble · N3 stall-loop 分类（C1-C3） > C1 合成帧流 → ok:true ∧ BUDGET_EXHAUSTED ∧ degraded STALL_LOOP ∧ 诚实块含 cap ∧ provenance 仅成功 callId 1ms
+ ✓ test/dsh-runtime-reassemble.test.ts > reassemble · N3 stall-loop 分类（C1-C3） > C2 expectsSchema + stall-loop 帧流 → 仍 STALL_LOOP 降级（分类前置，非 ok:false 重组装拒绝） 1ms
+ ✓ test/dsh-runtime-reassemble.test.ts > reassemble · N3 stall-loop 分类（C1-C3） > C3 普通 aborted（cause.kind≠stall-loop）→ 仍 FAILED（分类不误吞） 1ms
+ ✓ test/dsh-runtime-reassemble.test.ts > SSE 桥 createSseMapper > tool/call → step.started {stepId=callId, type=name}（loop.ts:844 同形） 1ms
+ ✓ test/dsh-runtime-reassemble.test.ts > SSE 桥 createSseMapper > tool/result → step.completed status OK/ERROR 0ms
+ ✓ test/dsh-runtime-reassemble.test.ts > SSE 桥 createSseMapper > assistant/chunk text-delta → agent_narration 伪 step；非文本 chunk → undefined 0ms
+ ✓ test/dsh-runtime-reassemble.test.ts > SSE 桥 createSseMapper > turn/end、assistant/message 等不逐帧出 SSE（answer.final 由 runner 发） 0ms
+ ✓ test/dsh-runtime-reassemble.test.ts > collectToolCalls 容错 > arguments 为不可解析字符串时保留原文不炸 0ms
+ ✓ test/dsh-runtime-reassemble.test.ts > N2-A1 · think 流对账（reasoning-delta → agent_think 逐 delta 透传） > multihop：agent_think 计数==326；按 stepId 分组保序拼接==同(turn,step,index) block-end reasoning 文本逐字节×7 5ms
+ ✓ test/dsh-runtime-reassemble.test.ts > N2-A1 · think 流对账（reasoning-delta → agent_think 逐 delta 透传） > 空 reasoning-delta 零发射；stepId 带 chunk.index（多 reasoning 块/步不互覆） 0ms
+ ✓ test/dsh-runtime-reassemble.test.ts > N2-A2 · stats 黄金对账（纯 fold == 夹具 projections.values 独立投影） > multihop：sessionStats/tokenUsage 逐字段全等；contextPressure 仅 pressureTokens 3ms
+ ✓ test/dsh-runtime-reassemble.test.ts > N2-A3 · compaction 中止（compact4 黄金：start→end{error}，无 summary） > started{type:compaction}×1 + completed{outcome:ERROR,text==错误原文逐字}×1；零「已压缩」；command/* 零映射 109ms
+ ✓ test/dsh-runtime-reassemble.test.ts > N2-A4 · compaction 成功（合成帧：start→summary→end 无 error） > summary⇒text==「已压缩 12 条/约 3456 tokens」逐字；end⇒outcome==OK 1ms
+ ✓ test/dsh-runtime-reassemble.test.ts > N2-A7 · 零映射保持（五子型 + turn/end + assistant/message 恒 undefined） > usage/finish/block-start/block-end/tool-call-delta/turn/end/assistant/message 逐子型 undefined 0ms
+ ✓ test/dsh-runtime-reassemble.test.ts > N2-A7 · 零映射保持（五子型 + turn/end + assistant/message 恒 undefined） > 红线：整个 multihop 帧流 SSE 输出零 replayState 子串（finish.replayState 绝不外发） 18ms
+ ✓ test/dsh-runtime-reassemble.test.ts > N2-A8 · STALL_LOOP 面（mapper 零新增映射；turn/end aborted 落 default） > 合成环帧流（同参重复工具调用 + aborted 收尾）：mapper 只产既有工具步映射，零 stall 类伪步 2ms
+ ✓ test/dsh-runtime-reassemble.test.ts > N2-A9 · 诚实缺省（无源不出） > 零 usage 帧 ⇒ reassemble 结果无 stats 键；零 reasoning ⇒ 零 agent_think；零 compaction ⇒ 零 compaction 伪步 0ms
+ ✓ test/dsh-runtime-reassemble.test.ts > N2-A10 · 保序（SSE 序==帧序；同(turn,step) think 伪步 seq 严格单调） > multihop：发射序对应源帧 seq 非降；同 (t,s) think seq 严格递增 67ms
+ ✓ test/dsh-runtime-reassemble.test.ts > WO-DSH-PROD-READY W9-lite · 帧流→iterations 骨架 > ① step 分组：两轮各一调用 + 纯文本空轮 ⇒ 三条迭代 0 基顺编号，空轮推空 toolCalls（native :1041 同形态） 1ms
+ ✓ test/dsh-runtime-reassemble.test.ts > WO-DSH-PROD-READY W9-lite · 帧流→iterations 骨架 > ② 配对推导 durationMs = result.time − call.time（foldDshRunStats 同法）；同轮多调用保 wire 序 2ms
+ ✓ test/dsh-runtime-reassemble.test.ts > WO-DSH-PROD-READY W9-lite · 帧流→iterations 骨架 > ③ outcome 两态映射：isError⇒ERROR、否则 OK；词表物理上限 OK|ERROR 两态 0ms
+ ✓ test/dsh-runtime-reassemble.test.ts > WO-DSH-PROD-READY W9-lite · 帧流→iterations 骨架 > ④ 空轮两形态：有 step/end 的零调用轮 ⇒ 空迭代入列；零帧流 ⇒ iterations 空数组（不造迭代） 0ms
+ ✓ test/dsh-runtime-reassemble.test.ts > WO-DSH-PROD-READY W9-lite · 帧流→iterations 骨架 > ⑤ meta 口径对位 native 审计：final_answer 不进（派发前拦截，其轮留空迭代）；load_skill 进（loop.ts:734-746 同口径） 0ms
+ ✓ test/dsh-runtime-reassemble.test.ts > WO-DSH-PROD-READY W9-lite · 帧流→iterations 骨架 > ⑥ 未配对 tool/call（abort 撕票）不进 toolCalls——帧不全不造 outcome；轨迹仍由 sketch 承载 0ms
+ ✓ test/dsh-runtime-reassemble.test.ts > WO-DSH-PROD-READY W9-lite · 帧流→iterations 骨架 > ⑦ 缺 time 帧 ⇒ durationMs 0（native 未执行调用 durationMs:0 同约定，loop.ts:780），不产负值/NaN 0ms
+ ✓ test/dsh-runtime-reassemble.test.ts > WO-DSH-PROD-READY W9-lite · 帧流→iterations 骨架 > ⑧ 黄金夹具 multihop：7 步 ⇒ 7 迭代（步 1-6 各一 read 全 OK，步 7 纯文本空轮），ΣdurationMs == stats.sessionStats.toolMs（同源交叉核） 4ms
+ ✓ test/dsh-runtime-reassemble.test.ts > WO-DSH-PROD-READY W9-full · hostToolCalls 侧表合流（四态+tc_+宿主 durationMs） > ⑨ 命中支：侧表 outcome 覆盖帧推导（帧 isError⇒ERROR 但侧表 DENIED ⇒ DENIED 胜）+ toolCallId 换 tc_ + durationMs 取宿主实测 0ms
+ ✓ test/dsh-runtime-reassemble.test.ts > WO-DSH-PROD-READY W9-full · hostToolCalls 侧表合流（四态+tc_+宿主 durationMs） > ⑩ 四态逐值：OK/DENIED/ERROR/BUDGET_EXCEEDED 各一条命中，outcome/toolCallId/durationMs 全取侧表 0ms
+ ✓ test/dsh-runtime-reassemble.test.ts > WO-DSH-PROD-READY W9-full · hostToolCalls 侧表合流（四态+tc_+宿主 durationMs） > ⑪ 未命中支维持帧两态推导：侧表有他人条目不影响；帧 isError⇒ERROR/否则 OK + 帧 callId 原值 + 帧 time 差 1ms
+ ✓ test/dsh-runtime-reassemble.test.ts > WO-DSH-PROD-READY W9-full · hostToolCalls 侧表合流（四态+tc_+宿主 durationMs） > ⑫ 侧表只读不 mutate（纯函数性）+ 帧未配对调用即使侧表有条目也不进 toolCalls（配对权威=帧） 0ms
+ ✓ test/dsh-runtime-reassemble.test.ts > WO-NUMERIC-REDLINE-BLOCK · 红线在真实语料上的误报面（钉住，防静默改变） > 真实录制的 multihop 语料：答案零业务数字，仍被红线拦下（误报面的量级证据） 13ms
+ ✓ test/dsh-runtime-reassemble.test.ts > WO-NUMERIC-REDLINE-BLOCK · 红线在真实语料上的误报面（钉住，防静默改变） > 金丝雀：同一条路**只把序号/计数去掉**就放行 ⇒ 拦它的确实是那些数字，不是别的 0ms
+ ✓ test/dsh-runtime-map.test.ts > mapAgentOptions > maps resolved model onto the given provider route 2ms
+ ✓ test/dsh-runtime-map.test.ts > mapAgentOptions > rejects empty resolved model (roleModel fallback is the caller's job) 1ms
+ ✓ test/dsh-runtime-map.test.ts > mapAgentOptions > rejects agent.model mismatch instead of silently picking one 0ms
+ ✓ test/dsh-runtime-map.test.ts > mapMcpConfig > injects decrypted bearer into streamable_http headers (mcp/client.ts same rule) 1ms
+ ✓ test/dsh-runtime-map.test.ts > mapMcpConfig > fails closed when credentialRef is unresolvable 0ms
+ ✓ test/dsh-runtime-map.test.ts > mapMcpConfig > stdio carries MCP_CREDENTIAL env and empty cwd; default timeout 20s 0ms
+ ✓ test/dsh-runtime-map.test.ts > mapMcpConfig > derives serverName from name when absent (contract slug single source) 0ms
+ ✓ test/dsh-runtime-map.test.ts > dshPublicToolName (mirrors mcp-client/src/tools.ts:96-102) > clean case is verbatim join 0ms
+ ✓ test/dsh-runtime-map.test.ts > dshPublicToolName (mirrors mcp-client/src/tools.ts:96-102) > normalizes invalid chars without hash when nothing else changes 1ms
+ ✓ test/dsh-runtime-map.test.ts > dshPublicToolName (mirrors mcp-client/src/tools.ts:96-102) > truncates beyond 64 chars with 12-char hash suffix 1ms
+ ✓ test/dsh-runtime-map.test.ts > mapSkill > carries governance via the contract single source (isWriteModeSkill) 1ms
+ ✓ test/dsh-runtime-map.test.ts > mapSkill > rejects non-PUBLISHED skills 1ms
+ ✓ test/dsh-runtime-map.test.ts > buildSessionSetup > unions scopeDeclaration.toolNames with granted tools (never subtracts) 17ms
+ ✓ test/dsh-runtime-map.test.ts > buildSessionSetup > is JSON-serializable (wire constraint) 1ms
+ ✓ test/dsh-runtime-map.test.ts > buildSessionSetup > fills tenantId from agent.tenantId and keeps it across the JSON wire roundtrip (A11) 0ms
+
+ Test Files  19 passed (19)
+      Tests  248 passed | 2 skipped (250)
+   Start at  10:26:58
+   Duration  233.63s (transform 2.70s, setup 0ms, collect 54.19s, tests 397.10s, environment 11ms, prepare 4.70s)
+
