@@ -64,8 +64,12 @@ dsh-postcheck.seam · dsh-provider-seam · dsh-runtime-map · dsh-runtime-reasse
 跑法（与 #17 必须逐字相同）：
 
 ```bash
-cd apps/agentcore && DSH_HARNESS=0 pnpm exec vitest run "test/dsh-*.test.ts" --maxWorkers=2
+cd apps/agentcore && DSH_HARNESS=0 pnpm exec vitest run test/dsh-*.test.ts --maxWorkers=2
 ```
+
+⚠ **glob 不许加引号**（2026-10-01 实测订正）：写成 `"test/dsh-*.test.ts"` 时 vitest 不当 glob 展开，
+直接报 `No test files found, exiting with code 1`（**2 秒结束、无任何汇总行**）——
+若照抄引号形态，很容易把「命令坏」读成「没有测试」。不加引号由 shell 展开，命中 **19 个文件**（已核）。
 
 锚的价值：19 个文件里既有单元（runtime-map / reassemble / watchdog / dualrun-reconcile），也有真缝集成（e2e 系列、seam 系列），**开流改的是 dsh 分叉**，这一组正是它的全部直接受面。
 
@@ -136,11 +140,16 @@ cd apps/agentcore && DSH_HARNESS=0 pnpm exec vitest run "test/dsh-*.test.ts" --m
 **这不是发明修法，是对齐既有约定**：多个 dsh 测试文件早已写着「per-agent kernel 驱动，**进程 env 恒关——分叉来源无歧义**」，
 `dualrun50` 是没跟上约定的那一个，偏偏又是 #17 要骑的那一件。
 
-**同类残余（普查所得，交 #17 开局清扫）**：`process.env.DSH_HARNESS = "1"` 的写者另有 7 个测试文件
-（`dsh-e2e-honesty` · `dsh-degraded-seams` · `deploy-governance-seam` · `dsh-e2e-real-triad` ·
-`dsh-engine-mcp-forward` · `dsh-provider-seam` · `dsh-dualrun-reconcile`），与双跑同源同险；
-`agent-run-attribution` 里那两处是**故意**留的免疫位反向用例，不算残余。
-`PLATFORM_GOV_DENY` / `DSH_HARNESS_DIR` 仍是进程级写者（前者经子进程 env 继承被消费），同类形态对它仍成立，只是不再影响臂选择。
+**同类残余（普查所得）—— 已就地清完（2026-10-01 · 分支 `claude/handoff-wo-dsh-p1b-prep`）**：
+那 7 个文件（`dsh-e2e-honesty` · `dsh-degraded-seams` · `deploy-governance-seam` · `dsh-e2e-real-triad` ·
+`dsh-engine-mcp-forward` · `dsh-provider-seam` · `dsh-dualrun-reconcile`）的臂选择全部改钉 per-agent `kernel`
+（dsh 臂 `EXTERNAL`；有 native 对位臂的显式钉 `NATIVE` 作免疫位）。
+全 test 树按语法位复扫：`^[[:space:]]*process\.env\.DSH_HARNESS = ` 只剩 `agent-run-attribution` 的 3 处
+（**故意**留的免疫位反向用例，不在清扫面）。
+`PLATFORM_GOV_DENY` / `DSH_HARNESS_DIR` 仍是进程级写者（后者经子进程 env 继承被消费，清扫中**保留**），
+同类形态对它仍成立，只是不再影响臂选择。
+⚠ 一处 NOT-MEASURED：`dsh-e2e-real-triad` 的 `makeBareAgent` 受 `KIMI_READY` 门控，本机无真 key ⇒ 该臂跳过，
+其 kernel 改动只验了语法与同文件其余臂，**语义未跑**。
 
 ### 4.4 对 #17 的口径后果
 
