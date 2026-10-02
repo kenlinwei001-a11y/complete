@@ -102,6 +102,10 @@ const mkDeps = (over?: Partial<PricingDeps>): PricingDeps => {
     readTickState: async () => ({ o1: { pressure: 0 }, o2: { pressure: 0 } }),
     advanceTicks: async (_sid, opts) =>
       opts.ephemeral?.length ? { o1: { pressure: 5 }, o2: { pressure: 0.02 } } : { o1: { pressure: 0 }, o2: { pressure: 0 } },
+    // 缺省 = 「落点就是订单格」（hops 0）：本文件的既有用例都在验 ①②③④⑤ 的**装配**，
+    // 与跳数无关；⛔ 但这一格的缺省值**不许**当成「跳数测过了」—— 真跳数由下面
+    // 走真引擎的接缝门（`§WO-PRICING-REACH`）咬，那里一格都不许桩。
+    reachToOrders: async () => ({ kind: "reachable", hops: 0, visited: 1 }),
     now: () => ++clock,
     makeId: (p) => `${p}_test`,
     ...over,
@@ -202,10 +206,13 @@ describe("orderDisplacement（⑤ 位移分布，与 buildMoneyView.magnitude �
 
 describe("指纹（R6 确定性）", () => {
   it("同输入同输出；任一维变化即变", () => {
-    const a = pricingFingerprint({ sessionId: "s1", curTick: 3, scenarioHash: "h", candidateId: "c1" });
-    expect(pricingFingerprint({ sessionId: "s1", curTick: 3, scenarioHash: "h", candidateId: "c1" })).toBe(a);
-    expect(pricingFingerprint({ sessionId: "s1", curTick: 4, scenarioHash: "h", candidateId: "c1" })).not.toBe(a);
-    expect(pricingFingerprint({ sessionId: "s1", curTick: 3, scenarioHash: "h", candidateId: "c2" })).not.toBe(a);
+    const a = pricingFingerprint({ sessionId: "s1", curTick: 3, scenarioHash: "h", candidateId: "c1", horizon: 3 });
+    expect(pricingFingerprint({ sessionId: "s1", curTick: 3, scenarioHash: "h", candidateId: "c1", horizon: 3 })).toBe(a);
+    expect(pricingFingerprint({ sessionId: "s1", curTick: 4, scenarioHash: "h", candidateId: "c1", horizon: 3 })).not.toBe(a);
+    expect(pricingFingerprint({ sessionId: "s1", curTick: 3, scenarioHash: "h", candidateId: "c2", horizon: 3 })).not.toBe(a);
+    // 🔴 推演拍数是**问句的一部分**：漏了它，路由的 pricingCache 会让换个时长再问的人
+    // 拿到上一次的答（真服务实测：h=3 之后问 h=1，回包 horizon 仍是 3、耗时 57ms）。
+    expect(pricingFingerprint({ sessionId: "s1", curTick: 3, scenarioHash: "h", candidateId: "c1", horizon: 8 })).not.toBe(a);
   });
   it("场景扰动哈希：顺序无关、内容敏感", () => {
     const p = (id: string, magnitude: number): Perturbation => ({

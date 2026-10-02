@@ -68,6 +68,7 @@ import {
   simPricing,
   simTick,
   simWorld,
+  type PricingGapReason,
   type PricingOutcomeItem,
   type SimProposalResponse,
 } from "@/api/endpoints";
@@ -365,11 +366,29 @@ const fmtGain = (n: number): string => n.toLocaleString("zh-CN", { maximumFracti
  * gap 三态照实渲染 —— 那是三种不同的业务事实（无绑定 / 式子算不出 / 落点格不存在），
  * ⛔ 不返 0、不降格成「没算」。 */
 
-const PRICING_GAP_TEXT: Record<"NO_BINDING" | "PRESSURE_TARGET_UNCOMPUTABLE" | "TARGET_CELL_ABSENT", string> = {
+const PRICING_GAP_TEXT: Record<PricingGapReason, string> = {
   NO_BINDING: "未找到压力绑定",
   PRESSURE_TARGET_UNCOMPUTABLE: "压力目标值算不出",
   TARGET_CELL_ABSENT: "压力落点格不存在于当前世界态",
+  HORIZON_BELOW_REACH: "推演时长不够，读数还没走到订单",
 };
+
+/**
+ * `HORIZON_BELOW_REACH` 的补语 —— 把三个数（跳数 / 本次推的拍数 / 差多少）摆出来。
+ *
+ * ⛔ 为什么这一态**必须**单独成句：它的屏上形态与「这条对策对订单毫无影响」**逐字节一样**
+ * （两边都是读数 0）。实测根因：引擎**每拍只推进一跳**，落点隔 2 条边时订单格要 2 拍才动，
+ * 而「推演时长」输入框的 `min=1` 允许用户填 1 ⇒ 引擎没错、读数也没错，**是问句太短**。
+ * 三个数全部来自回包（`disclosure.reach.hops` / `disclosure.tickCount`），前端不重算、
+ * ⛔ 更不许内联「2」这个常数（世界的边改了它就该跟着变）。
+ */
+function horizonGapDetail(outcome: PricingOutcomeItem & { kind: "gap" }): string {
+  const hops = outcome.disclosure.reach.kind === "reachable" ? outcome.disclosure.reach.hops : null;
+  const tickCount = outcome.disclosure.tickCount;
+  return hops === null
+    ? `：本次只推了 ${tickCount} 拍，候选的影响还没传导到订单格 ⇒ 读数恒零。`
+    : `：这条对策的影响要 ${hops} 拍才传导到订单格，本次只推了 ${tickCount} 拍（差 ${hops - tickCount} 拍）⇒ 订单读数额外是零，不是「这条对策没用」。把「推演时长」调到 ≥ ${hops} 再定价。`;
+}
 
 /** 候选卡第一层那行：拨后仍受影响 N 张 / X + 位移 p90（或诚实 gap）。 */
 function PricingReadout({
@@ -396,6 +415,9 @@ function PricingReadout({
       ) : outcome.kind === "gap" ? (
         <>
           定价缺格 · {PRICING_GAP_TEXT[outcome.reason]}
+          {outcome.reason === "HORIZON_BELOW_REACH"
+            ? horizonGapDetail(outcome)
+            : ""}
           {outcome.missingBinding === null
             ? ""
             : `：${outcome.missingBinding.objectType}.${outcome.missingBinding.prop} 无对应派生规格（拨了也不按式子传导，不编数）`}
@@ -428,8 +450,11 @@ function PricingReadoutDetail({
     return (
       <p className={styles.calibre}>
         定价缺格 · {PRICING_GAP_TEXT[outcome.reason]}
+        {outcome.reason === "HORIZON_BELOW_REACH" ? horizonGapDetail(outcome) : ""}
         {outcome.missingBinding === null
-          ? " —— 该杠杆当前没有可传导的派生式子，如实缺格，⛔ 不返 0。"
+          ? outcome.reason === "HORIZON_BELOW_REACH"
+            ? ""
+            : " —— 该杠杆当前没有可传导的派生式子，如实缺格，⛔ 不返 0。"
           : `：${outcome.missingBinding.objectType}.${outcome.missingBinding.prop} 无对应派生规格 —— 该杠杆拨了也不会按式子传导，如实缺格，⛔ 不返 0。`}
       </p>
     );

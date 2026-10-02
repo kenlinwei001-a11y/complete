@@ -40,6 +40,9 @@ import {
 import type { DerivationSpecRecord } from "../domain.js";
 import { evalArithmetic, translateSpecFormula } from "../ontology.js";
 import { round } from "../prng.js";
+// 落点 → 订单格的静态可达性：**引擎同一份实现**（与该文件 `propagateTick` 共用 `buildNav`）。
+// ⛔ 不许在本模块另写一套图遍历 —— 两份实现并存即第二份真相源。
+import type { ReachToOrders } from "./propagation.js";
 
 /* ══ ① 查绑定 ═══════════════════════════════════════════════════════════════ */
 
@@ -227,9 +230,18 @@ export function pricingFingerprint(parts: {
   curTick: number;
   scenarioHash: string;
   candidateId: string;
+  /**
+   * 🔴 **不可省**：`horizon` 与另外四个一样是**问句的一部分** —— 同一世界同一候选，
+   * 推 1 拍与推 8 拍是两个不同的问题、两个不同的答案。漏了它，路由的 `pricingCache`
+   * 会让**第二次问的**拿到第一次的答（实测：h=3 之后问 h=1，回包 `horizon:3` 且
+   * `elapsedMs` 与上一条逐位相同、耗时 57ms）⇒ 屏上「推演时长」这个控件**静默失效**。
+   *
+   * 与 PRD 性能段原式并列而非替换：原式四项是「哪个世界 × 哪条候选」，本项是「推多远」。
+   */
+  horizon: number;
 }): string {
   return createHash("sha256")
-    .update(JSON.stringify([parts.sessionId, parts.curTick, parts.scenarioHash, parts.candidateId]))
+    .update(JSON.stringify([parts.sessionId, parts.curTick, parts.scenarioHash, parts.candidateId, parts.horizon]))
     .digest("hex");
 }
 
@@ -262,6 +274,15 @@ export interface PricingDeps {
       fromTick?: number;
     },
   ): Promise<TickState>;
+  /**
+   * 落点格 → 订单格的**静态可达性**（WO-PRICING-REACH）。
+   *
+   * 接线方必须用**引擎同一份图与规则**算（`propagation.ts` 的 `reachHopsToOrder`，
+   * 与 `propagateTick` 共用同一套导航索引 `buildNav`）—— ⛔ 不许在这里另搞一套图。
+   * 判据集也必须与 `orderDisplacement` 同一个集合（订单 id 集），否则「数哪些格」与
+   * 「认哪些对象」会各说各话。
+   */
+  reachToOrders(fromObjectId: string, fromStateVar: string): Promise<ReachToOrders>;
   /** 单调时钟（接线方传 performance.now；测试传假钟）。 */
   now(): number;
   makeId(prefix: string): string;
@@ -279,18 +300,39 @@ export interface PricingDisclosure {
   readonly targetObjectId: string | null;
   readonly targetStateVar: string | null;
   readonly tickCount: number;
+  /**
+   * 落点 → 订单格的静态可达性。**三态可分辨**（`unassessed` 落点未定 / `unreachable` 走得遍
+   * 走不到 / `reachable` 走得到，`hops` 跳）。消费者要判「这个零是因为够不着、还是因为
+   * 推的拍数不够」，只能读本字段 —— ⛔ 不许拿 `horizon` 与任何内联常数比。
+   *
+   * ⚠ 与 `tickCount` **同读**：`reachable` 且 `hops > tickCount` ⇒ 本次读数**天然是零**
+   * （扰动还没走到订单格），不是「这个杠杆没接线」。两者在屏幕上必须长得不一样。
+   */
+  readonly reach: ReachToOrders;
   readonly elapsedMs: {
     readonly total: number;
     readonly binding: number;
     readonly perturb: number;
     readonly tick: number;
     readonly diff: number;
+    readonly reach: number;
   };
   /** 推演路零 LLM —— 必须明写，不许留白让人以为调了（铁律 1.5 判据二）。 */
   readonly agentInvolved: false;
 }
 
-export type GapReason = "NO_BINDING" | "PRESSURE_TARGET_UNCOMPUTABLE" | "TARGET_CELL_ABSENT";
+export type GapReason =
+  | "NO_BINDING"
+  | "PRESSURE_TARGET_UNCOMPUTABLE"
+  | "TARGET_CELL_ABSENT"
+  /**
+   * 落点格到订单格要 `reach.hops` 拍，而本次只推 `tickCount` 拍 ⇒ **候选还没走到订单格**。
+   *
+   * 这不是「这个杠杆没用」，是「给的时长不够，量不到」。⛔ 不许静默返零 ——
+   * 屏上它必须与「真效应为零」长得不一样（本仓 doctrine：`noCandidateReason` / `dataMode: EMPTY`
+   * 是同一类病的历史对策）。判据取**引擎现算的跳数**，不许内联常数。
+   */
+  | "HORIZON_BELOW_REACH";
 
 export type PricingOutcome =
   | {
@@ -343,13 +385,16 @@ export async function priceCandidate(
 ): Promise<PricingOutcome> {
   const { candidate } = input;
   const started = deps.now();
-  const timings = { binding: 0, perturb: 0, tick: 0, diff: 0 };
+  const timings = { binding: 0, perturb: 0, tick: 0, diff: 0, reach: 0 };
   let binding: DerivationSpecRecord | null = null;
+  // 三态初值 = 「落点还没定」：① 之前任何 gap 都还没寻址到格，不许谎称「够不着」。
+  let reach: ReachToOrders = { kind: "unassessed", reason: "START_NOT_IN_GRAPH" };
   const baseDisclosure = (): PricingDisclosure => ({
     specKey: binding?.specKey ?? null,
     targetObjectId: candidate.lever.objectId,
     targetStateVar: binding?.targetProp ?? null,
     tickCount: input.horizon,
+    reach,
     elapsedMs: { total: deps.now() - started, ...timings },
     agentInvolved: false,
   });
@@ -378,6 +423,20 @@ export async function priceCandidate(
   const worldState = await deps.readWorldState(input.sessionId);
   const landingCell = worldState[landingId]?.[binding.targetProp];
   if (typeof landingCell !== "number") return gap("TARGET_CELL_ABSENT");
+
+  /* ③.5 落点 → 订单格的跳数 vs 本次推演拍数（WO-PRICING-REACH）。
+   *
+   * 引擎**每拍只推进一跳**（`propagation.ts` 的入流写 `next`、边的源读 `effState`），
+   * 故落点隔 `hops` 条边时，订单格要 `hops` 拍才动。`horizon < hops` ⇒ 订单读数**天然恒零**，
+   * 与「这个杠杆没接线」逐字节同形 —— 必须在**跑那三次平行推进之前**就拦下来，
+   * 既给诚实位、也省掉一次注定读不出东西的推演。
+   *
+   * 跳数取自**引擎同一份图与规则**（接线方的 `reachToOrders` → `propagation.reachHopsToOrder`），
+   * ⛔ 不内联常数：世界的边改了，这个判据自己就跟着变。 */
+  t = deps.now();
+  reach = await deps.reachToOrders(landingId, binding.targetProp);
+  timings.reach = deps.now() - t;
+  if (reach.kind === "reachable" && reach.hops > input.horizon) return gap("HORIZON_BELOW_REACH");
 
   /* ④ 平行世界推进，都走 persist:false 临时扰动路：
    * 基准（场景扰动**从未存在**的世界）= 差分锚点；对照（不处置）= 场景全量冲击；候选 = 场景 + 候选扰动。 */
@@ -453,6 +512,7 @@ export async function priceCandidate(
       curTick: input.curTick,
       scenarioHash,
       candidateId: candidate.candidateId,
+      horizon: input.horizon,
     }),
     perturbation: {
       // 对外记录说业务键（人读的是业务身份）；引擎实际寻址的落点见 candidatePert（内部 id）。

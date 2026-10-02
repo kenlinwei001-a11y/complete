@@ -1075,12 +1075,24 @@ export interface PricingDisclosure {
   readonly targetObjectId: string | null;
   readonly targetStateVar: string | null;
   readonly tickCount: number;
+  /**
+   * 落点 → 订单格的**静态可达性**（三态：`unassessed` 落点未定 / `unreachable` 走不到 /
+   * `reachable` 走得到，`hops` 跳）。后端用**引擎同一份图与规则**现算，前端只渲染、⛔ 不重算。
+   *
+   * ⚠ 必须与 `tickCount` **同读**：`reachable` 且 `hops > tickCount` ⇒ 本次读数**天然是零**
+   * （扰动还没走到订单格），与「这个杠杆没接线」长得一样、含义完全不同。
+   */
+  readonly reach:
+    | { readonly kind: "unassessed"; readonly reason: "START_NOT_IN_GRAPH" }
+    | { readonly kind: "unreachable"; readonly visited: number }
+    | { readonly kind: "reachable"; readonly hops: number; readonly visited: number };
   readonly elapsedMs: {
     readonly total: number;
     readonly binding: number;
     readonly perturb: number;
     readonly tick: number;
     readonly diff: number;
+    readonly reach: number;
   };
   readonly agentInvolved: false;
 }
@@ -1102,7 +1114,16 @@ export interface PricingReading {
   };
 }
 
-export type PricingGapReason = "NO_BINDING" | "PRESSURE_TARGET_UNCOMPUTABLE" | "TARGET_CELL_ABSENT";
+export type PricingGapReason =
+  | "NO_BINDING"
+  | "PRESSURE_TARGET_UNCOMPUTABLE"
+  | "TARGET_CELL_ABSENT"
+  /**
+   * 落点格到订单格要 `disclosure.reach.hops` 拍，而本次只推了 `disclosure.tickCount` 拍
+   * ⇒ 候选**还没走到订单格**。这不是「这个杠杆没用」，是「给的时长不够，量不到」。
+   * 渲染必须与「真效应为零」区分开（见 `Console0828.tsx` 的 `PRICING_GAP_TEXT`）。
+   */
+  | "HORIZON_BELOW_REACH";
 
 export type PricingOutcomeItem =
   | {
