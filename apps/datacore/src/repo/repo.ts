@@ -104,6 +104,29 @@ export interface Store<T extends { id: string; tenantId: string }> {
   putMany(items: T[]): Promise<void>;
   remove(tenantId: string, id: string): Promise<void>;
   list(tenantId: string, pred?: (t: T) => boolean): Promise<T[]>;
+  /**
+   * 本租户的**写入修订号**：任何一次写 +1，单调不减（两次读到同一个值 ⇔ 中间没写过）。
+   *
+   * ── 为什么要有它 ────────────────────────────────────────────────────────────
+   * 推演相的装配（`buildPropagationInputs`）实测 **1374ms / 一次 tick 的 67%**，
+   * 而一次控制台推演要打 8 次请求，每次都从零重装一遍 12,499 个对象 + 13,593 条链路。
+   * 装配结果是世界内容的纯函数 ⇒ **可以复用**；难的是「怎么知道世界没变」——本方法就是那个判据。
+   *
+   * ── 为什么加在仓储，而不是加在调用点 ────────────────────────────────────────
+   * 写入的**唯一漏斗**是 `put` / `putMany` / `remove` / `removeWhere`：
+   * 全仓 20+ 个调用点（timeseries 聚合回写 · derive 回写 · Action 回写 · connector 同步 …）
+   * 全部经过它们。在这里 +1 才是**全量**的；落到调用点就要 20 处各写一遍，
+   * 漏一处 = 缓存永远读到旧世界，而屏上**看不出来**。
+   *
+   * ⛔ 不许拿 `epochs.current()` 顶替（本仓真实踩过）：`epochs.next()` 全仓只有 4 个调用点，
+   *   与上面那 20+ 个**不重合** ⇒ 有些世界写不会让缓存失效，引擎吃旧图算数。
+   *   判据必须落在一个**度量到的东西正好是我要度量的那个**上（铁律 0.6 判据）。
+   *
+   * ⚠ 返回 `null` = **本实现给不出全量信号**（pg 侧写入可能来自**别的进程**，
+   *   本进程的计数器看不见它们）⇒ 调用方**必须**退回不缓存。
+   *   诚实报缺，不猜：慢一点是对的，错一点不是。
+   */
+  revision(tenantId: string): Promise<number | null>;
 }
 
 /** 管理平台增量 §1：bootstrap 检测「users 表为空」需要跨租户计数。 */

@@ -35,7 +35,43 @@ import type {
   VectorIndex,
 } from "./repo.js";
 import { simSessionScaleOf } from "@platform/contracts";
-import type { Perturbation, PropagationRule, SimCheckpoint, SimSession, SimSessionListItem, SimTickState } from "@platform/contracts";
+import type { Perturbation, PropagationRule, SimCheckpoint, SimSession, SimSessionListItem, SimSessionScale, SimTickState } from "@platform/contracts";
+
+/**
+ * `baseSnapshot` 规模摘要的**按会话记账**（内存侧对标 pg 的存列）。
+ *
+ * ── 为什么必须有它：memory 与 pg 在这里**漂移了** ────────────────────────────────
+ * pg 侧早就算好存列（`base_objects` / `base_cells`，`-1` 作"还没算过"的记号，见
+ * `PgSimRepo.listSessionSummaries` 的回填段）⇒ 列表路径上**一次都不重算**。
+ * 内存侧却每次列表对**每个**会话现算一遍 ⇒ `O(会话数 × 世界规模)`，而这是**控制台的闸门**：
+ * `useConsoleSession` 不拿到这份列表，「开始推演」就一直是灰的。
+ *
+ * **实测（2026-09-30 · 真前端 127.0.0.1:5173 → 真后端 4001 · demo 租户 231 个会话）**：
+ * 每个会话 `simSessionScaleOf` **6.8ms**（抽样 8 个，真快照 4,425 对象 / 6,381 格）⇒
+ * 单次列表约 **1.6s 纯 CPU**；该端点墙钟 **5.7–8.6s**（负载 437，含事件循环争用）。
+ *
+ * ── 为什么键**可以用记录对象本身**（而不是像影子线那样被迫放弃引用判据）────────────
+ * ⚠ `ShadowMemo` 头注写着「对象引用当判据**恒不成立**，因为 `getSession` 每次读都深拷一份」
+ * —— 那条教训针对的是**读回来的**副本。这里不是：下面遍历的是 `this.sessions.values()`，
+ * 即**仓储自己存的那一份**。三条现成的事实让它成立，缺一条都不行：
+ *  ① `createSession` / `putSession` 一律 `set(id, clone(s))` —— **每次写都换一个对象** ⇒
+ *     键变即记录变，不需要任何额外的失效记账；
+ *  ② `getSession` 读时再 `clone` ⇒ 存的那一份**永不外泄**，调用方改不到它，缓存毒不掉；
+ *  ③ `baseSnapshot` **建会话那一刻写一次、此后终生不变** —— 这条不变量由
+ *     `shadow-memo.seam.test.ts` §4 的源码扫描守着（剥注释后咬 `.baseSnapshot =` 赋值，全仓零处）。
+ *     ⚠ 将来谁加了会换 `baseSnapshot` 的写点，那道断言会先红；届时**这里也要一起处理**
+ *     （换了快照而记录对象恰好没换 ⇒ 这里会回旧规模）。
+ *
+ * `WeakMap` 而不是 `Map`：会话被删/被淘汰时条目自动消失，不额外留一份 id → 摘要的常驻表。
+ */
+const scaleCache = new WeakMap<SimSession, SimSessionScale>();
+const scaleOf = (s: SimSession): SimSessionScale => {
+  const hit = scaleCache.get(s);
+  if (hit !== undefined) return hit;
+  const v = simSessionScaleOf(s.baseSnapshot);
+  scaleCache.set(s, v);
+  return v;
+};
 
 /**
  * 推演沙盘内存仓储（R2 跨租户 null；R6 clone 隔离）。
@@ -83,7 +119,9 @@ class MemSimRepo implements SimRepo {
         createdAt: s.createdAt,
         // 口径走契约**唯一实现**：这里再写一遍 reduce 就是第二套真相源，
         // 而 pg 那半是 SQL、天生抄不到一起 —— 唯一能同源的只有这一个纯函数。
-        baseSnapshotScale: simSessionScaleOf(s.baseSnapshot),
+        // ⚠ 值走 `scaleOf` 记账，**不是**每次现算：现算是 `O(会话数 × 世界规模)` 且落在
+        //   控制台的闸门请求上（理由、实测数与失效依据全在 `scaleCache` 头注）。
+        baseSnapshotScale: scaleOf(s),
       }));
   }
   async putTickState(ts: SimTickState) { this.ticks.set(`${ts.sessionId}|${ts.tick}`, clone(ts)); }
@@ -275,6 +313,24 @@ function memKey(tenantId: string, id: string): string {
 class MemStore<T extends { id: string; tenantId: string }> implements Store<T> {
   protected items = new Map<string, T>();
 
+  /**
+   * 租户级写入修订号（见 `repo.ts` 上 `Store.revision` 的接口注释）。
+   *
+   * ⚠ 内存实现里它是**全量**的 —— 本类（及其子类的 `removeWhere`）是这份 `items` 的
+   *   唯一改写者。谁要再加一条直接改 `this.items` 的路，**必须同时 `bump`**，
+   *   否则装配备忘录会吃旧世界；`assembly-memo.seam.test.ts` §4 用**写入后必须失效**
+   *   的对照实验咬着这一条（不是靠这段注释）。
+   */
+  private readonly revs = new Map<string, number>();
+
+  async revision(tenantId: string): Promise<number | null> {
+    return this.revs.get(tenantId) ?? 0;
+  }
+
+  protected bump(tenantId: string): void {
+    this.revs.set(tenantId, (this.revs.get(tenantId) ?? 0) + 1);
+  }
+
   async get(tenantId: string, id: string): Promise<T | undefined> {
     const item = this.items.get(memKey(tenantId, id));
     if (!item) return undefined;
@@ -283,6 +339,7 @@ class MemStore<T extends { id: string; tenantId: string }> implements Store<T> {
 
   async put(item: T): Promise<void> {
     this.items.set(memKey(item.tenantId, item.id), clone(item));
+    this.bump(item.tenantId);
   }
 
   /**
@@ -293,11 +350,15 @@ class MemStore<T extends { id: string; tenantId: string }> implements Store<T> {
    * 真正省 round-trip 的是 PgStore.putMany —— 见 repo.ts 上的接口注释。
    */
   async putMany(items: T[]): Promise<void> {
-    for (const item of items) this.items.set(memKey(item.tenantId, item.id), clone(item));
+    for (const item of items) {
+      this.items.set(memKey(item.tenantId, item.id), clone(item));
+      this.bump(item.tenantId);
+    }
   }
 
   async remove(tenantId: string, id: string): Promise<void> {
     this.items.delete(memKey(tenantId, id));
+    this.bump(tenantId);
   }
 
   async list(tenantId: string, pred?: (t: T) => boolean): Promise<T[]> {
@@ -341,6 +402,7 @@ class MemExecutionLockStore extends MemStore<ExecutionLockRecord> implements Exe
       rerunRequested: false,
     };
     this.items.set(key, clone(rec));
+    this.bump(input.tenantId);
     return clone(rec);
   }
 }
@@ -370,6 +432,7 @@ class MemObjectStore extends MemStore<ObjectInstance> implements ObjectStore {
         n++;
       }
     }
+    if (n > 0) this.bump(tenantId);
     return n;
   }
 }
@@ -383,6 +446,7 @@ class MemLinkStore extends MemStore<LinkInstance> implements LinkStore {
         n++;
       }
     }
+    if (n > 0) this.bump(tenantId);
     return n;
   }
 }

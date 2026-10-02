@@ -38,8 +38,18 @@ BASE=$(git rev-parse "$CANON" 2>/dev/null) || {
 # ── 金丝雀①：分支枚举不能是空的 ────────────────────────────────
 # 报「0 条碰撞」有两种可能：真没人碰，或者我的分支遍历坏了。
 # 不打印这个数，屏上这两种情况长得一模一样。
-mapfile -t ALL < <(git for-each-ref --format='%(refname:short) %(objectname)' 'refs/remotes/origin/claude/handoff-*')
-TOTAL=${#ALL[@]}
+#
+# ⚠ `mapfile` 是 bash 4+ 内建，而本机（macOS）系统 bash 是 **3.2** ——
+#   原写法在本机每一跑都是 `mapfile: command not found` + `ALL: unbound variable`，
+#   于是**没有**金丝雀①、也**没有**分支枚举，脚本带着 exit 2 空转。
+#   形态（铁律 0.6 句式）：「我用『脚本跑过了』当作『扫描做过了』的证据」——
+#   而它连一条分支都没枚举。改用 bash 3.2 可用的 read 循环（语义等价）。
+ALL=()
+while IFS= read -r __line; do
+  [ -n "$__line" ] && ALL+=("$__line")
+done < <(git for-each-ref --format='%(refname:short) %(objectname)' 'refs/remotes/origin/claude/handoff-*')
+# bash 3.2 + `set -u` 下空数组取长度即报 unbound ⇒ 显式兜底为 0（这条同时是金丝雀①的输入）
+TOTAL=${#ALL[@]:-0}
 if [ "$TOTAL" -eq 0 ]; then
   echo "⛔ 工具坏了：一条 handoff 远端分支都枚举不到（refs/remotes/origin/claude/handoff-*）" >&2
   echo "   ⇒ 这不是「没有碰撞」，是没查成。先 git fetch origin。" >&2

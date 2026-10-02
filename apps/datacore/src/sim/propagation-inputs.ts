@@ -5,6 +5,8 @@ import { stateVarDomains } from "../synthetic/battery.js";
 import { cadenceFromProps } from "../synthetic/cadence.js";
 import { buildPairWeights, type PairWeightReport } from "./pair-weights.js";
 import { listSimWorldObjects } from "./seed-world.js";
+import { AssemblyMemo, assemblyMemoStats, deepFreeze, stableStringify } from "./assembly-memo.js";
+import { rulesFingerprint } from "./rules-fingerprint.js";
 import {
   buildCadenceGates,
   scopePropagationGraph,
@@ -76,6 +78,14 @@ export interface PropagationInputs {
 }
 
 /**
+ * 进程级装配备忘录 —— 病历、为什么安全、为什么**不会**给出旧世界，全在 `assembly-memo.ts` 头注。
+ *
+ * ⚠ 模块级常量而不是 `buildApp` 里的局部量：装配的**唯一入口**是下面这个函数，
+ *   备忘录跟着它走，才不会出现「两个 app 实例各一份缓存」那种第二真相源。
+ */
+const assemblyMemo = new AssemblyMemo<PropagationInputs>(4);
+
+/**
  * 从库里现读并装配传导相的全部入参。
  *
  * @param scope **已解析**的范围（调用方走契约唯一实现 `resolveSimScope`，不在这里再写一套 if）。
@@ -97,6 +107,38 @@ export async function buildPropagationInputs(
   scope: ResolvedSimScope,
   rules: readonly PropagationRule[],
 ): Promise<PropagationInputs> {
+  // ── 复用判据：世界修订号 × 规则内容指纹 × 范围 ────────────────────────────────
+  // 三者都没变 ⇒ 这一跑的产物与上一跑**逐字节相同**，直接还回去（实测省掉 1374ms 里的绝大部分）。
+  // ⚠ **四个仓，一个都不能少** —— 判据必须盖住本函数体内**读过的每一个仓**，不是「主要的几个」。
+  //   漏掉的那个就是一条静默错答的路：改它不会让判据变，于是引擎继续吃上一跑的旧值，而屏上一切正常。
+  //   📌 `repos.rules` 这一格是**实测**补上来的：它装的是 `ruleParams`（`coefficientRef` 解析表），
+  //   而 `rulesFingerprint(rules 实参)` 那一半**明确不含 `params`**（见 `rules-fingerprint.ts` 头注）
+  //   ⇒ 只改系数值时指纹不变 ⇒ 命中 ⇒ 引擎按**旧系数**算。
+  //   抓它的是 `assembly-memo.seam.test.ts` §6：金丝雀当场报红（0.185 改成 0.555，产物仍是 0.185）。
+  //   **§6 那条机制扫描别删** —— 它咬的是「装配路径上读过的每个仓都进了键吗」，下次给这里加一处读，
+  //   机器先说话，不用靠人想起来。
+  const revs = await Promise.all([
+    repos.objects.revision(c.tenantId),
+    repos.links.revision(c.tenantId),
+    repos.ontologyTypes.revision(c.tenantId),
+    repos.rules.revision(c.tenantId),
+  ]);
+  // ⚠ 四个仓**都要**给得出修订号才缓存：任一个回 `null`（pg 模式）⇒ 整体退回不缓存。
+  //   不许「拿三个真的 + 一个已知不可信的凑合」—— 判据上有一个洞，缓存就会从那个洞漏出旧世界。
+  const worldRev =
+    revs.some((r) => r === null) ? null : `${revs.join("|")}|${rulesFingerprint(rules)}`;
+  // ⚠ 键里**不许**用 NUL 这类控制字符做分隔：
+  //   写成字面字节会让 git 把整个源文件判成 binary
+  //   （`git diff` 只剩「Binary files differ」）——那这个文件的每一次改动都没人能看见。
+  //   本行第一版就是这么写坏的，被本单 §4 的源码扫描当场咬住。
+  //   用 JSON 数组：既无控制字符，也不会因为「租户名里恰好含分隔符」而撞键。
+  const memoKey = worldRev === null ? null : JSON.stringify([c.tenantId, stableStringify(scope)]);
+  if (memoKey === null || worldRev === null) {
+    assemblyMemoStats.skipped += 1;
+  } else {
+    const hit = assemblyMemo.get(memoKey, worldRev);
+    if (hit !== null) return hit;
+  }
   // 物化图（走正门 R16/R4：从本体库读已物化对象 + 链路，任意行业；零硬编码）。
   //
   // ⚠ 成员集合走 `listSimWorldObjects`**唯一物化入口**（2026-09-15，来历见该函数头注）：
@@ -125,7 +167,7 @@ export async function buildPropagationInputs(
   // 吃的是**已裁剪的图**（`scoped.graph`）：权重只铺范围内的对，否则局部推演会拿到一张
   // 按全域算出来的表 —— 那就是范围裁剪白做了（#129 原样病样的另一种长法）。
   const pw = await buildPairWeights(repos, c.tenantId, rules, scoped.graph);
-  return {
+  const out: PropagationInputs = {
     graph: scoped.graph,
     scopeReport: scoped.report,
     ruleParams,
@@ -138,4 +180,23 @@ export async function buildPropagationInputs(
     // λ 本身**不在这里**——它由引擎经 `decayRef` 从上面那份 `ruleParams` 里现读（改 C35 即改推演）。
     stateVarDomains: stateVarDomains(),
   };
+  // 命中时多个请求共用**同一个实例** ⇒ 把「只读」从约定升级成机器先说话：谁就地改它，
+  // 当场 TypeError，而不是静默污染后面每一个请求（今天所有消费方都只读，逐条核过 —— 见
+  // `assembly-memo.ts` 头注 ③；`propagation.ts` 那处排序是 `[...graph.objects].sort`，先拷后排）。
+  //
+  // ⛔ 冻的是**这一跑新造出来的**那几份集合 —— 它们本来就每次都是新的，现在才被跨请求共享。
+  //   `stateVarDomains()` **刻意不冻**：它回的是模块级共享常量 `STATE_VAR_DOMAINS`，
+  //   冻它等于顺手改了**别人的**全局，超出本单半径（那份常数本来就被所有调用方共享，
+  //   不是本备忘录新引入的共享面）。
+  deepFreeze(out.graph);
+  deepFreeze(out.ruleParams);
+  deepFreeze(out.cadenceGates);
+  deepFreeze(out.gateSkipped);
+  deepFreeze(out.pairWeights);
+  deepFreeze(out.pairWeightReport);
+  deepFreeze(out.scopeReport);
+  // ⚠ 无判据（pg 模式）时也照样冻：契约必须在两种模式下**同款**，否则「改一下会不会炸」
+  //   在内存模式响、在 pg 模式静默 —— 那又是一种看不出来的差别。
+  if (memoKey !== null && worldRev !== null) assemblyMemo.put(memoKey, worldRev, out);
+  return out;
 }
