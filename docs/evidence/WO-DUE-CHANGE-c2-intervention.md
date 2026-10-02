@@ -133,6 +133,56 @@ else { row[v] = Math.round(seedHash01(`${o.id}|${v}`) * 100); ... }
 ⚠ **修完复验：预言值逐位不变 = `30.00291`** —— 修正**只切掉了不该动的格**，没碰根因修复本身
 （`SO-3391.demandPressure` 是登记在册的规格格，两种守卫都含它）。
 
+### §四之三 · 修正后的复验（`c2final-tests.*` / `c2fix6-tests.*`）
+
+```
+test/sim-seed-world.seam.test.ts             ✓  4 tests   67176ms
+test/process-tick-coverage.seam.test.ts      ✓  7 tests   40758ms
+test/sim-real-cells.seam.test.ts             ✓ 20 tests   36037ms
+test/sandbox-e4-cadence-propagation.seam…    ✓  8 tests   14762ms
+test/seed-demo-propagation.test.ts           ✓ 27 tests  191018ms
+────────────────────────────────────────────────────────────────
+Test Files  5 passed (5)      Tests  66 passed (66)      RC=0
+```
+
+⇒ **B 臂的 6 条红全部消除。**
+
+**另一处冒出来的红不是 C2 的**：`sim-order-real-fields.seam.test.ts ⑤`
+（`obj_model_4680-NCM.backlogHorizonDays @tick1: expected undefined to be 110`）。
+单文件 A/B：**撤掉 C2 后逐字同错** ⇒ **既有红**，本单未引入、也未修，**如实登记为独立账**。
+
+### §四之四 · `specBase` 设成「必填」的用意当场兑现
+
+改成必填后，两处测试的自建引擎漏传了它。**vitest 用 esbuild 只剥类型、不做类型检查**
+⇒ 没有编译报错，直接变成运行时 `TypeError: Cannot read properties of undefined
+(reading 'obj_arinvoice_arinvoice_0_0')`（`spec-base-synthesis.ts:72`）。
+
+这正是把它设成必填要换的东西：**可选字段会被静默漏传，而漏传的表现是「曲线看着正常但对不上数」**
+（`stateVarDomains` 那次事故的形态）。**宁可当场炸，不要屏上悄悄错。**
+
+### §四之五 · 覆盖边界（⛔ 没跑到的不许写成绿的）
+
+**跑到且全绿 —— 两批共 20 个文件 210 个测试：**
+
+| 批 | 文件 | 测试 | rc |
+|---|---|---|---|
+| 1（最终确认臂 `c2final-tests.*`） | 5 | 66 | 0 |
+| 2（`c2rest-tests.*`） | 15 | 144 | 0 |
+
+批 1：`sim-seed-world` · `process-tick-coverage` · `sim-real-cells` ·
+`sandbox-e4-cadence-propagation` · `seed-demo-propagation`
+批 2：`sim-root-triad` · `sim-root-procurement` · `sim-drill` · `sim-sessions-projection` ·
+`sim-node-detail-fields` · `sim-certification` · `sim-rule-domain` · `impact-propagation` ·
+`sim-session-lifecycle` · `sim-cert-contract-reconcile` · `slice-deriv-empty` ·
+`sim-checkpoint-list` · `sim-act-close` · `sim-disclosure` · `sim-trial-scope-reconcile`
+
+另有三个文件在 A/B 各臂中跑过并绿：`sim-propagation` · `sim-propagation-direction` · `sim-perturbation`；
+`sim-session` · `sim-scope-trial` 亦绿。`sim-order-real-fields` 含 **1 条既有红**（见 §四之三）。
+
+**NOT-MEASURED**：`apps/datacore/test/` 下 **gsim / global-sim / derive / seed-demo 其余族
+以及 agentcore、frontend-shell 两包**本轮**未跑**（四包全量门在本机跑不动，判据按 diff 半径取）。
+**⛔ 不许把本节读成「四包全绿」或「整个 datacore 全绿」——只读了这张表里点名的那些。**
+
 ## 五、本轮自己撞出的两个坑（都是「我用 X 当作 Y 的证据」）
 
 1. **`POST /tick {n:0}` 会静默推一拍**（`app.ts:2773`）：
