@@ -642,7 +642,13 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetTypeKey: "Model",
     targetStateVar: "costPressure",
     delayTicks: 0,
-    description: "物料涨价 ⇒ 用它的型号成本上抬（价格冲击 × 0.423913 = 型号成本压力）",
+    // ⚠ 描述里的系数**必须与真系数同生共死**：本串经 `GET /a/v1/sim/propagation-rules`
+    //    原样下发到屏上，写错就是「屏上正在说与实际不符的话」，而门
+    //    `edge-money-weight.seam.test.ts` §3 会当场抓到（2026-10-02 抓到过本行一次）。
+    // 0.423913 → 0.295455：WO-CONSOLE-DUE-CHANGE 给本格加了 `Order.leadDays → Model.costPressure`
+    //    一条新入边 ⇒ 本组增益预算 S_g 1.15 → 1.65、f_g 0.6521739 → 0.4545455
+    //    ⇒ 稳态增益 = 0.65 × 0.4545455 = 0.295455（旧值 0.65 × 0.6521739 = 0.423913）。
+    description: "物料涨价 ⇒ 用它的型号成本上抬（价格冲击 × 0.295455 = 型号成本压力）",
     combine: "sum",
     decay: null,
     clamp: null,

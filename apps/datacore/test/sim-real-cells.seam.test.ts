@@ -82,7 +82,12 @@ describe("WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合）", () 
     //   **`totalCells` 一格不动（仍 6381）**：格子还在，换的是出处章 —— 这正是本条该有的样子，
     //   两个数一起看才分得清「少了一格」与「同一格换了出处」。
     //   ⛔ 别把这 −6 读成「丢了 6 格真读数」：那 6 格原本就不是真读数，是一个恒等式的零。
-    expect(totalCells).toBe(6381);
+    // ⚠ WO-CONSOLE-DUE-CHANGE（2026-10-02）**再减 6**：6381→6375。
+    //   与上面那次 FORECASTBIAS 退役**性质不同**：那次是「同一格换出处章 ⇒ totalCells 一格不动」，
+    //   这次是格子**不再被创建** —— `Model.backlogHorizonDays` 唯一的产生规则
+    //   `demo_order_leaddays_to_model_horizon` 靶格改到 `Model.costPressure` ⇒ 6 个 Model 各少 1 格。
+    //   ⚠ 判据落在「6」这个数与 Model 对象数一致上，不是「反正红了就改小」。
+    expect(totalCells).toBe(6375);
     expect(measuredCells).toBe(4183);
   });
 

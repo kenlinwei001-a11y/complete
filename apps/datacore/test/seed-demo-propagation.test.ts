@@ -70,12 +70,17 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     //  · 源侧 `qty` / `unitPrice` / `leadDays` —— 这三个**本来就是 `Order` 上的真实业务属性**
     //    （套 / 元 / 天）。让它们直接当状态变量名，`deriveSeedBaseSnapshot` 的同名探测才撞得上
     //    ⇒ 那三格走**真读数档**而不是 `round(hash01(...)×100)`。这就是 `measuredCells` 从 0 变正的机制。
-    //  · 目标侧 `backlogQtyTop` / `backlogPriceTop` / `backlogHorizonDays` —— 在手订单簿的三个极值。
-    //  ⛔ 这 6 个**刻意不进 `STATE_VAR_DOMAINS`**（与天数族/件数族同一条纪律）：
+    //  · 目标侧 `backlogQtyTop` / `backlogPriceTop` —— 在手订单簿的两个极值。
+    //    （原第三个 `backlogHorizonDays` 已于 2026-10-02 退役，见下；故本族由 6 个减为 5 个。）
+    //  ⛔ 这 5 个**刻意不进 `STATE_VAR_DOMAINS`**（与天数族/件数族同一条纪律）：
     //    它们带真实单位，拍一个 0–100 的上界会把 21777 套夹成 100。未登记 ⇒ 引擎不夹不衰减，
     //    并在 tick 回执 `undeclaredStateVars` 里被逐个点名（缺口留在屏上，不留在注释里）。
     expect(cfg.stateVars).toEqual([
-      "backlogHorizonDays", "backlogPriceTop", "backlogQtyTop",
+      // ⛔ `backlogHorizonDays` 已于 2026-10-02 退役：它唯一的产生规则
+      //    `demo_order_leaddays_to_model_horizon` 的靶格改到 `Model.costPressure`
+      //    （WO-CONSOLE-DUE-CHANGE）⇒ 本量纲不再进世界。
+      //    ⚠ `backlogQtyTop` / `backlogPriceTop` **仍在**（另两条边的靶格一个字没动），别一起删。
+      "backlogPriceTop", "backlogQtyTop",
       "blockedPressure", "changeoverPressure", "clearanceQueueDays", "collectionPressure", "costPressure",
       // WO-PROP-REVIEW-V2 库存环 +1 个量纲 `coverDays`（成品覆盖天数·天）——库存侧**第一个被读**
       // 的量纲（此前 FinishedGoodsInventory 只当 target）；带真实单位，与天数族同纪律不进 STATE_VAR_DOMAINS。
