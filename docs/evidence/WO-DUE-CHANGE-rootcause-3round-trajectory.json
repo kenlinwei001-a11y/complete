@@ -1,0 +1,2977 @@
+{
+ "rounds": [
+  {
+   "round": 1,
+   "canary": 0,
+   "canaryFrames": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "ctrlProfile": {
+    "ARInvoice.overduePressure": "60/60 max=7.524935",
+    "Base.loadIndex": "13/13 max=0.309744",
+    "Certification.qualificationQueue": "18/18 max=2.436077",
+    "ChangeoverMatrix.changeoverPressure": "30/30 max=0.227073",
+    "Customer.receivablePressure": "20/20 max=6.527284",
+    "CustomerLocation.deliveryHoldRisk": "30/30 max=7.563435",
+    "CustomsClearance.clearanceQueueDays": "1/1 max=17.028299",
+    "DefectRecord.defectPressure": "85/85 max=5.905824",
+    "Equipment.equipmentFailure": "780/780 max=22",
+    "Equipment.loadPressure": "780/780 max=22.4",
+    "ExceptionEvent.handlingBacklog": "368/372 max=5.789915",
+    "FinishedGoodsInventory.coverDays": "18/18 max=42.3444",
+    "FinishedGoodsInventory.drawdownPressure": "18/18 max=0.280006",
+    "IncomingInspection.queueDays": "30/30 max=11.743328",
+    "InterBaseTransfer.transferPressure": "17/17 max=1.068309",
+    "Line.blockedPressure": "130/130 max=8.590084",
+    "Line.utilPressure": "130/130 max=1.828145",
+    "MaintenanceOrder.repairBacklog": "193/193 max=12.96",
+    "MaintPlan.windowSqueeze": "13/13 max=1.433535",
+    "Material.priceShock": "8/8 max=8",
+    "Material.shortageRisk": "8/8 max=16.802711",
+    "MaterialAlternative.switchPressure": "5/5 max=9.366129",
+    "MaterialBalance.gapPressure": "8/9 max=12.453923",
+    "MaterialBatch.procurementDelay": "24/24 max=154",
+    "MaterialBatch.turnoverPressure": "24/24 max=8.95822",
+    "Model.backlogPriceTop": "6/6 max=22660",
+    "Model.backlogQtyTop": "6/6 max=21777",
+    "Model.costPressure": "0/6 max=0",
+    "Model.demandLoad": "0/6 max=0",
+    "Model.forecastBias": "6/6 max=88",
+    "Model.supplyRisk": "6/6 max=11.29373",
+    "Order.costPressure": "150/150 max=0.833043",
+    "Order.demandPressure": "0/150 max=0",
+    "Order.leadDays": "150/150 max=178",
+    "Order.orderChurn": "149/150 max=100",
+    "Order.qty": "150/150 max=21777",
+    "Order.shortageRisk": "150/150 max=10.395323",
+    "Order.unitPrice": "150/150 max=22660",
+    "OrderLine.splitPressure": "869/873 max=32.891449",
+    "OrderPromise.promiseRisk": "50/50 max=8.596299",
+    "OverdueRecord.collectionPressure": "2/2 max=2.758553",
+    "Process.queuePressure": "650/650 max=18.91186",
+    "PurchaseOrder.expeditePressure": "30/30 max=16.043649",
+    "PurchaseOrder.procurementDelay": "30/30 max=-7",
+    "QualityLot.inspectBacklog": "260/260 max=8.296927",
+    "Shipment.inboundExpeditePressure": "13/13 max=1.261373",
+    "Supplier.deliveryDelay": "15/15 max=10",
+    "Supplier.procurementDelay": "13/15 max=-6",
+    "Supplier.reviewPressure": "15/15 max=7.650172",
+    "WIPLot.feedPressure": "260/260 max=9.589041",
+    "WorkOrder.releasePressure": "260/260 max=7.313102"
+   },
+   "ctrlSeries": {},
+   "arms": {
+    "cost_shock": {
+     "session": "sims_t3eebp76dwqwhqm3",
+     "outDeg": 1,
+     "outTargets": [
+      "Model.costPressure"
+     ],
+     "movedTargets": [
+      "Model.costPressure"
+     ],
+     "stillTargets": [],
+     "srcDeltaPeak": 1,
+     "everMovedCount": 7,
+     "everMoneyCount": 5,
+     "moneyPeak": 0.005846,
+     "moneyPeakTick": 13,
+     "allPeak": 1,
+     "allPeakTick": 4,
+     "finalDiffCount": 248,
+     "finalMoneyPeak": 0.004928,
+     "finalMoneyCells": 247,
+     "series": [
+      {
+       "tick": 1,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 2,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 3,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 4,
+       "nDiff": 7,
+       "allPeak": 1,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 5,
+       "nDiff": 157,
+       "allPeak": 1,
+       "moneyPeak": 0.000279,
+       "moneyCells": 150
+      },
+      {
+       "tick": 6,
+       "nDiff": 174,
+       "allPeak": 1,
+       "moneyPeak": 0.000631,
+       "moneyCells": 167
+      },
+      {
+       "tick": 7,
+       "nDiff": 201,
+       "allPeak": 1,
+       "moneyPeak": 0.001149,
+       "moneyCells": 194
+      },
+      {
+       "tick": 8,
+       "nDiff": 254,
+       "allPeak": 1,
+       "moneyPeak": 0.002096,
+       "moneyCells": 247
+      },
+      {
+       "tick": 9,
+       "nDiff": 254,
+       "allPeak": 1,
+       "moneyPeak": 0.00309,
+       "moneyCells": 247
+      },
+      {
+       "tick": 10,
+       "nDiff": 254,
+       "allPeak": 1,
+       "moneyPeak": 0.004029,
+       "moneyCells": 247
+      },
+      {
+       "tick": 11,
+       "nDiff": 251,
+       "allPeak": 1,
+       "moneyPeak": 0.004857,
+       "moneyCells": 247
+      },
+      {
+       "tick": 12,
+       "nDiff": 250,
+       "allPeak": 1,
+       "moneyPeak": 0.005553,
+       "moneyCells": 247
+      },
+      {
+       "tick": 13,
+       "nDiff": 249,
+       "allPeak": 1,
+       "moneyPeak": 0.005846,
+       "moneyCells": 247
+      },
+      {
+       "tick": 14,
+       "nDiff": 248,
+       "allPeak": 1,
+       "moneyPeak": 0.005588,
+       "moneyCells": 247
+      },
+      {
+       "tick": 15,
+       "nDiff": 248,
+       "allPeak": 1,
+       "moneyPeak": 0.004928,
+       "moneyCells": 247
+      }
+     ],
+     "profileFinal": {
+      "ARInvoice.overduePressure": "60/60 max=7.526868",
+      "Base.loadIndex": "13/13 max=0.309744",
+      "Certification.qualificationQueue": "18/18 max=2.436077",
+      "ChangeoverMatrix.changeoverPressure": "30/30 max=0.227073",
+      "Customer.receivablePressure": "20/20 max=6.532212",
+      "CustomerLocation.deliveryHoldRisk": "30/30 max=7.565991",
+      "CustomsClearance.clearanceQueueDays": "1/1 max=17.028299",
+      "DefectRecord.defectPressure": "85/85 max=5.905824",
+      "Equipment.equipmentFailure": "780/780 max=22",
+      "Equipment.loadPressure": "780/780 max=22.4",
+      "ExceptionEvent.handlingBacklog": "368/372 max=5.789915",
+      "FinishedGoodsInventory.coverDays": "18/18 max=42.3444",
+      "FinishedGoodsInventory.drawdownPressure": "18/18 max=0.280006",
+      "IncomingInspection.queueDays": "30/30 max=11.743328",
+      "InterBaseTransfer.transferPressure": "17/17 max=1.068309",
+      "Line.blockedPressure": "130/130 max=8.590084",
+      "Line.utilPressure": "130/130 max=1.828145",
+      "MaintenanceOrder.repairBacklog": "193/193 max=12.96",
+      "MaintPlan.windowSqueeze": "13/13 max=1.433535",
+      "Material.priceShock": "8/8 max=8",
+      "Material.shortageRisk": "8/8 max=16.802711",
+      "MaterialAlternative.switchPressure": "5/5 max=9.366129",
+      "MaterialBalance.gapPressure": "8/9 max=12.453923",
+      "MaterialBatch.procurementDelay": "24/24 max=154",
+      "MaterialBatch.turnoverPressure": "24/24 max=8.95822",
+      "Model.backlogPriceTop": "6/6 max=22660",
+      "Model.backlogQtyTop": "6/6 max=21777",
+      "Model.costPressure": "0/6 max=0",
+      "Model.demandLoad": "0/6 max=0",
+      "Model.forecastBias": "6/6 max=88",
+      "Model.supplyRisk": "6/6 max=11.29373",
+      "Order.costPressure": "150/150 max=0.834088",
+      "Order.demandPressure": "0/150 max=0",
+      "Order.leadDays": "150/150 max=178",
+      "Order.orderChurn": "149/150 max=100",
+      "Order.qty": "150/150 max=21777",
+      "Order.shortageRisk": "150/150 max=10.395323",
+      "Order.unitPrice": "150/150 max=22660",
+      "OrderLine.splitPressure": "869/873 max=32.891449",
+      "OrderPromise.promiseRisk": "50/50 max=8.596299",
+      "OverdueRecord.collectionPressure": "2/2 max=2.759144",
+      "Process.queuePressure": "650/650 max=18.91186",
+      "PurchaseOrder.expeditePressure": "30/30 max=16.043649",
+      "PurchaseOrder.procurementDelay": "30/30 max=-7",
+      "QualityLot.inspectBacklog": "260/260 max=8.296927",
+      "Shipment.inboundExpeditePressure": "13/13 max=1.261373",
+      "Supplier.deliveryDelay": "15/15 max=10",
+      "Supplier.procurementDelay": "13/15 max=-6",
+      "Supplier.reviewPressure": "15/15 max=7.650172",
+      "WIPLot.feedPressure": "260/260 max=9.589041",
+      "WorkOrder.releasePressure": "260/260 max=7.313102"
+     },
+     "verdict": "BELOW_FLOOR",
+     "why": "钱账峰值 |Δ|=0.005846（tick 13）< 0.01"
+    },
+    "supply_disruption": {
+     "session": "sims_jmh2s68j2scqcqr1",
+     "outDeg": 1,
+     "outTargets": [
+      "Material.shortageRisk"
+     ],
+     "movedTargets": [
+      "Material.shortageRisk"
+     ],
+     "stillTargets": [],
+     "srcDeltaPeak": 1,
+     "everMovedCount": 11,
+     "everMoneyCount": 2,
+     "moneyPeak": 0.011114,
+     "moneyPeakTick": 15,
+     "allPeak": 1,
+     "allPeakTick": 4,
+     "finalDiffCount": 237,
+     "finalMoneyPeak": 0.011114,
+     "finalMoneyCells": 200,
+     "series": [
+      {
+       "tick": 1,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 2,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 3,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 4,
+       "nDiff": 3,
+       "allPeak": 1,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 5,
+       "nDiff": 27,
+       "allPeak": 1,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 6,
+       "nDiff": 177,
+       "allPeak": 1,
+       "moneyPeak": 0.000683,
+       "moneyCells": 150
+      },
+      {
+       "tick": 7,
+       "nDiff": 237,
+       "allPeak": 1,
+       "moneyPeak": 0.001975,
+       "moneyCells": 200
+      },
+      {
+       "tick": 8,
+       "nDiff": 237,
+       "allPeak": 1,
+       "moneyPeak": 0.003602,
+       "moneyCells": 200
+      },
+      {
+       "tick": 9,
+       "nDiff": 237,
+       "allPeak": 1,
+       "moneyPeak": 0.005294,
+       "moneyCells": 200
+      },
+      {
+       "tick": 10,
+       "nDiff": 237,
+       "allPeak": 1,
+       "moneyPeak": 0.006858,
+       "moneyCells": 200
+      },
+      {
+       "tick": 11,
+       "nDiff": 237,
+       "allPeak": 1,
+       "moneyPeak": 0.008189,
+       "moneyCells": 200
+      },
+      {
+       "tick": 12,
+       "nDiff": 237,
+       "allPeak": 1,
+       "moneyPeak": 0.009256,
+       "moneyCells": 200
+      },
+      {
+       "tick": 13,
+       "nDiff": 237,
+       "allPeak": 1,
+       "moneyPeak": 0.010073,
+       "moneyCells": 200
+      },
+      {
+       "tick": 14,
+       "nDiff": 237,
+       "allPeak": 1,
+       "moneyPeak": 0.010677,
+       "moneyCells": 200
+      },
+      {
+       "tick": 15,
+       "nDiff": 237,
+       "allPeak": 1,
+       "moneyPeak": 0.011114,
+       "moneyCells": 200
+      }
+     ],
+     "profileFinal": {
+      "ARInvoice.overduePressure": "60/60 max=7.524935",
+      "Base.loadIndex": "13/13 max=0.309744",
+      "Certification.qualificationQueue": "18/18 max=2.436077",
+      "ChangeoverMatrix.changeoverPressure": "30/30 max=0.227073",
+      "Customer.receivablePressure": "20/20 max=6.527284",
+      "CustomerLocation.deliveryHoldRisk": "30/30 max=7.563435",
+      "CustomsClearance.clearanceQueueDays": "1/1 max=17.028299",
+      "DefectRecord.defectPressure": "85/85 max=5.905824",
+      "Equipment.equipmentFailure": "780/780 max=22",
+      "Equipment.loadPressure": "780/780 max=22.4",
+      "ExceptionEvent.handlingBacklog": "368/372 max=5.789915",
+      "FinishedGoodsInventory.coverDays": "18/18 max=42.3444",
+      "FinishedGoodsInventory.drawdownPressure": "18/18 max=0.280006",
+      "IncomingInspection.queueDays": "30/30 max=11.743328",
+      "InterBaseTransfer.transferPressure": "17/17 max=1.068309",
+      "Line.blockedPressure": "130/130 max=8.590084",
+      "Line.utilPressure": "130/130 max=1.828145",
+      "MaintenanceOrder.repairBacklog": "193/193 max=12.96",
+      "MaintPlan.windowSqueeze": "13/13 max=1.433535",
+      "Material.priceShock": "8/8 max=8",
+      "Material.shortageRisk": "8/8 max=16.802711",
+      "MaterialAlternative.switchPressure": "5/5 max=9.366129",
+      "MaterialBalance.gapPressure": "8/9 max=12.453923",
+      "MaterialBatch.procurementDelay": "24/24 max=154",
+      "MaterialBatch.turnoverPressure": "24/24 max=8.95822",
+      "Model.backlogPriceTop": "6/6 max=22660",
+      "Model.backlogQtyTop": "6/6 max=21777",
+      "Model.costPressure": "0/6 max=0",
+      "Model.demandLoad": "0/6 max=0",
+      "Model.forecastBias": "6/6 max=88",
+      "Model.supplyRisk": "6/6 max=11.304837",
+      "Order.costPressure": "150/150 max=0.833043",
+      "Order.demandPressure": "0/150 max=0",
+      "Order.leadDays": "150/150 max=178",
+      "Order.orderChurn": "149/150 max=100",
+      "Order.qty": "150/150 max=21777",
+      "Order.shortageRisk": "150/150 max=10.403062",
+      "Order.unitPrice": "150/150 max=22660",
+      "OrderLine.splitPressure": "869/873 max=32.891449",
+      "OrderPromise.promiseRisk": "50/50 max=8.601066",
+      "OverdueRecord.collectionPressure": "2/2 max=2.758553",
+      "Process.queuePressure": "650/650 max=18.91186",
+      "PurchaseOrder.expeditePressure": "30/30 max=16.043649",
+      "PurchaseOrder.procurementDelay": "30/30 max=-7",
+      "QualityLot.inspectBacklog": "260/260 max=8.296927",
+      "Shipment.inboundExpeditePressure": "13/13 max=1.261373",
+      "Supplier.deliveryDelay": "15/15 max=10",
+      "Supplier.procurementDelay": "13/15 max=-6",
+      "Supplier.reviewPressure": "15/15 max=7.650172",
+      "WIPLot.feedPressure": "260/260 max=9.589041",
+      "WorkOrder.releasePressure": "260/260 max=7.313102"
+     },
+     "verdict": "REACHED",
+     "why": "钱账峰值 |Δ|=0.011114（tick 15）"
+    },
+    "capacity_loss": {
+     "session": "sims_c05s8g6j7by677kb",
+     "outDeg": 1,
+     "outTargets": [
+      "Process.queuePressure"
+     ],
+     "movedTargets": [
+      "Process.queuePressure"
+     ],
+     "stillTargets": [],
+     "srcDeltaPeak": 8.5,
+     "everMovedCount": 17,
+     "everMoneyCount": 7,
+     "moneyPeak": 0.000361,
+     "moneyPeakTick": 15,
+     "allPeak": 8.5,
+     "allPeakTick": 4,
+     "finalDiffCount": 224,
+     "finalMoneyPeak": 0.000361,
+     "finalMoneyCells": 211,
+     "series": [
+      {
+       "tick": 1,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 2,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 3,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 4,
+       "nDiff": 2,
+       "allPeak": 8.5,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 5,
+       "nDiff": 3,
+       "allPeak": 8.5,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 6,
+       "nDiff": 5,
+       "allPeak": 8.5,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 7,
+       "nDiff": 7,
+       "allPeak": 8.5,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 8,
+       "nDiff": 13,
+       "allPeak": 8.5,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 9,
+       "nDiff": 130,
+       "allPeak": 8.5,
+       "moneyPeak": 0.000007,
+       "moneyCells": 116
+      },
+      {
+       "tick": 10,
+       "nDiff": 160,
+       "allPeak": 8.5,
+       "moneyPeak": 0.000027,
+       "moneyCells": 145
+      },
+      {
+       "tick": 11,
+       "nDiff": 182,
+       "allPeak": 8.5,
+       "moneyPeak": 0.000066,
+       "moneyCells": 167
+      },
+      {
+       "tick": 12,
+       "nDiff": 225,
+       "allPeak": 8.5,
+       "moneyPeak": 0.000123,
+       "moneyCells": 211
+      },
+      {
+       "tick": 13,
+       "nDiff": 225,
+       "allPeak": 8.5,
+       "moneyPeak": 0.000194,
+       "moneyCells": 211
+      },
+      {
+       "tick": 14,
+       "nDiff": 224,
+       "allPeak": 8.5,
+       "moneyPeak": 0.000276,
+       "moneyCells": 211
+      },
+      {
+       "tick": 15,
+       "nDiff": 224,
+       "allPeak": 8.5,
+       "moneyPeak": 0.000361,
+       "moneyCells": 211
+      }
+     ],
+     "profileFinal": {
+      "ARInvoice.overduePressure": "60/60 max=7.524954",
+      "Base.loadIndex": "13/13 max=0.309744",
+      "Certification.qualificationQueue": "18/18 max=2.436077",
+      "ChangeoverMatrix.changeoverPressure": "30/30 max=0.227073",
+      "Customer.receivablePressure": "20/20 max=6.527424",
+      "CustomerLocation.deliveryHoldRisk": "30/30 max=7.563471",
+      "CustomsClearance.clearanceQueueDays": "1/1 max=17.028299",
+      "DefectRecord.defectPressure": "85/85 max=5.905824",
+      "Equipment.equipmentFailure": "780/780 max=25.5",
+      "Equipment.loadPressure": "780/780 max=22.4",
+      "ExceptionEvent.handlingBacklog": "368/372 max=5.789915",
+      "FinishedGoodsInventory.coverDays": "18/18 max=42.3444",
+      "FinishedGoodsInventory.drawdownPressure": "18/18 max=0.280006",
+      "IncomingInspection.queueDays": "30/30 max=11.743328",
+      "InterBaseTransfer.transferPressure": "17/17 max=1.068309",
+      "Line.blockedPressure": "130/130 max=8.590084",
+      "Line.utilPressure": "130/130 max=1.828145",
+      "MaintenanceOrder.repairBacklog": "193/193 max=12.96",
+      "MaintPlan.windowSqueeze": "13/13 max=1.433535",
+      "Material.priceShock": "8/8 max=8",
+      "Material.shortageRisk": "8/8 max=16.802711",
+      "MaterialAlternative.switchPressure": "5/5 max=9.366129",
+      "MaterialBalance.gapPressure": "8/9 max=12.453923",
+      "MaterialBatch.procurementDelay": "24/24 max=154",
+      "MaterialBatch.turnoverPressure": "24/24 max=8.95822",
+      "Model.backlogPriceTop": "6/6 max=22660",
+      "Model.backlogQtyTop": "6/6 max=21777",
+      "Model.costPressure": "0/6 max=0",
+      "Model.demandLoad": "0/6 max=0",
+      "Model.forecastBias": "6/6 max=88",
+      "Model.supplyRisk": "6/6 max=11.29373",
+      "Order.costPressure": "150/150 max=0.833135",
+      "Order.demandPressure": "0/150 max=0",
+      "Order.leadDays": "150/150 max=178",
+      "Order.orderChurn": "149/150 max=100",
+      "Order.qty": "150/150 max=21777",
+      "Order.shortageRisk": "150/150 max=10.395323",
+      "Order.unitPrice": "150/150 max=22660",
+      "OrderLine.splitPressure": "869/873 max=32.891449",
+      "OrderPromise.promiseRisk": "50/50 max=8.596299",
+      "OverdueRecord.collectionPressure": "2/2 max=2.75856",
+      "Process.queuePressure": "650/650 max=18.91186",
+      "PurchaseOrder.expeditePressure": "30/30 max=16.043649",
+      "PurchaseOrder.procurementDelay": "30/30 max=-7",
+      "QualityLot.inspectBacklog": "260/260 max=8.296927",
+      "Shipment.inboundExpeditePressure": "13/13 max=1.261373",
+      "Supplier.deliveryDelay": "15/15 max=10",
+      "Supplier.procurementDelay": "13/15 max=-6",
+      "Supplier.reviewPressure": "15/15 max=7.650172",
+      "WIPLot.feedPressure": "260/260 max=9.589041",
+      "WorkOrder.releasePressure": "260/260 max=7.313102"
+     },
+     "verdict": "BELOW_FLOOR",
+     "why": "钱账峰值 |Δ|=0.000361（tick 15）< 0.01"
+    },
+    "demand_shift": {
+     "session": "sims_0ebxa1gvjpdgkf7s",
+     "outDeg": 2,
+     "outTargets": [
+      "OrderLine.splitPressure",
+      "Model.demandLoad"
+     ],
+     "movedTargets": [
+      "OrderLine.splitPressure"
+     ],
+     "stillTargets": [
+      "Model.demandLoad"
+     ],
+     "srcDeltaPeak": 33,
+     "everMovedCount": 2,
+     "everMoneyCount": 0,
+     "moneyPeak": 0,
+     "moneyPeakTick": 0,
+     "allPeak": 33,
+     "allPeakTick": 4,
+     "finalDiffCount": 2,
+     "finalMoneyPeak": 0,
+     "finalMoneyCells": 0,
+     "series": [
+      {
+       "tick": 1,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 2,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 3,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 4,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 5,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 6,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 7,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 8,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 9,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 10,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 11,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 12,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 13,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 14,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 15,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      }
+     ],
+     "profileFinal": {
+      "ARInvoice.overduePressure": "60/60 max=7.524935",
+      "Base.loadIndex": "13/13 max=0.309744",
+      "Certification.qualificationQueue": "18/18 max=2.436077",
+      "ChangeoverMatrix.changeoverPressure": "30/30 max=0.227073",
+      "Customer.receivablePressure": "20/20 max=6.527284",
+      "CustomerLocation.deliveryHoldRisk": "30/30 max=7.563435",
+      "CustomsClearance.clearanceQueueDays": "1/1 max=17.028299",
+      "DefectRecord.defectPressure": "85/85 max=5.905824",
+      "Equipment.equipmentFailure": "780/780 max=22",
+      "Equipment.loadPressure": "780/780 max=22.4",
+      "ExceptionEvent.handlingBacklog": "368/372 max=5.789915",
+      "FinishedGoodsInventory.coverDays": "18/18 max=42.3444",
+      "FinishedGoodsInventory.drawdownPressure": "18/18 max=0.280006",
+      "IncomingInspection.queueDays": "30/30 max=11.743328",
+      "InterBaseTransfer.transferPressure": "17/17 max=1.068309",
+      "Line.blockedPressure": "130/130 max=8.590084",
+      "Line.utilPressure": "130/130 max=1.828145",
+      "MaintenanceOrder.repairBacklog": "193/193 max=12.96",
+      "MaintPlan.windowSqueeze": "13/13 max=1.433535",
+      "Material.priceShock": "8/8 max=8",
+      "Material.shortageRisk": "8/8 max=16.802711",
+      "MaterialAlternative.switchPressure": "5/5 max=9.366129",
+      "MaterialBalance.gapPressure": "8/9 max=12.453923",
+      "MaterialBatch.procurementDelay": "24/24 max=154",
+      "MaterialBatch.turnoverPressure": "24/24 max=8.95822",
+      "Model.backlogPriceTop": "6/6 max=22660",
+      "Model.backlogQtyTop": "6/6 max=21777",
+      "Model.costPressure": "0/6 max=0",
+      "Model.demandLoad": "0/6 max=0",
+      "Model.forecastBias": "6/6 max=88",
+      "Model.supplyRisk": "6/6 max=11.29373",
+      "Order.costPressure": "150/150 max=0.833043",
+      "Order.demandPressure": "0/150 max=0",
+      "Order.leadDays": "150/150 max=178",
+      "Order.orderChurn": "149/150 max=100",
+      "Order.qty": "150/150 max=21777",
+      "Order.shortageRisk": "150/150 max=10.395323",
+      "Order.unitPrice": "150/150 max=22660",
+      "OrderLine.splitPressure": "869/873 max=32.891449",
+      "OrderPromise.promiseRisk": "50/50 max=8.596299",
+      "OverdueRecord.collectionPressure": "2/2 max=2.758553",
+      "Process.queuePressure": "650/650 max=18.91186",
+      "PurchaseOrder.expeditePressure": "30/30 max=16.043649",
+      "PurchaseOrder.procurementDelay": "30/30 max=-7",
+      "QualityLot.inspectBacklog": "260/260 max=8.296927",
+      "Shipment.inboundExpeditePressure": "13/13 max=1.261373",
+      "Supplier.deliveryDelay": "15/15 max=10",
+      "Supplier.procurementDelay": "13/15 max=-6",
+      "Supplier.reviewPressure": "15/15 max=7.650172",
+      "WIPLot.feedPressure": "260/260 max=9.589041",
+      "WorkOrder.releasePressure": "260/260 max=7.313102"
+     },
+     "verdict": "NO_MONEY",
+     "why": "传导过 2 格（OrderLine.splitPressure），钱账全程零"
+    },
+    "quality_event": {
+     "session": "sims_cgf327vaypzjexta",
+     "outDeg": 0,
+     "outTargets": [],
+     "movedTargets": [],
+     "stillTargets": [],
+     "srcDeltaPeak": 6.529031,
+     "everMovedCount": 1,
+     "everMoneyCount": 0,
+     "moneyPeak": 0,
+     "moneyPeakTick": 0,
+     "allPeak": 6.529031,
+     "allPeakTick": 4,
+     "finalDiffCount": 1,
+     "finalMoneyPeak": 0,
+     "finalMoneyCells": 0,
+     "series": [
+      {
+       "tick": 1,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 2,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 3,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 4,
+       "nDiff": 1,
+       "allPeak": 6.529031,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 5,
+       "nDiff": 1,
+       "allPeak": 4.11329,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 6,
+       "nDiff": 1,
+       "allPeak": 2.591373,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 7,
+       "nDiff": 1,
+       "allPeak": 1.632565,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 8,
+       "nDiff": 1,
+       "allPeak": 1.028516,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 9,
+       "nDiff": 1,
+       "allPeak": 0.647965,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 10,
+       "nDiff": 1,
+       "allPeak": 0.408218,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 11,
+       "nDiff": 1,
+       "allPeak": 0.257177,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 12,
+       "nDiff": 1,
+       "allPeak": 0.162022,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 13,
+       "nDiff": 1,
+       "allPeak": 0.102074,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 14,
+       "nDiff": 1,
+       "allPeak": 0.064306,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 15,
+       "nDiff": 1,
+       "allPeak": 0.040513,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      }
+     ],
+     "profileFinal": {
+      "ARInvoice.overduePressure": "60/60 max=7.524935",
+      "Base.loadIndex": "13/13 max=0.309744",
+      "Certification.qualificationQueue": "18/18 max=2.436077",
+      "ChangeoverMatrix.changeoverPressure": "30/30 max=0.227073",
+      "Customer.receivablePressure": "20/20 max=6.527284",
+      "CustomerLocation.deliveryHoldRisk": "30/30 max=7.563435",
+      "CustomsClearance.clearanceQueueDays": "1/1 max=17.028299",
+      "DefectRecord.defectPressure": "85/85 max=5.905824",
+      "Equipment.equipmentFailure": "780/780 max=22",
+      "Equipment.loadPressure": "780/780 max=22.4",
+      "ExceptionEvent.handlingBacklog": "368/372 max=5.789915",
+      "FinishedGoodsInventory.coverDays": "18/18 max=42.3444",
+      "FinishedGoodsInventory.drawdownPressure": "18/18 max=0.280006",
+      "IncomingInspection.queueDays": "30/30 max=11.743328",
+      "InterBaseTransfer.transferPressure": "17/17 max=1.068309",
+      "Line.blockedPressure": "130/130 max=8.590084",
+      "Line.utilPressure": "130/130 max=1.828145",
+      "MaintenanceOrder.repairBacklog": "193/193 max=12.96",
+      "MaintPlan.windowSqueeze": "13/13 max=1.433535",
+      "Material.priceShock": "8/8 max=8",
+      "Material.shortageRisk": "8/8 max=16.802711",
+      "MaterialAlternative.switchPressure": "5/5 max=9.366129",
+      "MaterialBalance.gapPressure": "8/9 max=12.453923",
+      "MaterialBatch.procurementDelay": "24/24 max=154",
+      "MaterialBatch.turnoverPressure": "24/24 max=8.95822",
+      "Model.backlogPriceTop": "6/6 max=22660",
+      "Model.backlogQtyTop": "6/6 max=21777",
+      "Model.costPressure": "0/6 max=0",
+      "Model.demandLoad": "0/6 max=0",
+      "Model.forecastBias": "6/6 max=88",
+      "Model.supplyRisk": "6/6 max=11.29373",
+      "Order.costPressure": "150/150 max=0.833043",
+      "Order.demandPressure": "0/150 max=0",
+      "Order.leadDays": "150/150 max=178",
+      "Order.orderChurn": "149/150 max=100",
+      "Order.qty": "150/150 max=21777",
+      "Order.shortageRisk": "150/150 max=10.395323",
+      "Order.unitPrice": "150/150 max=22660",
+      "OrderLine.splitPressure": "869/873 max=32.891449",
+      "OrderPromise.promiseRisk": "50/50 max=8.596299",
+      "OverdueRecord.collectionPressure": "2/2 max=2.758553",
+      "Process.queuePressure": "650/650 max=18.91186",
+      "PurchaseOrder.expeditePressure": "30/30 max=16.043649",
+      "PurchaseOrder.procurementDelay": "30/30 max=-7",
+      "QualityLot.inspectBacklog": "260/260 max=8.296927",
+      "Shipment.inboundExpeditePressure": "13/13 max=1.261373",
+      "Supplier.deliveryDelay": "15/15 max=10",
+      "Supplier.procurementDelay": "13/15 max=-6",
+      "Supplier.reviewPressure": "15/15 max=7.650172",
+      "WIPLot.feedPressure": "260/260 max=9.589041",
+      "WorkOrder.releasePressure": "260/260 max=7.313102"
+     },
+     "verdict": "DEAD_END",
+     "why": "QualityLot.inspectBacklog 出边 0 条（静态可判）"
+    }
+   }
+  },
+  {
+   "round": 2,
+   "canary": 0,
+   "canaryFrames": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "ctrlProfile": {
+    "ARInvoice.overduePressure": "60/60 max=7.524935",
+    "Base.loadIndex": "13/13 max=0.309744",
+    "Certification.qualificationQueue": "18/18 max=2.436077",
+    "ChangeoverMatrix.changeoverPressure": "30/30 max=0.227073",
+    "Customer.receivablePressure": "20/20 max=6.527284",
+    "CustomerLocation.deliveryHoldRisk": "30/30 max=7.563435",
+    "CustomsClearance.clearanceQueueDays": "1/1 max=17.028299",
+    "DefectRecord.defectPressure": "85/85 max=5.905824",
+    "Equipment.equipmentFailure": "780/780 max=22",
+    "Equipment.loadPressure": "780/780 max=22.4",
+    "ExceptionEvent.handlingBacklog": "368/372 max=5.789915",
+    "FinishedGoodsInventory.coverDays": "18/18 max=42.3444",
+    "FinishedGoodsInventory.drawdownPressure": "18/18 max=0.280006",
+    "IncomingInspection.queueDays": "30/30 max=11.743328",
+    "InterBaseTransfer.transferPressure": "17/17 max=1.068309",
+    "Line.blockedPressure": "130/130 max=8.590084",
+    "Line.utilPressure": "130/130 max=1.828145",
+    "MaintenanceOrder.repairBacklog": "193/193 max=12.96",
+    "MaintPlan.windowSqueeze": "13/13 max=1.433535",
+    "Material.priceShock": "8/8 max=8",
+    "Material.shortageRisk": "8/8 max=16.802711",
+    "MaterialAlternative.switchPressure": "5/5 max=9.366129",
+    "MaterialBalance.gapPressure": "8/9 max=12.453923",
+    "MaterialBatch.procurementDelay": "24/24 max=154",
+    "MaterialBatch.turnoverPressure": "24/24 max=8.95822",
+    "Model.backlogPriceTop": "6/6 max=22660",
+    "Model.backlogQtyTop": "6/6 max=21777",
+    "Model.costPressure": "0/6 max=0",
+    "Model.demandLoad": "0/6 max=0",
+    "Model.forecastBias": "6/6 max=88",
+    "Model.supplyRisk": "6/6 max=11.29373",
+    "Order.costPressure": "150/150 max=0.833043",
+    "Order.demandPressure": "0/150 max=0",
+    "Order.leadDays": "150/150 max=178",
+    "Order.orderChurn": "149/150 max=100",
+    "Order.qty": "150/150 max=21777",
+    "Order.shortageRisk": "150/150 max=10.395323",
+    "Order.unitPrice": "150/150 max=22660",
+    "OrderLine.splitPressure": "869/873 max=32.891449",
+    "OrderPromise.promiseRisk": "50/50 max=8.596299",
+    "OverdueRecord.collectionPressure": "2/2 max=2.758553",
+    "Process.queuePressure": "650/650 max=18.91186",
+    "PurchaseOrder.expeditePressure": "30/30 max=16.043649",
+    "PurchaseOrder.procurementDelay": "30/30 max=-7",
+    "QualityLot.inspectBacklog": "260/260 max=8.296927",
+    "Shipment.inboundExpeditePressure": "13/13 max=1.261373",
+    "Supplier.deliveryDelay": "15/15 max=10",
+    "Supplier.procurementDelay": "13/15 max=-6",
+    "Supplier.reviewPressure": "15/15 max=7.650172",
+    "WIPLot.feedPressure": "260/260 max=9.589041",
+    "WorkOrder.releasePressure": "260/260 max=7.313102"
+   },
+   "ctrlSeries": {},
+   "arms": {
+    "cost_shock": {
+     "session": "sims_cp7e2vrzcfnayh26",
+     "outDeg": 1,
+     "outTargets": [
+      "Model.costPressure"
+     ],
+     "movedTargets": [
+      "Model.costPressure"
+     ],
+     "stillTargets": [],
+     "srcDeltaPeak": 1,
+     "everMovedCount": 7,
+     "everMoneyCount": 5,
+     "moneyPeak": 0.005846,
+     "moneyPeakTick": 13,
+     "allPeak": 1,
+     "allPeakTick": 4,
+     "finalDiffCount": 248,
+     "finalMoneyPeak": 0.004928,
+     "finalMoneyCells": 247,
+     "series": [
+      {
+       "tick": 1,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 2,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 3,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 4,
+       "nDiff": 7,
+       "allPeak": 1,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 5,
+       "nDiff": 157,
+       "allPeak": 1,
+       "moneyPeak": 0.000279,
+       "moneyCells": 150
+      },
+      {
+       "tick": 6,
+       "nDiff": 174,
+       "allPeak": 1,
+       "moneyPeak": 0.000631,
+       "moneyCells": 167
+      },
+      {
+       "tick": 7,
+       "nDiff": 201,
+       "allPeak": 1,
+       "moneyPeak": 0.001149,
+       "moneyCells": 194
+      },
+      {
+       "tick": 8,
+       "nDiff": 254,
+       "allPeak": 1,
+       "moneyPeak": 0.002096,
+       "moneyCells": 247
+      },
+      {
+       "tick": 9,
+       "nDiff": 254,
+       "allPeak": 1,
+       "moneyPeak": 0.00309,
+       "moneyCells": 247
+      },
+      {
+       "tick": 10,
+       "nDiff": 254,
+       "allPeak": 1,
+       "moneyPeak": 0.004029,
+       "moneyCells": 247
+      },
+      {
+       "tick": 11,
+       "nDiff": 251,
+       "allPeak": 1,
+       "moneyPeak": 0.004857,
+       "moneyCells": 247
+      },
+      {
+       "tick": 12,
+       "nDiff": 250,
+       "allPeak": 1,
+       "moneyPeak": 0.005553,
+       "moneyCells": 247
+      },
+      {
+       "tick": 13,
+       "nDiff": 249,
+       "allPeak": 1,
+       "moneyPeak": 0.005846,
+       "moneyCells": 247
+      },
+      {
+       "tick": 14,
+       "nDiff": 248,
+       "allPeak": 1,
+       "moneyPeak": 0.005588,
+       "moneyCells": 247
+      },
+      {
+       "tick": 15,
+       "nDiff": 248,
+       "allPeak": 1,
+       "moneyPeak": 0.004928,
+       "moneyCells": 247
+      }
+     ],
+     "profileFinal": {
+      "ARInvoice.overduePressure": "60/60 max=7.526868",
+      "Base.loadIndex": "13/13 max=0.309744",
+      "Certification.qualificationQueue": "18/18 max=2.436077",
+      "ChangeoverMatrix.changeoverPressure": "30/30 max=0.227073",
+      "Customer.receivablePressure": "20/20 max=6.532212",
+      "CustomerLocation.deliveryHoldRisk": "30/30 max=7.565991",
+      "CustomsClearance.clearanceQueueDays": "1/1 max=17.028299",
+      "DefectRecord.defectPressure": "85/85 max=5.905824",
+      "Equipment.equipmentFailure": "780/780 max=22",
+      "Equipment.loadPressure": "780/780 max=22.4",
+      "ExceptionEvent.handlingBacklog": "368/372 max=5.789915",
+      "FinishedGoodsInventory.coverDays": "18/18 max=42.3444",
+      "FinishedGoodsInventory.drawdownPressure": "18/18 max=0.280006",
+      "IncomingInspection.queueDays": "30/30 max=11.743328",
+      "InterBaseTransfer.transferPressure": "17/17 max=1.068309",
+      "Line.blockedPressure": "130/130 max=8.590084",
+      "Line.utilPressure": "130/130 max=1.828145",
+      "MaintenanceOrder.repairBacklog": "193/193 max=12.96",
+      "MaintPlan.windowSqueeze": "13/13 max=1.433535",
+      "Material.priceShock": "8/8 max=8",
+      "Material.shortageRisk": "8/8 max=16.802711",
+      "MaterialAlternative.switchPressure": "5/5 max=9.366129",
+      "MaterialBalance.gapPressure": "8/9 max=12.453923",
+      "MaterialBatch.procurementDelay": "24/24 max=154",
+      "MaterialBatch.turnoverPressure": "24/24 max=8.95822",
+      "Model.backlogPriceTop": "6/6 max=22660",
+      "Model.backlogQtyTop": "6/6 max=21777",
+      "Model.costPressure": "0/6 max=0",
+      "Model.demandLoad": "0/6 max=0",
+      "Model.forecastBias": "6/6 max=88",
+      "Model.supplyRisk": "6/6 max=11.29373",
+      "Order.costPressure": "150/150 max=0.834088",
+      "Order.demandPressure": "0/150 max=0",
+      "Order.leadDays": "150/150 max=178",
+      "Order.orderChurn": "149/150 max=100",
+      "Order.qty": "150/150 max=21777",
+      "Order.shortageRisk": "150/150 max=10.395323",
+      "Order.unitPrice": "150/150 max=22660",
+      "OrderLine.splitPressure": "869/873 max=32.891449",
+      "OrderPromise.promiseRisk": "50/50 max=8.596299",
+      "OverdueRecord.collectionPressure": "2/2 max=2.759144",
+      "Process.queuePressure": "650/650 max=18.91186",
+      "PurchaseOrder.expeditePressure": "30/30 max=16.043649",
+      "PurchaseOrder.procurementDelay": "30/30 max=-7",
+      "QualityLot.inspectBacklog": "260/260 max=8.296927",
+      "Shipment.inboundExpeditePressure": "13/13 max=1.261373",
+      "Supplier.deliveryDelay": "15/15 max=10",
+      "Supplier.procurementDelay": "13/15 max=-6",
+      "Supplier.reviewPressure": "15/15 max=7.650172",
+      "WIPLot.feedPressure": "260/260 max=9.589041",
+      "WorkOrder.releasePressure": "260/260 max=7.313102"
+     },
+     "verdict": "BELOW_FLOOR",
+     "why": "钱账峰值 |Δ|=0.005846（tick 13）< 0.01"
+    },
+    "supply_disruption": {
+     "session": "sims_a8z3dzm7a65vn23k",
+     "outDeg": 1,
+     "outTargets": [
+      "Material.shortageRisk"
+     ],
+     "movedTargets": [
+      "Material.shortageRisk"
+     ],
+     "stillTargets": [],
+     "srcDeltaPeak": 1,
+     "everMovedCount": 11,
+     "everMoneyCount": 2,
+     "moneyPeak": 0.011114,
+     "moneyPeakTick": 15,
+     "allPeak": 1,
+     "allPeakTick": 4,
+     "finalDiffCount": 237,
+     "finalMoneyPeak": 0.011114,
+     "finalMoneyCells": 200,
+     "series": [
+      {
+       "tick": 1,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 2,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 3,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 4,
+       "nDiff": 3,
+       "allPeak": 1,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 5,
+       "nDiff": 27,
+       "allPeak": 1,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 6,
+       "nDiff": 177,
+       "allPeak": 1,
+       "moneyPeak": 0.000683,
+       "moneyCells": 150
+      },
+      {
+       "tick": 7,
+       "nDiff": 237,
+       "allPeak": 1,
+       "moneyPeak": 0.001975,
+       "moneyCells": 200
+      },
+      {
+       "tick": 8,
+       "nDiff": 237,
+       "allPeak": 1,
+       "moneyPeak": 0.003602,
+       "moneyCells": 200
+      },
+      {
+       "tick": 9,
+       "nDiff": 237,
+       "allPeak": 1,
+       "moneyPeak": 0.005294,
+       "moneyCells": 200
+      },
+      {
+       "tick": 10,
+       "nDiff": 237,
+       "allPeak": 1,
+       "moneyPeak": 0.006858,
+       "moneyCells": 200
+      },
+      {
+       "tick": 11,
+       "nDiff": 237,
+       "allPeak": 1,
+       "moneyPeak": 0.008189,
+       "moneyCells": 200
+      },
+      {
+       "tick": 12,
+       "nDiff": 237,
+       "allPeak": 1,
+       "moneyPeak": 0.009256,
+       "moneyCells": 200
+      },
+      {
+       "tick": 13,
+       "nDiff": 237,
+       "allPeak": 1,
+       "moneyPeak": 0.010073,
+       "moneyCells": 200
+      },
+      {
+       "tick": 14,
+       "nDiff": 237,
+       "allPeak": 1,
+       "moneyPeak": 0.010677,
+       "moneyCells": 200
+      },
+      {
+       "tick": 15,
+       "nDiff": 237,
+       "allPeak": 1,
+       "moneyPeak": 0.011114,
+       "moneyCells": 200
+      }
+     ],
+     "profileFinal": {
+      "ARInvoice.overduePressure": "60/60 max=7.524935",
+      "Base.loadIndex": "13/13 max=0.309744",
+      "Certification.qualificationQueue": "18/18 max=2.436077",
+      "ChangeoverMatrix.changeoverPressure": "30/30 max=0.227073",
+      "Customer.receivablePressure": "20/20 max=6.527284",
+      "CustomerLocation.deliveryHoldRisk": "30/30 max=7.563435",
+      "CustomsClearance.clearanceQueueDays": "1/1 max=17.028299",
+      "DefectRecord.defectPressure": "85/85 max=5.905824",
+      "Equipment.equipmentFailure": "780/780 max=22",
+      "Equipment.loadPressure": "780/780 max=22.4",
+      "ExceptionEvent.handlingBacklog": "368/372 max=5.789915",
+      "FinishedGoodsInventory.coverDays": "18/18 max=42.3444",
+      "FinishedGoodsInventory.drawdownPressure": "18/18 max=0.280006",
+      "IncomingInspection.queueDays": "30/30 max=11.743328",
+      "InterBaseTransfer.transferPressure": "17/17 max=1.068309",
+      "Line.blockedPressure": "130/130 max=8.590084",
+      "Line.utilPressure": "130/130 max=1.828145",
+      "MaintenanceOrder.repairBacklog": "193/193 max=12.96",
+      "MaintPlan.windowSqueeze": "13/13 max=1.433535",
+      "Material.priceShock": "8/8 max=8",
+      "Material.shortageRisk": "8/8 max=16.802711",
+      "MaterialAlternative.switchPressure": "5/5 max=9.366129",
+      "MaterialBalance.gapPressure": "8/9 max=12.453923",
+      "MaterialBatch.procurementDelay": "24/24 max=154",
+      "MaterialBatch.turnoverPressure": "24/24 max=8.95822",
+      "Model.backlogPriceTop": "6/6 max=22660",
+      "Model.backlogQtyTop": "6/6 max=21777",
+      "Model.costPressure": "0/6 max=0",
+      "Model.demandLoad": "0/6 max=0",
+      "Model.forecastBias": "6/6 max=88",
+      "Model.supplyRisk": "6/6 max=11.304837",
+      "Order.costPressure": "150/150 max=0.833043",
+      "Order.demandPressure": "0/150 max=0",
+      "Order.leadDays": "150/150 max=178",
+      "Order.orderChurn": "149/150 max=100",
+      "Order.qty": "150/150 max=21777",
+      "Order.shortageRisk": "150/150 max=10.403062",
+      "Order.unitPrice": "150/150 max=22660",
+      "OrderLine.splitPressure": "869/873 max=32.891449",
+      "OrderPromise.promiseRisk": "50/50 max=8.601066",
+      "OverdueRecord.collectionPressure": "2/2 max=2.758553",
+      "Process.queuePressure": "650/650 max=18.91186",
+      "PurchaseOrder.expeditePressure": "30/30 max=16.043649",
+      "PurchaseOrder.procurementDelay": "30/30 max=-7",
+      "QualityLot.inspectBacklog": "260/260 max=8.296927",
+      "Shipment.inboundExpeditePressure": "13/13 max=1.261373",
+      "Supplier.deliveryDelay": "15/15 max=10",
+      "Supplier.procurementDelay": "13/15 max=-6",
+      "Supplier.reviewPressure": "15/15 max=7.650172",
+      "WIPLot.feedPressure": "260/260 max=9.589041",
+      "WorkOrder.releasePressure": "260/260 max=7.313102"
+     },
+     "verdict": "REACHED",
+     "why": "钱账峰值 |Δ|=0.011114（tick 15）"
+    },
+    "capacity_loss": {
+     "session": "sims_6ddrsdz2szb978ct",
+     "outDeg": 1,
+     "outTargets": [
+      "Process.queuePressure"
+     ],
+     "movedTargets": [
+      "Process.queuePressure"
+     ],
+     "stillTargets": [],
+     "srcDeltaPeak": 8.5,
+     "everMovedCount": 17,
+     "everMoneyCount": 7,
+     "moneyPeak": 0.000361,
+     "moneyPeakTick": 15,
+     "allPeak": 8.5,
+     "allPeakTick": 4,
+     "finalDiffCount": 224,
+     "finalMoneyPeak": 0.000361,
+     "finalMoneyCells": 211,
+     "series": [
+      {
+       "tick": 1,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 2,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 3,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 4,
+       "nDiff": 2,
+       "allPeak": 8.5,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 5,
+       "nDiff": 3,
+       "allPeak": 8.5,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 6,
+       "nDiff": 5,
+       "allPeak": 8.5,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 7,
+       "nDiff": 7,
+       "allPeak": 8.5,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 8,
+       "nDiff": 13,
+       "allPeak": 8.5,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 9,
+       "nDiff": 130,
+       "allPeak": 8.5,
+       "moneyPeak": 0.000007,
+       "moneyCells": 116
+      },
+      {
+       "tick": 10,
+       "nDiff": 160,
+       "allPeak": 8.5,
+       "moneyPeak": 0.000027,
+       "moneyCells": 145
+      },
+      {
+       "tick": 11,
+       "nDiff": 182,
+       "allPeak": 8.5,
+       "moneyPeak": 0.000066,
+       "moneyCells": 167
+      },
+      {
+       "tick": 12,
+       "nDiff": 225,
+       "allPeak": 8.5,
+       "moneyPeak": 0.000123,
+       "moneyCells": 211
+      },
+      {
+       "tick": 13,
+       "nDiff": 225,
+       "allPeak": 8.5,
+       "moneyPeak": 0.000194,
+       "moneyCells": 211
+      },
+      {
+       "tick": 14,
+       "nDiff": 224,
+       "allPeak": 8.5,
+       "moneyPeak": 0.000276,
+       "moneyCells": 211
+      },
+      {
+       "tick": 15,
+       "nDiff": 224,
+       "allPeak": 8.5,
+       "moneyPeak": 0.000361,
+       "moneyCells": 211
+      }
+     ],
+     "profileFinal": {
+      "ARInvoice.overduePressure": "60/60 max=7.524954",
+      "Base.loadIndex": "13/13 max=0.309744",
+      "Certification.qualificationQueue": "18/18 max=2.436077",
+      "ChangeoverMatrix.changeoverPressure": "30/30 max=0.227073",
+      "Customer.receivablePressure": "20/20 max=6.527424",
+      "CustomerLocation.deliveryHoldRisk": "30/30 max=7.563471",
+      "CustomsClearance.clearanceQueueDays": "1/1 max=17.028299",
+      "DefectRecord.defectPressure": "85/85 max=5.905824",
+      "Equipment.equipmentFailure": "780/780 max=25.5",
+      "Equipment.loadPressure": "780/780 max=22.4",
+      "ExceptionEvent.handlingBacklog": "368/372 max=5.789915",
+      "FinishedGoodsInventory.coverDays": "18/18 max=42.3444",
+      "FinishedGoodsInventory.drawdownPressure": "18/18 max=0.280006",
+      "IncomingInspection.queueDays": "30/30 max=11.743328",
+      "InterBaseTransfer.transferPressure": "17/17 max=1.068309",
+      "Line.blockedPressure": "130/130 max=8.590084",
+      "Line.utilPressure": "130/130 max=1.828145",
+      "MaintenanceOrder.repairBacklog": "193/193 max=12.96",
+      "MaintPlan.windowSqueeze": "13/13 max=1.433535",
+      "Material.priceShock": "8/8 max=8",
+      "Material.shortageRisk": "8/8 max=16.802711",
+      "MaterialAlternative.switchPressure": "5/5 max=9.366129",
+      "MaterialBalance.gapPressure": "8/9 max=12.453923",
+      "MaterialBatch.procurementDelay": "24/24 max=154",
+      "MaterialBatch.turnoverPressure": "24/24 max=8.95822",
+      "Model.backlogPriceTop": "6/6 max=22660",
+      "Model.backlogQtyTop": "6/6 max=21777",
+      "Model.costPressure": "0/6 max=0",
+      "Model.demandLoad": "0/6 max=0",
+      "Model.forecastBias": "6/6 max=88",
+      "Model.supplyRisk": "6/6 max=11.29373",
+      "Order.costPressure": "150/150 max=0.833135",
+      "Order.demandPressure": "0/150 max=0",
+      "Order.leadDays": "150/150 max=178",
+      "Order.orderChurn": "149/150 max=100",
+      "Order.qty": "150/150 max=21777",
+      "Order.shortageRisk": "150/150 max=10.395323",
+      "Order.unitPrice": "150/150 max=22660",
+      "OrderLine.splitPressure": "869/873 max=32.891449",
+      "OrderPromise.promiseRisk": "50/50 max=8.596299",
+      "OverdueRecord.collectionPressure": "2/2 max=2.75856",
+      "Process.queuePressure": "650/650 max=18.91186",
+      "PurchaseOrder.expeditePressure": "30/30 max=16.043649",
+      "PurchaseOrder.procurementDelay": "30/30 max=-7",
+      "QualityLot.inspectBacklog": "260/260 max=8.296927",
+      "Shipment.inboundExpeditePressure": "13/13 max=1.261373",
+      "Supplier.deliveryDelay": "15/15 max=10",
+      "Supplier.procurementDelay": "13/15 max=-6",
+      "Supplier.reviewPressure": "15/15 max=7.650172",
+      "WIPLot.feedPressure": "260/260 max=9.589041",
+      "WorkOrder.releasePressure": "260/260 max=7.313102"
+     },
+     "verdict": "BELOW_FLOOR",
+     "why": "钱账峰值 |Δ|=0.000361（tick 15）< 0.01"
+    },
+    "demand_shift": {
+     "session": "sims_cv1h6tp2b8rhhqek",
+     "outDeg": 2,
+     "outTargets": [
+      "OrderLine.splitPressure",
+      "Model.demandLoad"
+     ],
+     "movedTargets": [
+      "OrderLine.splitPressure"
+     ],
+     "stillTargets": [
+      "Model.demandLoad"
+     ],
+     "srcDeltaPeak": 33,
+     "everMovedCount": 2,
+     "everMoneyCount": 0,
+     "moneyPeak": 0,
+     "moneyPeakTick": 0,
+     "allPeak": 33,
+     "allPeakTick": 4,
+     "finalDiffCount": 2,
+     "finalMoneyPeak": 0,
+     "finalMoneyCells": 0,
+     "series": [
+      {
+       "tick": 1,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 2,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 3,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 4,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 5,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 6,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 7,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 8,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 9,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 10,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 11,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 12,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 13,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 14,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 15,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      }
+     ],
+     "profileFinal": {
+      "ARInvoice.overduePressure": "60/60 max=7.524935",
+      "Base.loadIndex": "13/13 max=0.309744",
+      "Certification.qualificationQueue": "18/18 max=2.436077",
+      "ChangeoverMatrix.changeoverPressure": "30/30 max=0.227073",
+      "Customer.receivablePressure": "20/20 max=6.527284",
+      "CustomerLocation.deliveryHoldRisk": "30/30 max=7.563435",
+      "CustomsClearance.clearanceQueueDays": "1/1 max=17.028299",
+      "DefectRecord.defectPressure": "85/85 max=5.905824",
+      "Equipment.equipmentFailure": "780/780 max=22",
+      "Equipment.loadPressure": "780/780 max=22.4",
+      "ExceptionEvent.handlingBacklog": "368/372 max=5.789915",
+      "FinishedGoodsInventory.coverDays": "18/18 max=42.3444",
+      "FinishedGoodsInventory.drawdownPressure": "18/18 max=0.280006",
+      "IncomingInspection.queueDays": "30/30 max=11.743328",
+      "InterBaseTransfer.transferPressure": "17/17 max=1.068309",
+      "Line.blockedPressure": "130/130 max=8.590084",
+      "Line.utilPressure": "130/130 max=1.828145",
+      "MaintenanceOrder.repairBacklog": "193/193 max=12.96",
+      "MaintPlan.windowSqueeze": "13/13 max=1.433535",
+      "Material.priceShock": "8/8 max=8",
+      "Material.shortageRisk": "8/8 max=16.802711",
+      "MaterialAlternative.switchPressure": "5/5 max=9.366129",
+      "MaterialBalance.gapPressure": "8/9 max=12.453923",
+      "MaterialBatch.procurementDelay": "24/24 max=154",
+      "MaterialBatch.turnoverPressure": "24/24 max=8.95822",
+      "Model.backlogPriceTop": "6/6 max=22660",
+      "Model.backlogQtyTop": "6/6 max=21777",
+      "Model.costPressure": "0/6 max=0",
+      "Model.demandLoad": "0/6 max=0",
+      "Model.forecastBias": "6/6 max=88",
+      "Model.supplyRisk": "6/6 max=11.29373",
+      "Order.costPressure": "150/150 max=0.833043",
+      "Order.demandPressure": "0/150 max=0",
+      "Order.leadDays": "150/150 max=178",
+      "Order.orderChurn": "149/150 max=100",
+      "Order.qty": "150/150 max=21777",
+      "Order.shortageRisk": "150/150 max=10.395323",
+      "Order.unitPrice": "150/150 max=22660",
+      "OrderLine.splitPressure": "869/873 max=32.891449",
+      "OrderPromise.promiseRisk": "50/50 max=8.596299",
+      "OverdueRecord.collectionPressure": "2/2 max=2.758553",
+      "Process.queuePressure": "650/650 max=18.91186",
+      "PurchaseOrder.expeditePressure": "30/30 max=16.043649",
+      "PurchaseOrder.procurementDelay": "30/30 max=-7",
+      "QualityLot.inspectBacklog": "260/260 max=8.296927",
+      "Shipment.inboundExpeditePressure": "13/13 max=1.261373",
+      "Supplier.deliveryDelay": "15/15 max=10",
+      "Supplier.procurementDelay": "13/15 max=-6",
+      "Supplier.reviewPressure": "15/15 max=7.650172",
+      "WIPLot.feedPressure": "260/260 max=9.589041",
+      "WorkOrder.releasePressure": "260/260 max=7.313102"
+     },
+     "verdict": "NO_MONEY",
+     "why": "传导过 2 格（OrderLine.splitPressure），钱账全程零"
+    },
+    "quality_event": {
+     "session": "sims_w1zz20xcn5hq9vtx",
+     "outDeg": 0,
+     "outTargets": [],
+     "movedTargets": [],
+     "stillTargets": [],
+     "srcDeltaPeak": 6.529031,
+     "everMovedCount": 1,
+     "everMoneyCount": 0,
+     "moneyPeak": 0,
+     "moneyPeakTick": 0,
+     "allPeak": 6.529031,
+     "allPeakTick": 4,
+     "finalDiffCount": 1,
+     "finalMoneyPeak": 0,
+     "finalMoneyCells": 0,
+     "series": [
+      {
+       "tick": 1,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 2,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 3,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 4,
+       "nDiff": 1,
+       "allPeak": 6.529031,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 5,
+       "nDiff": 1,
+       "allPeak": 4.11329,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 6,
+       "nDiff": 1,
+       "allPeak": 2.591373,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 7,
+       "nDiff": 1,
+       "allPeak": 1.632565,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 8,
+       "nDiff": 1,
+       "allPeak": 1.028516,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 9,
+       "nDiff": 1,
+       "allPeak": 0.647965,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 10,
+       "nDiff": 1,
+       "allPeak": 0.408218,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 11,
+       "nDiff": 1,
+       "allPeak": 0.257177,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 12,
+       "nDiff": 1,
+       "allPeak": 0.162022,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 13,
+       "nDiff": 1,
+       "allPeak": 0.102074,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 14,
+       "nDiff": 1,
+       "allPeak": 0.064306,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 15,
+       "nDiff": 1,
+       "allPeak": 0.040513,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      }
+     ],
+     "profileFinal": {
+      "ARInvoice.overduePressure": "60/60 max=7.524935",
+      "Base.loadIndex": "13/13 max=0.309744",
+      "Certification.qualificationQueue": "18/18 max=2.436077",
+      "ChangeoverMatrix.changeoverPressure": "30/30 max=0.227073",
+      "Customer.receivablePressure": "20/20 max=6.527284",
+      "CustomerLocation.deliveryHoldRisk": "30/30 max=7.563435",
+      "CustomsClearance.clearanceQueueDays": "1/1 max=17.028299",
+      "DefectRecord.defectPressure": "85/85 max=5.905824",
+      "Equipment.equipmentFailure": "780/780 max=22",
+      "Equipment.loadPressure": "780/780 max=22.4",
+      "ExceptionEvent.handlingBacklog": "368/372 max=5.789915",
+      "FinishedGoodsInventory.coverDays": "18/18 max=42.3444",
+      "FinishedGoodsInventory.drawdownPressure": "18/18 max=0.280006",
+      "IncomingInspection.queueDays": "30/30 max=11.743328",
+      "InterBaseTransfer.transferPressure": "17/17 max=1.068309",
+      "Line.blockedPressure": "130/130 max=8.590084",
+      "Line.utilPressure": "130/130 max=1.828145",
+      "MaintenanceOrder.repairBacklog": "193/193 max=12.96",
+      "MaintPlan.windowSqueeze": "13/13 max=1.433535",
+      "Material.priceShock": "8/8 max=8",
+      "Material.shortageRisk": "8/8 max=16.802711",
+      "MaterialAlternative.switchPressure": "5/5 max=9.366129",
+      "MaterialBalance.gapPressure": "8/9 max=12.453923",
+      "MaterialBatch.procurementDelay": "24/24 max=154",
+      "MaterialBatch.turnoverPressure": "24/24 max=8.95822",
+      "Model.backlogPriceTop": "6/6 max=22660",
+      "Model.backlogQtyTop": "6/6 max=21777",
+      "Model.costPressure": "0/6 max=0",
+      "Model.demandLoad": "0/6 max=0",
+      "Model.forecastBias": "6/6 max=88",
+      "Model.supplyRisk": "6/6 max=11.29373",
+      "Order.costPressure": "150/150 max=0.833043",
+      "Order.demandPressure": "0/150 max=0",
+      "Order.leadDays": "150/150 max=178",
+      "Order.orderChurn": "149/150 max=100",
+      "Order.qty": "150/150 max=21777",
+      "Order.shortageRisk": "150/150 max=10.395323",
+      "Order.unitPrice": "150/150 max=22660",
+      "OrderLine.splitPressure": "869/873 max=32.891449",
+      "OrderPromise.promiseRisk": "50/50 max=8.596299",
+      "OverdueRecord.collectionPressure": "2/2 max=2.758553",
+      "Process.queuePressure": "650/650 max=18.91186",
+      "PurchaseOrder.expeditePressure": "30/30 max=16.043649",
+      "PurchaseOrder.procurementDelay": "30/30 max=-7",
+      "QualityLot.inspectBacklog": "260/260 max=8.296927",
+      "Shipment.inboundExpeditePressure": "13/13 max=1.261373",
+      "Supplier.deliveryDelay": "15/15 max=10",
+      "Supplier.procurementDelay": "13/15 max=-6",
+      "Supplier.reviewPressure": "15/15 max=7.650172",
+      "WIPLot.feedPressure": "260/260 max=9.589041",
+      "WorkOrder.releasePressure": "260/260 max=7.313102"
+     },
+     "verdict": "DEAD_END",
+     "why": "QualityLot.inspectBacklog 出边 0 条（静态可判）"
+    }
+   }
+  },
+  {
+   "round": 3,
+   "canary": 0,
+   "canaryFrames": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "ctrlProfile": {
+    "ARInvoice.overduePressure": "60/60 max=7.524935",
+    "Base.loadIndex": "13/13 max=0.309744",
+    "Certification.qualificationQueue": "18/18 max=2.436077",
+    "ChangeoverMatrix.changeoverPressure": "30/30 max=0.227073",
+    "Customer.receivablePressure": "20/20 max=6.527284",
+    "CustomerLocation.deliveryHoldRisk": "30/30 max=7.563435",
+    "CustomsClearance.clearanceQueueDays": "1/1 max=17.028299",
+    "DefectRecord.defectPressure": "85/85 max=5.905824",
+    "Equipment.equipmentFailure": "780/780 max=22",
+    "Equipment.loadPressure": "780/780 max=22.4",
+    "ExceptionEvent.handlingBacklog": "368/372 max=5.789915",
+    "FinishedGoodsInventory.coverDays": "18/18 max=42.3444",
+    "FinishedGoodsInventory.drawdownPressure": "18/18 max=0.280006",
+    "IncomingInspection.queueDays": "30/30 max=11.743328",
+    "InterBaseTransfer.transferPressure": "17/17 max=1.068309",
+    "Line.blockedPressure": "130/130 max=8.590084",
+    "Line.utilPressure": "130/130 max=1.828145",
+    "MaintenanceOrder.repairBacklog": "193/193 max=12.96",
+    "MaintPlan.windowSqueeze": "13/13 max=1.433535",
+    "Material.priceShock": "8/8 max=8",
+    "Material.shortageRisk": "8/8 max=16.802711",
+    "MaterialAlternative.switchPressure": "5/5 max=9.366129",
+    "MaterialBalance.gapPressure": "8/9 max=12.453923",
+    "MaterialBatch.procurementDelay": "24/24 max=154",
+    "MaterialBatch.turnoverPressure": "24/24 max=8.95822",
+    "Model.backlogPriceTop": "6/6 max=22660",
+    "Model.backlogQtyTop": "6/6 max=21777",
+    "Model.costPressure": "0/6 max=0",
+    "Model.demandLoad": "0/6 max=0",
+    "Model.forecastBias": "6/6 max=88",
+    "Model.supplyRisk": "6/6 max=11.29373",
+    "Order.costPressure": "150/150 max=0.833043",
+    "Order.demandPressure": "0/150 max=0",
+    "Order.leadDays": "150/150 max=178",
+    "Order.orderChurn": "149/150 max=100",
+    "Order.qty": "150/150 max=21777",
+    "Order.shortageRisk": "150/150 max=10.395323",
+    "Order.unitPrice": "150/150 max=22660",
+    "OrderLine.splitPressure": "869/873 max=32.891449",
+    "OrderPromise.promiseRisk": "50/50 max=8.596299",
+    "OverdueRecord.collectionPressure": "2/2 max=2.758553",
+    "Process.queuePressure": "650/650 max=18.91186",
+    "PurchaseOrder.expeditePressure": "30/30 max=16.043649",
+    "PurchaseOrder.procurementDelay": "30/30 max=-7",
+    "QualityLot.inspectBacklog": "260/260 max=8.296927",
+    "Shipment.inboundExpeditePressure": "13/13 max=1.261373",
+    "Supplier.deliveryDelay": "15/15 max=10",
+    "Supplier.procurementDelay": "13/15 max=-6",
+    "Supplier.reviewPressure": "15/15 max=7.650172",
+    "WIPLot.feedPressure": "260/260 max=9.589041",
+    "WorkOrder.releasePressure": "260/260 max=7.313102"
+   },
+   "ctrlSeries": {},
+   "arms": {
+    "cost_shock": {
+     "session": "sims_x2h1wcvzee3n3wx5",
+     "outDeg": 1,
+     "outTargets": [
+      "Model.costPressure"
+     ],
+     "movedTargets": [
+      "Model.costPressure"
+     ],
+     "stillTargets": [],
+     "srcDeltaPeak": 1,
+     "everMovedCount": 7,
+     "everMoneyCount": 5,
+     "moneyPeak": 0.005846,
+     "moneyPeakTick": 13,
+     "allPeak": 1,
+     "allPeakTick": 4,
+     "finalDiffCount": 248,
+     "finalMoneyPeak": 0.004928,
+     "finalMoneyCells": 247,
+     "series": [
+      {
+       "tick": 1,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 2,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 3,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 4,
+       "nDiff": 7,
+       "allPeak": 1,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 5,
+       "nDiff": 157,
+       "allPeak": 1,
+       "moneyPeak": 0.000279,
+       "moneyCells": 150
+      },
+      {
+       "tick": 6,
+       "nDiff": 174,
+       "allPeak": 1,
+       "moneyPeak": 0.000631,
+       "moneyCells": 167
+      },
+      {
+       "tick": 7,
+       "nDiff": 201,
+       "allPeak": 1,
+       "moneyPeak": 0.001149,
+       "moneyCells": 194
+      },
+      {
+       "tick": 8,
+       "nDiff": 254,
+       "allPeak": 1,
+       "moneyPeak": 0.002096,
+       "moneyCells": 247
+      },
+      {
+       "tick": 9,
+       "nDiff": 254,
+       "allPeak": 1,
+       "moneyPeak": 0.00309,
+       "moneyCells": 247
+      },
+      {
+       "tick": 10,
+       "nDiff": 254,
+       "allPeak": 1,
+       "moneyPeak": 0.004029,
+       "moneyCells": 247
+      },
+      {
+       "tick": 11,
+       "nDiff": 251,
+       "allPeak": 1,
+       "moneyPeak": 0.004857,
+       "moneyCells": 247
+      },
+      {
+       "tick": 12,
+       "nDiff": 250,
+       "allPeak": 1,
+       "moneyPeak": 0.005553,
+       "moneyCells": 247
+      },
+      {
+       "tick": 13,
+       "nDiff": 249,
+       "allPeak": 1,
+       "moneyPeak": 0.005846,
+       "moneyCells": 247
+      },
+      {
+       "tick": 14,
+       "nDiff": 248,
+       "allPeak": 1,
+       "moneyPeak": 0.005588,
+       "moneyCells": 247
+      },
+      {
+       "tick": 15,
+       "nDiff": 248,
+       "allPeak": 1,
+       "moneyPeak": 0.004928,
+       "moneyCells": 247
+      }
+     ],
+     "profileFinal": {
+      "ARInvoice.overduePressure": "60/60 max=7.526868",
+      "Base.loadIndex": "13/13 max=0.309744",
+      "Certification.qualificationQueue": "18/18 max=2.436077",
+      "ChangeoverMatrix.changeoverPressure": "30/30 max=0.227073",
+      "Customer.receivablePressure": "20/20 max=6.532212",
+      "CustomerLocation.deliveryHoldRisk": "30/30 max=7.565991",
+      "CustomsClearance.clearanceQueueDays": "1/1 max=17.028299",
+      "DefectRecord.defectPressure": "85/85 max=5.905824",
+      "Equipment.equipmentFailure": "780/780 max=22",
+      "Equipment.loadPressure": "780/780 max=22.4",
+      "ExceptionEvent.handlingBacklog": "368/372 max=5.789915",
+      "FinishedGoodsInventory.coverDays": "18/18 max=42.3444",
+      "FinishedGoodsInventory.drawdownPressure": "18/18 max=0.280006",
+      "IncomingInspection.queueDays": "30/30 max=11.743328",
+      "InterBaseTransfer.transferPressure": "17/17 max=1.068309",
+      "Line.blockedPressure": "130/130 max=8.590084",
+      "Line.utilPressure": "130/130 max=1.828145",
+      "MaintenanceOrder.repairBacklog": "193/193 max=12.96",
+      "MaintPlan.windowSqueeze": "13/13 max=1.433535",
+      "Material.priceShock": "8/8 max=8",
+      "Material.shortageRisk": "8/8 max=16.802711",
+      "MaterialAlternative.switchPressure": "5/5 max=9.366129",
+      "MaterialBalance.gapPressure": "8/9 max=12.453923",
+      "MaterialBatch.procurementDelay": "24/24 max=154",
+      "MaterialBatch.turnoverPressure": "24/24 max=8.95822",
+      "Model.backlogPriceTop": "6/6 max=22660",
+      "Model.backlogQtyTop": "6/6 max=21777",
+      "Model.costPressure": "0/6 max=0",
+      "Model.demandLoad": "0/6 max=0",
+      "Model.forecastBias": "6/6 max=88",
+      "Model.supplyRisk": "6/6 max=11.29373",
+      "Order.costPressure": "150/150 max=0.834088",
+      "Order.demandPressure": "0/150 max=0",
+      "Order.leadDays": "150/150 max=178",
+      "Order.orderChurn": "149/150 max=100",
+      "Order.qty": "150/150 max=21777",
+      "Order.shortageRisk": "150/150 max=10.395323",
+      "Order.unitPrice": "150/150 max=22660",
+      "OrderLine.splitPressure": "869/873 max=32.891449",
+      "OrderPromise.promiseRisk": "50/50 max=8.596299",
+      "OverdueRecord.collectionPressure": "2/2 max=2.759144",
+      "Process.queuePressure": "650/650 max=18.91186",
+      "PurchaseOrder.expeditePressure": "30/30 max=16.043649",
+      "PurchaseOrder.procurementDelay": "30/30 max=-7",
+      "QualityLot.inspectBacklog": "260/260 max=8.296927",
+      "Shipment.inboundExpeditePressure": "13/13 max=1.261373",
+      "Supplier.deliveryDelay": "15/15 max=10",
+      "Supplier.procurementDelay": "13/15 max=-6",
+      "Supplier.reviewPressure": "15/15 max=7.650172",
+      "WIPLot.feedPressure": "260/260 max=9.589041",
+      "WorkOrder.releasePressure": "260/260 max=7.313102"
+     },
+     "verdict": "BELOW_FLOOR",
+     "why": "钱账峰值 |Δ|=0.005846（tick 13）< 0.01"
+    },
+    "supply_disruption": {
+     "session": "sims_ejenwmzsmeamaw3z",
+     "outDeg": 1,
+     "outTargets": [
+      "Material.shortageRisk"
+     ],
+     "movedTargets": [
+      "Material.shortageRisk"
+     ],
+     "stillTargets": [],
+     "srcDeltaPeak": 1,
+     "everMovedCount": 11,
+     "everMoneyCount": 2,
+     "moneyPeak": 0.011114,
+     "moneyPeakTick": 15,
+     "allPeak": 1,
+     "allPeakTick": 4,
+     "finalDiffCount": 237,
+     "finalMoneyPeak": 0.011114,
+     "finalMoneyCells": 200,
+     "series": [
+      {
+       "tick": 1,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 2,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 3,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 4,
+       "nDiff": 3,
+       "allPeak": 1,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 5,
+       "nDiff": 27,
+       "allPeak": 1,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 6,
+       "nDiff": 177,
+       "allPeak": 1,
+       "moneyPeak": 0.000683,
+       "moneyCells": 150
+      },
+      {
+       "tick": 7,
+       "nDiff": 237,
+       "allPeak": 1,
+       "moneyPeak": 0.001975,
+       "moneyCells": 200
+      },
+      {
+       "tick": 8,
+       "nDiff": 237,
+       "allPeak": 1,
+       "moneyPeak": 0.003602,
+       "moneyCells": 200
+      },
+      {
+       "tick": 9,
+       "nDiff": 237,
+       "allPeak": 1,
+       "moneyPeak": 0.005294,
+       "moneyCells": 200
+      },
+      {
+       "tick": 10,
+       "nDiff": 237,
+       "allPeak": 1,
+       "moneyPeak": 0.006858,
+       "moneyCells": 200
+      },
+      {
+       "tick": 11,
+       "nDiff": 237,
+       "allPeak": 1,
+       "moneyPeak": 0.008189,
+       "moneyCells": 200
+      },
+      {
+       "tick": 12,
+       "nDiff": 237,
+       "allPeak": 1,
+       "moneyPeak": 0.009256,
+       "moneyCells": 200
+      },
+      {
+       "tick": 13,
+       "nDiff": 237,
+       "allPeak": 1,
+       "moneyPeak": 0.010073,
+       "moneyCells": 200
+      },
+      {
+       "tick": 14,
+       "nDiff": 237,
+       "allPeak": 1,
+       "moneyPeak": 0.010677,
+       "moneyCells": 200
+      },
+      {
+       "tick": 15,
+       "nDiff": 237,
+       "allPeak": 1,
+       "moneyPeak": 0.011114,
+       "moneyCells": 200
+      }
+     ],
+     "profileFinal": {
+      "ARInvoice.overduePressure": "60/60 max=7.524935",
+      "Base.loadIndex": "13/13 max=0.309744",
+      "Certification.qualificationQueue": "18/18 max=2.436077",
+      "ChangeoverMatrix.changeoverPressure": "30/30 max=0.227073",
+      "Customer.receivablePressure": "20/20 max=6.527284",
+      "CustomerLocation.deliveryHoldRisk": "30/30 max=7.563435",
+      "CustomsClearance.clearanceQueueDays": "1/1 max=17.028299",
+      "DefectRecord.defectPressure": "85/85 max=5.905824",
+      "Equipment.equipmentFailure": "780/780 max=22",
+      "Equipment.loadPressure": "780/780 max=22.4",
+      "ExceptionEvent.handlingBacklog": "368/372 max=5.789915",
+      "FinishedGoodsInventory.coverDays": "18/18 max=42.3444",
+      "FinishedGoodsInventory.drawdownPressure": "18/18 max=0.280006",
+      "IncomingInspection.queueDays": "30/30 max=11.743328",
+      "InterBaseTransfer.transferPressure": "17/17 max=1.068309",
+      "Line.blockedPressure": "130/130 max=8.590084",
+      "Line.utilPressure": "130/130 max=1.828145",
+      "MaintenanceOrder.repairBacklog": "193/193 max=12.96",
+      "MaintPlan.windowSqueeze": "13/13 max=1.433535",
+      "Material.priceShock": "8/8 max=8",
+      "Material.shortageRisk": "8/8 max=16.802711",
+      "MaterialAlternative.switchPressure": "5/5 max=9.366129",
+      "MaterialBalance.gapPressure": "8/9 max=12.453923",
+      "MaterialBatch.procurementDelay": "24/24 max=154",
+      "MaterialBatch.turnoverPressure": "24/24 max=8.95822",
+      "Model.backlogPriceTop": "6/6 max=22660",
+      "Model.backlogQtyTop": "6/6 max=21777",
+      "Model.costPressure": "0/6 max=0",
+      "Model.demandLoad": "0/6 max=0",
+      "Model.forecastBias": "6/6 max=88",
+      "Model.supplyRisk": "6/6 max=11.304837",
+      "Order.costPressure": "150/150 max=0.833043",
+      "Order.demandPressure": "0/150 max=0",
+      "Order.leadDays": "150/150 max=178",
+      "Order.orderChurn": "149/150 max=100",
+      "Order.qty": "150/150 max=21777",
+      "Order.shortageRisk": "150/150 max=10.403062",
+      "Order.unitPrice": "150/150 max=22660",
+      "OrderLine.splitPressure": "869/873 max=32.891449",
+      "OrderPromise.promiseRisk": "50/50 max=8.601066",
+      "OverdueRecord.collectionPressure": "2/2 max=2.758553",
+      "Process.queuePressure": "650/650 max=18.91186",
+      "PurchaseOrder.expeditePressure": "30/30 max=16.043649",
+      "PurchaseOrder.procurementDelay": "30/30 max=-7",
+      "QualityLot.inspectBacklog": "260/260 max=8.296927",
+      "Shipment.inboundExpeditePressure": "13/13 max=1.261373",
+      "Supplier.deliveryDelay": "15/15 max=10",
+      "Supplier.procurementDelay": "13/15 max=-6",
+      "Supplier.reviewPressure": "15/15 max=7.650172",
+      "WIPLot.feedPressure": "260/260 max=9.589041",
+      "WorkOrder.releasePressure": "260/260 max=7.313102"
+     },
+     "verdict": "REACHED",
+     "why": "钱账峰值 |Δ|=0.011114（tick 15）"
+    },
+    "capacity_loss": {
+     "session": "sims_vtfpvqkne4a1tena",
+     "outDeg": 1,
+     "outTargets": [
+      "Process.queuePressure"
+     ],
+     "movedTargets": [
+      "Process.queuePressure"
+     ],
+     "stillTargets": [],
+     "srcDeltaPeak": 8.5,
+     "everMovedCount": 17,
+     "everMoneyCount": 7,
+     "moneyPeak": 0.000361,
+     "moneyPeakTick": 15,
+     "allPeak": 8.5,
+     "allPeakTick": 4,
+     "finalDiffCount": 224,
+     "finalMoneyPeak": 0.000361,
+     "finalMoneyCells": 211,
+     "series": [
+      {
+       "tick": 1,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 2,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 3,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 4,
+       "nDiff": 2,
+       "allPeak": 8.5,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 5,
+       "nDiff": 3,
+       "allPeak": 8.5,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 6,
+       "nDiff": 5,
+       "allPeak": 8.5,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 7,
+       "nDiff": 7,
+       "allPeak": 8.5,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 8,
+       "nDiff": 13,
+       "allPeak": 8.5,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 9,
+       "nDiff": 130,
+       "allPeak": 8.5,
+       "moneyPeak": 0.000007,
+       "moneyCells": 116
+      },
+      {
+       "tick": 10,
+       "nDiff": 160,
+       "allPeak": 8.5,
+       "moneyPeak": 0.000027,
+       "moneyCells": 145
+      },
+      {
+       "tick": 11,
+       "nDiff": 182,
+       "allPeak": 8.5,
+       "moneyPeak": 0.000066,
+       "moneyCells": 167
+      },
+      {
+       "tick": 12,
+       "nDiff": 225,
+       "allPeak": 8.5,
+       "moneyPeak": 0.000123,
+       "moneyCells": 211
+      },
+      {
+       "tick": 13,
+       "nDiff": 225,
+       "allPeak": 8.5,
+       "moneyPeak": 0.000194,
+       "moneyCells": 211
+      },
+      {
+       "tick": 14,
+       "nDiff": 224,
+       "allPeak": 8.5,
+       "moneyPeak": 0.000276,
+       "moneyCells": 211
+      },
+      {
+       "tick": 15,
+       "nDiff": 224,
+       "allPeak": 8.5,
+       "moneyPeak": 0.000361,
+       "moneyCells": 211
+      }
+     ],
+     "profileFinal": {
+      "ARInvoice.overduePressure": "60/60 max=7.524954",
+      "Base.loadIndex": "13/13 max=0.309744",
+      "Certification.qualificationQueue": "18/18 max=2.436077",
+      "ChangeoverMatrix.changeoverPressure": "30/30 max=0.227073",
+      "Customer.receivablePressure": "20/20 max=6.527424",
+      "CustomerLocation.deliveryHoldRisk": "30/30 max=7.563471",
+      "CustomsClearance.clearanceQueueDays": "1/1 max=17.028299",
+      "DefectRecord.defectPressure": "85/85 max=5.905824",
+      "Equipment.equipmentFailure": "780/780 max=25.5",
+      "Equipment.loadPressure": "780/780 max=22.4",
+      "ExceptionEvent.handlingBacklog": "368/372 max=5.789915",
+      "FinishedGoodsInventory.coverDays": "18/18 max=42.3444",
+      "FinishedGoodsInventory.drawdownPressure": "18/18 max=0.280006",
+      "IncomingInspection.queueDays": "30/30 max=11.743328",
+      "InterBaseTransfer.transferPressure": "17/17 max=1.068309",
+      "Line.blockedPressure": "130/130 max=8.590084",
+      "Line.utilPressure": "130/130 max=1.828145",
+      "MaintenanceOrder.repairBacklog": "193/193 max=12.96",
+      "MaintPlan.windowSqueeze": "13/13 max=1.433535",
+      "Material.priceShock": "8/8 max=8",
+      "Material.shortageRisk": "8/8 max=16.802711",
+      "MaterialAlternative.switchPressure": "5/5 max=9.366129",
+      "MaterialBalance.gapPressure": "8/9 max=12.453923",
+      "MaterialBatch.procurementDelay": "24/24 max=154",
+      "MaterialBatch.turnoverPressure": "24/24 max=8.95822",
+      "Model.backlogPriceTop": "6/6 max=22660",
+      "Model.backlogQtyTop": "6/6 max=21777",
+      "Model.costPressure": "0/6 max=0",
+      "Model.demandLoad": "0/6 max=0",
+      "Model.forecastBias": "6/6 max=88",
+      "Model.supplyRisk": "6/6 max=11.29373",
+      "Order.costPressure": "150/150 max=0.833135",
+      "Order.demandPressure": "0/150 max=0",
+      "Order.leadDays": "150/150 max=178",
+      "Order.orderChurn": "149/150 max=100",
+      "Order.qty": "150/150 max=21777",
+      "Order.shortageRisk": "150/150 max=10.395323",
+      "Order.unitPrice": "150/150 max=22660",
+      "OrderLine.splitPressure": "869/873 max=32.891449",
+      "OrderPromise.promiseRisk": "50/50 max=8.596299",
+      "OverdueRecord.collectionPressure": "2/2 max=2.75856",
+      "Process.queuePressure": "650/650 max=18.91186",
+      "PurchaseOrder.expeditePressure": "30/30 max=16.043649",
+      "PurchaseOrder.procurementDelay": "30/30 max=-7",
+      "QualityLot.inspectBacklog": "260/260 max=8.296927",
+      "Shipment.inboundExpeditePressure": "13/13 max=1.261373",
+      "Supplier.deliveryDelay": "15/15 max=10",
+      "Supplier.procurementDelay": "13/15 max=-6",
+      "Supplier.reviewPressure": "15/15 max=7.650172",
+      "WIPLot.feedPressure": "260/260 max=9.589041",
+      "WorkOrder.releasePressure": "260/260 max=7.313102"
+     },
+     "verdict": "BELOW_FLOOR",
+     "why": "钱账峰值 |Δ|=0.000361（tick 15）< 0.01"
+    },
+    "demand_shift": {
+     "session": "sims_r0cjxtmp9m29214p",
+     "outDeg": 2,
+     "outTargets": [
+      "OrderLine.splitPressure",
+      "Model.demandLoad"
+     ],
+     "movedTargets": [
+      "OrderLine.splitPressure"
+     ],
+     "stillTargets": [
+      "Model.demandLoad"
+     ],
+     "srcDeltaPeak": 33,
+     "everMovedCount": 2,
+     "everMoneyCount": 0,
+     "moneyPeak": 0,
+     "moneyPeakTick": 0,
+     "allPeak": 33,
+     "allPeakTick": 4,
+     "finalDiffCount": 2,
+     "finalMoneyPeak": 0,
+     "finalMoneyCells": 0,
+     "series": [
+      {
+       "tick": 1,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 2,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 3,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 4,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 5,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 6,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 7,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 8,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 9,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 10,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 11,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 12,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 13,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 14,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 15,
+       "nDiff": 2,
+       "allPeak": 33,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      }
+     ],
+     "profileFinal": {
+      "ARInvoice.overduePressure": "60/60 max=7.524935",
+      "Base.loadIndex": "13/13 max=0.309744",
+      "Certification.qualificationQueue": "18/18 max=2.436077",
+      "ChangeoverMatrix.changeoverPressure": "30/30 max=0.227073",
+      "Customer.receivablePressure": "20/20 max=6.527284",
+      "CustomerLocation.deliveryHoldRisk": "30/30 max=7.563435",
+      "CustomsClearance.clearanceQueueDays": "1/1 max=17.028299",
+      "DefectRecord.defectPressure": "85/85 max=5.905824",
+      "Equipment.equipmentFailure": "780/780 max=22",
+      "Equipment.loadPressure": "780/780 max=22.4",
+      "ExceptionEvent.handlingBacklog": "368/372 max=5.789915",
+      "FinishedGoodsInventory.coverDays": "18/18 max=42.3444",
+      "FinishedGoodsInventory.drawdownPressure": "18/18 max=0.280006",
+      "IncomingInspection.queueDays": "30/30 max=11.743328",
+      "InterBaseTransfer.transferPressure": "17/17 max=1.068309",
+      "Line.blockedPressure": "130/130 max=8.590084",
+      "Line.utilPressure": "130/130 max=1.828145",
+      "MaintenanceOrder.repairBacklog": "193/193 max=12.96",
+      "MaintPlan.windowSqueeze": "13/13 max=1.433535",
+      "Material.priceShock": "8/8 max=8",
+      "Material.shortageRisk": "8/8 max=16.802711",
+      "MaterialAlternative.switchPressure": "5/5 max=9.366129",
+      "MaterialBalance.gapPressure": "8/9 max=12.453923",
+      "MaterialBatch.procurementDelay": "24/24 max=154",
+      "MaterialBatch.turnoverPressure": "24/24 max=8.95822",
+      "Model.backlogPriceTop": "6/6 max=22660",
+      "Model.backlogQtyTop": "6/6 max=21777",
+      "Model.costPressure": "0/6 max=0",
+      "Model.demandLoad": "0/6 max=0",
+      "Model.forecastBias": "6/6 max=88",
+      "Model.supplyRisk": "6/6 max=11.29373",
+      "Order.costPressure": "150/150 max=0.833043",
+      "Order.demandPressure": "0/150 max=0",
+      "Order.leadDays": "150/150 max=178",
+      "Order.orderChurn": "149/150 max=100",
+      "Order.qty": "150/150 max=21777",
+      "Order.shortageRisk": "150/150 max=10.395323",
+      "Order.unitPrice": "150/150 max=22660",
+      "OrderLine.splitPressure": "869/873 max=32.891449",
+      "OrderPromise.promiseRisk": "50/50 max=8.596299",
+      "OverdueRecord.collectionPressure": "2/2 max=2.758553",
+      "Process.queuePressure": "650/650 max=18.91186",
+      "PurchaseOrder.expeditePressure": "30/30 max=16.043649",
+      "PurchaseOrder.procurementDelay": "30/30 max=-7",
+      "QualityLot.inspectBacklog": "260/260 max=8.296927",
+      "Shipment.inboundExpeditePressure": "13/13 max=1.261373",
+      "Supplier.deliveryDelay": "15/15 max=10",
+      "Supplier.procurementDelay": "13/15 max=-6",
+      "Supplier.reviewPressure": "15/15 max=7.650172",
+      "WIPLot.feedPressure": "260/260 max=9.589041",
+      "WorkOrder.releasePressure": "260/260 max=7.313102"
+     },
+     "verdict": "NO_MONEY",
+     "why": "传导过 2 格（OrderLine.splitPressure），钱账全程零"
+    },
+    "quality_event": {
+     "session": "sims_az96pppsv5192hxs",
+     "outDeg": 0,
+     "outTargets": [],
+     "movedTargets": [],
+     "stillTargets": [],
+     "srcDeltaPeak": 6.529031,
+     "everMovedCount": 1,
+     "everMoneyCount": 0,
+     "moneyPeak": 0,
+     "moneyPeakTick": 0,
+     "allPeak": 6.529031,
+     "allPeakTick": 4,
+     "finalDiffCount": 1,
+     "finalMoneyPeak": 0,
+     "finalMoneyCells": 0,
+     "series": [
+      {
+       "tick": 1,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 2,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 3,
+       "nDiff": 0,
+       "allPeak": 0,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 4,
+       "nDiff": 1,
+       "allPeak": 6.529031,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 5,
+       "nDiff": 1,
+       "allPeak": 4.11329,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 6,
+       "nDiff": 1,
+       "allPeak": 2.591373,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 7,
+       "nDiff": 1,
+       "allPeak": 1.632565,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 8,
+       "nDiff": 1,
+       "allPeak": 1.028516,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 9,
+       "nDiff": 1,
+       "allPeak": 0.647965,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 10,
+       "nDiff": 1,
+       "allPeak": 0.408218,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 11,
+       "nDiff": 1,
+       "allPeak": 0.257177,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 12,
+       "nDiff": 1,
+       "allPeak": 0.162022,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 13,
+       "nDiff": 1,
+       "allPeak": 0.102074,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 14,
+       "nDiff": 1,
+       "allPeak": 0.064306,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      },
+      {
+       "tick": 15,
+       "nDiff": 1,
+       "allPeak": 0.040513,
+       "moneyPeak": 0,
+       "moneyCells": 0
+      }
+     ],
+     "profileFinal": {
+      "ARInvoice.overduePressure": "60/60 max=7.524935",
+      "Base.loadIndex": "13/13 max=0.309744",
+      "Certification.qualificationQueue": "18/18 max=2.436077",
+      "ChangeoverMatrix.changeoverPressure": "30/30 max=0.227073",
+      "Customer.receivablePressure": "20/20 max=6.527284",
+      "CustomerLocation.deliveryHoldRisk": "30/30 max=7.563435",
+      "CustomsClearance.clearanceQueueDays": "1/1 max=17.028299",
+      "DefectRecord.defectPressure": "85/85 max=5.905824",
+      "Equipment.equipmentFailure": "780/780 max=22",
+      "Equipment.loadPressure": "780/780 max=22.4",
+      "ExceptionEvent.handlingBacklog": "368/372 max=5.789915",
+      "FinishedGoodsInventory.coverDays": "18/18 max=42.3444",
+      "FinishedGoodsInventory.drawdownPressure": "18/18 max=0.280006",
+      "IncomingInspection.queueDays": "30/30 max=11.743328",
+      "InterBaseTransfer.transferPressure": "17/17 max=1.068309",
+      "Line.blockedPressure": "130/130 max=8.590084",
+      "Line.utilPressure": "130/130 max=1.828145",
+      "MaintenanceOrder.repairBacklog": "193/193 max=12.96",
+      "MaintPlan.windowSqueeze": "13/13 max=1.433535",
+      "Material.priceShock": "8/8 max=8",
+      "Material.shortageRisk": "8/8 max=16.802711",
+      "MaterialAlternative.switchPressure": "5/5 max=9.366129",
+      "MaterialBalance.gapPressure": "8/9 max=12.453923",
+      "MaterialBatch.procurementDelay": "24/24 max=154",
+      "MaterialBatch.turnoverPressure": "24/24 max=8.95822",
+      "Model.backlogPriceTop": "6/6 max=22660",
+      "Model.backlogQtyTop": "6/6 max=21777",
+      "Model.costPressure": "0/6 max=0",
+      "Model.demandLoad": "0/6 max=0",
+      "Model.forecastBias": "6/6 max=88",
+      "Model.supplyRisk": "6/6 max=11.29373",
+      "Order.costPressure": "150/150 max=0.833043",
+      "Order.demandPressure": "0/150 max=0",
+      "Order.leadDays": "150/150 max=178",
+      "Order.orderChurn": "149/150 max=100",
+      "Order.qty": "150/150 max=21777",
+      "Order.shortageRisk": "150/150 max=10.395323",
+      "Order.unitPrice": "150/150 max=22660",
+      "OrderLine.splitPressure": "869/873 max=32.891449",
+      "OrderPromise.promiseRisk": "50/50 max=8.596299",
+      "OverdueRecord.collectionPressure": "2/2 max=2.758553",
+      "Process.queuePressure": "650/650 max=18.91186",
+      "PurchaseOrder.expeditePressure": "30/30 max=16.043649",
+      "PurchaseOrder.procurementDelay": "30/30 max=-7",
+      "QualityLot.inspectBacklog": "260/260 max=8.296927",
+      "Shipment.inboundExpeditePressure": "13/13 max=1.261373",
+      "Supplier.deliveryDelay": "15/15 max=10",
+      "Supplier.procurementDelay": "13/15 max=-6",
+      "Supplier.reviewPressure": "15/15 max=7.650172",
+      "WIPLot.feedPressure": "260/260 max=9.589041",
+      "WorkOrder.releasePressure": "260/260 max=7.313102"
+     },
+     "verdict": "DEAD_END",
+     "why": "QualityLot.inspectBacklog 出边 0 条（静态可判）"
+    }
+   }
+  }
+ ]
+}

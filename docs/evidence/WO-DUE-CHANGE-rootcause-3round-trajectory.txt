@@ -1,0 +1,76 @@
+
+───────── Round 1 ───────── 金丝雀(两对照臂逐拍差异格合计)=0（须为 0）
+[R1] cost_shock         BELOW_FLOOR     钱账峰值 |Δ|=0.005846（tick 13）< 0.01
+      轨迹峰值 全格|Δ| 1(tick 4) · 钱账|Δ| 0.005846(tick 13) · 波及 7 格 / 钱账 5 格
+      终态对照 差异格 248（轨迹曾动过 7 格）· 终态钱账|Δ| 0.004928（轨迹峰值 0.005846）
+      出边目标 动了 [Model.costPressure] · 全程未动 [无]
+[R1] supply_disruption  REACHED         钱账峰值 |Δ|=0.011114（tick 15）
+      轨迹峰值 全格|Δ| 1(tick 4) · 钱账|Δ| 0.011114(tick 15) · 波及 11 格 / 钱账 2 格
+      终态对照 差异格 237（轨迹曾动过 11 格）· 终态钱账|Δ| 0.011114（轨迹峰值 0.011114）
+      出边目标 动了 [Material.shortageRisk] · 全程未动 [无]
+[R1] capacity_loss      BELOW_FLOOR     钱账峰值 |Δ|=0.000361（tick 15）< 0.01
+      轨迹峰值 全格|Δ| 8.5(tick 4) · 钱账|Δ| 0.000361(tick 15) · 波及 17 格 / 钱账 7 格
+      终态对照 差异格 224（轨迹曾动过 17 格）· 终态钱账|Δ| 0.000361（轨迹峰值 0.000361）
+      出边目标 动了 [Process.queuePressure] · 全程未动 [无]
+[R1] demand_shift       NO_MONEY        传导过 2 格（OrderLine.splitPressure），钱账全程零
+      轨迹峰值 全格|Δ| 33(tick 4) · 钱账|Δ| 0(tick 0) · 波及 2 格 / 钱账 0 格
+      终态对照 差异格 2（轨迹曾动过 2 格）· 终态钱账|Δ| 0（轨迹峰值 0）
+      出边目标 动了 [OrderLine.splitPressure] · 全程未动 [Model.demandLoad]
+[R1] quality_event      DEAD_END        QualityLot.inspectBacklog 出边 0 条（静态可判）
+      轨迹峰值 全格|Δ| 6.529031(tick 4) · 钱账|Δ| 0(tick 0) · 波及 1 格 / 钱账 0 格
+      终态对照 差异格 1（轨迹曾动过 1 格）· 终态钱账|Δ| 0（轨迹峰值 0）
+      出边目标 动了 [无] · 全程未动 [无]
+
+───────── Round 2 ───────── 金丝雀(两对照臂逐拍差异格合计)=0（须为 0）
+[R2] cost_shock         BELOW_FLOOR     钱账峰值 |Δ|=0.005846（tick 13）< 0.01
+      轨迹峰值 全格|Δ| 1(tick 4) · 钱账|Δ| 0.005846(tick 13) · 波及 7 格 / 钱账 5 格
+      终态对照 差异格 248（轨迹曾动过 7 格）· 终态钱账|Δ| 0.004928（轨迹峰值 0.005846）
+      出边目标 动了 [Model.costPressure] · 全程未动 [无]
+[R2] supply_disruption  REACHED         钱账峰值 |Δ|=0.011114（tick 15）
+      轨迹峰值 全格|Δ| 1(tick 4) · 钱账|Δ| 0.011114(tick 15) · 波及 11 格 / 钱账 2 格
+      终态对照 差异格 237（轨迹曾动过 11 格）· 终态钱账|Δ| 0.011114（轨迹峰值 0.011114）
+      出边目标 动了 [Material.shortageRisk] · 全程未动 [无]
+[R2] capacity_loss      BELOW_FLOOR     钱账峰值 |Δ|=0.000361（tick 15）< 0.01
+      轨迹峰值 全格|Δ| 8.5(tick 4) · 钱账|Δ| 0.000361(tick 15) · 波及 17 格 / 钱账 7 格
+      终态对照 差异格 224（轨迹曾动过 17 格）· 终态钱账|Δ| 0.000361（轨迹峰值 0.000361）
+      出边目标 动了 [Process.queuePressure] · 全程未动 [无]
+[R2] demand_shift       NO_MONEY        传导过 2 格（OrderLine.splitPressure），钱账全程零
+      轨迹峰值 全格|Δ| 33(tick 4) · 钱账|Δ| 0(tick 0) · 波及 2 格 / 钱账 0 格
+      终态对照 差异格 2（轨迹曾动过 2 格）· 终态钱账|Δ| 0（轨迹峰值 0）
+      出边目标 动了 [OrderLine.splitPressure] · 全程未动 [Model.demandLoad]
+[R2] quality_event      DEAD_END        QualityLot.inspectBacklog 出边 0 条（静态可判）
+      轨迹峰值 全格|Δ| 6.529031(tick 4) · 钱账|Δ| 0(tick 0) · 波及 1 格 / 钱账 0 格
+      终态对照 差异格 1（轨迹曾动过 1 格）· 终态钱账|Δ| 0（轨迹峰值 0）
+      出边目标 动了 [无] · 全程未动 [无]
+
+───────── Round 3 ───────── 金丝雀(两对照臂逐拍差异格合计)=0（须为 0）
+[R3] cost_shock         BELOW_FLOOR     钱账峰值 |Δ|=0.005846（tick 13）< 0.01
+      轨迹峰值 全格|Δ| 1(tick 4) · 钱账|Δ| 0.005846(tick 13) · 波及 7 格 / 钱账 5 格
+      终态对照 差异格 248（轨迹曾动过 7 格）· 终态钱账|Δ| 0.004928（轨迹峰值 0.005846）
+      出边目标 动了 [Model.costPressure] · 全程未动 [无]
+[R3] supply_disruption  REACHED         钱账峰值 |Δ|=0.011114（tick 15）
+      轨迹峰值 全格|Δ| 1(tick 4) · 钱账|Δ| 0.011114(tick 15) · 波及 11 格 / 钱账 2 格
+      终态对照 差异格 237（轨迹曾动过 11 格）· 终态钱账|Δ| 0.011114（轨迹峰值 0.011114）
+      出边目标 动了 [Material.shortageRisk] · 全程未动 [无]
+[R3] capacity_loss      BELOW_FLOOR     钱账峰值 |Δ|=0.000361（tick 15）< 0.01
+      轨迹峰值 全格|Δ| 8.5(tick 4) · 钱账|Δ| 0.000361(tick 15) · 波及 17 格 / 钱账 7 格
+      终态对照 差异格 224（轨迹曾动过 17 格）· 终态钱账|Δ| 0.000361（轨迹峰值 0.000361）
+      出边目标 动了 [Process.queuePressure] · 全程未动 [无]
+[R3] demand_shift       NO_MONEY        传导过 2 格（OrderLine.splitPressure），钱账全程零
+      轨迹峰值 全格|Δ| 33(tick 4) · 钱账|Δ| 0(tick 0) · 波及 2 格 / 钱账 0 格
+      终态对照 差异格 2（轨迹曾动过 2 格）· 终态钱账|Δ| 0（轨迹峰值 0）
+      出边目标 动了 [OrderLine.splitPressure] · 全程未动 [Model.demandLoad]
+[R3] quality_event      DEAD_END        QualityLot.inspectBacklog 出边 0 条（静态可判）
+      轨迹峰值 全格|Δ| 6.529031(tick 4) · 钱账|Δ| 0(tick 0) · 波及 1 格 / 钱账 0 格
+      终态对照 差异格 1（轨迹曾动过 1 格）· 终态钱账|Δ| 0（轨迹峰值 0）
+      出边目标 动了 [无] · 全程未动 [无]
+
+══ 三轮一致性（逐字段比）════════════════════════════
+cost_shock         BELOW_FLOOR / BELOW_FLOOR / BELOW_FLOOR ✅ 逐字段+全格档+轨迹一致
+supply_disruption  REACHED / REACHED / REACHED    ✅ 逐字段+全格档+轨迹一致
+capacity_loss      BELOW_FLOOR / BELOW_FLOOR / BELOW_FLOOR ✅ 逐字段+全格档+轨迹一致
+demand_shift       NO_MONEY / NO_MONEY / NO_MONEY ✅ 逐字段+全格档+轨迹一致
+quality_event      DEAD_END / DEAD_END / DEAD_END ✅ 逐字段+全格档+轨迹一致
+
+★ 三轮答案一致 · 金丝雀全部通过（逐拍差异合计 0/0/0，均须为 0）
+落盘：/tmp/wo-console-e2e/evidence-1002/3round-trajectory.json
