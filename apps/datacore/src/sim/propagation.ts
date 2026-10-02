@@ -494,6 +494,19 @@ export interface StateVarDisclosure {
   saturations: SaturationEvent[];
   /** 实际生效的衰减率（stateVar → λ，排序后的对象）—— 披露"这一拍到底按多少在散"。 */
   decayApplied: Record<string, number>;
+  /**
+   * 本拍**被钉住**的格：用户声明的扰动落点，生效期内不走衰减（WO-PIN-LANDING）。
+   * 结构化数组，⛔ 不拼串（同 `reactionActors` 的来历）。
+   *
+   * 为什么需要它（2026-10-02 实测）：扰动相是「一次性施加 + 到期反向施加」而**不是每拍重施**，
+   * 于是 `durationTicks: null`（契约原文「`null` = 永久」）的落笔一旦落在**有入边的累加器**上，
+   * 就被衰减相逐拍收掉 —— 实测 `Order.demandPressure` 声明 +30：90 → 45.6 → 17.628 → 0.00564
+   * （3 拍，8 拍后 0）；而同一批里落在入度 0 外生量纲上的
+   * （`Material.priceShock` 42→62、`Equipment.equipmentFailure` 21→23）分毫不差。
+   * **同一句声明、两种命运 ⇒ 声明与实现相反。** 本条就是把「用户声明过的」与「世界自己演化的」
+   * 分开：前者不让衰减吃，后者照旧。
+   */
+  decayPinned: { objectId: string; stateVar: string; perturbationId: string }[];
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -774,6 +787,16 @@ export function propagateTick(
   const producedTick = tick + 1;
   const perturbationTrace: PropagationTrace[] = [];
   const appliedPerturbations: string[] = [];
+  /** 生效期内的落点格（见 `StateVarDisclosure.decayPinned`）：本拍不衰减。空 ⇒ 衰减相零改动。 */
+  const pinnedCells: StateVarDisclosure["decayPinned"] = [];
+  /**
+   * 落点格的键。**只有这一处实现** —— 落笔处与衰减相若各拼一份，改了一处漏另一处就是两套真相源，
+   * 而屏上表现是「有的格钉住了、有的没钉住」，看不出是拼键拼错。
+   * ⚠ 分隔符是 NUL（U+0000）且**必须写成转义**：字面 NUL 字节会让 git 把本文件判成 binary、
+   *   grep 只回「Binary file matches」⇒ **这个文件的每一次改动都没人能看见**（本文件 2026-10-01 实测踩过）。
+   */
+  const pinKey = (objectId: string, stateVar: string): string => `${objectId}\u0000${stateVar}`;
+  const pinnedKeys = new Set<string>();
   let effState = state; // 未被扰动改动时**保持同一引用**（无扰动 ⇒ 与本相位引入前逐字节相同·可回退）
   const writePerturbed = (p: PerturbationInTick, value: number, ruleKey: string, before: number): void => {
     const bucket = (effState[p.targetObjectId] ??= {});
@@ -812,6 +835,16 @@ export function propagateTick(
     }
     // ③ 溯源：本 tick 处于生效期的全部扰动（含早先落地、仍在持续的；**不含**本 tick 刚到期的）。
     for (const p of perturbations) if (isPerturbationActiveAt(p, producedTick)) appliedPerturbations.push(p.id);
+    // ④ 落点格钉住（WO-PIN-LANDING）：生效期内的扰动落点，衰减相跳过它们。
+    //    ⛔ 判据与 ③ **同一个** `isPerturbationActiveAt(p, producedTick)` —— 不许另立一套"落地了没有"。
+    //    两处若各判各的，就会出现「溯源说这条扰动在生效、而它那一格照样被收掉」这种自相矛盾的读数。
+    //    到期那一拍它已是 false ⇒ 该拍起恢复衰减，正是契约「N 拍后自然消退」的语义。
+    //    分隔符是 NUL 且**必须写成转义**（本文件上方 `navKey` 那段的来历：字面 NUL 会让 git 判本文件为 binary）。
+    for (const p of perturbations) {
+      if (!isPerturbationActiveAt(p, producedTick)) continue;
+      pinnedCells.push({ objectId: p.targetObjectId, stateVar: p.targetStateVar, perturbationId: p.id });
+      pinnedKeys.add(`${p.targetObjectId}\u0000${p.targetStateVar}`);
+    }
   }
 
   const next = cloneState(effState);
@@ -864,6 +897,9 @@ export function propagateTick(
       for (const stateVar of Object.keys(bucket)) {
         const lambda = decayApplied[stateVar];
         if (lambda === undefined) continue;
+        // 用户声明的落点：**生效期内不走衰减**（WO-PIN-LANDING）。
+        // 空集时这一句是常量假 ⇒ 无扰动的世界与本条引入前逐字节相同（RL9 可回退）。
+        if (pinnedKeys.size > 0 && pinnedKeys.has(pinKey(objId, stateVar))) continue;
         const rest = domains[stateVar]!.restPoint;
         const cur = bucket[stateVar];
         if (typeof cur !== "number") continue;
@@ -1168,6 +1204,13 @@ export function propagateTick(
       ),
       decayApplied: Object.fromEntries(
         Object.keys(decayApplied).sort((a, b) => a.localeCompare(b)).map((k) => [k, decayApplied[k]!]),
+      ),
+      // 钉住的落点按 (objectId, stateVar, perturbationId) 稳定排序（R6：同输入同字节）。
+      decayPinned: pinnedCells.sort(
+        (a, b) =>
+          a.objectId.localeCompare(b.objectId) ||
+          a.stateVar.localeCompare(b.stateVar) ||
+          a.perturbationId.localeCompare(b.perturbationId),
       ),
     },
   };
