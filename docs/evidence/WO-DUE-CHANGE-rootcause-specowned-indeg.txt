@@ -1,0 +1,36 @@
+已发布规则 55 条
+会话 sims_8g1avgy6k5c4v7t6：tick0 → tick11
+
+规格拥有格 │ 入度 │ tick0 (非零/总, max)      │ tickN (非零/总, max)      │ 变化格 │ 判定
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Base.loadIndex                    │    1 │ 13/13    max=97.954438   │ 13/13    max=1.966257    │     13 │ 衰减(仍有非零)
+Customer.receivablePressure       │    1 │ 20/20    max=93.156231   │ 20/20    max=17.647425   │     20 │ 衰减(仍有非零)
+DefectRecord.defectPressure       │    1 │ 85/85    max=0.227934    │ 85/85    max=10.121745   │     85 │ 衰减(仍有非零)
+Equipment.equipmentFailure        │    0 │ 780/780  max=22          │ 780/780  max=22          │      0 │ **恒定**
+Equipment.loadPressure            │    0 │ 780/780  max=22.4        │ 780/780  max=22.4        │      0 │ **恒定**
+FinishedGoodsInventory.coverDays  │    0 │ 18/18    max=42.3444     │ 18/18    max=42.3444     │      0 │ **恒定**
+Line.blockedPressure              │    1 │ 130/130  max=92.613384   │ 130/130  max=15.205329   │    130 │ 衰减(仍有非零)
+Line.utilPressure                 │    1 │ 130/130  max=60.411456   │ 130/130  max=7.939099    │    130 │ 衰减(仍有非零)
+MaterialBalance.gapPressure       │    1 │ 4/9      max=17.617995   │ 8/9      max=14.109638   │      8 │ 衰减(仍有非零)
+MaterialBatch.procurementDelay    │    0 │ 24/24    max=154         │ 24/24    max=154         │      0 │ **恒定**
+Material.priceShock               │    0 │ 8/8      max=8           │ 8/8      max=8           │      0 │ **恒定**
+Material.shortageRisk             │    6 │ 4/8      max=36.70842    │ 8/8      max=18.102938   │      8 │ 衰减(仍有非零)
+Model.costPressure                │    3 │ 2/6      max=0.207578    │ 3/6      max=2.021121    │      4 │ 衰减(仍有非零)
+Model.demandLoad                  │    4 │ 6/6      max=82.827074   │ 0/6      max=0           │      6 │ 衰减到全 0
+Model.supplyRisk                  │    2 │ 0/6      max=0           │ 6/6      max=15.74635    │      6 │ 衰减(仍有非零)
+Order.costPressure                │    1 │ 150/150  max=73.52831    │ 150/150  max=3.123032    │    150 │ 衰减(仍有非零)
+Order.demandPressure              │    1 │ 99/150   max=37.578      │ 0/150    max=0           │     99 │ 衰减到全 0
+Order.shortageRisk                │    1 │ 52/150   max=14.042155   │ 150/150  max=12.402917   │    150 │ 衰减(仍有非零)
+Process.queuePressure             │    3 │ 650/650  max=79.160055   │ 650/650  max=24.564662   │    650 │ 衰减(仍有非零)
+PurchaseOrder.expeditePressure    │    2 │ 20/30    max=91.56836    │ 30/30    max=19.080073   │     30 │ 衰减(仍有非零)
+PurchaseOrder.procurementDelay    │    0 │ 30/30    max=-7          │ 30/30    max=-7          │      0 │ **恒定**
+Supplier.deliveryDelay            │    0 │ 15/15    max=10          │ 15/15    max=10          │      0 │ **恒定**
+Supplier.procurementDelay         │    0 │ 13/15    max=-6          │ 13/15    max=-6          │      0 │ **恒定**
+WIPLot.feedPressure               │    1 │ 260/260  max=73.918341   │ 260/260  max=20.346007   │    260 │ 衰减(仍有非零)
+WorkOrder.releasePressure         │    2 │ 260/260  max=44.675955   │ 260/260  max=16.43474    │    260 │ 衰减(仍有非零)
+
+═══ 预言检验 ═══
+入度 0 的规格格：8/8 恒定  Equipment.equipmentFailure, Equipment.loadPressure, FinishedGoodsInventory.coverDays, MaterialBatch.procurementDelay, Material.priceShock, PurchaseOrder.procurementDelay, Supplier.deliveryDelay, Supplier.procurementDelay
+入度>0 的规格格：17/17 衰减  Base.loadIndex, Customer.receivablePressure, DefectRecord.defectPressure, Line.blockedPressure, Line.utilPressure, MaterialBalance.gapPressure, Material.shortageRisk, Model.costPressure, Model.demandLoad, Model.supplyRisk, Order.costPressure, Order.demandPressure, Order.shortageRisk, Process.queuePressure, PurchaseOrder.expeditePressure, WIPLot.feedPressure, WorkOrder.releasePressure
+
+✅ 分离成立：豁免按「入度」判，不是按「规格拥有」判 ⇒ 规格格被分成了两半，只有入度 0 的那半保住了基值。
