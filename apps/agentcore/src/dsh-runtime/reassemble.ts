@@ -636,11 +636,32 @@ export function reassembleDshRun(events: readonly DshSessionEvent[], opts: Reass
 
   let blocks: AnswerBlock[];
   const provenance: ProvenanceRef[] = [];
-  if (finalCall) {
-    const parsed = FinalAnswerInputSchema.safeParse(finalCall.input);
-    if (!parsed.success) {
-      return { ok: false, errors: [`final_answer 入参校验失败: ${parsed.error.issues.map((i) => i.message).join("; ")}`] };
-    }
+  // ══ WO-DSH-ARM-GAPS · 软收尾的**第二条入口**（原本只有「压根没调 final_answer」一条）═════════════
+  //
+  // 改前：`final_answer` 调了但入参不合 schema ⇒ **整份答案硬拒**（ok:false）⇒ engine 出口 FAILED，
+  //   屏上是 `dsh 重组装拒绝：final_answer 入参校验失败: Invalid input: expected string, received undefined`
+  //   —— 内核名 + 英文 zod 错误 + provenance=0（实测 task_01M3YBVK7A8KY4MW2AH5MWBNQH）。
+  // 改后：与「没调 final_answer」**共用同一条软收尾支**（正文兜底 `lastAssistantText`）。
+  //
+  // ══ 为什么这是缺陷、而不是「设计如此」——两条臂的对照 ═══════════════════════════════════════
+  // 原生臂（loop.ts:1188 起）对同一情形的处置是**把错误回注给模型再跑一轮**：
+  //   `final_answer 参数校验失败: …` 作为 tool_result（isError）回注 ⇒ 模型重试 ⇒ 用户**从头到尾看不到那句错误**。
+  // 而 dsh 臂是子进程**收束之后**的纯 fold，模型已退出 ⇒ **结构上无法回注**（本文件 reflect 一节已把这条
+  //   处境写死过一次，处置同为「走第二支：把残余缺口明写进答案，不静默发半成品」）。故此处照同一范式走第二支。
+  //
+  // ⚠️ 真正说不通的是**改前那对组合的反差**：模型**更差**的行为（压根不调 final_answer）拿到软收尾
+  //   （用户读到正文），模型**更好**的行为（调了 final_answer 但写错字段名）却拿到硬拒 + 英文错误上屏。
+  //   形态（铁律 0.6 句式）：
+  // > **「我用『它调用了 final_answer 却没收下』当作『该给用户的答案不存在』的证据，
+  // >   而前者并不度量后者 —— 正文就在帧流里，同一份帧流在另一条入口下是被读出来给用户看的。」**
+  //
+  // ══ 安全边界：这一步**没有**放宽任何治理面（逐条点名，缺一条都不成立）═══════════════════════
+  //   · 数字红线（下方 `scanBlocks(blocks)`）照跑 —— 软收尾的正文**同样**被扫，agent 自撰的裸数照样拒。
+  //   · `provenancePolicy=required` 照拒 —— 软收尾 provenance 恒空 ⇒ 该支必红（治理未松）。
+  //   · `writeMode`（要求 action_draft 块）照拒 —— 软收尾无该块 ⇒ 必红。
+  //   即：**被放宽的只有「格式手滑」。治理与红线一个字没动。**
+  const parsed = finalCall ? FinalAnswerInputSchema.safeParse(finalCall.input) : undefined;
+  if (parsed?.success) {
     for (const p of parsed.data.provenance) {
       provenance.push({
         id: newProvId(),
@@ -652,7 +673,8 @@ export function reassembleDshRun(events: readonly DshSessionEvent[], opts: Reass
     }
     blocks = parsed.data.blocks;
   } else {
-    // 软收尾（无 final_answer）：最后文本兜底，provenance 空 = 诚实 NO_ANSWER 不编造溯源。
+    // 软收尾（无 final_answer **或** final_answer 入参不合 schema）：最后文本兜底，
+    // provenance 空 = 诚实 NO_ANSWER 不编造溯源。
     blocks = [{ type: "text", markdown: lastAssistantText(events) || "（探索模式未能产出回答）" }];
   }
 

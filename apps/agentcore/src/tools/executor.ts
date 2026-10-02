@@ -7,7 +7,7 @@ import { byteLength, digest, redact } from "../util/redact.js";
 import { cosine, pseudoEmbed } from "../util/embedding.js";
 import { BudgetTracker } from "./budget.js";
 import { builtinTool } from "./registry.js";
-import { DataCoreUnavailableError, type DataCoreClient, type ToolAuthCtx } from "./clients.js";
+import { DataCoreHttpError, DataCoreRequestCancelledError, DataCoreUnavailableError, type DataCoreClient, type ToolAuthCtx } from "./clients.js";
 import { shapeSliceReceipt } from "./slice-receipt.js";
 import type { McpClientPort } from "../mcp/types.js";
 import type { SkillResourceReader } from "./skill-resources.js";
@@ -196,6 +196,11 @@ export class GuardedToolExecutor {
     }
 
     // 2) budget (path B only)；并行轮由循环侧预计数（budgetDecision 传入）
+    //
+    // WO-DSH-ARM-GAPS · 本次调用**自己**扣掉的 EXPENSIVE 名额是否可退 —— 只在本分支置位，
+    // 并行轮（budgetDecision 传入）的扣费发生在循环侧，不在本函数的退还面内（且 EXPENSIVE 工具带副作用，
+    // 永不进 allRead 并行轮，见 loop.ts 的 allRead 判据）。退费判据见下方 catch。
+    let chargedExpensive = false;
     if (options?.budgetDecision) {
       if (!options.budgetDecision.ok) {
         return this.finish(
@@ -213,6 +218,7 @@ export class GuardedToolExecutor {
       if (!ok.ok) {
         return this.finish(toolName, input, { error: "BUDGET_EXCEEDED", reason: ok.reason }, "BUDGET_EXCEEDED", started, false);
       }
+      chargedExpensive = cost === "EXPENSIVE";
     }
 
     // 3) client call — #6 任务内 READ 结果记忆化（仅 BUILTIN READ；COMPUTE/写/MCP 不缓存，
@@ -240,6 +246,10 @@ export class GuardedToolExecutor {
       if (cacheable) this.readCache.set(ckey, payload);
       return this.finish(toolName, input, payload, "OK", started, true);
     } catch (err) {
+      // WO-DSH-ARM-GAPS · 退费：这次 EXPENSIVE 调用若被**求解器服务当场拒绝**（4xx），
+      // 说明求解器一次都没执行 ⇒ 退还它刚吃掉的那个名额（判据与实测账见 budget.ts refundExpensive）。
+      // 只在本 catch（= dispatch 抛出，即工具真的没跑成）退；IAM 段的 catch 在扣费之前，不退也无从退。
+      if (chargedExpensive && rejectedBeforeExecution(err)) this.opts.budget?.refundExpensive();
       return this.finish(toolName, input, wrapError(err), "ERROR", started, false, classifyRetryable(err, binding));
     }
   }
@@ -656,6 +666,30 @@ export function classifyRetryable(err: unknown, binding: ToolBinding): boolean {
   if (err instanceof DataCoreUnavailableError) return true; // 传输层不可达·瞬时
   if (binding.kind === "MCP") return true; // MCP 传输/协议抖动·瞬时（EXTERNAL 传输层错）
   return false; // 确定性错（校验/逻辑/未知工具）·不重试·字节兼容缺省
+}
+
+/**
+ * WO-DSH-ARM-GAPS · **「这次求解器调用确实没跑」的判据 —— 退费的唯一入口**（不许在别处重复实现，
+ * 抄第二份即两个真相源，改一处另一处照旧）。
+ *
+ * 分界线是「**服务端回话了吗、回的什么**」，不是「跑没跑成功」：
+ *
+ * | 错误 | statusCode | 求解器执行了吗 | 退费 |
+ * |---|---|---|---|
+ * | `DataCoreHttpError` 4xx（入参不合 / 求解器不存在） | 400/404/422 | **没有** —— 请求被当场拒 | ✅ |
+ * | `DataCoreRequestCancelledError`（上游超时 / 客户端断开） | 499 | **可能跑了** | ⛔ 不退（可能真烧了算力） |
+ * | `DataCoreHttpError` 5xx | 500+ | **可能跑了**（跑到一半崩） | ⛔ 不退（保守） |
+ * | `DataCoreUnavailableError`（连不上） | — | 没有，但也没证据 | ⛔ 不退（保守） |
+ *
+ * ⚠️ **499 那一行是必须先判的**：`DataCoreRequestCancelledError extends DataCoreHttpError` 且
+ * statusCode=499 **< 500**，若只写 `statusCode < 500` 会把「上游超时、算力可能已经烧掉」的那一档
+ * 误判成「没跑」。形态：
+ * > **「我用『状态码小于 500』当作『这次调用没被执行』的证据，而前者并不度量后者
+ * > —— 499 是个小于 500 的『已执行但被中断』。」**
+ */
+export function rejectedBeforeExecution(err: unknown): boolean {
+  if (err instanceof DataCoreRequestCancelledError) return false;
+  return err instanceof DataCoreHttpError && err.statusCode < 500;
 }
 
 /** #6 稳定参数键：键名排序后序列化，使 {a,b} 与 {b,a} 命中同一缓存。 */
