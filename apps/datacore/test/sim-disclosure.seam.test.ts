@@ -58,7 +58,7 @@ const scope: ScopeReport = {
 const emptyWeights: PairWeightReport = { pairs: [], unresolved: [], explain: [] };
 const emptyStateVarReport: StateVarDisclosure = {
   declaredStateVars: [], undeclaredStateVars: [], decayUnresolved: [],
-  saturations: [], decayApplied: {}, decayPinned: [],
+  saturations: [], decayApplied: {}, heldPerturbations: [], heldUnresolved: [],
 };
 
 /** 装配一次披露层。只有被测的那几项由用例给，其余走空。 */

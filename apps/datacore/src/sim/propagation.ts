@@ -495,8 +495,8 @@ export interface StateVarDisclosure {
   /** 实际生效的衰减率（stateVar → λ，排序后的对象）—— 披露"这一拍到底按多少在散"。 */
   decayApplied: Record<string, number>;
   /**
-   * 本拍**被钉住**的格：用户声明的扰动落点，生效期内不走衰减（WO-PIN-LANDING）。
-   * 结构化数组，⛔ 不拼串（同 `reactionActors` 的来历）。
+   * 本拍**每拍重施**的扰动落点（WO-HOLD-PERTURBATION）：生效期内，引擎先把该变换从**累加器**里
+   * 撤掉（管线跑自然轨迹）、跑完衰减与入流后再按声明把它加回去。结构化数组，⛔ 不拼串。
    *
    * 为什么需要它（2026-10-02 实测）：扰动相是「一次性施加 + 到期反向施加」而**不是每拍重施**，
    * 于是 `durationTicks: null`（契约原文「`null` = 永久」）的落笔一旦落在**有入边的累加器**上，
@@ -504,9 +504,14 @@ export interface StateVarDisclosure {
    * （3 拍，8 拍后 0）；而同一批里落在入度 0 外生量纲上的
    * （`Material.priceShock` 42→62、`Equipment.equipmentFailure` 21→23）分毫不差。
    * **同一句声明、两种命运 ⇒ 声明与实现相反。** 本条就是把「用户声明过的」与「世界自己演化的」
-   * 分开：前者不让衰减吃，后者照旧。
+   * 分开：前者每拍按声明重施，后者照旧。
+   *
+   * ⚠ 它披露的是**引擎这一拍真的重施了哪些格**，不是"哪些扰动在生效期内"（后者是 `appliedPerturbations`）。
+   *   两者会分叉：重施用同一个 `revertValue`，撤回值算不出来时**整格放弃**并落到下一项。
    */
-  decayPinned: { objectId: string; stateVar: string; perturbationId: string }[];
+  heldPerturbations: { objectId: string; stateVar: string; perturbationId: string }[];
+  /** 生效期内、**没能重施**的落点 + 原因（排序）。空 = 本拍所有生效扰动都按声明保住了。 */
+  heldUnresolved: { objectId: string; stateVar: string; perturbationId: string; detail: string }[];
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -787,16 +792,14 @@ export function propagateTick(
   const producedTick = tick + 1;
   const perturbationTrace: PropagationTrace[] = [];
   const appliedPerturbations: string[] = [];
-  /** 生效期内的落点格（见 `StateVarDisclosure.decayPinned`）：本拍不衰减。空 ⇒ 衰减相零改动。 */
-  const pinnedCells: StateVarDisclosure["decayPinned"] = [];
   /**
-   * 落点格的键。**只有这一处实现** —— 落笔处与衰减相若各拼一份，改了一处漏另一处就是两套真相源，
-   * 而屏上表现是「有的格钉住了、有的没钉住」，看不出是拼键拼错。
-   * ⚠ 分隔符是 NUL（U+0000）且**必须写成转义**：字面 NUL 字节会让 git 把本文件判成 binary、
-   *   grep 只回「Binary file matches」⇒ **这个文件的每一次改动都没人能看见**（本文件 2026-10-01 实测踩过）。
+   * 生效期内**要每拍重施**的扰动，按落点格分组：`objectId` → `stateVar` → 该格上的扰动（**输入序**）。
+   * 空 Map ⇒ 本相位以下全部零改动（RL9：无扰动的世界逐字节同本条引入前）。
+   * ⚠ 用**嵌套 Map** 而不是 `<objId><分隔符><stateVar>` 拼一个键：拼串就得选分隔符，
+   *   而本文件的 `navKey` 已经因为分隔符是 NUL 出过一次事（字面 NUL 会让 git 判本文件为 binary）。
+   *   不用分隔符，就没有"分隔符写错了"这个错法。
    */
-  const pinKey = (objectId: string, stateVar: string): string => `${objectId}\u0000${stateVar}`;
-  const pinnedKeys = new Set<string>();
+  const holds = new Map<string, Map<string, PerturbationInTick[]>>();
   let effState = state; // 未被扰动改动时**保持同一引用**（无扰动 ⇒ 与本相位引入前逐字节相同·可回退）
   const writePerturbed = (p: PerturbationInTick, value: number, ruleKey: string, before: number): void => {
     const bucket = (effState[p.targetObjectId] ??= {});
@@ -835,19 +838,64 @@ export function propagateTick(
     }
     // ③ 溯源：本 tick 处于生效期的全部扰动（含早先落地、仍在持续的；**不含**本 tick 刚到期的）。
     for (const p of perturbations) if (isPerturbationActiveAt(p, producedTick)) appliedPerturbations.push(p.id);
-    // ④ 落点格钉住（WO-PIN-LANDING）：生效期内的扰动落点，衰减相跳过它们。
+    // ④ 生效期内的落点：登记为**本拍要重施**的格（WO-HOLD-PERTURBATION，实做在衰减相前后）。
     //    ⛔ 判据与 ③ **同一个** `isPerturbationActiveAt(p, producedTick)` —— 不许另立一套"落地了没有"。
     //    两处若各判各的，就会出现「溯源说这条扰动在生效、而它那一格照样被收掉」这种自相矛盾的读数。
-    //    到期那一拍它已是 false ⇒ 该拍起恢复衰减，正是契约「N 拍后自然消退」的语义。
-    //    分隔符是 NUL 且**必须写成转义**（本文件上方 `navKey` 那段的来历：字面 NUL 会让 git 判本文件为 binary）。
+    //    到期那一拍它已是 false ⇒ 该拍起不再重施，自然轨迹接管，正是契约「N 拍后自然消退」的语义。
     for (const p of perturbations) {
       if (!isPerturbationActiveAt(p, producedTick)) continue;
-      pinnedCells.push({ objectId: p.targetObjectId, stateVar: p.targetStateVar, perturbationId: p.id });
-      pinnedKeys.add(`${p.targetObjectId}\u0000${p.targetStateVar}`);
+      const byVar = holds.get(p.targetObjectId) ?? holds.set(p.targetObjectId, new Map()).get(p.targetObjectId)!;
+      (byVar.get(p.targetStateVar) ?? byVar.set(p.targetStateVar, []).get(p.targetStateVar)!).push(p);
     }
   }
 
   const next = cloneState(effState);
+
+  // ── 0''') 撤销重施（WO-HOLD-PERTURBATION）：把**累加器**退回自然轨迹 ────────────────
+  //
+  // ⚠ 改的是 `next`（下一拍的累加器）而**不是** `effState`（本拍的观测值）：传导读的是 `effState`
+  //   （见下方 `sourceVal`），下游必须看得见扰动后的值；而衰减与入流必须跑在**自然值**上。
+  //   两件事混在一处，就分别得到「幅度传不出去」与「幅度被衰减吃掉」这两种病。
+  //
+  // 为什么不是「留着不管」也不是「只跳过衰减」（两版都实测过）：
+  //   · 留着不管 ⇒ 衰减照样作用在「自然值 + 幅度」上 ⇒ 幅度逐拍被吃掉（+30 实测三拍只剩 0.00564）；
+  //   · 只跳过衰减（WO-PIN-LANDING 第一版）⇒ 落点纹丝不动、幅度也不参与动力学，
+  //     且"声明的那部分"与"世界自己演化出来的那部分"糊在一个数里，屏上分不开。
+  // 撤销**复用到期回退的同一个 `revertValue`**，所以「限时扰动到期怎么退」与
+  // 「永久扰动每拍怎么保持」不可能各说各话。
+  const heldPerturbations: StateVarDisclosure["heldPerturbations"] = [];
+  const heldUnresolved: StateVarDisclosure["heldUnresolved"] = [];
+  for (const [objId, byVar] of holds) {
+    for (const [stateVar, list] of byVar) {
+      const bucket = next[objId];
+      if (!bucket || typeof bucket[stateVar] !== "number") continue;
+      const snapshot = bucket[stateVar]!;
+      let ok = true;
+      // 逆输入序 = LIFO：`(v+2)×1.5` 要先除 1.5 再减 2（与到期回退同一条规矩）。
+      for (let i = list.length - 1; i >= 0; i--) {
+        const p = list[i]!;
+        const reverted = revertValue(p, bucket[stateVar]!);
+        if (reverted === null) { ok = false; break; }
+        bucket[stateVar] = round12(reverted);
+      }
+      if (!ok) {
+        // 算不出「若无此扰动本应有的值」⇒ **整格放弃重施**（不撤也不加），退回本条引入前的行为，
+        // 并把缺亮出来。撤一半再加回去，比压根不撤更坏：那会让"声明值"与"世界值"悄悄错位。
+        bucket[stateVar] = snapshot;
+        for (const p of list) {
+          heldUnresolved.push({
+            objectId: objId, stateVar, perturbationId: p.id,
+            detail:
+              `扰动 ${p.id}（${p.mode}）落在 ${objId}.${stateVar} 上且在生效期内，但引擎算不出` +
+              `「若无此扰动本应有的值」（set / scale(0) 且未记下落地前值）⇒ 本拍不重施，` +
+              `该格按普通累加器演化，幅度仍会被衰减逐拍收掉。`,
+          });
+        }
+        continue;
+      }
+      for (const p of list) heldPerturbations.push({ objectId: objId, stateVar, perturbationId: p.id });
+    }
+  }
 
   // ── 0'') 衰减相（WO-PROP-CLAMP）：**在贡献落下之前**把上一拍的存量收掉一部分 ────────
   //
@@ -897,9 +945,6 @@ export function propagateTick(
       for (const stateVar of Object.keys(bucket)) {
         const lambda = decayApplied[stateVar];
         if (lambda === undefined) continue;
-        // 用户声明的落点：**生效期内不走衰减**（WO-PIN-LANDING）。
-        // 空集时这一句是常量假 ⇒ 无扰动的世界与本条引入前逐字节相同（RL9 可回退）。
-        if (pinnedKeys.size > 0 && pinnedKeys.has(pinKey(objId, stateVar))) continue;
         const rest = domains[stateVar]!.restPoint;
         const cur = bucket[stateVar];
         if (typeof cur !== "number") continue;
@@ -1139,6 +1184,30 @@ export function propagateTick(
   //  ② **例外：存量真的在硬边界之外**（种子里就有超界真值 —— `Line.blockedPressure` 实测 27.72–182.73）
   //     ⇒ 必须收回域内，否则"声明了 [0,100]"就成了一句假话。
   //     这一条**不会**退化成 ①' 的无限循环：压缩输出恒在开区间内 ⇒ 下一拍 ② 不再成立 ⇒ **最多夹一次**。
+  // ── 3') 重施加（WO-HOLD-PERTURBATION）：把生效期内的变换按**输入序**加回累加器 ────────
+  //
+  // 位置是判据不是风格，两条都别挪：
+  //  · 必须排在**衰减与全部入流之后** —— 否则这一拍的入流会被重施的因子（scale）放大，
+  //    而那正是"复利"这个病的另一个入口；
+  //  · 必须排在**量纲边界之前** —— 域不变式仍由 `saturateToDomain` 这一处守，重施不许绕过它。
+  //    代价是落点格若因此越界，退回的是**压缩后的披露值**（`saturations[]` 会记这一笔）——
+  //    下一拍的撤销就从这个披露值上撤。这个偏差不累积成暗流：它每一拍都被 `saturations[]` 点名。
+  //
+  // 正向走契约唯一实现 `applyPerturbationToState`（与落地、`/act`、`POST /perturbations` 同一支），
+  // ⛔ 不在这里重算 delta/scale/set —— 那会造出第二套真相源。
+  // ⚠ 只喂**单格 mini state**：该函数内部整树 JSON 深拷贝，喂整个 `next` 是每扰动一次全量克隆。
+  for (const [objId, byVar] of holds) {
+    for (const [stateVar, list] of byVar) {
+      if (heldUnresolved.some((u) => u.objectId === objId && u.stateVar === stateVar)) continue;
+      const bucket = next[objId];
+      if (!bucket || typeof bucket[stateVar] !== "number") continue;
+      for (const p of list) {
+        const applied = applyPerturbationToState({ [objId]: { [stateVar]: bucket[stateVar]! } }, p);
+        bucket[stateVar] = round12(applied[objId]![stateVar]!);
+      }
+    }
+  }
+
   const saturations: SaturationEvent[] = [];
   const declaredSeen = new Set<string>();
   const undeclaredSeen = new Set<string>();
@@ -1205,8 +1274,14 @@ export function propagateTick(
       decayApplied: Object.fromEntries(
         Object.keys(decayApplied).sort((a, b) => a.localeCompare(b)).map((k) => [k, decayApplied[k]!]),
       ),
-      // 钉住的落点按 (objectId, stateVar, perturbationId) 稳定排序（R6：同输入同字节）。
-      decayPinned: pinnedCells.sort(
+      // 重施/未重施两份清单都按 (objectId, stateVar, perturbationId) 稳定排序（R6：同输入同字节）。
+      heldPerturbations: heldPerturbations.sort(
+        (a, b) =>
+          a.objectId.localeCompare(b.objectId) ||
+          a.stateVar.localeCompare(b.stateVar) ||
+          a.perturbationId.localeCompare(b.perturbationId),
+      ),
+      heldUnresolved: heldUnresolved.sort(
         (a, b) =>
           a.objectId.localeCompare(b.objectId) ||
           a.stateVar.localeCompare(b.stateVar) ||
