@@ -231,6 +231,15 @@ export interface AgentLoopOpts {
    *   而前者并不度量后者 —— 材料里混着我自己注入的语料。」
    * ⚠ **修的是判据的输入，不是判据本身**。调正则属打地鼠：下一个同义词立刻重演。
    *
+   * ── ⚠ 它管的是**两个**消费方，不是一个（2026-10-02 补齐残口）──────────────────────
+   * 本仓 `userContent` 有三个消费方，只有一个是"就该吃拼接材料"的：
+   *   ① `reflectAnswer` 的 ④ —— 判「用户在问排产/优化题吗」 ⇒ **读原话**（本选项）
+   *   ② `opts.critic`（LLM critic） —— 判「答没答那个问题 / 该不该调求解器却空口给数」 ⇒ **读原话**（本选项）
+   *   ③ `messages[0]`（喂给模型的 user 轮） —— **就该是**拼接材料，⛔ 不归本选项管
+   * 首轮只修了 ①，② 漏在同一个函数里、相隔三行 —— 症状一模一样（无关问句上误报），
+   * 只是措辞从「求解纪律…」换成了 critic 复核结论。**同一根因的第二个消费方不算衍生问题，
+   * 它就是根因本身没修完。**
+   *
    * 缺省（不传）= 退回 `opts.userContent`（= 修复前的行为·字节兼容）——
    * 不把「没人传」静默变成「④ 永不生效」，那样会把目标判据悄悄关掉。
    */
@@ -240,6 +249,10 @@ export interface AgentLoopOpts {
   /**
    * 可选 LLM critic（entitlement `agent.critic`·暗发）：确定性复盘之后的 advisory 复核——返回 {ok,reason}。
    * **fail-open**：未注入 / 抛错 → 只用确定性复盘结论（绝不阻断循环·R6 主判仍确定）。
+   *
+   * ⚠ `input.userContent` 的词法：语义是「**用户在问什么**」，传的是
+   * `reflectUserContent ?? userContent`（见上），**与 ④ 同源** ——
+   * 注入方（orchestrator）的提示词里写着「该调求解器却空口给数」，吃拼接材料会误判。
    */
   critic?: (input: { blocks: AnswerBlock[]; userContent: string }) => Promise<{ ok: boolean; reason?: string }>;
   /**
@@ -447,7 +460,15 @@ async function reflectWithCritic(
   });
   if (!opts.critic) return base;
   try {
-    const c = await opts.critic({ blocks: answer.blocks, userContent: opts.userContent });
+    // ★ WO-REFLECT-INPUT-FIX（残口补齐）：critic 与 ④ 是**同一族判据**——它被问的是
+    // 「这个回答答没答『那个问题』/ 该不该调求解器却空口给数」，语义同样是「**用户在问什么**」。
+    // 故它必须与 ④ 读同一份输入：`reflectUserContent`（原话），⛔ 不是 `opts.userContent`（拼接材料）。
+    // 漏了这一处的后果与 ④ 完全一样：orchestrator 的 critic 指令原文就含「该调求解器却空口给数」，
+    // 而拼接材料自带 solver/规则文案 ⇒ 无关问句上照样误判，屏上照样多一句假话（只是换了措辞）。
+    const c = await opts.critic({
+      blocks: answer.blocks,
+      userContent: opts.reflectUserContent ?? opts.userContent,
+    });
     if (!c.ok)
       return {
         ok: false,
