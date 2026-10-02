@@ -14,7 +14,8 @@
 import { describe, expect, it } from "vitest";
 import { propagateTick, saturateToDomain } from "../src/sim/propagation.js";
 import { stateVarDomains, STATE_DECAY_RULE_KEY, STATE_DECAY_PARAM_KEY, PRESSURE_DECAY_PER_TICK } from "../src/synthetic/battery.js";
-import type { PropagationRule, TickState } from "@platform/contracts";
+import type { Perturbation, PropagationRule, TickState } from "@platform/contracts";
+import type { PerturbationInTick } from "../src/sim/propagation.js";
 
 /** 一条最小的链：A.p --l--> B.p（系数 1，无延迟）。用它复现"纯积分器"这个形态。 */
 const rule = (over: Partial<PropagationRule> = {}): PropagationRule => ({
@@ -273,6 +274,90 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
       expect(Math.abs(deltas.at(-1)!)).toBeLessThan(Math.abs(deltas[0]!));
       // 🐤 同一装置去掉域声明就发散（证明这条"没发散"有鉴别力）
       expect(run(6, {}, NO_DECAY).series[5]!).toBeGreaterThan(250);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // §8 WO-PIN-LANDING · 用户声明的落点，生效期内不吃衰减
+  //
+  // 病灶（2026-10-02 真服务实测）：扰动相是「一次性施加 + 到期反向施加」而**不是每拍重施**，
+  // 于是契约里白纸黑字写着「`null` = 永久」的落笔，一旦落在**有入边的累加器**上，
+  // 就被衰减相逐拍收掉 —— 真 datacore 上 `Order.demandPressure` 声明 +30：
+  // 90 → 45.6 → 17.628 → 0.00564（3 拍，8 拍后 0）；而同一批里落在入度 0 量纲上的两条
+  // （`Material.priceShock` 42→62、`Equipment.equipmentFailure` 21→23）三拍分毫不差。
+  // **同一句声明、两种命运 ⇒ 声明与实现相反。**
+  //
+  // ⚠ 本段与 §7 那条豁免**不是一回事，别合并**：§7 治的是"饱和相无差别重压上一拍的输出"，
+  //   本段治的是"衰减相把用户声明的东西当自己的存量收走"。前者在饱和相，后者在衰减相，
+  //   同一个病（把两件事合成一件）在本文件已经犯过一次。
+  // ══════════════════════════════════════════════════════════════════════════
+  describe("§8 WO-PIN-LANDING · 用户声明的落点，生效期内不吃衰减", () => {
+    const d = stateVarDomains();
+    /** 源恒 0 ⇒ 规则每拍贡献 0 ⇒ 目标格上**只剩衰减一个力**（判据一：不然测不出因果）。 */
+    const prePert: TickState = { a1: { demandPressure: 0 }, b1: { demandLoad: 60 } };
+    /**
+     * 落笔值 **90 过了量纲饱和之后**的数：90 > kneeHi(=75) ⇒ 100 − 25/(1+15/25) = 84.375。
+     * ⚠ 这不是衰减吃的（衰减那一路 §8.0 已单独测过），是「本拍产生新读数 ⇒ 走一道域压缩」
+     *   这个已声明的语义。**期望值引用同一份实现**，⛔ 不写死 84.375 —— 写死就等于
+     *   把饱和公式抄成第二套真相源，改了主实现这里照样绿。
+     */
+    const LANDED = saturateToDomain(90, d.demandLoad!.min, d.demandLoad!.max, d.demandLoad!.restPoint);
+    const pert = (over: Partial<Perturbation> = {}): PerturbationInTick => ({
+      id: "p1", tenantId: "t", sessionId: "s",
+      kind: "demand_shift",
+      targetObjectId: "b1", targetStateVar: "demandLoad",
+      startTick: 1, durationTicks: null, magnitude: 30, mode: "delta",
+      label: "测试用：目标格 +30", createdAt: "2026-01-01T00:00:00.000Z",
+      ...over,
+    });
+
+    /** 连推 n 拍，回 b1.demandLoad 轨迹 + 每拍被钉住的格数（披露字段，不是内部变量）。 */
+    function drive(n: number, ps: PerturbationInTick[]): { series: number[]; pinned: number[] } {
+      let st = prePert;
+      let pend: Parameters<typeof propagateTick>[3] = [];
+      const series: number[] = []; const pinned: number[] = [];
+      for (let t = 0; t < n; t++) {
+        const r = propagateTick(graph, st, [rule()], pend, t, RULE_PARAMS, {}, ps, {}, d);
+        st = r.next; pend = r.pending;
+        series.push(st.b1!.demandLoad!);
+        pinned.push(r.stateVarReport.decayPinned.length);
+      }
+      return { series, pinned };
+    }
+
+    it("§8.0 🐤 前置金丝雀 · demandLoad 确实是「会被衰减」的那一类（否则本段什么都没测）", () => {
+      // ① 它是某条规则的 target ⇒ 进 writtenVars（衰减相只碰这一类）；② 它有域声明且 λ 解析得出。
+      expect(rule().targetStateVar).toBe("demandLoad");
+      expect(d.demandLoad).toBeDefined();
+      // 无扰动 ⇒ 一格不钉，且它自己就在散：60 → 37.8 → 23.814 → 15.00282
+      const { series, pinned } = drive(3, []);
+      expect(pinned).toEqual([0, 0, 0]);
+      expect(series).toEqual([37.8, 23.814, 15.00282]);
+    });
+
+    it("§8.1 判据一 · durationTicks=null（契约「永久」）的落笔，生效期内必须原样留在格子上", () => {
+      const { series, pinned } = drive(3, [pert()]);
+      expect(pinned).toEqual([1, 1, 1]);                        // 生效期覆盖三拍 ⇒ 三拍都钉
+      expect(series).toEqual([LANDED, LANDED, LANDED]);         // 落笔**原地不动**（后两拍 raw===before ⇒ 连饱和都不进）
+      // 与 §8.0 的无扰动臂比：3 拍后不是"缩了水"，是**一条还在、一条没了**（15.00282 → 0 才是它的终局）
+      expect(series[2]! - 15.00282).toBeGreaterThan(60);
+    });
+
+    it("§8.2 反向金丝雀 · 给了 durationTicks 就必须在到期那一拍恢复衰减（钉住不是永久豁免）", () => {
+      const { series, pinned } = drive(4, [pert({ durationTicks: 2 })]);
+      // 生效期 = producedTick 1、2 ⇒ 钉住；producedTick=3 到期：先回退到 60，**同一拍起照常衰减**
+      expect(pinned).toEqual([1, 1, 0, 0]);
+      expect(series[0]).toBe(LANDED);
+      expect(series[1]).toBe(LANDED);
+      // 到期那一拍：先按 delta 解析回退（−30）⇒ 54.375，**同一拍**起照常衰减 ⇒ ×(1−λ)
+      expect(series[2]).toBeCloseTo((1 - PRESSURE_DECAY_PER_TICK) * (LANDED - 30), 9);
+      expect(series[3]).toBeLessThan(series[2]!);
+    });
+
+    it("§8.3 RL9 可回退 · 无扰动时 decayPinned 为空，且读数与本节引入前逐字节同", () => {
+      const r = propagateTick(graph, prePert, [rule()], [], 0, RULE_PARAMS, {}, [], {}, d);
+      expect(r.stateVarReport.decayPinned).toEqual([]);
+      expect(r.next.b1!.demandLoad).toBe(37.8);
     });
   });
 });
