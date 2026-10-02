@@ -66,16 +66,14 @@ import { reconstructAndPersist } from "./process/reconstruct.js"; // WO-FLOWTIME
 // DF.13 外协红线单一来源（C08）：live-scenarios 触红线判定读契约，禁内联裸阈值。
 import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
-// C2 合成层：外生格判据**复用契约的唯一实现**（`buildCellRoles` 正是 `sim/propagation.ts:848` 用的那一个）
-// ⛔ 不在引擎之外重写一份 `isExogenous` —— 写两份 = 两套真相源。
-import { buildCellRoles } from "@platform/contracts";
+import { makeRestoreSpecBase } from "./sim/spec-base-synthesis.js";
 import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow（PRD v2）· 本体建模工作流 upsert·嫁接自 main
 import { ForecastAdoptionPayloadSchema } from "@platform/contracts"; // WO-SIM-ACTION-REAL · 采纳产能预测结论 payload 契约
 import { SchemeAdoptionPayloadSchema } from "@platform/contracts"; // WO-ADOPT-SCHEME-CARRIER · 采纳经营方案 payload 契约（量纲逐字段标注）
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
 import { ADVERSARY_FEATURE_KEY, adversaryMoveNameOf, applyPerturbationToState, diffTickStates, isPerturbationActiveAt, partitionAdversaryRules, partitionPropagationRules, PerturbationSchema, PropagationRulePatchSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, SolutionCandidateSchema, unknownPropagationRuleKeys, type CellProvenance, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimCounterfactualResult, type SimSession, type SimSessionStatus, type StateVarDomainLookup, type TickState } from "@platform/contracts";
 import { diffEnterpriseStates, ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 企业状态快照（差分口径与 StateDelta 同一份纯函数）
-import { PERTURBATION_TRACE_PREFIX, firedPropagationRuleKeys, propagateTick, reachHopsToOrder, round12, type CadenceGateLookup, type PairWeightLookup, type PerturbationInTick, type PropagationGraph, type ReachToOrders, type RuleParamLookup, type ScopeReport, type StateVarDisclosure, type UnresolvedCadenceGate, type UnresolvedPairWeight } from "./sim/propagation.js";
+import { PERTURBATION_TRACE_PREFIX, firedPropagationRuleKeys, propagateTick, reachHopsToOrder, type CadenceGateLookup, type PairWeightLookup, type PerturbationInTick, type PropagationGraph, type ReachToOrders, type RuleParamLookup, type ScopeReport, type StateVarDisclosure, type UnresolvedCadenceGate, type UnresolvedPairWeight } from "./sim/propagation.js";
 import type { PairWeightReport } from "./sim/pair-weights.js";
 // 影子线的按拍备忘录（WO-SIM-PERF-SHADOW）：把「每请求重放 curTick 拍」换成「同一拍只算一次」。
 import { ShadowMemo, shadowFingerprint } from "./sim/shadow-memo.js";
@@ -2360,6 +2358,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       engine: {
         graph: engine.graph, ruleParams: engine.ruleParams, cadenceGates: engine.cadenceGates,
         pairWeights: engine.pairWeights, stateVarDomains: engine.stateVarDomains,
+        // C2 合成基值：⛔ 用 `s.baseSnapshot`（不含扰动），**不是**上面那个 `seed` —— 见模型层字段注释。
+        specBase: simState(s.baseSnapshot),
       },
       publishedRules: published,
       activeRules: active,
@@ -2572,56 +2572,17 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
      *   指纹里含 `rules` 正是为了这个 —— 少了它，两条规则集互相读到对方的影子线。
      */
     /**
-     * ── C2 合成层 · `state = 派生基值 + 累积传导量`（WO-CONSOLE-DUE-CHANGE 干预实验）─────────────
-     *
-     * 🔴 病灶（实测定稿，见 `docs/evidence/WO-DUE-CHANGE-rootcause.md`）：
-     *   传导核**只看得见传导图**，判「这格该不该衰减」用的是 `isExogenous`（= 入度是否为 0）。
-     *   而有一类格的**真值不在图上** —— 它由本体派生规格算得、**播种期已物化在对象同名属性上**
-     *   （`sim/seed-world.ts` 那条 `o.props[v]` 取法）。这类格里**入度>0** 的那 17 格
-     *   既不被豁免、又无人补基值 ⇒ 退化成**纯传导积分器**：
-     *   读数 = 净入流的产物，与规格值无关（净负→贴地板、净正→涨飞）。
-     *   实测锚点：`SO-3391` 规格值恒 60（`demandDelta×100`，props 10 拍 0 变化），屏上第 10 拍读 **0**。
-     *
-     * ⛔ 三条不许（都由根因链推出，别再试）：
-     *   · 不许在 tick 里调 `runDerivations` —— 它是**变更驱动**的，空 `changes` ⇒ 逐节点 `continue`
-     *     ⇒ **空转**（`assembleCertification` 就是活证据：调了，`updatedObjects` 恒 0）。
-     *   · 不许让传导核认识规格格 —— 违反契约 `sim.ts:13`「传导态 §1.2 **纯数值，无业务语义**」。
-     *   · 不许在衰减相里 `continue` 掉规格格 —— 那会把它**冻死**在 tick0（就是那 8 个入度 0 的格
-     *     现在的样子：恒定、且扰动再也进不去）。
-     *
-     * ✅ 修法 = 在传导层**之外**合成。代数上等价于「衰减只作用于累积量」：
-     *     核 给   x' = rest + (1−λ)(x − rest) + c = (1−λ)x + λ·rest + c
-     *     想要    x' = base + (1−λ)(x − base) + c = (1−λ)x + λ·base + c
-     *     **差 = λ·(base − rest)** —— 一次加法，不碰核。
-     *
-     * 基值取 `s.baseSnapshot`（= tick0 世界态，建会话时写一次、此后不动）：
-     *   · 它**就是**播种期铺下的那一份，与 `seed-world.ts` 天然一致，不需要求值器、不需要 props 查询；
-     *   · 且它**不含扰动**（`app.ts` 里扰动施加在当前态上）—— 用当前 tick0 行会把扰动当成基值重复补。
-     *   ⚠ 缺键 = 该格不是规格格（哈希占位档）⇒ 跳过，正是播种路 `typeof real === "number"` 那条判据。
+     * C2 合成层：`state = 派生基值 + 累积传导量`。**实现与判据见 `sim/spec-base-synthesis.ts` 头注**
+     * （那里逐条记了本层的病灶、三条不许，以及第一版踩过的两个坑）。
+     * ⚠ **回放环 `metric-series.ts` 必须调同一个工厂** —— 它是本函数的**手工镜像副本**
+     *   （该文件自述「逐行对齐」），只改这里不改那里 = 曲线与落盘世界分叉。
      */
-    const objType = new Map(graph.objects.map((o) => [o.id, o.typeKey]));
-    const cellRoles = buildCellRoles(propRules);
-    const restoreSpecBase = (st: TickState, decayed: Record<string, number>): void => {
-      for (const objId of Object.keys(st)) {
-        const baseRow = s.baseSnapshot[objId];
-        if (baseRow === undefined) continue;
-        const tk = objType.get(objId);
-        if (tk === undefined) continue; // 不在传导图里的对象：判不了外生，按核的行为不动它
-        const bucket = st[objId]!;
-        for (const sv of Object.keys(bucket)) {
-          const lambda = decayed[sv];
-          if (lambda === undefined) continue; // 本拍此量纲没衰减 ⇒ 没有基值可丢
-          // 核本就没动这一格（外生豁免）⇒ 它已经冻在基值上，再补就把它顶到基值之上。
-          if (cellRoles.isExogenous(tk, sv)) continue;
-          const base = baseRow[sv];
-          if (typeof base !== "number") continue;
-          const cur = bucket[sv];
-          if (typeof cur !== "number") continue;
-          const rest = stateVarDomains[sv]?.restPoint ?? 0;
-          bucket[sv] = round12(cur + lambda * (base - rest));
-        }
-      }
-    };
+    const restoreSpecBase = makeRestoreSpecBase({
+      baseSnapshot: s.baseSnapshot,
+      graph,
+      rules: propRules,
+      stateVarDomains,
+    });
     let shadowKey: string | null = null;
     if (wantDrift) {
       const stopShadow = timer.start("shadow");
