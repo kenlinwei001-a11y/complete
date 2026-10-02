@@ -107,9 +107,10 @@ const SOLVER_ASK = "帮我看看物料齐套现在到底怎么样";
 /** 干净收尾：非占位（不撞 ①）、带范围内 ⟦ref:0⟧（不撞 ②）、无裸数（不撞红线）。 */
 const CLEAN_FINAL = "物料库存目前处于正常水位 ⟦ref:0⟧。";
 
-// 上屏标题 / 开发术语禁表 —— 与另两个 reflect 测试**共用单一来源**（各抄一份即装饰品）。
-// 判据、反向哨兵、为何单独成文件，全写在 `reflect-jargon.ts` 头注。
-import { DEV_JARGON, GAP_HEADER, MODEL_GAP_HEADER } from "./reflect-jargon.js";
+// ⚠ 上屏标题 / 开发术语禁表 import 在本文件**顶部**（与其它 import 同处）——
+//   此处原有一份重复声明，vitest 绿着放过去了，是 typecheck 抓出来的（TS2300）。
+//   形态：「我用『vitest 全绿』当作『这份代码能编译』的证据，而前者并不度量后者 ——
+//   它只转译不做类型检查。」⇒ 复验必须含 typecheck，不能只跑测试。
 
 function cleanFinalTurn(req: { messages: { content: unknown }[] }) {
   return {
