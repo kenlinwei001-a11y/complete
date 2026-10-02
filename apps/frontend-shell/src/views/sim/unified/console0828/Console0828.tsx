@@ -370,7 +370,7 @@ function horizonGapDetail(outcome: PricingOutcomeItem & { kind: "gap" }): string
   const tickCount = outcome.disclosure.tickCount;
   return hops === null
     ? `：本次只推了 ${tickCount} 拍，候选的影响还没传导到订单格 ⇒ 读数恒零。`
-    : `：这条对策的影响要 ${hops} 拍才传导到订单格，本次只推了 ${tickCount} 拍（差 ${hops - tickCount} 拍）⇒ 订单读数额外是零，**不是**「这条对策没用」。把「推演时长」调到 ≥ ${hops} 再定价。`;
+    : `：这条对策的影响要 ${hops} 拍才传导到订单格，本次只推了 ${tickCount} 拍（差 ${hops - tickCount} 拍）⇒ 订单读数额外是零，不是「这条对策没用」。把「推演时长」调到 ≥ ${hops} 再定价。`;
 }
 
 /** 候选卡第一层那行：拨后仍受影响 N 张 / X + 位移 p90（或诚实 gap）。 */
