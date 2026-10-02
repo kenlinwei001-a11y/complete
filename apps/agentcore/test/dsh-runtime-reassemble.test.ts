@@ -148,9 +148,62 @@ describe("reassemble · 治理拒证（loop.ts acceptFinalAnswer 同口径）", 
     expect(okRun.ok).toBe(true);
   });
 
-  it("final_answer 入参畸形 → ok:false（单校验点严校验）", () => {
-    const events = [toolCall("c7", "final_answer", { blocks: [{ type: "nonsense" }] }), turnEnd("completed")];
-    expect(reassembleDshRun(events).ok).toBe(false);
+  /**
+   * ★ WO-DSH-ARM-GAPS：本条**改写了断言**，原断言钉的正是被修的那个缺陷。
+   *
+   * 原文（逐字节）：
+   * ```ts
+   *   it("final_answer 入参畸形 → ok:false（单校验点严校验）", () => {
+   *     const events = [toolCall("c7", "final_answer", { blocks: [{ type: "nonsense" }] }), turnEnd("completed")];
+   *     expect(reassembleDshRun(events).ok).toBe(false);
+   *   });
+   * ```
+   * 它把「模型**调了** final_answer 但入参不合 schema」钉成了硬拒 —— 而下游 engine 对这个 ok:false 的
+   * 处置是把 `dsh 重组装拒绝：final_answer 入参校验失败: Invalid input: …`（**内核名 + 英文 zod 错误**）
+   * 直接印上用户屏、provenance=0（实测 task_01M3YBVK7A8KY4MW2AH5MWBNQH）。
+   *
+   * ⚠️ **它绿着，所以从来没有人发现**：断言字面上是对的（那一刻确实返回 ok:false），错的是**该不该**返回。
+   * 这正是本仓记过的那个形态 ——
+   * > **「我用『测试断言通过了』当作『这个行为是对的』的证据，而前者并不度量后者
+   * >    —— 一条钉住缺陷的断言，绿得越稳，缺陷藏得越深。」**
+   *
+   * 新契约（与「压根没调 final_answer」**共用同一条软收尾支**）：正文兜底 `lastAssistantText`，
+   * 用户读到 agent 真的写了的东西，而不是一句英文报错。
+   * ⛔ 但**治理面一步没让**（下方两条金丝雀就是钉这个的）。
+   */
+  it("final_answer 入参畸形 → **软收尾**（ok:true·正文兜底），不再是硬拒", () => {
+    const events = [
+      assistantMessage("模型真正的结论写在这里"),
+      toolCall("c7", "final_answer", { blocks: [{ type: "nonsense" }] }),
+      turnEnd("completed"),
+    ];
+    const r = reassembleDshRun(events);
+    expect(r.ok, "入参畸形是**格式手滑**，不是治理违规 —— 整份答案不该被丢掉").toBe(true);
+    if (!r.ok) return;
+    expect(r.answer.blocks).toEqual([{ type: "text", markdown: "模型真正的结论写在这里" }]);
+    expect(r.answer.provenance, "软收尾不编造溯源").toEqual([]);
+  });
+
+  it("★ 反向金丝雀·甲：软收尾**不许**绕过 provenancePolicy=required", () => {
+    const events = [
+      assistantMessage("正文"),
+      toolCall("c8", "final_answer", { blocks: [{ type: "nonsense" }] }),
+      turnEnd("completed"),
+    ];
+    const r = reassembleDshRun(events, { governance: { writeMode: false, provenancePolicy: "required" } });
+    expect(r.ok, "治理要求 provenance，而软收尾恒空 —— 这一档必须照拒（软收尾不是万能放行）").toBe(false);
+  });
+
+  it("★ 反向金丝雀·乙：软收尾**不许**绕过数字红线（正文里的裸数照样拦）", () => {
+    const events = [
+      assistantMessage("本次排产可提升产出 12345 件"),
+      toolCall("c9", "final_answer", { blocks: [{ type: "nonsense" }] }),
+      turnEnd("completed"),
+    ];
+    const r = reassembleDshRun(events);
+    expect(r.ok, "软收尾的正文**同样**要过红线 —— 否则模型只要故意把 final_answer 写坏就能绕过红线").toBe(false);
+    if (r.ok) return;
+    expect(r.code).toBe(NUMERIC_REDLINE_CODE);
   });
 });
 
