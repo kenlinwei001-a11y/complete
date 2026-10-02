@@ -32,6 +32,9 @@
 import { AnswerBlockSchema, type AgentIteration, type Answer, type AnswerBlock, type ProvenanceRef } from "@platform/contracts";
 import { z } from "zod";
 import { scanBlocks, NUMERIC_REDLINE_CODE, NUMERIC_REDLINE_MESSAGE } from "../util/numerics.js";
+// WO-DSH-REFLECT-PARITY：复盘判据**单源复用** `agent/reflect.ts`（原生路同一份四查），
+// 本文件不另写第二套 —— 两份实现必漂，正是本仓「不许另抄一份」铁律防的那个形态。
+import { reflectAnswer } from "../agent/reflect.js";
 import { checkJsonSchema } from "../util/jsonschema.js";
 import { newId } from "../ids.js";
 
@@ -58,6 +61,17 @@ export interface ReassembleOptions {
   expectsSchema?: Record<string, unknown>;
   /** provenance id 生成（测试注入确定性 id；生产缺省 prov_ 前缀自增由调用方包一层）。 */
   newProvId?: () => string;
+  /**
+   * WO-DSH-REFLECT-PARITY：收尾前**确定性复盘**（`agent/reflect.ts` 单源四查 ——
+   * ①答了吗 ②裸数∧⟦ref:N⟧越界 ③工具静默失败 ④**Solver-first（禁自算·须走 invoke_solver）**）。
+   *
+   * **与 `runAgentLoop` 的 `opts.reflect` 同判据 ∧ 同门控**（`reflectEnabled(enabledFeatures)`，
+   * 由调用方求值后传入）：两条路同口径是 ROLLOUT「外部可观察面逐字节一致」的前提，
+   * 也是「开流前后不改变用户体验」的前提 —— 若本路单方面收紧，开流就成了一次产品行为变更。
+   *
+   * 给了才复盘（= 原生路 `opts.reflect` 的 dsh 对位位）；`userContent` 供 ④ 判排产/优化类问句。
+   */
+  reflect?: { userContent: string };
   /**
    * WO-DSH-PROD-READY W9-full：宿主 tool-execute 反向通道侧表（W8主 端点逐调用累积；
    * 键 = 帧 callId 原值——桥上传 exec.callId 直通，team-lead 2026-08-22 裁决，关联白得）。
@@ -86,6 +100,13 @@ export type ReassembledRun =
        * 恒在（可空数组——零配对调用 ⇒ [] 诚实缺省，不造迭代）；ok:false 路径不造（stats 同口径）。
        */
       iterations: AgentIteration[];
+      /**
+       * WO-DSH-REFLECT-PARITY：本次收尾是否被复盘拦下（原生路 `reflected` 同口径）。
+       * 缺省不出键（未复盘 / 复盘过关）—— additive optional，旧消费方字节兼容。
+       */
+      reflected?: boolean;
+      /** 复盘不过关的原因（原生路 `replanReason` 同口径的清单形态）。 */
+      replanReasons?: string[];
     }
   /**
    * 拒绝臂。`code` 为 **additive optional 判别位**（既有三处 governance/schema 拒绝不带此键，
@@ -664,6 +685,40 @@ export function reassembleDshRun(events: readonly DshSessionEvent[], opts: Reass
     return { ok: false, errors: [NUMERIC_REDLINE_MESSAGE], code: NUMERIC_REDLINE_CODE };
   }
 
+  // WO-DSH-REFLECT-PARITY · 收尾前确定性复盘（`agent/reflect.ts` 单源四查；与原生路 `opts.reflect` 同判据同门控）。
+  //
+  // **处置只对位原生路的第二支**（「重规划预算尽 ⇒ 诚实收尾」）：本路是子进程**收束之后**的纯 fold，
+  // 模型已退出 ⇒ 结构上无法把 reasons 回注进子进程再跑一轮（原生路第一支「回注 + 有界重规划」在此不存在）。
+  // 故走第二支：**把残余缺口明写进答案**，不静默发半成品（KILL-MOCK-RED 同口径）。
+  // ⛔ 不许把这条读成「已对齐原生路完整语义」——差的就是那一轮重规划，登记在案。
+  //
+  // 位置：在红线检查**之后** —— 平台自己拼的缺口文案不是 agent 写的字，不进红线面（原生路同序）。
+  let reflected = false;
+  let replanReasons: string[] | undefined;
+  if (opts.reflect) {
+    const verdict = reflectAnswer({
+      blocks,
+      provenanceCount: provenance.length,
+      iterations,
+      userContent: opts.reflect.userContent,
+    });
+    if (!verdict.ok) {
+      reflected = true;
+      replanReasons = verdict.reasons;
+      blocks = [
+        ...blocks,
+        {
+          type: "text",
+          // ★ WO-REFLECT-JARGON-SPLIT：上屏只用 `userReasons`。原串还用 `reasons` 并把
+          // 「dsh 路·收束后不可回注重规划」印在用户屏上 —— 内核名 + 内部循环机制，用户读了做不了任何决定
+          //（与原生路同一形态，故一并按同一判据处置）。
+          // `replanReasons` 审计字段仍留 `verdict.reasons`（模型口径），要追病因去那里追。
+          markdown: `【本次回答的已知不足】${verdict.userReasons.join("；")}`,
+        },
+      ];
+    }
+  }
+
   // W2 批3（team-lead 2026-08-21 裁决·dsh 自体修复②）：max-tokens 截断收尾补诚实摘要头——
   // 镜像上方 stall 路模板（同形：header 块 + 截断前文/产出块），对位 native degrade 有界终止
   // 必带诚实前缀的约定（loop.ts:620-634）。stall 路自带头提前 return，不会叠双头；
@@ -688,6 +743,7 @@ export function reassembleDshRun(events: readonly DshSessionEvent[], opts: Reass
     ...(outcome === "BUDGET_EXHAUSTED" ? { degraded: { reason: "BUDGET_EXHAUSTED" as const } } : {}),
     ...(stats ? { stats } : {}),
     iterations,
+    ...(reflected ? { reflected, replanReasons } : {}),
   };
 }
 

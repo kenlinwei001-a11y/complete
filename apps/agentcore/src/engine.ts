@@ -247,6 +247,30 @@ export interface RunRegisteredAgentOpts {
    * 不传 = 不写位置字段（既有调用方逐字节兼容）。
    */
   placement?: AgentRunPlacementInput;
+  /**
+   * WO-DSH-REFLECT-PARITY · **纯透传**：本次注册 agent 运行收尾前是否做「确定性复盘」
+   * （`agent/reflect.ts` 单源四查：①答了吗 ②裸数 ∧ `⟦ref:N⟧` 越界 ③工具静默失败
+   * ④**Solver-first**——排产/优化类问句未调对口 solver 即违规）。
+   *
+   * **两条臂同判据**：原生臂 → `runAgentLoop({ reflect: true })`（loop 早已支持该位）；
+   * dsh 臂 → `reassemble.reflect`（重组装侧同一份 `reflectAnswer`，不另写第二套）。
+   *
+   * **门控由调用方求值** —— `reflectEnabled(enabledFeatures)` 只能由持有 feature set 的 orchestrator 算，
+   * 本层不自己算（与 `emitNarration` 同一模式）。缺省不传 = 两条臂逐字节沿用既有行为（复盘一步不跑）。
+   *
+   * ⚠ dsh 臂的处置只对位原生路的**第二支**（重规划预算尽 ⇒ 诚实收尾）：dsh 是子进程收束后的纯 fold、
+   * 模型已退出，结构上做不到第一支「回注 reasons + 有界重规划」——**不许读成已对齐原生路完整语义**。
+   */
+  reflect?: boolean;
+  /**
+   * ★ WO-REFLECT-INPUT-FIX · 复盘判据要读的**用户原话**（见 `agent/loop.ts` 同名字段的病灶说明）。
+   *
+   * 调用方（orchestrator）手上有 `task.query`，本层手上的 `userContent` 是**拼接材料**
+   * （`prompt + 导航切片 + 本体语义上下文`）—— 材料里混着 engine 自己注入的 solver/规则文案，
+   * 而 ④ 的判据词表正是那一族 ⇒ 拿拼接材料当判据输入会让 ④ 在无关问句上误报。
+   * 缺省（不传）= 退回拼接材料 = 修复前行为（字节兼容）。
+   */
+  reflectUserContent?: string;
 }
 
 /**
@@ -740,6 +764,16 @@ export class ExecutionEngine {
           reassemble: {
             governance: { writeMode, provenancePolicy: effectiveProvenancePolicy },
             ...(opts.expectsSchema ? { expectsSchema: opts.expectsSchema } : {}),
+            // WO-DSH-REFLECT-PARITY：复盘位。**这里传的 `userContent` 是拼接串**
+            // （`opts.prompt` + 导航切片 + 本体语义上下文，见本文件 `userContent` 的定义处）——
+            // 与原生臂 `runAgentLoop` 收到的 `opts.userContent` **是同一个局部量**，故此传法与原生路严格同判据。
+            // ⚠️ 已知后果（**不是本单引入的，原生臂同病**）：④ 的 `SOLVER_REQUIRED_RE` 撞的是
+            // 排产/优化/承诺/产能缺口/可行性 这一族词，而导航切片渲染体里**本来就带**
+            // solver capability 文案、solver roster 的 `brief`、规则 roster 的 `brief` 与 `slice.rules` 原文
+            // ⇒ 即便用户问的是一句无关的话，④ 也可能因**注入语料**而命中（过度触发，方向是"多报"不是"漏报"）。
+            // 接缝测试 `dsh-reflect-parity.seam.test.ts` §3 把这个面钉住防静默改变。
+            // 收紧它（④ 改吃"用户原话"而非拼接串）= 动原生路语义，**属产品裁决**，不在本单内。
+            ...(opts.reflect ? { reflect: { userContent: opts.reflectUserContent ?? userContent } } : {}),
             // W9-full：宿主侧表（活引用——端点 run 期间累积，run 终 fold 时读全）。
             hostToolCalls,
           },
@@ -863,6 +897,12 @@ export class ExecutionEngine {
       ...(summarizer ? { summarizer } : {}),
       // WO-ROUTE-1（E9）· 纯透传：不传 = 逐字节沿用既有（loop 侧 `opts.emitNarration` 缺省 false → 不发）。
       ...(opts.emitNarration ? { emitNarration: true } : {}),
+      // WO-DSH-REFLECT-PARITY · 纯透传：不传 = 逐字节沿用既有（loop 侧 `opts.reflect` 缺省 false → 收尾不跑复盘步）。
+      // 与上面 dsh 臂的 `reassemble.reflect` **同源门控、同判据**（同一份 `agent/reflect.ts` 的 `reflectAnswer`）。
+      ...(opts.reflect ? { reflect: true } : {}),
+      // ★ WO-REFLECT-INPUT-FIX：④ 判「用户在问排产/优化题吗」必须读**用户原话**，
+      // 不能读本层的 `userContent`（拼接材料里混着自己注入的 solver/规则文案 ⇒ 误报）。
+      ...(opts.reflectUserContent ? { reflectUserContent: opts.reflectUserContent } : {}),
       executor,
       budget: opts.nesting.budget,
       llmCallTimeoutMs: cfg.QOS_AGENT_LLM_TIMEOUT_MS,
@@ -1010,6 +1050,17 @@ export class ExecutionEngine {
      * （Coordinator 多角色扇出据 `qos.reasoning-trace` 置 true）。缺省不传 = 既有行为逐字节不变。
      */
     emitNarration?: boolean;
+    /**
+     * WO-DSH-REFLECT-PARITY · **纯透传**：本工作流内 `invoke_agent` 步启动的子 agent 收尾前是否做确定性复盘
+     * （`reflectEnabled(enabledFeatures)` 由 orchestrator 求值后传入·与 `emitNarration` 同模式）。
+     * 缺省不传 = 既有行为逐字节不变。
+     *
+     * ⚠ 今天只有 **Coordinator 扇出**这一条调用方置位；`runPathA`（确定性工作流路径）**未置** ——
+     * 差异被点名登记，不是漏写：路径 A 的 `invoke_agent` 步不在本单的目标半径内（见本单证据档「边界」段）。
+     */
+    reflect?: boolean;
+    /** ★ WO-REFLECT-INPUT-FIX · 同上：本工作流内 `invoke_agent` 步复盘判据要读的**用户原话**。 */
+    reflectUserContent?: string;
   }): Promise<WorkflowResult> {
     const executor = this.makeExecutor(opts.taskId, opts.ctx, opts.budgetForTools);
     return runWorkflow(
@@ -1037,6 +1088,10 @@ export class ExecutionEngine {
             ...(opts.enforceAgentObjectScope || params.enforceObjectScope ? { enforceObjectScope: true } : {}),
             // WO-ROUTE-1（E9）· 纯透传：多角色扇出的每个子 agent 都发旁白（不传 = 既有行为字节不变）。
             ...(opts.emitNarration ? { emitNarration: true } : {}),
+            // WO-DSH-REFLECT-PARITY · 纯透传：多角色扇出的每个子 agent 收尾都过一遍复盘（不传 = 既有行为字节不变）。
+            ...(opts.reflect ? { reflect: true } : {}),
+            // ★ WO-REFLECT-INPUT-FIX：同上——判据读用户原话，不读拼接材料。
+            ...(opts.reflectUserContent ? { reflectUserContent: opts.reflectUserContent } : {}),
             // WO-AGENTRUN-FANOUT-PERSIST：这一步跑出来的是**子** agent 的运行（父任务的 taskId，但不是父任务那条）。
             placement: { origin: "FANOUT", stepId: params.stepId },
           });
