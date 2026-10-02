@@ -329,7 +329,7 @@ export interface UnresolvedPairWeight {
 
 /** 浮点固定精度（避免遍历序导致的尾差，R6 字节一致）。 */
 const PRECISION = 1e12;
-function round12(n: number): number {
+export function round12(n: number): number {
   // 规整 -0 -> 0，避免 toEqual 边角。
   const r = Math.round(n * PRECISION) / PRECISION;
   return Object.is(r, -0) ? 0 : r;
