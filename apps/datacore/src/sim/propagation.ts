@@ -726,8 +726,27 @@ function attrFromJSON(json: PerturbationAttributionJSON | null | undefined): Att
   return tree;
 }
 
-/** 影子出口：剥掉空层、逐层按 key 升序（R6：同输入同字节，含这张表）。 */
-function attrToJSON(tree: AttributionTree): PerturbationAttributionJSON {
+/**
+ * 归因键的**语义序**：扰动的**输入序**（= `listPerturbations` 序 = 建单先后，顺序即语义）。
+ *
+ * ⛔ 不许按 id 字符串排序：扰动 id 是 `randomBytes`（`ids.ts`）—— 按它排等于**每次运行
+ *   把同几条扰动排成不同顺序**。实测代价：`sim-perturbation` 断言4（R6）红在
+ *   `{p2:-4,p1:-1,p3:1e-12}` vs `{p2:1e-12,p3:-4,p1:-1}`，**连值都对不上号** ——
+ *   因为读的人（含测试里的 id 归一化器）是按"首次出现次序"给扰动编号的，
+ *   键序一变，同一串数字就挂到了不同的扰动上。**值算对了不等于交付对，顺序也是交付的一部分。**
+ * 不在清单里的 id（已到期、或续跑喂进来的旧影子）排在最后，彼此按 id 定序兜底。
+ */
+function pertComparator(order: Map<string, number>): (a: string, b: string) => number {
+  return (a, b) => {
+    const ia = order.get(a);
+    const ib = order.get(b);
+    if (ia !== undefined || ib !== undefined) return (ia ?? Number.MAX_SAFE_INTEGER) - (ib ?? Number.MAX_SAFE_INTEGER);
+    return a.localeCompare(b);
+  };
+}
+
+/** 影子出口：剥掉空层、逐层按**语义序**排（R6：同输入同字节，含这张表）。 */
+function attrToJSON(tree: AttributionTree, cmp: (a: string, b: string) => number): PerturbationAttributionJSON {
   const out: PerturbationAttributionJSON = {};
   for (const objId of [...tree.keys()].sort((a, b) => a.localeCompare(b))) {
     const byVar = tree.get(objId)!;
@@ -736,7 +755,7 @@ function attrToJSON(tree: AttributionTree): PerturbationAttributionJSON {
       const cell = byVar.get(stateVar)!;
       if (cell.size === 0) continue;
       const rec: Record<string, number> = {};
-      for (const pid of [...cell.keys()].sort((a, b) => a.localeCompare(b))) rec[pid] = cell.get(pid)!;
+      for (const pid of [...cell.keys()].sort(cmp)) rec[pid] = cell.get(pid)!;
       vars[stateVar] = rec;
     }
     if (Object.keys(vars).length > 0) out[objId] = vars;
@@ -962,6 +981,26 @@ export function propagateTick(
    * 世界态与 trace 与本条引入前逐字节相同（RL9）。
    */
   const attribution: AttributionTree = attrFromJSON(priorAttribution);
+  /** 扰动 id → **输入序**（= 建单先后）。归因表一律按它出，⛔ 不按随机 id 排（理由见 `pertComparator`）。 */
+  const pertOrder = new Map<string, number>();
+  perturbations.forEach((p, i) => {
+    if (!pertOrder.has(p.id)) pertOrder.set(p.id, i);
+  });
+  // 已到期、但**影响还留在下游格上**的扰动：它的 id 已经不在本拍清单里，可它在下游格归因表里还在
+  // （存量语义，正是本单要的）。这些 id 一律**接着上一拍出口的键序**编号 ——
+  // ⛔ 不许落到"按 id 字符串排"那个兜底：扰动 id 是 `randomBytes`，按它排 = 每次运行换个序，
+  //   而读的人（含测试里的 id 归一化器）按"首次出现次序"给扰动编号 ⇒ 同一串数字挂到不同扰动上。
+  let nextIdx = perturbations.length;
+  if (priorAttribution != null) {
+    for (const byVar of Object.values(priorAttribution)) {
+      for (const cell of Object.values(byVar ?? {})) {
+        for (const pid of Object.keys(cell ?? {})) {
+          if (!pertOrder.has(pid)) pertOrder.set(pid, nextIdx++);
+        }
+      }
+    }
+  }
+  const pertCmp = pertComparator(pertOrder);
   let effState = state; // 未被扰动改动时**保持同一引用**（无扰动 ⇒ 与本相位引入前逐字节相同·可回退）
   const writePerturbed = (p: PerturbationInTick, value: number, ruleKey: string, before: number): void => {
     const bucket = (effState[p.targetObjectId] ??= {});
@@ -1386,9 +1425,7 @@ export function propagateTick(
           //   实测形态：`sim-perturbation` 的 R6 门红在 `{"p2","p1","p3"}` vs `{"p2","p3","p1"}` ——
           //   **每一个值都逐位相同，只有键序不同**。值算对了不等于交付对，字节也是交付的一部分。
           if (shadow !== null) {
-            queued.attribution = Object.fromEntries(
-              [...shadow.entries()].sort((a, b) => a[0].localeCompare(b[0])),
-            );
+            queued.attribution = Object.fromEntries([...shadow.entries()].sort((a, b) => pertCmp(a[0], b[0])));
           }
           nextPending.push(queued);
         }
@@ -1562,7 +1599,7 @@ export function propagateTick(
       (a, b) => a.ruleKey.localeCompare(b.ruleKey) || a.actorObjectId.localeCompare(b.actorObjectId),
     ),
     // 归因影子转成普通嵌套对象（Map 进不了 JSON 回执）。空树 ⇒ `{}`（无扰动时恒如此）。
-    perturbationAttribution: attrToJSON(attribution),
+    perturbationAttribution: attrToJSON(attribution, pertCmp),
     stateVarReport: {
       declaredStateVars: [...declaredSeen].sort((a, b) => a.localeCompare(b)),
       undeclaredStateVars: [...undeclaredSeen].sort((a, b) => a.localeCompare(b)),
