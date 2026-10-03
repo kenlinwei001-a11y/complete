@@ -73,7 +73,7 @@ import { SchemeAdoptionPayloadSchema } from "@platform/contracts"; // WO-ADOPT-S
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
 import { ADVERSARY_FEATURE_KEY, adversaryMoveNameOf, applyPerturbationToState, diffTickStates, isPerturbationActiveAt, partitionAdversaryRules, partitionPropagationRules, PerturbationSchema, PropagationRulePatchSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, SolutionCandidateSchema, unknownPropagationRuleKeys, type CellProvenance, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimCounterfactualResult, type SimSession, type SimSessionStatus, type StateVarDomainLookup, type TickState } from "@platform/contracts";
 import { diffEnterpriseStates, ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 企业状态快照（差分口径与 StateDelta 同一份纯函数）
-import { PERTURBATION_TRACE_PREFIX, firedPropagationRuleKeys, propagateTick, reachHopsToOrder, type CadenceGateLookup, type PairWeightLookup, type PerturbationInTick, type PropagationGraph, type ReachToOrders, type RuleParamLookup, type ScopeReport, type StateVarDisclosure, type UnresolvedCadenceGate, type UnresolvedPairWeight } from "./sim/propagation.js";
+import { PERTURBATION_TRACE_PREFIX, firedPropagationRuleKeys, propagateTick, reachHopsToOrder, type CadenceGateLookup, type PairWeightLookup, type PerturbationAttributionJSON, type PerturbationInTick, type PropagationGraph, type ReachToOrders, type RuleParamLookup, type ScopeReport, type StateVarDisclosure, type UnresolvedCadenceGate, type UnresolvedPairWeight } from "./sim/propagation.js";
 import type { PairWeightReport } from "./sim/pair-weights.js";
 // 影子线的按拍备忘录（WO-SIM-PERF-SHADOW）：把「每请求重放 curTick 拍」换成「同一拍只算一次」。
 import { ShadowMemo, shadowFingerprint } from "./sim/shadow-memo.js";
@@ -2517,6 +2517,16 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     /** 本次 tick 的范围回执（诚实回带：这一格是在什么范围下算出来的·R-ARG-FIDELITY）。 */
     let scopeReport: ScopeReport | null = null;
     let pending: DelayedContribution[] = propagate ? ((await repos.sim.getTickState(c.tenantId, s.id, curTick))?.pending ?? []) : [];
+    /**
+     * 归因影子的跨拍续跑（WO-PERT-ATTRIBUTION）—— 与上面的 `pending` **同一个位置、同一个道理**：
+     * 影子里同样存着"世界上一拍留下的东西"，不喂回来，下游「上一拍就归在某条扰动头上」的份额
+     * 会**整段丢掉**，屏上表现为逐条边际悄悄偏小，而世界值与 trace 全都正常。
+     *
+     * ⚠ 今天它**只在本次推进内续跑**：`putTickState` 没存它（pg 那边加列要走迁移），
+     *   所以跨请求续跑的那一段从**空表**起算。⛔ 这不是"回头再补"的 TODO，是一条必须被看见的边界 ——
+     *   消费方拿回执里的 `fromTick` 与扰动的 `startTick` 一比即可知道「归因是从第几拍起算的」。
+     */
+    let attributionCarry: PerturbationAttributionJSON | null = null;
     if (propagate) {
       // ── 会话范围读端（WO-SIM-SCOPE-TRIAL · 闭 #129/#130 `G-SIM-SCOPE-UNREAD`）────────────
       // 此前这里是就地物化 + 无条件全本体，`s.scope` **从头到尾没人读**：
@@ -2632,13 +2642,15 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         const out = propagateTick(
           graph, state, propRules, pending, beforeTick, ruleParams, cadenceGates,
           await perturbationsForTick(beforeTick + 1), // 引擎产出的是 tick+1 那一格
-          pairWeights,      // 第 9 位
-          stateVarDomains,  // 第 10 位（次序见 propagateTick 签名处的收编注释）
+          pairWeights,       // 第 9 位
+          stateVarDomains,   // 第 10 位（次序见 propagateTick 签名处的收编注释）
+          attributionCarry,  // 第 11 位：上一拍的归因影子原样喂回（见上面的声明处）
         );
         state = out.next; pending = out.pending; unresolvedGates = out.unresolvedGates;
         unresolvedWeights = out.unresolvedWeights;
         appliedPerturbations = out.appliedPerturbations;
         stateVarsDisclosure = out.stateVarReport;
+        attributionCarry = out.perturbationAttribution;
         // C2 合成（见上方 `restoreSpecBase`）：必须在核**之后**、落盘**之前**。
         restoreSpecBase(state, out.stateVarReport.decayApplied);
         // 还手触发清单取**最后一拍**（与 stateVarReport 同一口径）：披露层讲的是
@@ -2669,7 +2681,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         stopEngine();
       } else {
         // 无 PUBLISHED 传导规则：恒等桩进位（状态原样，确定性 R6；可回退）。
-        state = simState(state); pending = []; trace = null; curTick += 1;
+        // 无传导规则 ⇒ 没有下游可归因；落点那一份也随之作废（与 `pending` 同一处置）。
+        state = simState(state); pending = []; trace = null; attributionCarry = null; curTick += 1;
       }
       // ⛔ 对照跑（persist=false）在此**一个字节都不写** —— 这条约束由
       //    `test/edge-active-counterfactual.test.ts` 逐字节咬死（不是靠这行注释保证）。
@@ -2682,6 +2695,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     stopTotal();
     return {
       curTick, state, trace, pending, propagate, scopeReport,
+      // 归因影子（WO-PERT-ATTRIBUTION）：本拍末逐格「哪条扰动占了多少」。
+      // ⚠ 起算点见 `attributionCarry` 声明处 —— 与 `fromTick` 同尺，消费方自己比。
+      perturbationAttribution: attributionCarry,
       // ── 披露层的原料（WO-SIM-DISCLOSURE）──────────────────────────────────
       // 全部是本次推进**已经用过**的中间量，原样带出去给 `buildSimRunDisclosure` 换个形状讲。
       // 带出去不等于下发：路由只在 `?disclose=1` 时才装配，默认回包形状逐字节同旧（RL9）。

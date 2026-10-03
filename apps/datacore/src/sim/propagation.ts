@@ -606,6 +606,145 @@ function applyContribution(
 }
 
 /**
+ * 归因影子（WO-PERT-ATTRIBUTION）：`objId → stateVar → 扰动 id → 该格当前值里**有多少来自这条扰动**`。
+ *
+ * ⚠ 它答的是「**引擎算出来的**值里各扰动占多少」，**不是**「业务上这件事该算谁的」。
+ *   名字里不带 `contribution` 就是为了不让读者把它读成业务归因。
+ *
+ * ⚠ 语义是**存量**不是流量：落点格的值跨拍存活，它的归因必须跟着一起演化（衰减、夹值、
+ *   饱和、重施都要镜像）。只归因「本拍新落的那一笔」会在下一拍整段丢掉 ⇒
+ *   逐条边际恒 0，而世界明明动了 —— 又一个「屏上说没有、其实有」的形态。
+ *
+ * ⚠ 唯一的判据：**值做了什么算术，影子就做什么算术**。每一处对 `next` 的写入都在下面逐个镜像，
+ *   任何一处漏镜像，得到的都是一个**看着合理但是错的**数 —— 比不披露更坏。
+ */
+type AttributionTree = Map<string, Map<string, Map<string, number>>>;
+
+/**
+ * 归因影子的**可序列化**形状（`对象 → 状态量 → 扰动 id → 金额`）。
+ * 出口给这个形状，**入参也收这个形状** —— 续跑时「上一拍带回来的那一份」就是它，
+ * 出入同形才不会在接缝上多出一套转换（两套形状 = 两套真相源）。
+ */
+export type PerturbationAttributionJSON = Record<string, Record<string, Record<string, number>>>;
+
+/** 归因格的**只读**取用（不存在的层不创建；⛔ 只读路径一律走它，创建会让空世界长出一张假表）。 */
+function attrOf(tree: AttributionTree, objId: string, stateVar: string): Map<string, number> | null {
+  return tree.get(objId)?.get(stateVar) ?? null;
+}
+
+/** 归因格的**写**取用（按需创建三层）。 */
+function attrAt(tree: AttributionTree, objId: string, stateVar: string): Map<string, number> {
+  let byVar = tree.get(objId);
+  if (byVar === undefined) tree.set(objId, (byVar = new Map()));
+  let cell = byVar.get(stateVar);
+  if (cell === undefined) byVar.set(stateVar, (cell = new Map()));
+  return cell;
+}
+
+/**
+ * 往归因格上记一笔 Δ。
+ * ⚠ Δ 为 0 不留痕，且**归零即删项**：`{p: 0}` 与「map 里没有 p」在语义上不同 ——
+ *   前者是「归因了，但它占 0」，后者是「这条扰动跟这一格没关系」。屏上是两件事。
+ */
+function attrAdd(cell: Map<string, number>, perturbationId: string, delta: number): void {
+  if (delta === 0) return;
+  const merged = round12((cell.get(perturbationId) ?? 0) + delta);
+  if (merged === 0) cell.delete(perturbationId);
+  else cell.set(perturbationId, merged);
+}
+
+/**
+ * 整格按比例缩放 —— 值被 clamp / 饱和压过时用（**同比例**缩，不是各缩各的）。
+ * @param ratio ≤1；传 0 表示值被压没了（归因随之清空）。
+ */
+function attrScale(cell: Map<string, number>, ratio: number): void {
+  if (ratio === 1) return;
+  for (const [k, v] of cell) {
+    const scaled = round12(v * ratio);
+    if (scaled === 0) cell.delete(k);
+    else cell.set(k, scaled);
+  }
+}
+
+/**
+ * 把源格的归因按**单位放大率**摊到目标格（一条边摊一次）。
+ *
+ * @param unit `∂amount/∂sourceVal`（这条边在当前工作点上，源读数每动 1 单位、目标动多少）。
+ *  · 普通边：`amount` 与 `sourceVal` 严格成正比 ⇒ `unit = amount / sourceVal`
+ *    （单扰动且源格全归它时，摊出来的数**逐位等于** trace 里那条 `amount`）。
+ *  · 还手边：hinge 在 `drive > 0` 处斜率恒为 **1**，⛔ 不能拿 `amount / sourceVal` ——
+ *    那会把容忍线以下那一段也按比例摊出去，等于把非线性硬掰成线性，
+ *    得到的正是本单最怕的那种「看着合理但是错」的逐条边际。
+ *
+ * @returns `null` = 这条边没得摊（源格不归任何扰动 / 摊完全是 0）⇒ 调用方零改动。
+ */
+function attrShiftFrom(src: Map<string, number> | null, unit: number): Map<string, number> | null {
+  if (src === null || src.size === 0) return null;
+  const out = new Map<string, number>();
+  for (const [k, v] of src) {
+    const shifted = round12(v * unit);
+    if (shifted !== 0) out.set(k, shifted);
+  }
+  return out.size === 0 ? null : out;
+}
+
+/** 用一条新贡献的影子**替换**整格（`combine: "max"` 取到新值时用：值被重置 ⇒ 旧归因全部作废）。 */
+function attrReplace(tree: AttributionTree, objId: string, stateVar: string, shadow: Map<string, number> | null): void {
+  const cell = attrAt(tree, objId, stateVar);
+  cell.clear();
+  if (shadow !== null) for (const [k, v] of shadow) cell.set(k, v);
+}
+
+/**
+ * 归因树深拷贝（本拍**观测面** `attrObs` 用一次）。
+ * ⚠ **空树也必须拷**（`new Map()`）：0''') 之后 `attribution` 还会被继续写，
+ *   复用同一引用会让"本拍观测面"跟着变 —— 实测形态是下游归因**整段变负**
+ *   （撤销那一笔被当成观测值摊了出去），而世界值与 trace 全都正常，极难查。
+ */
+function attrClone(tree: AttributionTree): AttributionTree {
+  const out: AttributionTree = new Map();
+  for (const [objId, byVar] of tree) {
+    const vars = new Map<string, Map<string, number>>();
+    for (const [stateVar, cell] of byVar) vars.set(stateVar, new Map(cell));
+    out.set(objId, vars);
+  }
+  return out;
+}
+
+/** 影子入参：把上一拍（或上一次调用）带回来的普通对象还原成树；0 与空层一律丢弃。 */
+function attrFromJSON(json: PerturbationAttributionJSON | null | undefined): AttributionTree {
+  const tree: AttributionTree = new Map();
+  if (json == null) return tree;
+  for (const [objId, byVar] of Object.entries(json)) {
+    for (const [stateVar, cell] of Object.entries(byVar ?? {})) {
+      for (const [pid, amount] of Object.entries(cell ?? {})) {
+        if (typeof amount !== "number" || amount === 0) continue;
+        attrAdd(attrAt(tree, objId, stateVar), pid, amount);
+      }
+    }
+  }
+  return tree;
+}
+
+/** 影子出口：剥掉空层、逐层按 key 升序（R6：同输入同字节，含这张表）。 */
+function attrToJSON(tree: AttributionTree): PerturbationAttributionJSON {
+  const out: PerturbationAttributionJSON = {};
+  for (const objId of [...tree.keys()].sort((a, b) => a.localeCompare(b))) {
+    const byVar = tree.get(objId)!;
+    const vars: Record<string, Record<string, number>> = {};
+    for (const stateVar of [...byVar.keys()].sort((a, b) => a.localeCompare(b))) {
+      const cell = byVar.get(stateVar)!;
+      if (cell.size === 0) continue;
+      const rec: Record<string, number> = {};
+      for (const pid of [...cell.keys()].sort((a, b) => a.localeCompare(b))) rec[pid] = cell.get(pid)!;
+      vars[stateVar] = rec;
+    }
+    if (Object.keys(vars).length > 0) out[objId] = vars;
+  }
+  return out;
+}
+
+/**
  * 一个 tick 的传导（§1.3）。
  *
  * @param graph    已物化对象 + 链路（从本体库读，任意行业）
@@ -765,6 +904,14 @@ export function propagateTick(
   // 定为 `pairWeights`(9) → `domains`(10)。
   pairWeights: PairWeightLookup = {},
   domains: StateVarDomainLookup = {},
+  // ⚠ 第 11 位。同上：**次序是接口的一部分**，新参一律往后加，⛔ 不许插队。
+  //
+  // 归因影子（WO-PERT-ATTRIBUTION）**必须像 `pending` 一样跨拍续跑**：落点格的值跨拍存活，
+  // 它的归因也跨拍存活。不喂它（`null`）⇒ 本拍从**空表**起算，下游那些"上一拍就归在某条扰动头上"
+  // 的份额会整段丢掉 —— 屏上表现为**逐条边际悄悄偏小**，而世界值与 trace 全都正常。
+  // 故调用方要把上一拍出口的 `perturbationAttribution` 原样喂回来；喂不了（如跨请求续跑）
+  // 就必须让消费方看得见「从哪一拍起算」——引擎出口的 `fromTick` 与调用方的推进起点同尺。
+  priorAttribution: PerturbationAttributionJSON | null = null,
 ): {
   next: TickState;
   pending: DelayedContribution[];
@@ -775,6 +922,14 @@ export function propagateTick(
   /** 本拍越过容忍线的还手方（WO-ADVERSARY-REACTION·按 (ruleKey, actorObjectId) 升序）。 */
   reactionActors: { ruleKey: string; actorObjectId: string }[];
   stateVarReport: StateVarDisclosure;
+  /**
+   * 本拍末**逐格**的扰动归因（WO-PERT-ATTRIBUTION）：`对象 → 状态量 → 扰动 id → 金额`。
+   *
+   * 它答的是「这一格现在的值里，**引擎算出来的**部分有多少是哪条扰动带来的」。
+   * ⚠ 它不是「业务上这件事该算谁的」—— 那条判据不在这里，也不该由引擎给。
+   * ⚠ 无扰动时恒为 `{}`（空对象，不是「一张全是 0 的表」）：空 = 没归因。
+   */
+  perturbationAttribution: PerturbationAttributionJSON;
 } {
   // ── 0') 扰动相位（WO-P2）：先把本 tick 的「到期回退 / 首次落地」作用到世界，再传导 ──
   //
@@ -801,10 +956,20 @@ export function propagateTick(
    *   不用分隔符，就没有"分隔符写错了"这个错法。
    */
   const holds = new Map<string, Map<string, PerturbationInTick[]>>();
+  /**
+   * 归因影子（WO-PERT-ATTRIBUTION）。跨拍由调用方经第 11 位 `priorAttribution` 喂回来。
+   * `perturbations` 为空**且没有续跑喂入**时全程不被创建过 ⇒ 出口恒 `{}`，
+   * 世界态与 trace 与本条引入前逐字节相同（RL9）。
+   */
+  const attribution: AttributionTree = attrFromJSON(priorAttribution);
   let effState = state; // 未被扰动改动时**保持同一引用**（无扰动 ⇒ 与本相位引入前逐字节相同·可回退）
   const writePerturbed = (p: PerturbationInTick, value: number, ruleKey: string, before: number): void => {
     const bucket = (effState[p.targetObjectId] ??= {});
     bucket[p.targetStateVar] = round12(value);
+    // 归因镜像：这一笔写下去，值动了 `after − before`，那动的部分就记在 `p` 头上。
+    // ⚠ 落地与到期回退**共用这一个出口**（回退时 `after − before` 是负的，正好把 p 的那一份减掉），
+    //   所以「幅度怎么保住」与「归因怎么记」不可能各说各话。
+    attrAdd(attrAt(attribution, p.targetObjectId, p.targetStateVar), p.id, round12(value) - before);
     perturbationTrace.push(
       { ruleKey, fromObjectId: TRACE_FROM_BEFORE, toObjectId: p.targetObjectId, amount: round12(before), viaLinkKey: p.targetStateVar },
       { ruleKey, fromObjectId: TRACE_FROM_AFTER, toObjectId: p.targetObjectId, amount: round12(value), viaLinkKey: p.targetStateVar },
@@ -852,6 +1017,14 @@ export function propagateTick(
 
   const next = cloneState(effState);
 
+  // ── 归因的**观测面**（WO-PERT-ATTRIBUTION）───────────────────────────────────────────
+  // 下面 0''') 会把生效期内扰动的贡献从 `next` 里**撤掉**（好让衰减跑在自然值上），
+  // 而规则循环读的是 `effState` —— 扰动的贡献在观测面上**还在**。两面在 0''') 之后就分了岔。
+  // 影子必须跟着**读它的那一面**走：规则摊出去的份额取自本快照，⛔ 不是取自 `next` 那一面。
+  // 分岔的代价是实测过的 —— 只维护 `next` 那一面会得到「传导明明看见了扰动、
+  // 逐条边际却记 0 / 或翻倍」这种自相矛盾的读数，而两个数各自看着都"合理"。
+  const attrObs = attrClone(attribution);
+
   // ── 0''') 撤销重施（WO-HOLD-PERTURBATION）：把**累加器**退回自然轨迹 ────────────────
   //
   // ⚠ 改的是 `next`（下一拍的累加器）而**不是** `effState`（本拍的观测值）：传导读的是 `effState`
@@ -871,18 +1044,32 @@ export function propagateTick(
       const bucket = next[objId];
       if (!bucket || typeof bucket[stateVar] !== "number") continue;
       const snapshot = bucket[stateVar]!;
+      // 归因的撤销同样是**整格**的：撤不动就要把撤过的那几笔还原（见下方 `!ok` 分支）。
+      const attrCellRef = attrOf(attribution, objId, stateVar);
+      const attrBackup = attrCellRef === null ? null : new Map(attrCellRef);
       let ok = true;
       // 逆输入序 = LIFO：`(v+2)×1.5` 要先除 1.5 再减 2（与到期回退同一条规矩）。
       for (let i = list.length - 1; i >= 0; i--) {
         const p = list[i]!;
-        const reverted = revertValue(p, bucket[stateVar]!);
+        const preRevert = bucket[stateVar]!;
+        const reverted = revertValue(p, preRevert);
         if (reverted === null) { ok = false; break; }
         bucket[stateVar] = round12(reverted);
+        // 归因镜像：撤掉多少值，就减掉 `p` 头上多少（`round12` 之后的那一位，与值同步）。
+        // ⚠ 观层面（`attrObs`）**不动** —— 那是规则本拍看得见的那一份，撤的是累加器。
+        attrAdd(attrAt(attribution, objId, stateVar), p.id, round12(reverted) - preRevert);
       }
       if (!ok) {
         // 算不出「若无此扰动本应有的值」⇒ **整格放弃重施**（不撤也不加），退回本条引入前的行为，
         // 并把缺亮出来。撤一半再加回去，比压根不撤更坏：那会让"声明值"与"世界值"悄悄错位。
         bucket[stateVar] = snapshot;
+        // 值还原了，归因也必须还原 —— 否则前面那几笔已撤的会留在账上，
+        // 屏上就成了「值没动、但归因说它动了」。
+        const attrCellNow = attrOf(attribution, objId, stateVar);
+        if (attrCellNow !== null) {
+          attrCellNow.clear();
+          if (attrBackup !== null) for (const [k, v] of attrBackup) attrCellNow.set(k, v);
+        }
         for (const p of list) {
           heldUnresolved.push({
             objectId: objId, stateVar, perturbationId: p.id,
@@ -971,6 +1158,10 @@ export function propagateTick(
         const cur = bucket[stateVar];
         if (typeof cur !== "number") continue;
         bucket[stateVar] = round12(rest + (1 - lambda) * (cur - rest));
+        // 归因镜像：存量的偏离按 `(1−λ)` 收，归因是**存量的影子**，故同样按 `(1−λ)` 缩放。
+        // ⚠ 是「同一格全部扰动一起缩」，⛔ 不是各缩各的 —— 衰减作用在值上，不挑来源。
+        const attrCell = attrOf(attribution, objId, stateVar);
+        if (attrCell !== null) attrScale(attrCell, 1 - lambda);
       }
     }
   }
@@ -1017,6 +1208,14 @@ export function propagateTick(
   );
   for (const p of arriving) {
     applyContribution(next, p.targetObjectId, p.targetStateVar, p.amount, "sum", touched);
+    // 归因镜像：这笔延迟贡献**随身带着**它排进队列时的归因拆解，到这一拍原样记回目标格。
+    // ⚠ 带 delay 的跳上，源格的归因在队列里那几拍可能又变了；但**金额本身**同样是定型值
+    //   （契约：延迟贡献是已定型的标量），所以归因与金额在同一时刻被冻住是自洽的，
+    //   ⛔ 不是"忘了更新"，是"两者必须冻在同一个时刻"。
+    if (p.attribution !== undefined) {
+      const cell = attrAt(attribution, p.targetObjectId, p.targetStateVar);
+      for (const [pid, amt] of Object.entries(p.attribution)) attrAdd(cell, pid, amt);
+    }
     trace.push({ ruleKey: p.ruleKey, fromObjectId: "(delayed)", toObjectId: p.targetObjectId, amount: round12(p.amount), viaLinkKey: "(pending)" });
   }
 
@@ -1118,24 +1317,71 @@ export function propagateTick(
         //     而本仓的可回退判据是**逐字节**，不是「约等于」。40 条未改造的边靠这一支保持原样。
         //   · 有 `weightRef` ⇒ 乘该对的份额；查不到该对 ⇒ **0**（算得出来的真值：
         //     该源不在该目标的计量口径里 ⇒ 占 0%），不是「缺省 1」。
-        const amount =
-          weights === null ? baseAmount : round12(baseAmount * (weights[pairWeightKey(sourceId, targetId)] ?? 0));
+        const w = weights === null ? 1 : (weights[pairWeightKey(sourceId, targetId)] ?? 0);
+        const amount = weights === null ? baseAmount : round12(baseAmount * w);
         if (amount === 0) continue; // 份额为 0 的对不落贡献、不落 trace（等价于这条边今天不通）
+        // ── 归因影子（WO-PERT-ATTRIBUTION）：源格「哪条扰动占了多少」按本边的放大率摊到目标格 ──
+        // ⚠ 取自 `attrObs`（本拍观测面）而**不是** `attribution`（累加器面）：规则这一拍读的就是
+        //   `effState`，影子必须与它同源，否则撤掉的那一份会被算成"没看见"。
+        const srcAttrCell = attrOf(attrObs, sourceId, rule.sourceStateVar);
+        let unit: number;
+        if (rule.reaction == null) {
+          // 普通边：`drive === sourceVal`，`amount` 与源读数严格成正比 ⇒ 单位放大率就是 `amount / sourceVal`。
+          unit = amount / sourceVal;
+        } else {
+          // 还手边是 hinge `max(0, 源 − 容忍线)`：越过线之后**斜率恒 1**，但**能承的驱动量有上限** ——
+          // 本拍这条边真正从扰动那里接到的是 `min(源的归因总量, 驱动量)`：
+          //   · 对照世界也在容忍线之上 ⇒ 两边都按全额走，扰动承的就是它自己的全部偏离；
+          //   · 对照世界在线下（甚至本来就是 0）⇒ 「从基线涨到容忍线」那一整段是**自然轨迹**涨上来的，
+          //     不归扰动，扰动只能承到线上那一段。
+          // ⛔ 少了这个 min，逐条边际会把基线涨到线的那一段也记到扰动头上 ——
+          //   实测形态：源 +20、容忍线 10 ⇒ 摊出 **20**，而真实边际只有 **10**，整整翻一倍。
+          // ⛔ 也不能反过来直接拿 `amount / sourceVal`：那是把容忍线以下那一段按比例摊出去，
+          //   同样是把非线性硬掰成线性。
+          let srcTotal = 0;
+          for (const v of srcAttrCell?.values() ?? []) srcTotal += v;
+          const carry = Math.min(srcTotal, drive); // 本拍这条边真正从扰动承到的驱动量
+          unit = srcTotal === 0 ? 0 : round12((coeff * factor * w * carry) / srcTotal);
+        }
+        const shadow = attrShiftFrom(srcAttrCell, unit);
         if (arriveTick === tick) {
           // 即时：当 tick 累加进 next，落即时 trace。
           // （无闸门 ⇒ 等价于旧的 `delayTicks === 0` 分支；有闸门且本 tick 正好开闸且零行程 ⇒ 同样即时。）
+          // ⚠ `max` 的判据必须在**调用前**取：`applyContribution` 里是
+          //   `first ? amount : Math.max(cur, amount)`，只有 `first || amount > cur` 时值才真的换了，
+          //   也只有那时新归因才成立（值没换 ⇒ 组成没变 ⇒ 归因一个字节都不动）。
+          const wasTouched = touched.get(targetId)?.has(rule.targetStateVar) === true;
+          const prev = next[targetId]?.[rule.targetStateVar] ?? 0;
           applyContribution(next, targetId, rule.targetStateVar, amount, rule.combine, touched);
           trace.push({ ruleKey: rule.key, fromObjectId: sourceId, toObjectId: targetId, amount, viaLinkKey: rule.viaLinkKey });
+          if (rule.combine === "sum") {
+            // 线性叠加：按扰动**逐条累加**（多个源指向同一格时各自的份额互不干扰）。
+            if (shadow !== null) {
+              const cell = attrAt(attribution, targetId, rule.targetStateVar);
+              for (const [pid, amt] of shadow) attrAdd(cell, pid, amt);
+            }
+          } else if (!wasTouched || amount > prev) {
+            // `max`：值被这条贡献**整体换掉** ⇒ 旧组成全部作废，整格换成这条贡献的影子。
+            // ⛔ 不在这里做"按比例摊" —— 非线性的取大运算上，"谁把值顶上去的"与"值由谁组成"
+            //   是两个不同的问题，假装能拆开就是编一个数出来。
+            attrReplace(attribution, targetId, rule.targetStateVar, shadow);
+          }
         } else {
           // 延迟：排进 pending，在 arriveTick 到达（恒 > 当前 tick，绝不落过去/现在——
           // pending 只结算 `arriveTick === tick`，落到过去就永远结算不了）。
-          nextPending.push({
+          const queued: DelayedContribution = {
             arriveTick,
             targetObjectId: targetId,
             targetStateVar: rule.targetStateVar,
             amount,
             ruleKey: rule.key,
-          });
+          };
+          // 归因随 pending 走 —— ⛔ 这不是可选优化：`DelayedContribution` **刻意不记 `fromObjectId`**
+          //（见 `causal-graph.ts`：到达那一拍无从回溯来源），不把拆解抄进这份订单，
+          // 归因就会在**每一次带 delay 的跳**上整段丢掉，而样例链恰好有一跳带 `delayTicks=1`。
+          // 无归因时留 `undefined`（⛔ 不写空对象：老快照读回来也是 `undefined`，两者必须同形）。
+          if (shadow !== null) queued.attribution = Object.fromEntries(shadow);
+          nextPending.push(queued);
         }
       }
     }
@@ -1153,7 +1399,15 @@ export function propagateTick(
       const bucket = next[targetId];
       const v = bucket?.[rule.targetStateVar];
       if (bucket && typeof v === "number") {
-        bucket[rule.targetStateVar] = round12(Math.min(max, Math.max(min, v)));
+        const clamped = round12(Math.min(max, Math.max(min, v)));
+        bucket[rule.targetStateVar] = clamped;
+        // 归因镜像：值被压过 ⇒ 整格归因**同比例**缩（值缩了多少，它里面各条扰动占的份额就缩多少）。
+        // ⚠ `v === 0` 却被抬到 `min > 0` 的那一档：新值不是任何扰动的贡献（是从边界来的）⇒ 清空，
+        //   ⛔ 不是"按 0 比例缩"那么随便 —— 归因只答"扰动带来了多少"，边界带来的不在它账上。
+        if (clamped !== v) {
+          const attrCell = attrOf(attribution, targetId, rule.targetStateVar);
+          if (attrCell !== null) attrScale(attrCell, v === 0 ? 0 : clamped / v);
+        }
       }
     }
   }
@@ -1225,8 +1479,15 @@ export function propagateTick(
       const bucket = next[objId];
       if (!bucket || typeof bucket[stateVar] !== "number") continue;
       for (const p of list) {
-        const applied = applyPerturbationToState({ [objId]: { [stateVar]: bucket[stateVar]! } }, p);
-        bucket[stateVar] = round12(applied[objId]![stateVar]!);
+        const before = bucket[stateVar]!;
+        const applied = applyPerturbationToState({ [objId]: { [stateVar]: before } }, p);
+        const after = round12(applied[objId]![stateVar]!);
+        bucket[stateVar] = after;
+        // 归因镜像：重施这一次把值推了 `after − before`，那一段就记在 `p` 头上。
+        // ⚠ 是**累加**（`attrAdd`）不是覆盖：同一拍里这条规则可能已经往这一格写过、
+        //   而那部分同样出自 `p` —— 覆盖会把它们悄悄抹掉。0''') 的撤销已在同一格减过一次，
+        //   一撤一加正好对上，"声明的就是这些"这个语义由**撤销那一半**保证，不靠这里清账。
+        attrAdd(attrAt(attribution, objId, stateVar), p.id, after - before);
       }
     }
   }
@@ -1250,6 +1511,11 @@ export function propagateTick(
       const sat = round12(saturateToDomain(raw, d.min, d.max, d.restPoint));
       if (sat === raw) continue; // 带内 ⇒ 一个字节不动
       bucket[stateVar] = sat;
+      // 归因镜像：软拐点把读数压过 ⇒ 整格归因**同比例**缩，与 clamp 同一条规矩。
+      // ⚠ 这一处最容易漏，因为 `saturateToDomain` 在带内**不是恒等**（它会自己缩水）——
+      //   漏了它，归因会与值悄悄错位，而屏上两个数各自看着都"合理"。
+      const satAttrCell = attrOf(attribution, objId, stateVar);
+      if (satAttrCell !== null) attrScale(satAttrCell, raw === 0 ? 0 : sat / raw);
       saturations.push({ objectId: objId, stateVar, raw, value: sat, bound: sat > raw ? "min" : "max" });
     }
   }
@@ -1286,6 +1552,8 @@ export function propagateTick(
     reactionActors: reactionActors.sort(
       (a, b) => a.ruleKey.localeCompare(b.ruleKey) || a.actorObjectId.localeCompare(b.actorObjectId),
     ),
+    // 归因影子转成普通嵌套对象（Map 进不了 JSON 回执）。空树 ⇒ `{}`（无扰动时恒如此）。
+    perturbationAttribution: attrToJSON(attribution),
     stateVarReport: {
       declaredStateVars: [...declaredSeen].sort((a, b) => a.localeCompare(b)),
       undeclaredStateVars: [...undeclaredSeen].sort((a, b) => a.localeCompare(b)),
