@@ -44,7 +44,7 @@
  *   **接缝门在同一个地方咬了第二次，这是设计意图，不是意外。**
  *   ⇒ 本模块存在的**第二个理由**：一份实现、两个调用点。**⛔ 不许再各写一份。**
  */
-import { buildCellRoles, type PropagationRule, type StateVarDomainLookup, type TickState } from "@platform/contracts";
+import { buildCellRoles, type PropagationRule, type SaturationEvent, type StateVarDomainLookup, type TickState } from "@platform/contracts";
 import { stateVarValueRef } from "../synthetic/battery.js";
 import { round12, type PropagationGraph } from "./propagation.js";
 
@@ -59,6 +59,15 @@ export interface SpecBaseSynthesisDeps {
   /** 本跑真正喂进引擎的规则集（与 `propagateTick` 第 3 位同一份）。 */
   rules: readonly PropagationRule[];
   stateVarDomains: StateVarDomainLookup | undefined;
+  /**
+   * **补写越域点名的落点** —— 传进来的必须是**既有回执通道 `saturations` 的那一个数组**
+   * （⛔ 不新造通道、不新造字段：本单只用平台已有的越域记账口子）。
+   *
+   * 不传 = 不点名。**影子线 / 回放镜像环（`metric-series.ts`）走的就是这条** ——
+   * 它们是**另一条世界线**，把它们的越域格并进本次回执，等于让两条线互相污染
+   * （本模块头注「坑 2」记的正是同族病）。
+   */
+  outOfDomain?: SaturationEvent[];
 }
 
 /** `(state, decayed) => void` —— 就地改写 `state`，与 `propagateTick` 的 `next` 同一个对象。 */
@@ -86,8 +95,30 @@ export function makeRestoreSpecBase(deps: SpecBaseSynthesisDeps): RestoreSpecBas
         if (typeof base !== "number") continue;
         const cur = bucket[sv];
         if (typeof cur !== "number") continue;
-        const rest = deps.stateVarDomains?.[sv]?.restPoint ?? 0;
-        bucket[sv] = round12(cur + lambda * (base - rest));
+        const domain = deps.stateVarDomains?.[sv];
+        const rest = domain?.restPoint ?? 0;
+        const after = round12(cur + lambda * (base - rest));
+        bucket[sv] = after;
+        // ── 补写不静默（WO-3ROOT-P1 §3.1(b)）────────────────────────────────────────────
+        // 🔴 为什么非得在这里判：核的夹值步（`propagation.ts` 第 4 步）在本函数**之前**跑完，
+        //    而上面这一行是**这一拍的最后一次写** ⇒ 它推出去的读数在核里没有任何人对账：
+        //    ① 回执 `stateVarReport` 讲的是核跑完那一刻的世界，**看不到补写**；
+        //    ② 越域值要到**下一拍**才被夹，且下一拍的夹值事件记的 `raw` 是补写值经了一拍衰减后的数
+        //       —— 不是补写值本身；推进停止时最后一拍补出来的越域读数**永远没人看**。
+        //    旧式铸造（恒 `[0,100]`）下这一档从不触发 ⇒ 它一直是条**静默**路径。
+        // ⛔ 这里**不夹**（夹掉 = 判例骂的「把数据 bug 夹成看起来正常」），只点名。
+        const sink = deps.outOfDomain;
+        if (sink !== undefined && domain !== undefined && typeof after === "number" && Number.isFinite(after)) {
+          // ⚠ 本类条目的 `value` **等于** `raw`，这**不是漏填**：契约里 `value` 的注释是
+          //   「压缩后的读数（恒在 (min,max) 开区间内）」，那是**核内夹值**那一档的语义
+          //   —— 本档**刻意不压缩**（见上），因此 `value === raw` 正是「此处没有压缩动作」的自述。
+          //   读到 `raw === value` 的条目 = 「补写把它推出去了，而平台没夹」。
+          if (after < domain.min) {
+            sink.push({ objectId: objId, stateVar: sv, raw: after, value: after, bound: "min" });
+          } else if (domain.max !== null && after > domain.max) {
+            sink.push({ objectId: objId, stateVar: sv, raw: after, value: after, bound: "max" });
+          }
+        }
       }
     }
   };
