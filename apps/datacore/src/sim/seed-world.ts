@@ -37,7 +37,12 @@ import {
 } from "@platform/contracts";
 import type { AuthCtx } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
-import { stateVarDisplayName, stateVarValueRef } from "../synthetic/battery.js";
+import {
+  castSeedBaseValue,
+  stateVarDisplayName,
+  stateVarDomains,
+  stateVarValueRef,
+} from "../synthetic/battery.js";
 import { buildPropagationInputs } from "./propagation-inputs.js";
 import type { PropagationGraph } from "./propagation.js";
 
@@ -480,7 +485,12 @@ export async function deriveSeedBaseSnapshot(
           // 出处里能说「这几格的值来自哪条公式」，而不只「名字撞上了」。
           if (stateVarValueRef(typeKey, v) !== undefined) measuredRefVarKeys.add(`${typeKey}.${v}`);
         } else {
-          row[v] = Math.round(seedHash01(`${o.id}|${v}`) * 100);
+          // WO-3ROOT-P1：占位真值不再写死 `×100` 的半轴，而是**按该格声明域的形状**铸造
+          // （`restPoint` 严格内点的域 ⇒ 两侧对称展开，负半轴可达）。⛔ 唯一的实现体不在本文件，
+          // 见 `synthetic/battery.ts` 的 `castSeedBaseValue` —— 本处只许转调，不许再抄一份式子
+          // （第二套真相源正是 `spec-base-synthesis.ts` 头注「坑 2」记的那个病）。
+          // ⚠ 无域/无界域/压力族（restPoint = 下界）三档在铸造器内部逐字节回放旧行为。
+          row[v] = castSeedBaseValue(stateVarDomains()[v], seedHash01(`${o.id}|${v}`));
           originRow[v] = "derived";
         }
         cells += 1;
