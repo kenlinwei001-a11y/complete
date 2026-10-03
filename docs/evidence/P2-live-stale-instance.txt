@@ -1,0 +1,7 @@
+cell                       = obj_base_changzhou.loadIndex  (spec base_load_index = committedQty*100/(formCap+aging))
+live props (对象库真值)     = 301.819778
+demo 会话冻结基值(2026-01-01)= 301.8198
+fresh 会话冻结基值(今日 08:54)= 301.819778
+今天重算式子值             = 301.819777942478
+frozen==live ? false
+两会话基值相等(逐位) ? true

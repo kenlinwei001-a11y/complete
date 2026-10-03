@@ -1,0 +1,9 @@
+session= sims_demo_seed_world curTick= 3 createdAt= 2026-01-01T00:00:00.000Z
+types= 7 objectsLoaded= 708
+spec-owned cells checked=679 mismatched=0 (notInWorld=1050)
+CANARY non-spec Order.qty checked=150 mismatched=0
+session= sims_demo_seed_world curTick= 3 createdAt= 2026-01-01T00:00:00.000Z
+types= 7 objectsLoaded= 708
+spec-owned cells checked=679 mismatched=0 (notInWorld=1050)
+CANARY non-spec Order.qty checked=150 mismatched=0
+SELFTEST cell=obj_order_SO-3391.demandPressure frozen=60 live=60 delta_now=0.000000 delta_after_plus1=1.000000 tol=1e-4 ⇒ 探针有鉴别力
