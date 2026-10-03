@@ -1255,6 +1255,78 @@ export function tallyCellProvenance(
   return { measured, derived, unknown };
 }
 
+// ── WO-3ROOT-P2 · 规格基值的运行期新鲜度（「归属」与「时效」两条关系）────────────────
+/**
+ * 一格规格格在建会话那一刻的基值（会话文档 `baseSnapshotSource.specCells` 的一条）。
+ * `stateVar` 就是规格的 `targetProp`（索引键 = `类型|量纲`）。
+ */
+export const SpecCellSourceEntrySchema = z.object({
+  objectId: z.string(),
+  stateVar: z.string(),
+  specKey: z.string(),
+  baseValue: z.number(),
+});
+export type SpecCellSourceEntry = z.infer<typeof SpecCellSourceEntrySchema>;
+
+/**
+ * 会话文档里的**源指纹**：这份基值取自哪一版对象库、播种于何时、覆盖哪些格。
+ *
+ * ⚠ **与会话 `scope.baseSnapshotSourceSummary` 两个都要，不许合并**（同 `baseSnapshotProvenance`
+ * 那条纪律）：后者是**定长合计**（随列表投影下发），本字段是**逐格明细**
+ * （demo 实测上千条）⇒ 列表投影里必须 omit，否则把「刚修好的 O(N×世界规模) 回包」原样复活。
+ *
+ * 缺失（.optional）⇒ 逐格时效**读作 `UNKNOWN`**（第三态），⛔ 不许读作 FRESH。
+ */
+export const BaseSnapshotSourceSchema = z.object({
+  /** `repos.objects.revision(tenantId)`；pg 模式回 null ⇒ 诚实降级到逐格比对（R9），不许读成「没变」。 */
+  revision: z.number().nullable(),
+  /** 播种时刻（ISO），与会话 `createdAt` 同一口径。 */
+  asOf: z.string(),
+  /** 规格格全集（逐对象逐量纲）。列表投影里被 omit。 */
+  specCells: z.array(SpecCellSourceEntrySchema),
+  /** FNV-1a(sorted `objectId|stateVar|value`)：只做留痕，判据本体永远逐格比对。 */
+  digest: z.string(),
+});
+export type BaseSnapshotSource = z.infer<typeof BaseSnapshotSourceSchema>;
+
+/** 逐格过期明细（可下钻到具体对象）。 */
+export const StaleSpecCellSchema = z.object({
+  objectId: z.string(),
+  stateVar: z.string(),
+  specKey: z.string(),
+  baseValue: z.number(),
+  currentValue: z.number(),
+});
+export type StaleSpecCell = z.infer<typeof StaleSpecCellSchema>;
+
+/**
+ * 规格基值的**时效**（三态，正交于 `CellOriginSchema` 的两态）。
+ * · FRESH  = 每格 `baseValue` 都等于今天从对象 props 重算的规格真值（`round(...,6)`，无容差）；
+ * · STALE  = 至少一格不等（明细见 `staleCells`）；
+ * · UNKNOWN= 本会话没有 `baseSnapshotSource`（老会话 / 调用方自带世界 / 占位路）⇒ 不可判。
+ *
+ * ⛔ **不许把 FRESH/STALE 并进 `CellOrigin`**：那两态答的是「这一格怎么来的」，
+ * 本字段答的是「它现在还是不是源的当前值」，两个正交维度合成一个字段 = 两件事都说不清。
+ */
+export const BaseFreshnessSchema = z.object({
+  state: z.enum(["FRESH", "STALE", "UNKNOWN"]),
+  sourceRevision: z.number().nullable(),
+  currentRevision: z.number().nullable(),
+  asOf: z.string().nullable(),
+  staleCells: z.array(StaleSpecCellSchema),
+  /** 逐对象过期格数（= staleCells.length）。 */
+  staleCellCount: z.number().int(),
+  /**
+   * 本次判据负责的**量纲键数**（`(类型,量纲)` 对，= 规格格索引大小）。
+   * ⚠ 与 `staleCellCount` 口径不同、刻意不合：前者是规则空间有多大，后者是有几格真过期。
+   * 分母不给 ⇒ 「1 格过期」不知是真 1 还是只查了 1。
+   */
+  evaluatedCellCount: z.number().int(),
+  /** UNKNOWN 的理由（缺 baseSnapshotSource 的老会话）。 */
+  reason: z.string().nullable(),
+});
+export type BaseFreshness = z.infer<typeof BaseFreshnessSchema>;
+
 export const SimSessionSchema = z.object({
   id: z.string(),
   tenantId: z.string(), // R2
@@ -1271,6 +1343,12 @@ export const SimSessionSchema = z.object({
    * 构造多处，置为必填会把整包前端打成编译红。缺失 ⇒ 逐格读作「出处未知」（见上）。
    */
   baseSnapshotProvenance: CellProvenanceSchema.optional(),
+  /**
+   * WO-3ROOT-P2：建会话那一刻的**源指纹**（对象库 revision + 播种时刻 + 规格格基值全集 + 指纹）。
+   * 与 `baseSnapshot` **成对**：世界冻结多久，它就该跟着记多久。缺失 ⇒ 时效读作 `UNKNOWN`。
+   * ⚠ 明细字段，**列表投影必须与 `baseSnapshot` 一起被 omit**（口径同下 `baseSnapshotProvenance`）。
+   */
+  baseSnapshotSource: BaseSnapshotSourceSchema.optional(),
   /**
    * 范围裁剪（§2.1 原文「复用 slice-planner 子图」）。**故意保持 `record`**：
    * 本列同时被 `WO-LIVE-ENDPOINTS` 的活方案快照借用（`snapshotKind`/`label`/`page`/`baseId` …），
@@ -1420,6 +1498,10 @@ export const SimSessionListItemSchema = SimSessionSchema.omit({
    * 列表侧的诚实位走 `scope.baseSnapshotOrigin` 的合计（定长，见 `SeedWorldSnapshotOrigin`）。
    */
   baseSnapshotProvenance: true,
+  /**
+   * ⚠ 逐格明细（千条量级）⇒ 与 `baseSnapshot` 一起被拿掉。列表侧的诚实位走 `scope.baseSnapshotSourceSummary`。
+   */
+  baseSnapshotSource: true,
 }).extend({
   /** 被拿掉的那份世界内容有多大（诚实位·口径见 `SimSessionScaleSchema`）。 */
   baseSnapshotScale: SimSessionScaleSchema,
