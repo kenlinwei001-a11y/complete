@@ -20,10 +20,35 @@ export interface ReflectInput {
   userContent: string;
 }
 
+/**
+ * 一条违规 · **两个受众，两句文案**（WO-REFLECT-JARGON-SPLIT）。
+ *
+ * 本模块的产出有两个去处，受众**不同**，故文案必须分开写：
+ *   · `model` → 回注成 `final_answer` 的 `tool_result`(isError)，**给模型看**：允许出现工具名
+ *     （`invoke_solver`）、内部记号（`⟦ref:N⟧`）、字段名（`provenance`）、补齐指令。
+ *     它的措辞**是重规划那一轮起作用的原因**，不许为了"好看"改软。
+ *   · `user`  → 预算尽时追加进 **答案正文**，**给用户看**：禁工具名 / 内部记号 / 字段名 /
+ *     源码路径 / 内部循环术语（R-UI-4 + `dev-jargon:check` 同口径）。
+ *
+ * ⚠ 本类型存在的唯一理由，是让「一个字符串两个受众」**在类型上写不出来** ——
+ *   加一条检查就必须同时写出两句，漏一句编译不过。
+ * > 形态（本仓铁律 0.6）：「我用『这段文字是写给模型看的』当作『它放在哪儿都合适』的证据，
+ * >   而前者并不度量后者。」本单里此形态出现过两次（另一次是 `reflectUserContent` 一个参数两个身份），
+ * >   按 0.6 第 2 次**必须建机制**，故落在这里。
+ */
+export interface ReflectViolation {
+  /** 面向模型：回注重规划提示。 */
+  model: string;
+  /** 面向用户：上屏正文（判据见上）。 */
+  user: string;
+}
+
 export interface ReflectVerdict {
   ok: boolean;
-  /** 未过关的原因清单（回注重规划提示·也用作 replanReason 观测）。 */
+  /** 未过关的原因清单（**回注重规划提示**·也用作 replanReason 观测）。⛔ 不许直接渲染上屏。 */
   reasons: string[];
+  /** 与 `reasons` **同序同长**的用户可读版 —— 上屏只许用这一份。 */
+  userReasons: string[];
 }
 
 /** 排产/优化/资源分配/可行性类问句 → 求解纪律：禁自算，必须调对口 solver。 */
@@ -71,27 +96,41 @@ function refsWithinRange(blocks: ReflectInput["blocks"], provenanceCount: number
  * （口径一致 crossValidate / 越 scope 对象域判定需上游注入 hook·本纯函数不承载·见 loop.ts 侧可选叠加。）
  */
 export function reflectAnswer(input: ReflectInput): ReflectVerdict {
-  const reasons: string[] = [];
+  const v: ReflectViolation[] = [];
   const textBlocks = input.blocks.filter((b) => b.type === "text");
 
   // ① 答了吗（blocks 空 / 文本全为占位 → 未真正作答）。
   const emptyOrPlaceholder =
     input.blocks.length === 0 ||
     (textBlocks.length > 0 && textBlocks.every((b) => !b.markdown?.trim() || PLACEHOLDER_RE.test(b.markdown)));
-  if (emptyOrPlaceholder) reasons.push("答案为空或仅占位（未真正作答）");
+  if (emptyOrPlaceholder)
+    v.push({ model: "答案为空或仅占位（未真正作答）", user: "本次没能给出有效回答" });
 
   // ② 数字落地（数字红线）：裸数 / ⟦ref:N⟧ 越界。
-  if (scanBlocks(input.blocks)) reasons.push("存在未溯源业务数字（数字红线：每个业务数字须 ⟦ref:N⟧）");
+  if (scanBlocks(input.blocks))
+    v.push({
+      model: "存在未溯源业务数字（数字红线：每个业务数字须 ⟦ref:N⟧）",
+      user: "回答里有数字没能注明出处",
+    });
   if (!refsWithinRange(input.blocks, input.provenanceCount))
-    reasons.push("⟦ref:N⟧ 引用下标越出 provenance 范围（溯源指针无效）");
+    v.push({
+      model: "⟦ref:N⟧ 引用下标越出 provenance 范围（溯源指针无效）",
+      user: "回答里的出处标注指向了不存在的数据",
+    });
 
   // ③ 工具静默失败（不许把失败当没发生）。
   if (hasSilentToolFailure(input.iterations, input.blocks))
-    reasons.push("有工具调用报错/被拒/超预算，但答案未体现（静默失败·须诚实交代或补取证）");
+    v.push({
+      model: "有工具调用报错/被拒/超预算，但答案未体现（静默失败·须诚实交代或补取证）",
+      user: "有数据查询没能成功，结论可能不完整",
+    });
 
   // ④ Solver-first（求解纪律）：排产/优化/可行性题未调过对口 solver。
   if (SOLVER_REQUIRED_RE.test(input.userContent) && !calledSolverOk(input.iterations))
-    reasons.push("排产/优化/可行性类问题未调用对口 solver（求解纪律：禁自算·须走 invoke_solver）");
+    v.push({
+      model: "排产/优化/可行性类问题未调用对口 solver（求解纪律：禁自算·须走 invoke_solver）",
+      user: "这类问题应由求解器核算，本次没有走求解器，结论只能作为方向参考",
+    });
 
-  return { ok: reasons.length === 0, reasons };
+  return { ok: v.length === 0, reasons: v.map((x) => x.model), userReasons: v.map((x) => x.user) };
 }

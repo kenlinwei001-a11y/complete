@@ -210,11 +210,49 @@ export interface AgentLoopOpts {
    * 仅 path-B `runAgentLoop` 生效（path-A/compose 直出不经此循环）。生产接线（据 entitlement 开关）由 orchestrator 侧注入（WO-0 领域·本单不碰）。
    */
   reflect?: boolean;
+  /**
+   * ★ WO-REFLECT-INPUT-FIX · **反思判据要读的那段文本（用户原话）**。
+   *
+   * ── 为什么需要它（病灶·2026-10-01 真路径实测坐实）──────────────────────────────
+   * `reflectAnswer` 的四查里，④「Solver-first」拿 `userContent` 去撞
+   * `SOLVER_REQUIRED_RE`（排产/排程/优化/最优/齐套/承诺/接单/产能…可行·缺口/可行性…），
+   * 语义是「**用户在问排产/优化类问题吗**」。
+   * 而 `opts.userContent` 在本仓**不是用户原话** —— 它是
+   * `[baseUser, 导航切片, 本体语义上下文, DRIL 包].join("\n\n")` 的**拼接材料**，
+   * 里面 engine 自己注入的 solver capability 文案 / solver·规则 roster 的 `brief` /
+   * `slice.rules` 原文**天然就带那一族词**。
+   *
+   * ⇒ 实测：用户问「帮我看看物料库存现在什么情况」（一个触发词都没有）且答案干净利落，
+   *   屏上仍被追加「【反思发现的残余缺口】排产/优化/可行性类问题未调用对口 solver」——
+   *   **一句关于用户自己所问内容的事实性错误**。demo 租户 `agent.critic` 是**点亮的**
+   *   （`datacore/src/seed.ts` `DEMO_LIGHTUP`），故这不是将来风险，是**当时正在发生**的缺陷。
+   *
+   * ⚠ 形态：「我用『这段材料里出现了排产/优化字样』当作『用户在问排产/优化题』的证据，
+   *   而前者并不度量后者 —— 材料里混着我自己注入的语料。」
+   * ⚠ **修的是判据的输入，不是判据本身**。调正则属打地鼠：下一个同义词立刻重演。
+   *
+   * ── ⚠ 它管的是**两个**消费方，不是一个（2026-10-02 补齐残口）──────────────────────
+   * 本仓 `userContent` 有三个消费方，只有一个是"就该吃拼接材料"的：
+   *   ① `reflectAnswer` 的 ④ —— 判「用户在问排产/优化题吗」 ⇒ **读原话**（本选项）
+   *   ② `opts.critic`（LLM critic） —— 判「答没答那个问题 / 该不该调求解器却空口给数」 ⇒ **读原话**（本选项）
+   *   ③ `messages[0]`（喂给模型的 user 轮） —— **就该是**拼接材料，⛔ 不归本选项管
+   * 首轮只修了 ①，② 漏在同一个函数里、相隔三行 —— 症状一模一样（无关问句上误报），
+   * 只是措辞从「求解纪律…」换成了 critic 复核结论。**同一根因的第二个消费方不算衍生问题，
+   * 它就是根因本身没修完。**
+   *
+   * 缺省（不传）= 退回 `opts.userContent`（= 修复前的行为·字节兼容）——
+   * 不把「没人传」静默变成「④ 永不生效」，那样会把目标判据悄悄关掉。
+   */
+  reflectUserContent?: string;
   /** 反思不过关时的重规划轮次上界（硬有界·默认 1）。 */
   replanBudget?: number;
   /**
    * 可选 LLM critic（entitlement `agent.critic`·暗发）：确定性复盘之后的 advisory 复核——返回 {ok,reason}。
    * **fail-open**：未注入 / 抛错 → 只用确定性复盘结论（绝不阻断循环·R6 主判仍确定）。
+   *
+   * ⚠ `input.userContent` 的词法：语义是「**用户在问什么**」，传的是
+   * `reflectUserContent ?? userContent`（见上），**与 ④ 同源** ——
+   * 注入方（orchestrator）的提示词里写着「该调求解器却空口给数」，吃拼接材料会误判。
    */
   critic?: (input: { blocks: AnswerBlock[]; userContent: string }) => Promise<{ ok: boolean; reason?: string }>;
   /**
@@ -415,12 +453,31 @@ async function reflectWithCritic(
     blocks: answer.blocks,
     provenanceCount: answer.provenance.length,
     iterations,
-    userContent: opts.userContent,
+    // ★ WO-REFLECT-INPUT-FIX：④ 判「用户在问排产/优化题吗」，它要读的是**用户原话**，
+    // 不是 engine 拼给模型看的那段材料（材料里混着我们自己注入的语料 → 误报）。
+    // 缺省退回 `opts.userContent` = 修复前行为（字节兼容），调用方逐个改传原话。
+    userContent: opts.reflectUserContent ?? opts.userContent,
   });
   if (!opts.critic) return base;
   try {
-    const c = await opts.critic({ blocks: answer.blocks, userContent: opts.userContent });
-    if (!c.ok) return { ok: false, reasons: [...base.reasons, `LLM critic：${c.reason ?? "复核未过"}`] };
+    // ★ WO-REFLECT-INPUT-FIX（残口补齐）：critic 与 ④ 是**同一族判据**——它被问的是
+    // 「这个回答答没答『那个问题』/ 该不该调求解器却空口给数」，语义同样是「**用户在问什么**」。
+    // 故它必须与 ④ 读同一份输入：`reflectUserContent`（原话），⛔ 不是 `opts.userContent`（拼接材料）。
+    // 漏了这一处的后果与 ④ 完全一样：orchestrator 的 critic 指令原文就含「该调求解器却空口给数」，
+    // 而拼接材料自带 solver/规则文案 ⇒ 无关问句上照样误判，屏上照样多一句假话（只是换了措辞）。
+    const c = await opts.critic({
+      blocks: answer.blocks,
+      userContent: opts.reflectUserContent ?? opts.userContent,
+    });
+    if (!c.ok)
+      return {
+        ok: false,
+        reasons: [...base.reasons, `LLM critic：${c.reason ?? "复核未过"}`],
+        // ★ critic 的 `reason` 是**无受众约束的自由文本**（LLM 生成的复核意见，可能含内部术语）——
+        // 它进 `reasons`（回注给模型 / replanReason 审计），⛔ 不进 `userReasons`。
+        // 上屏只给这句固定文案；要追 critic 原话去 replanReason 取。
+        userReasons: [...base.userReasons, "复核认为这个回答的论据还不够充分"],
+      };
   } catch {
     // fail-open：critic 抛错不影响确定性主判（R6 复盘仍生效）。
   }
@@ -529,7 +586,13 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
   const replanBudget = Math.max(0, opts.replanBudget ?? 1);
   let replansUsed = 0;
   let reflected = false;
+  /**
+   * 复盘未过关的原因 · **两份，受众不同**（WO-REFLECT-JARGON-SPLIT）。
+   *   · `lastReplanReason`      → 回注给模型的 `tool_result` + `replanReason` 审计字段（可含内部术语）
+   *   · `lastReplanReasonUser`  → **上屏**的答案块正文（只有这一份许进 blocks）
+   */
   let lastReplanReason = "";
+  let lastReplanReasonUser = "";
   // WO-LOOP-CONTROL-P1 · Loop Detector 环检测状态（opt-in·repeatCap≤0 = 禁用 = 现行为字节兼容）。
   const repeatCap = opts.loopRepeatCap && opts.loopRepeatCap > 0 ? opts.loopRepeatCap : 0;
   const callSignatureCounts = new Map<string, number>();
@@ -1067,6 +1130,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
           if (!verdict.ok) {
             reflected = true;
             lastReplanReason = verdict.reasons.join("；");
+            lastReplanReasonUser = verdict.userReasons.join("；");
             const canReplan = replansUsed < replanBudget && !finalizePending && !opts.budget.exhausted && !opts.budget.roundTripsExceeded();
             if (canReplan) {
               replansUsed += 1;
@@ -1087,7 +1151,12 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
             // 重规划预算尽仍不过关 → 诚实收尾：附「反思发现的残余缺口」块（不静默发半成品·KILL-MOCK-RED）。
             const gapBlocks: AnswerBlock[] = [
               ...accepted.answer.blocks,
-              { type: "text", markdown: `【反思发现的残余缺口（已尽重规划预算 ${replanBudget}）】${lastReplanReason}` },
+              // ★ WO-REFLECT-JARGON-SPLIT：上屏用 `lastReplanReasonUser`（用户可读），
+              // ⛔ 不许用 `lastReplanReason` —— 那是回注给模型的诊断串（含 invoke_solver / ⟦ref:N⟧ /
+              // 「求解纪律」这类内部术语与补齐指令），用户读了无法据此做任何决定。
+              // 标题里的「重规划预算 ${replanBudget}」同属内部循环术语，一并不上屏；
+              // 该计数仍随 `replanReason` 进审计字段，要查去那里查。
+              { type: "text", markdown: `【本次回答的已知不足】${lastReplanReasonUser}` },
             ];
             iterations.push({ index: i, toolCalls: [] });
             return {
