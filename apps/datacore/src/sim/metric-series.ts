@@ -16,6 +16,7 @@ import {
 } from "@platform/contracts";
 import { stateVarDisplayName } from "../synthetic/battery.js";
 import { makeRestoreSpecBase } from "./spec-base-synthesis.js";
+import { type SpecCellIndex } from "./spec-cells.js";
 import {
   propagateTick,
   type CadenceGateLookup,
@@ -68,6 +69,11 @@ export interface MetricSeriesEngine {
    * **只有合并态才同时具备两者**，也只有合并态会漏喂一个 —— 这正是 SEAM-GATE 要防的那种断法。
    */
   stateVarDomains: StateVarDomainLookup;
+  /**
+   * WO-3ROOT-P2 · D1：与生产 tick 路**同一个**规格格索引（⛔ 不许在这里另建一份，
+   * 那是 C2 头注「坑 2」的形态：生产环与回放环各判各的 ⇒ 曲线与落盘世界分叉）。
+   */
+  specCells: SpecCellIndex;
   /**
    * C2 合成层的基值（`state = 派生基值 + 累积传导量`）。**必须是不含扰动的 tick0 行**
    * （`app.ts` 的 `s.baseSnapshot`）—— ⛔ **不是本模块的 `seed`**：
@@ -149,6 +155,7 @@ export function replayWorldLine(args: {
   // 与生产 tick 路**同一个工厂**（`spec-base-synthesis.ts` 头注坑 2：只改那边不改这边 = 分叉）。
   const restoreSpecBase = makeRestoreSpecBase({
     baseSnapshot: engine.specBase, graph: engine.graph, rules, stateVarDomains: engine.stateVarDomains,
+    specCells: engine.specCells,
   });
   let state = states[0]!;
   let pending: DelayedContribution[] = []; // tick0 行的 pending 恒 `[]`（`POST /sessions` 建的就是空的）

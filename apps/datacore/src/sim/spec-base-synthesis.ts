@@ -45,7 +45,7 @@
  *   ⇒ 本模块存在的**第二个理由**：一份实现、两个调用点。**⛔ 不许再各写一份。**
  */
 import { buildCellRoles, type PropagationRule, type StateVarDomainLookup, type TickState } from "@platform/contracts";
-import { stateVarValueRef } from "../synthetic/battery.js";
+import { specCellKey, type SpecCellIndex } from "./spec-cells.js";
 import { round12, type PropagationGraph } from "./propagation.js";
 
 export interface SpecBaseSynthesisDeps {
@@ -59,6 +59,13 @@ export interface SpecBaseSynthesisDeps {
   /** 本跑真正喂进引擎的规则集（与 `propagateTick` 第 3 位同一份）。 */
   rules: readonly PropagationRule[];
   stateVarDomains: StateVarDomainLookup | undefined;
+  /**
+   * WO-3ROOT-P2 · D1：规格格**归属**的运行期单源（`sim/spec-cells.ts`）。
+   * 由调用方在核**之外**装配后注入（与 `stateVarDomains`/`pairWeights` 同款），
+   * ⛔ 本模块**不再 import 编译期字面量表** —— 规格退役 ⇒ 该格当场离开锚定集（E3 的活体判据）。
+   * ⚠ 代数一行未改：仍然是 `cur + λ·(base − rest)`，只换了「谁算规格格」这个判据的来源。
+   */
+  specCells: SpecCellIndex;
 }
 
 /** `(state, decayed) => void` —— 就地改写 `state`，与 `propagateTick` 的 `next` 同一个对象。 */
@@ -81,7 +88,7 @@ export function makeRestoreSpecBase(deps: SpecBaseSynthesisDeps): RestoreSpecBas
         if (cellRoles.isExogenous(tk, sv)) continue;
         // 🔴 判据是「**归不归派生规格所有**」，不是「baseSnapshot 里有没有键」（那永远有）。
         //    与播种路（`seed-world.ts` 的 `measuredRefVarKeys`）**同一个函数**，不另立登记表。
-        if (stateVarValueRef(tk, sv) === undefined) continue;
+        if (!deps.specCells.has(specCellKey(tk, sv))) continue;
         const base = baseRow[sv];
         if (typeof base !== "number") continue;
         const cur = bucket[sv];

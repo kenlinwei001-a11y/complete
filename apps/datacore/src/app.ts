@@ -67,6 +67,7 @@ import { reconstructAndPersist } from "./process/reconstruct.js"; // WO-FLOWTIME
 import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
 import { makeRestoreSpecBase } from "./sim/spec-base-synthesis.js";
+import { computeBaseFreshness, digestSpecCells, specCellIndexFor, worldCellKeys, type BaseFreshness, type BaseSnapshotSource, type SpecCellIndex } from "./sim/spec-cells.js";
 import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow（PRD v2）· 本体建模工作流 upsert·嫁接自 main
 import { ForecastAdoptionPayloadSchema } from "@platform/contracts"; // WO-SIM-ACTION-REAL · 采纳产能预测结论 payload 契约
 import { SchemeAdoptionPayloadSchema } from "@platform/contracts"; // WO-ADOPT-SCHEME-CARRIER · 采纳经营方案 payload 契约（量纲逐字段标注）
@@ -2099,6 +2100,20 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
      * 之类按快照建会话的路径传的是具体的 `TickState`，不受本支影响，逐字节同旧。
      */
     const derived = input.baseSnapshot === undefined ? await deriveSeedBaseSnapshot(repos, c.tenantId) : null;
+    /**
+     * WO-3ROOT-P2 · D2：把**源指纹**记进会话文档（播种那一刻的对象库版本 + 规格格基值全集 + 指纹）。
+     * ⛔ 记事实不记推断：`asOf` 用**本会话的 createdAt**（播种路径传固定值时重播字节一致，R6）；
+     * 明细只随单条会话下发（列表投影里被 omit），列表侧摘要走 `scope.baseSnapshotSourceSummary`。
+     */
+    const createdAt = input.createdAt ?? new Date().toISOString();
+    const baseSource: BaseSnapshotSource | undefined = derived === null
+      ? undefined
+      : {
+          revision: await repos.objects.revision(c.tenantId),
+          asOf: createdAt,
+          specCells: derived.specCells,
+          digest: digestSpecCells(derived.specCells),
+        };
     const base = input.baseSnapshot ?? derived?.state ?? {};
     const provenance = input.baseSnapshotProvenance ?? derived?.provenance;
     /**
@@ -2109,17 +2124,28 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
      */
     const scope = derived === null
       ? (input.scope ?? {})
-      : { ...(input.scope ?? {}), baseSnapshotOrigin: derived.origin };
+      : {
+          ...(input.scope ?? {}),
+          baseSnapshotOrigin: derived.origin,
+          /** 列表用**定长摘要**（逐格明细上万条，塞进列表就是把刚修好的回包原样复活）。 */
+          baseSnapshotSourceSummary: {
+            revision: baseSource?.revision ?? null,
+            asOf: createdAt,
+            specCellCount: derived.specCells.length,
+            specKeyCount: new Set(derived.specCells.map((x) => x.specKey)).size,
+          },
+        };
     const s: SimSession = {
       id: input.id ?? newId("sims"), tenantId: c.tenantId, baseSnapshot: base,
       ...(provenance === undefined ? {} : { baseSnapshotProvenance: provenance }),
+      ...(baseSource === undefined ? {} : { baseSnapshotSource: baseSource }),
       scope,
       status: Object.keys(base).length > 0 ? "READY" : "DRAFT", curTick: 0, parentCheckpointId: null,
       disabledRuleKeys: [], // WO-ACTIVE-EDGE-UX：新会话不屏蔽任何边 ⇒ 与本字段引入前逐字节相同（RL9）
       // WO-SIM-DRILL-P12 · G-DRILL-1：一 tick = 几天。缺省 1（与 A8 模拟时钟「一 tick = 一模拟日」同口径）
       // ⇒ 本字段引入前建的世界读出来恒 1，行为逐字节不变。
       tickDays: Math.max(1, Math.floor(input.tickDays ?? 1)),
-      createdAt: input.createdAt ?? new Date().toISOString(),
+      createdAt,
     };
     await repos.sim.createSession(s);
     await repos.sim.putTickState({ sessionId: s.id, tenantId: c.tenantId, tick: 0, state: simState(base), pending: [], trace: null });
@@ -2189,7 +2215,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
    */
   app.get("/a/v1/sim/sessions/:id", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.sandbox");
-    return await getSimOr404(c, (req.params as { id: string }).id); // R2：别租户 404
+    const s = await getSimOr404(c, (req.params as { id: string }).id); // R2：别租户 404
+    // WO-3ROOT-P2 · D2：单条会话是**唯一**下发源指纹明细 + 逐格过期明细的面（列表投影里两者都 omit）。
+    return { ...s, baseFreshness: await simBaseFreshnessOf(c, s) };
   });
 
   // ── 会话生命周期迁移：PAUSED / ENDED（WO-SIMSESSION-BIZ-REUSE）──────────────────────────
@@ -2267,11 +2295,37 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
      * 消费方（`SandboxView` / `EdgeActivePanel`）据此逐格区分显示。缺键 = 出处未知（老会话、
      * 或调用方自带世界那一档），前端按第三态渲染，**不许并进 `derived`**。
      */
-    return { tick: s.curTick, state: await simCurrent(c, s), baseProvenance: s.baseSnapshotProvenance ?? {} };
+    return {
+      tick: s.curTick,
+      state: await simCurrent(c, s),
+      baseProvenance: s.baseSnapshotProvenance ?? {},
+      /** WO-3ROOT-P2 · D2：这份世界的基值还等不等于源（三态；⛔ 不许把 UNKNOWN 并进 FRESH）。 */
+      baseFreshness: await simBaseFreshnessOf(c, s),
+    };
   });
   // M0-A11 解释切片（PRD-ground-truth §4）：从已完成 tick 的 trace 反向收敛目标格的因果子图。
   // ⛔ 只读投影 —— 不参与计算、不裁剪传导范围（计算范围卡 20 会切断真实传导链，得到的是错的推演）。
   // coverage 必填并随回包下发：一张 ≤20 节点的图解释几千边的链必然残缺，不报 = 拿残图冒充全图。
+  /**
+   * WO-3ROOT-P2 · D3-b：**用今天的本体重建世界**（过期后「显式二选一」里的那一「选」）。
+   *
+   * 产出 = **新会话**（append-only）：走与 `POST /sessions` **同一条** `deriveSeedBaseSnapshot`
+   * （从今天的对象库重铺）⇒ `baseSnapshotSource` 记今天、状态天然 FRESH；
+   * `scope.reanchorOf` 记旧会话 id；**旧会话原样不动**（仍 STALE）。
+   * ⛔ 不许原地重写 `baseSnapshot`（`seed-world.ts` 明文「原样保留（不重算）」，全仓 `.baseSnapshot =` 零命中）。
+   * ⛔ 不许实现成 branch：分支子会话取的是**父 checkpoint**（已含衰减与扰动），与 C2 的不变量相冲。
+   * R10：这是产出操作 ⇒ 必发事件（世界线上可解释「这个世界是从哪个世界重锚来的」）。
+   */
+  app.post("/a/v1/sim/sessions/:id/reanchor", async (req, reply) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    const s = await getSimOr404(c, (req.params as { id: string }).id); // R2：别租户 404
+    const fresh = await createSimSessionWorld(c, {
+      scope: { ...(s.scope ?? {}), reanchorOf: s.id },
+      tickDays: s.tickDays,
+    });
+    await outbox.emit(c.tenantId, "sim.session_reanchored", { sessionId: fresh.id, reanchorOf: s.id, fromTick: s.curTick });
+    return reply.status(201).send(fresh);
+  });
   app.get("/a/v1/sim/sessions/:id/explain-slice", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.sandbox");
     const s = await getSimOr404(c, (req.params as { id: string }).id);
@@ -2347,7 +2401,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const engine = published.length > 0 || perturbations.length > 0
       ? await buildPropagationInputs(repos, c, resolveSimScope(s.scope), active)
       : { graph: { objects: [], links: [] }, ruleParams: {}, cadenceGates: {}, pairWeights: {}, stateVarDomains: {} };
-    return buildMetricSeries({
+    const series = await buildMetricSeries({
       sessionId: s.id,
       // 🔴 基线种子 = **本会话自己的 tick0 行**（`/act` 直写过的世界里它与 baseSnapshot 不同，
       //    那个差额属于这个世界、两条线都该带着它）。缺行才退回 baseSnapshot。
@@ -2358,6 +2412,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       engine: {
         graph: engine.graph, ruleParams: engine.ruleParams, cadenceGates: engine.cadenceGates,
         pairWeights: engine.pairWeights, stateVarDomains: engine.stateVarDomains,
+        // WO-3ROOT-P2：与生产环**同一个**索引装配点（⛔ 回放环不许自己再建一份）。
+        specCells: await simSpecCellIndex(c),
         // C2 合成基值：⛔ 用 `s.baseSnapshot`（不含扰动），**不是**上面那个 `seed` —— 见模型层字段注释。
         specBase: simState(s.baseSnapshot),
       },
@@ -2375,6 +2431,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       ...(q.objectIds === undefined ? {} : { objectIds: q.objectIds }),
       ...(q.stateVars === undefined ? {} : { stateVars: q.stateVars }),
     });
+    return { ...series, baseFreshness: await simBaseFreshnessOf(c, s) };
   });
   /**
    * 从会话**当前态**推进 n 格（`propagateTick` 的唯一驱动处）。
@@ -2389,6 +2446,34 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
    * 都会被算进"关掉这条边的影响"里，而那部分差异根本不是边造成的 —— 那就是把噪声当结论。
    * 这与本仓 `applyPerturbationToState` 被提到契约里是同一条纪律。
    */
+  /**
+   * WO-3ROOT-P2 · D1/D2 的**唯一装配点**（都在 tick 核**之外**）。
+   *  · 规格格索引 = ACTIVE 规格 ∩ **已发布**规则的世界量纲空间
+   *    （⛔ 不新增登记表；只读规格库与规则目录 ⇒ 不补 `props → TickState` 值边）；
+   *  · 新鲜度 = 逐格比 `baseSnapshot` 那一格 vs 今天从对象 props 重算的规格真值（`round(...,6)`，无容差）。
+   */
+  const simSpecCellIndex = async (c: AuthCtx): Promise<SpecCellIndex> =>
+    specCellIndexFor(repos, c.tenantId, worldCellKeys(await repos.sim.listPropagationRules(c.tenantId, true)));
+  const simBaseFreshnessOf = async (c: AuthCtx, s: SimSession, prebuilt?: SpecCellIndex): Promise<BaseFreshness> => {
+    const index = prebuilt ?? (await simSpecCellIndex(c));
+    const typeOf = new Map<string, string>();
+    const propsOf = new Map<string, Record<string, unknown>>();
+    // 没有源指纹（老会话 / 调用方自带世界 / 占位路）⇒ 判不了 ⇒ 连对象库都不扫，直接 UNKNOWN。
+    if (s.baseSnapshotSource !== undefined) {
+      for (const typeKey of [...new Set([...index.values()].map((x) => x.targetType))].sort()) {
+        for (const o of await repos.objects.listByType(c.tenantId, typeKey)) {
+          typeOf.set(o.id, typeKey);
+          propsOf.set(o.id, o.props);
+        }
+      }
+    }
+    return computeBaseFreshness({
+      source: s.baseSnapshotSource ?? null,
+      baseSnapshot: s.baseSnapshot,
+      index, typeOf, propsOf,
+      currentRevision: await repos.objects.revision(c.tenantId),
+    });
+  };
   const simAdvanceTicks = async (
     c: AuthCtx,
     s: SimSession,
@@ -2577,11 +2662,13 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
      * ⚠ **回放环 `metric-series.ts` 必须调同一个工厂** —— 它是本函数的**手工镜像副本**
      *   （该文件自述「逐行对齐」），只改这里不改那里 = 曲线与落盘世界分叉。
      */
+    const specCells = await simSpecCellIndex(c);
     const restoreSpecBase = makeRestoreSpecBase({
       baseSnapshot: s.baseSnapshot,
       graph,
       rules: propRules,
       stateVarDomains,
+      specCells,
     });
     let shadowKey: string | null = null;
     if (wantDrift) {
@@ -2796,6 +2883,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return {
       curTick: s.curTick,
       state: r.state,
+      /** WO-3ROOT-P2 · D2：本拍回包同样带基值时效（三态见 `BaseFreshnessSchema`）。 */
+      baseFreshness: await simBaseFreshnessOf(c, s),
       ...(r.propagate
         ? {
             trace: r.trace,
