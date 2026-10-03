@@ -14,7 +14,8 @@
 import { describe, expect, it } from "vitest";
 import { propagateTick, saturateToDomain } from "../src/sim/propagation.js";
 import { stateVarDomains, STATE_DECAY_RULE_KEY, STATE_DECAY_PARAM_KEY, PRESSURE_DECAY_PER_TICK } from "../src/synthetic/battery.js";
-import type { PropagationRule, TickState } from "@platform/contracts";
+import type { Perturbation, PropagationRule, TickState } from "@platform/contracts";
+import type { PerturbationInTick } from "../src/sim/propagation.js";
 
 /** 一条最小的链：A.p --l--> B.p（系数 1，无延迟）。用它复现"纯积分器"这个形态。 */
 const rule = (over: Partial<PropagationRule> = {}): PropagationRule => ({
@@ -273,6 +274,114 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
       expect(Math.abs(deltas.at(-1)!)).toBeLessThan(Math.abs(deltas[0]!));
       // 🐤 同一装置去掉域声明就发散（证明这条"没发散"有鉴别力）
       expect(run(6, {}, NO_DECAY).series[5]!).toBeGreaterThan(250);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // §8 WO-HOLD-PERTURBATION · 生效期内的落点每拍按**声明**重施
+  //
+  // 病灶（2026-10-02 真服务实测）：扰动相是「一次性施加 + 到期反向施加」而**不是每拍重施**，
+  // 于是契约里白纸黑字写着「`null` = 永久」的落笔，一旦落在**有入边的累加器**上，
+  // 就被衰减相逐拍收掉 —— 真 datacore 上 `Order.demandPressure` 声明 +30：
+  // 90 → 45.6 → 17.628 → 0.00564（3 拍，8 拍后 0）；而同一批里落在入度 0 量纲上的两条
+  // （`Material.priceShock` 42→62、`Equipment.equipmentFailure` 21→23）三拍分毫不差。
+  // **同一句声明、两种命运 ⇒ 声明与实现相反。**
+  //
+  // 治法：生效期内，先把该变换从**累加器**里撤掉（衰减与入流跑自然轨迹），跑完再按声明加回去。
+  // 于是幅度**不参与衰减**（不会被吃掉），也**不复合**（不是每拍在上一拍的结果上再乘一次）。
+  //
+  // ⚠ 为什么不是「跳过衰减」（第一版 WO-PIN-LANDING，已实测并撤下）：落点原地不动、幅度也不参与
+  //   动力学，且"声明的那部分"与"世界自己演化出来的那部分"糊在一个数里，屏上分不开。
+  //   第一版满足「不动」，但**不满足「真永久」** —— 世界自己那部分一停，落点就跟着停。
+  //
+  // ⚠ 本段与 §7 那条豁免**不是一回事，别合并**：§7 治的是"饱和相无差别重压上一拍的输出"，
+  //   本段治的是"衰减相把用户声明的东西当自己的存量收走"。前者在饱和相，后者在衰减相，
+  //   同一个病（把两件事合成一件）在本文件已经犯过一次。
+  // ══════════════════════════════════════════════════════════════════════════
+  describe("§8 WO-HOLD-PERTURBATION · 生效期内的落点每拍按声明重施", () => {
+    const d = stateVarDomains();
+    /** 源恒 0 ⇒ 规则每拍贡献 0 ⇒ 目标格上**只剩衰减一个力**（判据一：不然测不出因果）。 */
+    const prePert: TickState = { a1: { demandPressure: 0 }, b1: { demandLoad: 60 } };
+    const pert = (over: Partial<Perturbation> = {}): PerturbationInTick => ({
+      id: "p1", tenantId: "t", sessionId: "s",
+      kind: "demand_shift",
+      targetObjectId: "b1", targetStateVar: "demandLoad",
+      startTick: 1, durationTicks: null, magnitude: 30, mode: "delta",
+      label: "测试用：目标格 +30", createdAt: "2026-01-01T00:00:00.000Z",
+      ...over,
+    });
+
+    /** 连推 n 拍，回 b1.demandLoad 轨迹 + 每拍重施/未重施的格数（**披露字段**，不是内部变量）。 */
+    function drive(n: number, ps: PerturbationInTick[], from: TickState = prePert): { series: number[]; held: number[]; unresolved: number[] } {
+      let st = from;
+      let pend: Parameters<typeof propagateTick>[3] = [];
+      const series: number[] = []; const held: number[] = []; const unresolved: number[] = [];
+      for (let t = 0; t < n; t++) {
+        const r = propagateTick(graph, st, [rule()], pend, t, RULE_PARAMS, {}, ps, {}, d);
+        st = r.next; pend = r.pending;
+        series.push(st.b1!.demandLoad!);
+        held.push(r.stateVarReport.heldPerturbations.length);
+        unresolved.push(r.stateVarReport.heldUnresolved.length);
+      }
+      return { series, held, unresolved };
+    }
+    /** 无扰动臂的轨迹 —— **同一次 drive**，不是抄来的常数。下面每条都拿它当基准。 */
+    const CONTROL = drive(4, []).series;
+
+    it("§8.0 🐤 前置金丝雀 · demandLoad 确实是「会被衰减」的那一类（否则本段什么都没测）", () => {
+      // ① 它是某条规则的 target ⇒ 进 writtenVars（衰减相只碰这一类）；② 它有域声明且 λ 解析得出。
+      expect(rule().targetStateVar).toBe("demandLoad");
+      expect(d.demandLoad).toBeDefined();
+      // 无扰动 ⇒ 一格不重施，且它自己就在散：60 → 37.8 → 23.814 → 15.00282
+      const { series, held, unresolved } = drive(3, []);
+      expect(held).toEqual([0, 0, 0]);
+      expect(unresolved).toEqual([0, 0, 0]);
+      expect(series).toEqual([37.8, 23.814, 15.00282]);
+      expect(CONTROL.slice(0, 3)).toEqual([37.8, 23.814, 15.00282]); // 基准臂自证
+    });
+
+    it("§8.1 判据一 · durationTicks=null（契约「永久」）的幅度**不被衰减吃掉**：每拍恒等于 自然值+30", () => {
+      const { series, held } = drive(3, [pert()]);
+      expect(held).toEqual([1, 1, 1]); // 生效期覆盖三拍 ⇒ 三拍都重施
+      // 核心判据：与**同一装置的无扰动臂**逐拍相减，差恒为 30 —— 不缩水（不是被吃掉），也不变大（不是复利）。
+      // ⚠ 期望值由基准臂现算，⛔ 不写死 67.8/53.814/45.00282：那是把这条轨迹抄成第二套真相源。
+      series.forEach((v, i) => expect(v - CONTROL[i]!).toBeCloseTo(30, 9));
+      // 反向对照（这一条才是"永久"的定义）：第一版「跳过衰减」在这里会是 90 → 90 → 90，
+      // 幅度**不随世界演化**；本版必须随自然轨迹一起走 —— 两条臂在 series[2] 上必须分开。
+      expect(series[2]!).toBeLessThan(90 - 1);
+    });
+
+    it("§8.2 反向金丝雀 · 给了 durationTicks 就必须在到期那一拍交还给自然轨迹（重施不是永久豁免）", () => {
+      const { series, held } = drive(4, [pert({ durationTicks: 2 })]);
+      // 生效期 = producedTick 1、2 ⇒ 重施；producedTick=3 到期：先按 delta 回退（−30），**同一拍起不再加回**
+      expect(held).toEqual([1, 1, 0, 0]);
+      series.slice(0, 2).forEach((v, i) => expect(v - CONTROL[i]!).toBeCloseTo(30, 9));
+      // 到期之后必须**逐字节回到**无扰动臂：不是"近似"，是这条世界线上这个扰动的痕迹只该剩在历史值里
+      expect(series.slice(2)).toEqual(CONTROL.slice(2));
+    });
+
+    it("§8.2b 对照 · scale 档：入流落在**缩放之后**，不复合（不是每拍在上一拍结果上再乘一次）", () => {
+      // ⚠ 本用例**必须带非零入流**（`a1.demandPressure = 1`）。第一版用 §8.0 那份 rest=0 的静置夹具，
+      //   当场被变异反证抖出**没有牙**：`rest=0` 时衰减是线性的，`0.63×(60×1.5) ≡ (0.63×60)×1.5`
+      //   —— 「落地一次」与「每拍重施」在这个夹具上给出逐位相同的轨迹，断言恒真。
+      //   形态：「我用『这条断言在正确实现下通过』当作『它抓得住错误实现』的证据」。
+      //   金丝雀就在下面一行：有入流时两版必然分开（57.7 vs 58.2），无入流时分开不了。
+      const from: TickState = { a1: { demandPressure: 1 }, b1: { demandLoad: 60 } };
+      const ctl = drive(3, [], from).series;
+      const { series } = drive(3, [pert({ mode: "scale", magnitude: 1.5 })], from);
+      // 判据：整条轨迹 = 自然轨迹 ×1.5。入流若被排除在缩放之外（落地一次的旧行为），第一拍就是 57.7 ≠ 58.2。
+      series.forEach((v, i) => expect(v).toBeCloseTo(ctl[i]! * 1.5, 9));
+      // 非复利：复利三拍后是 17.02972×1.5³ = 57.5，而正确值是 25.54458 —— 两个数量级分得开。
+      expect(series[2]!).toBeLessThan(40);
+    });
+
+    it("§8.3 RL9 可回退 · 无扰动时两份清单都为空，且读数与本节引入前逐字节同", () => {
+      const r = propagateTick(graph, prePert, [rule()], [], 0, RULE_PARAMS, {}, [], {}, d);
+      expect(r.stateVarReport.heldPerturbations).toEqual([]);
+      expect(r.stateVarReport.heldUnresolved).toEqual([]);
+      expect(r.next.b1!.demandLoad).toBe(37.8);
+      // 判据落在**值**上而不是清单上：清单为空可能只是"没登记"，值不动才说明真的没碰。
+      expect(JSON.stringify(r.next)).toBe(JSON.stringify({ ...prePert, b1: { demandLoad: 37.8 } }));
     });
   });
 });
