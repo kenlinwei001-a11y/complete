@@ -1380,7 +1380,16 @@ export function propagateTick(
           //（见 `causal-graph.ts`：到达那一拍无从回溯来源），不把拆解抄进这份订单，
           // 归因就会在**每一次带 delay 的跳**上整段丢掉，而样例链恰好有一跳带 `delayTicks=1`。
           // 无归因时留 `undefined`（⛔ 不写空对象：老快照读回来也是 `undefined`，两者必须同形）。
-          if (shadow !== null) queued.attribution = Object.fromEntries(shadow);
+          // ⚠ **必须按键升序**再转普通对象：`Object.fromEntries(Map)` 保留的是**插入顺序**，
+          //   而插入顺序会随"某条扰动这一拍被减到 0 删掉、下一拍又被加回来"而变化 ⇒
+          //   `JSON.stringify` 出来的字节**同一输入两次不一样**，直接顶掉 R6（同输入同字节）。
+          //   实测形态：`sim-perturbation` 的 R6 门红在 `{"p2","p1","p3"}` vs `{"p2","p3","p1"}` ——
+          //   **每一个值都逐位相同，只有键序不同**。值算对了不等于交付对，字节也是交付的一部分。
+          if (shadow !== null) {
+            queued.attribution = Object.fromEntries(
+              [...shadow.entries()].sort((a, b) => a[0].localeCompare(b[0])),
+            );
+          }
           nextPending.push(queued);
         }
       }
