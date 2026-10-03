@@ -115,6 +115,9 @@ import EdgeActivePanel from "../EdgeActivePanel";
 import {
   buildInspectorView,
   buildMetricWall,
+  readBaseFreshness,
+  baseFreshnessText,
+  type BaseFreshnessView,
   buildRailSummary,
   readSnapshotOrigin,
   type PerturbationBrief,
@@ -584,6 +587,16 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
     [sessionsQ.data, sessionId],
   );
   const origin = useMemo(() => (current === undefined ? null : readSnapshotOrigin(current.scope)), [current]);
+  /**
+   * WO-3ROOT-P2 · D2：**规格基值时效**——与「世界态出处」正交的第二条诚实位
+   * （那条说「这格是实测还是结构派生」，这条说「这条会话的基值今天还对不对」）。
+   * 来源 = 屏上**已经在发**的指标时序回包（`seriesQ`，POST/GET 都与墙共用同一份）⇒
+   * 零新增请求、零本地重算；句子里每个数都来自后端（⛔ 前端不自己比规格）。
+   */
+  const freshness = useMemo(() => {
+    const raw = seriesQ.data === undefined ? null : (seriesQ.data as unknown as Record<string, unknown>).baseFreshness;
+    return readBaseFreshness(raw);
+  }, [seriesQ.data]);
   const statusState: SessionStatusState = useMemo(() => {
     if (!enabled) {
       // 「压根没有会话」与「不知道有没有会话」不是一回事 —— 沿用 `useConsoleSession` 已经分好的那五态，
@@ -748,6 +761,7 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
               ? ""
               : ` · 实测格 ${origin.measuredCells}/${origin.cells}`
           }`,
+      baseFreshnessText(freshness),
       `传导规则 ${modeCounts.propagationRules ?? "—"} 条 · 状态变量 ${modeCounts.stateVars ?? "—"} 个 · 本次未调用 agent（推演路零 LLM）`,
     ],
     sections: [
@@ -860,6 +874,14 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
           {usingPinned
             ? "这块屏继续盯着刚才那个世界 —— 它已经不在推演中了，自动选取不会再选中它"
             : SESSION_REASON_TEXT[session.reason]}
+        </span>
+        {/* 规格基值时效：第二条诚实位（数据源 = 时序回包，非本地推断）。 */}
+        <span
+          data-testid="usim-base-freshness"
+          data-freshness-state={freshness === null ? "ABSENT" : freshness.state}
+          className={styles.calibre}
+        >
+          {baseFreshnessText(freshness)}
         </span>
         <span data-testid="usim-origin" data-origin-kind={origin?.kind ?? "unknown"} className={styles.calibre}>
           {origin === null

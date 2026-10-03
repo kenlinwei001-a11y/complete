@@ -1922,6 +1922,8 @@ export type SimMetricSeriesQuery = z.infer<typeof SimMetricSeriesQuerySchema>;
 
 /** `GET /a/v1/sim/sessions/:id/metric-series?from=&to=&limit=&order=&objectIds=&stateVars=` 的响应。 */
 export const SimMetricSeriesResponseSchema = z.object({
+  /** WO-3ROOT-P2 · D2：本回包所属会话的规格基值时效（三态，见 BaseFreshnessSchema）；旧会话/未装配 ⇒ 缺席。 */
+  baseFreshness: BaseFreshnessSchema.optional(),
   sessionId: z.string(),
   /** 实际返回的窗口（已按世界线可用范围收敛，见 `clamped`）。 */
   fromTick: z.number().int(),

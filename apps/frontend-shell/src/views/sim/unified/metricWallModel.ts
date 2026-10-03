@@ -710,3 +710,51 @@ export function buildRailSummary(applied: readonly PerturbationBrief[], wall: Me
     : `结果读不出来：${wall.seriesAbsenceReason ?? "指标时序缺席"}`;
   return { applied, appliedText, resultText };
 }
+
+/* ══ WO-3ROOT-P2 · D2 · 规格基值的**时效**（屏上与导出物的唯一读法）════════════════════
+ *
+ * 三个态**正交于** `CellProvenance`（后者说「这格是实测还是结构派生」，前者说「这条会话的基值今天还对不对」）：
+ *   · FRESH   —— 每格基值都等于今天从对象库重算的规格真值（后端 `round(...,6)`，**无容差**）；
+ *   · STALE   —— 至少一格不等（给出 `staleCellCount` / `evaluatedCellCount` 与基准时刻）；
+ *   · UNKNOWN —— 后端明说**判不了**（这条会话没有源指纹 / 旧会话）⇒ ⛔ 不许读作新鲜。
+ * ⛔ 前端一个数都不新算、不本地重算规格：句子里每个数都取自后端回包（A8 判据：屏上句必须来自后端数字）。
+ */
+export interface BaseFreshnessView {
+  readonly state: "FRESH" | "STALE" | "UNKNOWN";
+  readonly staleCellCount: number;
+  readonly evaluatedCellCount: number;
+  readonly asOf: string;
+  readonly reason: string | null;
+}
+
+const FRESHNESS_STATES = ["FRESH", "STALE", "UNKNOWN"] as const;
+
+/**
+ * 从任意回包里读时效。形状不认识 ⇒ `null`。
+ * ⚠ `null`（前端没拿到）与 `UNKNOWN`（后端说判不了）是**两件事**，屏上措辞不同。
+ */
+export function readBaseFreshness(v: unknown): BaseFreshnessView | null {
+  if (v === null || v === undefined || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  if (typeof o.state !== "string" || !(FRESHNESS_STATES as readonly string[]).includes(o.state)) return null;
+  const num = (x: unknown): number => (typeof x === "number" && Number.isFinite(x) ? x : 0);
+  return {
+    state: o.state as BaseFreshnessView["state"],
+    staleCellCount: num(o.staleCellCount),
+    evaluatedCellCount: num(o.evaluatedCellCount),
+    asOf: typeof o.asOf === "string" ? o.asOf : "",
+    reason: typeof o.reason === "string" ? o.reason : null,
+  };
+}
+
+/** 屏上那一句（状态条与导出物**共用**这一份，不各写一份）。 */
+export function baseFreshnessText(f: BaseFreshnessView | null): string {
+  if (f === null) return "规格基值：时效读不出来（这条会话的回包里没有这一项）";
+  if (f.state === "FRESH") {
+    return `规格基值：新鲜（基准时刻 ${f.asOf}，${f.evaluatedCellCount} 格全部与对象库重算等同）`;
+  }
+  if (f.state === "STALE") {
+    return `规格基值：已过期（${f.staleCellCount}/${f.evaluatedCellCount} 格与对象库重算不符，基准时刻 ${f.asOf}）`;
+  }
+  return `规格基值：判不了${f.reason === null ? "" : `（${f.reason}）`}`;
+}
