@@ -38,6 +38,7 @@ import {
 import type { AuthCtx } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
 import { stateVarDisplayName, stateVarValueRef } from "../synthetic/battery.js";
+import { specCellIndex, specCellKey, worldCellKeys, type SpecCellSourceEntry } from "./spec-cells.js";
 import { buildPropagationInputs } from "./propagation-inputs.js";
 import type { PropagationGraph } from "./propagation.js";
 
@@ -393,7 +394,7 @@ function varsByType(rules: readonly PropagationRule[]): Map<string, Set<string>>
 export async function deriveSeedBaseSnapshot(
   repos: Repos,
   tenantId: string,
-): Promise<{ state: TickState; origin: SeedWorldSnapshotOrigin; provenance: CellProvenance }> {
+): Promise<{ state: TickState; origin: SeedWorldSnapshotOrigin; provenance: CellProvenance; specCells: SpecCellSourceEntry[] }> {
   const rules = await repos.sim.listPropagationRules(tenantId, true);
   const byType = varsByType(rules);
   // WO-SIM-REAL-DATA §3：登记的 (类型,变量) 走**显式 valueRef**（`STATE_VAR_VALUE_REFS`），
@@ -403,6 +404,15 @@ export async function deriveSeedBaseSnapshot(
   // 是显式绑定来的」与「这几格是名字撞上的」分开记，出处里说清。
   const activeSpecs = await repos.derivationSpecs.list(tenantId, (s) => s.status === "ACTIVE");
   const specByKey = new Map(activeSpecs.map((s) => [s.specKey, s]));
+  /**
+   * WO-3ROOT-P2 · D1：**规格格归属的运行期单源** = ACTIVE 规格 ∩ 世界量纲空间。
+   * ⛔ 不再用 `stateVarValueRef` 字面量判「这格归不归规格」—— 那是编译期冻结的第二套真相源，
+   *    规格一退役，世界照旧锚着它（E3 的活体判据）。
+   * ⚠ `universe` 必须传：不传会把 3 条**落点不在世界量纲空间**的规格也锚进来 ⇒ widening
+   *    （理由与实测见 `sim/spec-cells.ts` 头注）。
+   */
+  const worldKeys = worldCellKeys(rules);
+  const specCells = specCellIndex(activeSpecs, worldKeys);
   const state: TickState = {};
   /**
    * 逐格出处（WO-SANDBOX-REAL-SNAPSHOT）。**与 `measuredCells` 在同一个 `if/else` 里写**，
@@ -426,6 +436,11 @@ export async function deriveSeedBaseSnapshot(
   /** 其中走**显式 valueRef 绑定**（而非名字撞）命中的 `类型.变量`（出处里单独点名）。 */
   const measuredRefVarKeys = new Set<string>();
   /**
+   * 规格格基值全集（D2 `baseSnapshotSource.specCells`）。**与下面 `state[o.id][v]` 在同一个分支里写**
+   * ⇒ 记的就是世界里那一格的值，不是二次采样（二次采样 = 第二套真相源）。
+   */
+  const refSpecCells: SpecCellSourceEntry[] = [];
+  /**
    * 显式绑定校验（WO §3「绑定失败会红」）：凡 `STATE_VAR_VALUE_REFS` 登记、且该变量真的
    * 被本世界铺到的 (类型,变量)，其 specKey 必须解到一条 ACTIVE 规格。在**铺格之前**全量核一遍，
    * 一次把坏引用全部报出来，而不是铺到一半才红在某一张对象上。
@@ -444,12 +459,15 @@ export async function deriveSeedBaseSnapshot(
       for (const v of byType.get(typeKey) ?? new Set<string>()) {
         const ref = stateVarValueRef(typeKey, v);
         if (ref === undefined) continue;
-        const spec = specByKey.get(ref.specKey);
+        // WO-3ROOT-P2 · D1：判据由「specByKey 里查得到」换成**索引里查得到**
+        // （索引 = ACTIVE 规格 ∩ 世界量纲空间，见 `sim/spec-cells.ts`）。语义不变：
+        // 查无 ACTIVE 规格 / 落点不指回本格，都落进同一句「绑定断裂」。
+        const spec = specCells.get(specCellKey(typeKey, v));
         if (spec === undefined) {
           brokenRefs.push(`${typeKey}.${v} → specKey "${ref.specKey}"（查无 ACTIVE 规格）`);
-        } else if (spec.targetType !== typeKey || spec.targetProp !== v) {
+        } else if (spec.specKey !== ref.specKey) {
           brokenRefs.push(
-            `${typeKey}.${v} → specKey "${ref.specKey}"（规格落点是 ${spec.targetType}.${spec.targetProp}，不指回本格）`,
+            `${typeKey}.${v} → specKey "${ref.specKey}"（索引里是 "${spec.specKey}"，不指回本格）`,
           );
         }
       }
@@ -478,7 +496,13 @@ export async function deriveSeedBaseSnapshot(
           measuredVarKeys.add(`${typeKey}.${v}`);
           // §3：这一格是显式绑定来的（登记了 valueRef 且规格落点回指本格）⇒ 单独记一笔，
           // 出处里能说「这几格的值来自哪条公式」，而不只「名字撞上了」。
-          if (stateVarValueRef(typeKey, v) !== undefined) measuredRefVarKeys.add(`${typeKey}.${v}`);
+          {
+            const cellRef = specCells.get(specCellKey(typeKey, v));
+            if (cellRef !== undefined) {
+              measuredRefVarKeys.add(`${typeKey}.${v}`);
+              refSpecCells.push({ objectId: o.id, stateVar: v, specKey: cellRef.specKey, baseValue: real });
+            }
+          }
         } else {
           row[v] = Math.round(seedHash01(`${o.id}|${v}`) * 100);
           originRow[v] = "derived";
@@ -497,6 +521,7 @@ export async function deriveSeedBaseSnapshot(
   return {
     state,
     provenance,
+    specCells: refSpecCells,
     origin: {
       kind: "DERIVED",
       /**

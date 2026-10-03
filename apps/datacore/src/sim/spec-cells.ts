@@ -238,28 +238,34 @@ export function computeBaseFreshness(input: BaseFreshnessInput): BaseFreshness {
   return { ...base, ...scanStaleCells(input), reason: null };
 }
 
-/** 逐格扫描（短路未命中 / `revision` 不可用时走这里）。 */
+/** 逐格扫描（短路未命中 / `revision` 不可用时走这里）。
+ *
+ * ⚠ 扫的是 **`source.specCells`**（播种那一刻记下的清单），不是「今天索引里的全集」：
+ *  · 它天然排除了**没读到真属性**（哈希占位）的格 —— 那种格的基值不是源的真值，
+ *    拿它跟今天的 props 比会**恒报过期**（假阳性）；
+ *  · 判据本体仍是逐格值比对：`baseValue`（冻结世界那一格）vs `today(c)`（今天 props 重算）。
+ */
 function scanStaleCells(input: BaseFreshnessInput): { state: BaseFreshnessState; staleCells: StaleSpecCell[]; staleCellCount: number } {
   const staleCells: StaleSpecCell[] = [];
   const index = input.index;
-  if (index.size === 0) return { state: "FRESH", staleCells, staleCellCount: 0 };
-  // 对象序 = 全序（R6：同输入同输出；不许依赖 Object.keys 的插入序漂移）
-  for (const objectId of Object.keys(input.baseSnapshot).sort((a, b) => a.localeCompare(b))) {
-    const typeKey = input.typeOf.get(objectId);
+  const src = input.source;
+  if (src === null || src === undefined) return { state: "FRESH", staleCells, staleCellCount: 0 };
+  const entries = [...src.specCells].sort((x, y) =>
+    x.objectId === y.objectId ? x.stateVar.localeCompare(y.stateVar) : x.objectId.localeCompare(y.objectId));
+  for (const entry of entries) {
+    const typeKey = input.typeOf.get(entry.objectId);
     if (typeKey === undefined) continue;
-    const props = input.propsOf.get(objectId);
+    // 公式取**今天**的归属（规格退役/改式 ⇒ 该格不再锚定，也就不再判「过期」）。
+    const cell = index.get(specCellKey(typeKey, entry.stateVar));
+    if (cell === undefined) continue;
+    const props = input.propsOf.get(entry.objectId);
     if (props === undefined) continue; // 对象已不在库里 ⇒ 判不了，跳过（不许猜）
-    const row = input.baseSnapshot[objectId] ?? {};
-    for (const stateVar of Object.keys(row).sort((a, b) => a.localeCompare(b))) {
-      const cell = index.get(specCellKey(typeKey, stateVar));
-      if (cell === undefined) continue;
-      const baseValue = row[stateVar];
-      if (typeof baseValue !== "number") continue;
-      const currentValue = todayOfSpecCell(cell.formula, props);
-      if (currentValue === undefined) continue; // 译不出/算不了 ⇒ 跳过，不许当过期
-      if (baseValue !== currentValue) {
-        staleCells.push({ objectId, stateVar, specKey: cell.specKey, baseValue, currentValue });
-      }
+    const frozen = input.baseSnapshot?.[entry.objectId]?.[entry.stateVar];
+    const baseValue = typeof frozen === "number" ? frozen : entry.baseValue;
+    const currentValue = todayOfSpecCell(cell.formula, props);
+    if (currentValue === undefined) continue; // 译不出/算不了 ⇒ 跳过，不许当过期
+    if (baseValue !== currentValue) {
+      staleCells.push({ objectId: entry.objectId, stateVar: entry.stateVar, specKey: cell.specKey, baseValue, currentValue });
     }
   }
   return staleCells.length > 0
