@@ -74,7 +74,25 @@
 消费方拿它与扰动的 `startTick` 一比即可知道「归因是从第几拍起算的」。
 ⛔ 不许无声地用一张偏小的表 —— 那正是本仓「屏上说没有、其实有」的老病。
 
-## 6 · 验证
+## 6 · 复验实测（2026-10-03）
+
+| 项 | 结果 |
+|---|---|
+| `@platform/contracts` build | **RC=0** |
+| `datacore` build | **RC=0** |
+| 半径（`propagateTick` 调用方 ∪ `sim-*`/`sandbox-*`，34 文件） | **33 passed / 1 failed**；测试 **385 passed / 1 failed** |
+| 唯一那条红 | `sim-order-real-fields.seam.test.ts` ⑤ —— **与本单无关，底上就红** |
+| 变异反证（饱和镜像改成恒等） | 门**当场红**：`expected 500 to be close to 98.611111111111`，另 10 条仍绿 ⇒ 咬点精准 |
+
+**那条红为什么与本单无关（不是"我觉得"）**：把 `propagation.ts` + `app.ts` 退回本单开工前的
+`d14517804` 逐字节重跑，**同一断言、同一句报错**：
+`obj_model_4680-NCM.backlogHorizonDays @tick1: expected undefined to be 110`。
+⇒ 它在底上就是红的。**⚠ 这是"本单不引入它"，不是"它没问题"—— 它仍是 canonical 上的一条真欠账。**
+
+**三条加载期超时已排除**（`sim-drill` ⑦ / `sim-root-procurement` ⑤ / `sim-seed-world` ⑤⑥）：
+按共享机纪律 `testTimeout×5` 重跑**全绿** ⇒ 是机器负载不是回归（铁律：环境慢 ≠ 失败）。
+
+## 7 · 验证
 
 - 接缝门 `apps/datacore/test/pert-attribution.seam.test.ts` **11/11 绿**：
   §0 装置金丝雀 · §1 主判据 · **§2 反向金丝雀（无扰动 ⇒ 整张表为空，⛔ 不是一张全是 0 的表）** ·
