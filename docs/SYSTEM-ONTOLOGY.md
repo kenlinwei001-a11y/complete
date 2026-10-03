@@ -1973,7 +1973,7 @@ Material.shortageRisk → Model.supplyRisk → Order.shortageRisk（既有供应
 
 | 记号 | 新量纲（中文名） | 落点类型 | 传导边（现算入度均为 0） |
 |---|---|---|---|
-| G-ROOT-1 | `forecastBias` 销售预测偏差（正=高估） | `Model` | `Model.forecastBias --model_demanded_by_order--> Order.demandPressure`（**系数 −0.6**）。⚠ **2026-09-20 起该根由哈希占位播种**（`sim/seed-world.ts`，出处章 `derived`）—— 此前覆写它的派生式 `model_forecast_bias` 因**恒等于 0** 已退役（详见下方 WO-GAIN-REACH 段 ①）。⚠ 占位 ∈ [0,100] **恒非负** ⇒ 这条负边**只单向传导**，「低估(−)」那一支仍进不去 |
+| G-ROOT-1 | `forecastBias` 销售预测偏差（正=高估） | `Model` | `Model.forecastBias --model_demanded_by_order--> Order.demandPressure`（**系数 −0.6**）。⚠ **2026-09-20 起该根由哈希占位播种**（`sim/seed-world.ts`，出处章 `derived`）—— 此前覆写它的派生式 `model_forecast_bias` 因**恒等于 0** 已退役（详见下方 WO-GAIN-REACH 段 ①）。⚠ 占位**曾** ∈ [0,100] **恒非负** ⇒ 该负边只单向传导（「低估(−)」支进不去）；**✅ 2026-10-03 已闭**（WO-3ROOT-P1-negative-edge：铸造器按**声明域的形状**参数化 —— `restPoint` 严格内点者两侧对称展开，⛔ 不按量纲名特判；实测 6 型号 −98/77/1/75/−85/58、负 2/6，世界级 53/150 单上穿基值；见下方 ① 段回写） |
 | G-ROOT-2 | `orderChurn` 订单变更压力 | `Order` | `--order_has_line--> OrderLine.splitPressure`(0.7) · `--order_for_model--> Model.demandLoad`(0.5) |
 | G-ROOT-4 | `equipmentFailure` 设备故障率 | `Equipment` | `--equip_used_in--> Process.queuePressure`(0.6) |
 
@@ -2305,6 +2305,17 @@ Material.shortageRisk → Model.supplyRisk → Order.shortageRisk（既有供应
   该边注释写的「低估(−) ⇒ 需求压力上冲」那一支**仍然进不去** ——
   退役把「恒 0」换成「恒非负」，**边从不传导变成只单向传导：变好但没闭合**。
   要闭得给 `forecastBias` 一个带负区间的诚实来源（改 `sim/seed-world.ts` 种子生成器）。
+  ✅ **2026-10-03 已闭（WO-3ROOT-P1-negative-edge）**：病根不是「占位算错」而是**铸造式只读 `seedHash01`、
+  不读它要填的那个域的声明形状** —— 旧式对任何域都取 `[0,100]`，而 `forecastBias` 是全表**唯一** `min < 0` 的域
+  （`[−100,100] / restPoint 0`，静息点在**内部**）。新铸造器按**形状谓词**参数化：`restPoint` 严格内点 ⇒
+  `round(rest + (2u−1)·span)`、`span = max(rest−min, max−rest)`；压力族（`restPoint = min = 0`）与其余 37 域**逐字节同旧**。
+  实测（`docs/evidence/WO-3ROOT-P1-*`）：6 型号 **−98 / 77 / 1 / 75 / −85 / 58**（负 2/6）；
+  世界级 **53/150** 单上穿基值，且**集合等式成立**（上穿集 ≡ `fb′<0` 型号所带单，两向差集 0/0）；
+  基值端到端对拍（修前实例 vs 修后实例）4425 对象 / 6375 格里**只有 6 格 `forecastBias` 变**，其余逐字节相同。
+  ⚠ **诚实分栏（未闭部分）**：世界读数仍**不跟 `T = base − 0.6·fb′` 走**（max|dev| ≈ 16），且新接的
+  **补写越域点名**（复用 `saturations`）实跑 0 条 —— 对照臂判其**与本单无关且修前同病**：线上路
+  `stateVarReport.decayApplied` **逐拍为空**，C2 补写的门 `if (decayed[sv] === undefined) continue` 永不打开。
+  已登记 §8 `G-C2-BASE-WRITEBACK-STARVED`，不在本单范围。
   ⚠ 另订正一处**说过头的话**：此前把它记作「沙盘唯一的需求高估杠杆是死的」。实测
   （`lever-probe.mjs` 四臂对照）：`sim-drill.ts` 的 `FORECAST_BIAS.stateEffect.mode === "delta"`
   ⇒ **用户拨杆那条路退役前就是通的**（基线全 0 时拨 +20 仍得 trace 150 行 / −666.000）。
@@ -4192,6 +4203,7 @@ fetchOntologyInvariants()                 evaluateOntologyInvariants(overrides)
 | G-OBJECTS-QUERY-1000-CAP | **对象查询 ≤1000 截断 vs 5460 行事实表 ⇒ 逐行路只能拿到 18%**（WO-OEE-SSOT-C 2026-08-19 复核登记；债本身由 WO-OEE-UNIFY 期间在 `views/sim/physicalTopology.ts` 头注实测记档：/5460 行只拿 1000/）。**实测链**：`GET /a/v1/objects?type=EquipmentOEE` 内部写死 `queryObjects(ctx, type, {}, 1000)`；`POST /a/v1/objects/query` 的 `limit` 被契约夹在 ≤1000（传 6000 → 400 VALIDATION_ERROR）；而 `EquipmentOEE` 事实表实测 **5460 行**（13 基地 × 60 台 × 7 天）⇒ 逐行枚举路天然只能覆盖 18%。**现状不是「屏上错数」**：物理拓扑屏已改走 `POST /a/v1/objects/aggregate`（服务端全量读，`ontology-governance.ts` 明写不受 ≤1000 截断影响）⇒ 该屏的 OEE 格是真值；伤口留在「任何想逐行消费大表的调用方」这一层。**修法归属**：截断在 `app.ts`/`ontology.ts` 的查询层（分页参数或流式枚举），**不在** `views/sim/**`——该屏已是绕过方而非病灶；属后续单（数据层分页通道），与 `G-YIELD-SERIES-SOURCE-MISMATCH` 的「SolverContext 无时序通道」同类（都是缺一条数据通道，不是改两行加载清单）。 | `apps/datacore/src/app.ts`（`/a/v1/objects` 写死 1000）· 契约 `objects/query` limit≤1000 → 逐行消费方（现仅 `views/sim/physicalTopology.ts`，已绕走 `/objects/aggregate`） | 🔴 未修（已绕过·不误导屏上数；2026-08-19 WO-OEE-SSOT-C 复核：绕过路径在、截断伤口在） |
 | G-RISKBOARD-SILENT-TRUNCATION | **风险榜 `slice(0, maxCards=8)` 静默截断 ⇒ 屏上「风险基地 8」而真值是 13**（WO-RISKBOARD-TRUNCATION 2026-09-08 真后端 + 真浏览器实测）。**同 `G-WHATIF-HARDCODED-LEVERS` 的排序后 `slice` 家族**，但这一条直接落在用户读数上。**实测链**（seed 42·H30·阈值 85·**零采纳**）：13 个基地**全部**越线，`risk.ts` 按「越线日↑ → 当前张力↓ → 峰值↓」排序后只取前 8，**被截掉的 5 个连同『它已越线』这个事实一起从回包消失**；契约 `cards: z.array(RiskCardSchema).max(8)` 又把上限钉死 ⇒ 屏上那 8 张究竟是「全网只有 8 个越线」还是「越线 13 个里的前 8」**无法区分**。⚠ **截断是这块看板的默认状态，不是边角情形**。采纳「常州·瓶颈工序·工艺路线调整」(eff=9/T+3) 后更难看：常州峰值 98.0000 → **97.9531**，比成都 97.9935 低 **0.047 个张力点** ⇒ 掉出前 8 ⇒ 整张卡消失，**而它的 `crossDay` 仍是 1**（第 1 天就越线、一次都没被消解）⇒「常州不在榜上」被读成「常州没事了」。**补闭**（加性·不改 `cards[]` 既有内容与排序·不新增对象类型/链路/事件/求解器 → 金值不变）：回包加 `unlistedCrossings`（条数 / 越线总数 / 榜上越线数 / 容量 / 被截名单含各自 `crossDay` / 口径原文），**仅在真被截断时置键**，未截断时整块缺席、回包与上线前逐字节一致；前端 KPI 改显 `8/13` + 第一层记号「另有 N 个基地已越线未上榜」+ 可展开名单。**计数口径**取「`cards` 与 `shown` 的集合差 ∩ 越线」，**不是**「越线总数 − 榜上卡数」——后者在 `forced` 非越线卡在榜时算出**负数**（实测 `{base:常州, factor:设备OEE}` → `0 − 1 = -1`）。守恒 `crossingTotal === shownCrossing + count`。⚠ 变异反证诚实交代：去掉诚实位 ⇒ 7 条里 5 条转红；**把口径换成上述错的那个 ⇒ 全绿不红**（结构性重合：诚实位只在截断时下发，而截断只发生在全网路，那里榜上每张都越线）——放开「榜上可混进不越线的卡」时需另加断言。 | `apps/datacore/src/solvers/risk.ts`（`shown`/`unlistedBases`）· `packages/contracts/src/solvers.ts`（`unlistedCrossings`）· `apps/frontend-shell/src/views/RiskBoardView.tsx`（`risk-unlisted*`）· 测 `datacore/test/riskboard-truncation.seam.test.ts` | ✅ 已闭（2026-09-08·真浏览器 10/10 从登录走起） |
 
+| G-C2-BASE-WRITEBACK-STARVED | **C2 基值补写（`sim/spec-base-synthesis.ts`）在线上路整段不执行**：它的门是 `decayed[sv]`（= `stateVarReport.decayApplied`），而默认推演路该报告**逐拍 0 键** ⇒ ① 世界读数不朝 `base + c/λ` 收敛（即 `base − 0.6·fb′` 不成立，实测 max\|dev\| ≈ 16，**修前已如此**）；② 2026-10-03 新接的**补写越域点名**（复用 `saturations` 通道）因**同一道门被饿死** ⇒ 越域读数（实测 5/150 单 `demandPressure > 100`）**静默无点名**。判据：`POST /sim/sessions/{id}/tick {disclose:true}` 回包 + `/world` 两次采样。⚠ 另：补写发出的 `SaturationEvent.value === raw`（**不夹值**，回执只点名）与字段注释给人的「夹后值」印象有别，读回执者注意。 | `apps/datacore/src/sim/spec-base-synthesis.ts` → `apps/datacore/src/app.ts`（`c2OutOfDomain` 接线）⊗ `sim/propagation.ts` 的 `decayApplied` 供给 | 🔴 **未修**（WO-3ROOT-P1-negative-edge 实测登记 · 2026-10-03；证据 `docs/evidence/WO-3ROOT-P1-world-*.txt` 与 `WO-3ROOT-P1-a9-basesnapshot.txt`） |
 
 > **WO-CAPACITY-PAGE-100PCT 残口补闭（2026-07-30 · 「产能推演」页 100% 实证 LOOP · 台账 `docs/capacity-page-audit-ledger.md`）**
 > 三条**已标 ✅ 已闭**的断点在**真浏览器亲跑**下仍有可复现残口，本单补闭（均不新增对象类型/链路/事件/求解器，故金值不变）：
