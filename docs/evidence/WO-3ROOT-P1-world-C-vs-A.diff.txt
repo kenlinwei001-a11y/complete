@@ -1,0 +1,31 @@
+# A 基准臂(4019 修前) vs C 回退臂(改回 X 重跑) 世界探针输出对拍
+# 归一：仅①BASE 实例 URL ②会话 uuid（记录态 id，非判据）两类，其余逐字节比
+1c1
+< BASE=http://127.0.0.1:4019/a/v1 TICK=20
+---
+> BASE=http://127.0.0.1:4031/a/v1 TICK=20
+4c4
+< 会话 sims_5gp17tyhwgtka13c HTTP=200 · Model 6 · Order 150
+---
+> 会话 sims_9cnhpmp05dztfe2d HTTP=200 · Model 6 · Order 150
+7,13c7,13
+<   obj_model_2170-NCM 实测=1 重算=-98 ❌
+<   obj_model_4680-LFP 实测=88 重算=77 ❌
+<   obj_model_4680-NCM 实测=50 重算=1 ❌
+<   obj_model_圆柱-LFP 实测=88 重算=75 ❌
+<   obj_model_方形-LFP 实测=8 重算=-85 ❌
+<   obj_model_方形-NCM 实测=79 重算=58 ❌
+< ❌ A2a 世界读数 == 进程内生产铸造器重算（逐值） · 0/6
+---
+>   obj_model_2170-NCM 实测=1 重算=1 ✅
+>   obj_model_4680-LFP 实测=88 重算=88 ✅
+>   obj_model_4680-NCM 实测=50 重算=50 ✅
+>   obj_model_圆柱-LFP 实测=88 重算=88 ✅
+>   obj_model_方形-LFP 实测=8 重算=8 ✅
+>   obj_model_方形-NCM 实测=79 重算=79 ✅
+> ✅ A2a 世界读数 == 进程内生产铸造器重算（逐值） · 6/6
+65c65
+< WORLD FAIL ❌（3 条红）
+---
+> WORLD FAIL ❌（2 条红）
+# 上面 3 处差异全部属于已声明归一/对比器自身版本差（A2a 行：世界读数 vs 本机 dist 重算）

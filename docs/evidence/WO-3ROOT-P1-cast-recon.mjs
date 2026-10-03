@@ -7,7 +7,9 @@
  * ⛔ 只读；不 PATCH 规则、不改服务。
  */
 const H = { "X-Debug-User": "demo:admin:admin", "Content-Type": "application/json" };
-const B = "http://127.0.0.1:4019/a/v1";
+// BASE 可覆盖（默认 4019 = 既有 dev 实例）；证据里回显实际打的是哪个实例。
+const B = `${process.env.BASE ?? "http://127.0.0.1:4019"}/a/v1`;
+console.log(`BASE=${B}`);
 const g = async (p, o = {}) => { const r = await fetch(B + p, { headers: H, ...o }); const t = await r.text();
   let j = null; try { j = t ? JSON.parse(t) : null; } catch { j = { _raw: t.slice(0, 120) }; } return { status: r.status, json: j }; };
 const post = (p, b) => g(p, { method: "POST", body: JSON.stringify(b ?? {}) });

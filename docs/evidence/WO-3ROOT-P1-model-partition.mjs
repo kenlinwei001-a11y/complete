@@ -1,49 +1,149 @@
 /**
- * P1 W1 · 型号带单数 + X′ 后逐单预言（供 PRD 的对照实验给可预言读数）
- * 只读：/objects/:id/neighbors 取 order_for_model；不 PATCH、不 tick 之外的操作。
- * 金丝雀：① 必然命中的链路 customer_places_order；② 虚构链路名必不命中。
+ * P1 · 世界级判据取数（A2 铸造值 / A3 上穿集合等式 / A4 量级 / A7 点名不静默 / A8 确定性）
+ *
+ * 用法：
+ *   node docs/evidence/WO-3ROOT-P1-model-partition.mjs           # A2 + A8（零扰动，不 tick）
+ *   TICK=20 node docs/evidence/WO-3ROOT-P1-model-partition.mjs   # 追加 A3/A4/A7
+ *   BASE=http://127.0.0.1:4031 node ...                          # 换实例（默认 4019）
+ *
+ * 口径：A2 **不拿硬编码表当判据** —— 与**进程内生产铸造器重算**逐值比；
+ *       型号名只在打印时用（`obj_model_*` 的 id 本身）。A3 的集合等式用反解出的逐单 fb 判，
+ *       不依赖任何外部表（硬编码表只作为「反解值 vs 表值」的旁证一并打印）。
+ * 金丝雀：⓪ 必然命中的链路 customer_places_order；⓪′ 虚构链路名必不命中。
+ * ⛔ 只读 + 建会话 + tick；不 PATCH、不改种子。
  */
-const H = { "X-Debug-User": "demo:admin:admin" };
-const B = "http://127.0.0.1:4019/a/v1";
-const g = async (p) => { const r = await fetch(B + p, { headers: H }); return { status: r.status, json: await r.json().catch(() => null) }; };
-const fb = { "obj_model_2170-NCM": 1, "obj_model_4680-LFP": 88, "obj_model_4680-NCM": 50,
-             "obj_model_圆柱-LFP": 88, "obj_model_方形-LFP": 8, "obj_model_方形-NCM": 79 };
-const FBP = { "obj_model_2170-NCM": -98, "obj_model_4680-LFP": 77, "obj_model_4680-NCM": 1,
-              "obj_model_圆柱-LFP": 75, "obj_model_方形-LFP": -85, "obj_model_方形-NCM": 58 };
-const nb = await g("/objects/obj_order_SO-3391/neighbors");
-const keys = (nb.json?.groups ?? []).map((x) => x.linkKey);
-console.log(`金丝雀① 必然命中 customer_places_order = ${keys.includes("customer_places_order") ? "✅" : "❌ 取法坏了"}`);
-console.log(`金丝雀② 虚构链路 ___nope___ 命中 = ${keys.includes("___nope___") ? "❌" : "0 ✅"}`);
-if (!keys.includes("customer_places_order")) process.exit(2);
-console.log(`SO-3391 邻接链路: ${keys.join(",")}`);
-// 单分页取全部 Order id（用世界态里的键集，服务端已知）
-const s = (await (await fetch(B + "/sim/sessions", { method: "POST", headers: { ...H, "Content-Type": "application/json" }, body: "{}" })).json());
-const det = await (await fetch(`${B}/sim/sessions/${s.id}`, { headers: H })).json();
-const orderIds = Object.keys(det.baseSnapshot ?? {}).filter((i) => i.startsWith("obj_order_SO-")).sort();
-const per = new Map(); let missing = 0; const map = new Map();
+const ROOT = new URL("../../", import.meta.url).pathname.replace(/\/$/, "");
+const { castSeedBaseValue, stateVarDomains } = await import(`${ROOT}/apps/datacore/dist/synthetic/battery.js`);
+const { seedHash01 } = await import(`${ROOT}/apps/datacore/dist/sim/seed-world.js`);
+
+const H = { "X-Debug-User": "demo:admin:admin", "Content-Type": "application/json" };
+const B = `${process.env.BASE ?? "http://127.0.0.1:4019"}/a/v1`;
+const TICK = Number(process.env.TICK ?? 0);
+const K = -0.222; // 边系数（PRD 禁改，不变量）
+console.log(`BASE=${B} TICK=${TICK}`);
+
+const g = async (p, o = {}) => { const r = await fetch(B + p, { headers: H, ...o }); const t = await r.text();
+  let j = null; try { j = t ? JSON.parse(t) : null; } catch { j = { _raw: t.slice(0, 120) }; } return { status: r.status, json: j }; };
+const post = (p, b) => g(p, { method: "POST", body: JSON.stringify(b ?? {}) });
+let fails = 0;
+const chk = (name, ok, detail = "") => { if (!ok) fails++; console.log(`${ok ? "✅" : "❌"} ${name}${detail ? " · " + detail : ""}`); };
+
+// ── 金丝雀⓪ ────────────────────────────────────────────────────────────────
+const nb0 = await g("/objects/obj_order_SO-3391/neighbors");
+const keys0 = (nb0.json?.groups ?? []).map((x) => x.linkKey);
+const hit = keys0.includes("customer_places_order");
+console.log(`金丝雀⓪ 必然命中 customer_places_order = ${hit ? "✅" : "❌ 取法坏了"}（HTTP ${nb0.status}）`);
+console.log(`金丝雀⓪′ 虚构链路 ___nope___ 命中 = ${keys0.includes("___nope___") ? "❌" : "0 ✅"}`);
+if (!hit) { console.log("⇒ 工具坏了，不构成「世界干净」的证据"); process.exit(2); }
+
+// ── 会话 ───────────────────────────────────────────────────────────────────
+const s = (await post("/sim/sessions", {})).json;
+const det = (await g(`/sim/sessions/${s.id}`)).json;
+const bs = det.baseSnapshot ?? {};
+const modelIds = Object.keys(bs).filter((i) => i.startsWith("obj_model_")).sort();
+const orderIds = Object.keys(bs).filter((i) => i.startsWith("obj_order_SO-")).sort();
+console.log(`会话 ${s.id} HTTP=${(await g(`/sim/sessions/${s.id}`)).status} · Model ${modelIds.length} · Order ${orderIds.length}`);
+
+// ── A2 · 铸造值真的跨了 restPoint（判据 = 与生产铸造器进程内重算逐值比）──────
+const dom = stateVarDomains()["forecastBias"];
+const interior = dom !== undefined && dom.max !== null && dom.restPoint > dom.min && dom.restPoint < dom.max;
+console.log(`\n── A2 · 域 forecastBias = [${dom?.min},${dom?.max}] rest=${dom?.restPoint} 形状=严格内点:${interior} ──`);
+let neg = 0, a2bad = 0, a2n = 0;
+for (const m of modelIds) {
+  const got = bs[m]?.forecastBias;
+  const exp = castSeedBaseValue(dom, seedHash01(`${m}|forecastBias`));
+  a2n++;
+  if (got !== exp) { a2bad++; }
+  if (typeof got === "number" && got < 0) neg++;
+  console.log(`  ${m} 实测=${got} 重算=${exp} ${got === exp ? "✅" : "❌"}`);
+}
+chk("A2a 世界读数 == 进程内生产铸造器重算（逐值）", a2bad === 0, `${a2n - a2bad}/${a2n}`);
+chk("A2b forecastBias 负数个数 ≥ 1（负半轴可达；PRD §4.3 预言 2 个负数）", neg >= 1, `负数=${neg}/${modelIds.length}`);
+
+// ── A8 · 确定性（R6）────────────────────────────────────────────────────────
+const s2 = (await post("/sim/sessions", {})).json;
+const det2 = (await g(`/sim/sessions/${s2.id}`)).json;
+chk("A8 同种子两会话 baseSnapshot 逐字节相同", JSON.stringify(det2.baseSnapshot ?? {}) === JSON.stringify(bs));
+
+if (TICK === 0) { console.log(`\n（TICK=0：只做 A2/A8；世界级 A3/A4/A7 需 TICK=20）`); process.exit(fails ? 1 : 0); }
+
+// ── 第 1 拍：反解 c = x₁ − base ⇒ 逐单 fb′ ─────────────────────────────────
+const t1 = await post(`/sim/sessions/${s.id}/tick`, { n: 1, disclose: true });
+const st1 = ((await g(`/sim/sessions/${s.id}/world`)).json?.state) ?? {};
+const lam = t1.json?.disclosure?.stateVarReport?.decayApplied?.demandPressure ?? null;
+console.log(`\n引擎自报 λ(Order.demandPressure) = ${lam}；−K/λ = ${lam ? +(K / lam).toFixed(6) : "?"}（应 ≈ 0.6 ⇒ x* = base − 0.6·fb′）`);
+const modelByFb = new Map();
+for (const m of modelIds) modelByFb.set(Number(bs[m]?.forecastBias).toFixed(4), m);
+const fbOf = new Map(), modelOfOrder = new Map(), groups = new Map();
+let unresolved = 0;
 for (const o of orderIds) {
-  const r = await g(`/objects/${o}/neighbors`);
-  let mid = null;
-  for (const grp of r.json?.groups ?? []) if (grp.linkKey === "order_for_model") mid = grp.items?.[0]?.id ?? null;
-  if (mid === null) { missing++; continue; }
-  map.set(o, mid); per.set(mid, (per.get(mid) ?? 0) + 1);
+  const base = bs[o]?.demandPressure, x1 = st1[o]?.demandPressure;
+  if (typeof base !== "number" || typeof x1 !== "number") continue;
+  const c = +(x1 - base).toFixed(6);
+  const fb = +(c / K).toFixed(4);
+  const model = modelByFb.get(fb.toFixed(4)) ?? null;
+  if (model === null) unresolved++;
+  fbOf.set(o, fb); modelOfOrder.set(o, model);
+  const key = model ?? `(未对上表的 fb=${fb})`;
+  if (!groups.has(key)) groups.set(key, { fb, n: 0 });
+  groups.get(key).n++;
 }
-console.log(`\nOrder 总数=${orderIds.length} 解析到型号=${map.size} 解析不到=${missing}`);
-console.log("型号 | X.fb | 带单数 | X′.fb | 预言Δ=x*−base=−0.6·fb′ | 上穿?");
-let cross = 0, crossBase0 = 0, oob = 0;
-for (const [mid, n] of [...per.entries()].sort((a, b) => b[1] - a[1])) {
-  const d = +(-0.6 * FBP[mid]).toFixed(4);
-  if (d > 0) cross += n;
-  console.log(`${mid.replace("obj_model_", "")} | ${fb[mid]} | ${n} | ${FBP[mid]} | ${d > 0 ? "+" : ""}${d} | ${d > 0 ? "是" : "否"}`);
+console.log(`\n── 型号分组（由 c=k·fb 反解，不依赖链路 API）· 解析不到型号的 ${unresolved} 单 ──`);
+console.log("型号 | fb′(反解) | 带单数 | fb<0?");
+for (const [m, v] of [...groups.entries()].sort((a, b) => b[1].n - a[1].n)) {
+  console.log(`${m} | ${v.fb} | ${v.n} | ${v.fb < 0 ? "是" : "否"}`);
 }
-// 越域计数：x* = base − 0.6·fb′，域 [0,100]
-for (const o of map.keys()) {
-  const base = det.baseSnapshot[o]?.demandPressure; const mid = map.get(o);
-  if (typeof base !== "number") continue;
-  const xs = base - 0.6 * FBP[mid];
-  if (xs > 100 || xs < 0) oob++;
-  if (base === 0) crossBase0++;
+
+// ── 推到 TICK 拍（合计 TICK；最后一拍取 disclose）──────────────────────────
+const tk = await post(`/sim/sessions/${s.id}/tick`, { n: TICK - 1, disclose: true });
+const stN = ((await g(`/sim/sessions/${s.id}/world`)).json?.state) ?? {};
+const sat = tk.json?.disclosure?.stateVarReport?.saturations ?? [];
+const dpDom = stateVarDomains()["demandPressure"];
+const decayKeys = Object.keys(tk.json?.disclosure?.stateVarReport?.decayApplied ?? {});
+console.log(`\n推到 ${TICK} 拍（最后一拍 HTTP=${tk.status}，saturations 条目 ${sat.length}；decayApplied 键 ${decayKeys.length} 个：${decayKeys.slice(0, 6).join(",") || "(空)"}）`);
+console.log(`   域查表：Order.demandPressure = [${dpDom?.min},${dpDom?.max}] rest=${dpDom?.restPoint}；λ 门 = decayApplied.demandPressure = ${JSON.stringify(tk.json?.disclosure?.stateVarReport?.decayApplied?.demandPressure)}`);
+if (sat.length) console.log(`   saturations 样例：${JSON.stringify(sat.slice(0, 2))}`);
+
+const cross = new Set(), pred = new Set(), oob = new Set(), tOut = new Set();
+let inDom = 0, maxDev = 0, worst = null;
+for (const o of orderIds) {
+  const base = bs[o]?.demandPressure, x = stN[o]?.demandPressure, fb = fbOf.get(o);
+  if (typeof base !== "number" || typeof x !== "number" || typeof fb !== "number") continue;
+  if (x > base + 0.01) cross.add(o);
+  if (fb < 0) pred.add(o);
+  const T = lam ? base + (K / lam) * fb : base - 0.6 * fb;
+  if (T > 0 && T < 100) { const dev = Math.abs(x - T); inDom++; if (dev > maxDev) { maxDev = dev; worst = { o, base, fb, T, x }; } }
+  if (!(T >= 0 && T <= 100)) tOut.add(o);
+  if (!(x >= dpDom.min && x <= (dpDom.max ?? Infinity))) oob.add(o);
 }
-console.log(`\n预言：上穿基值(+0.01) 单数 = ${cross}/150（X 实测 0/150）`);
-console.log(`预言：x* 越出声明域 [0,100] 的单数 = ${oob}/150  ← 交办 companion 单（补写不重夹）`);
-console.log(`参考：base=0 的单 ${crossBase0}/150`);
+
+// ── A3 · 上穿集合 ≡ {fb′ < 0 的型号的单}（逐单集合等式）────────────────────
+const onlyCross = [...cross].filter((o) => !pred.has(o));
+const onlyPred = [...pred].filter((o) => !cross.has(o));
+console.log(`\n── A3 · 上穿基值(+0.01) 单数 = ${cross.size}/${orderIds.length}（PRD 期望 53/150）──`);
+{
+  const by = new Map();
+  for (const o of cross) { const m = modelOfOrder.get(o) ?? "(未知)"; by.set(m, (by.get(m) ?? 0) + 1); }
+  console.log(`   上穿按型号：${[...by.entries()].map(([m, n]) => `${m}=${n}`).join(" ")}`);
+  const py = new Map();
+  for (const o of pred) { const m = modelOfOrder.get(o) ?? "(未知)"; py.set(m, (py.get(m) ?? 0) + 1); }
+  console.log(`   预言集按型号：${[...py.entries()].map(([m, n]) => `${m}=${n}`).join(" ")}`);
+}
+chk("A3 集合等式 {上穿} == {fb′<0 的型号的单}", onlyCross.length === 0 && onlyPred.length === 0,
+  `只在实测不在预言=${onlyCross.length} 只在预言不在实测=${onlyPred.length}`);
+
+// ── A4 · 量级：x* = base − 0.6·fb′ 可预言（限域内，避开 companion 单）──────
+chk(`A4 域内 ${inDom} 单（PRD 期望 80）|实测 − (base − 0.6·fb′)| ≤ 0.01`, inDom > 0 && maxDev <= 0.01,
+  `max|dev|=${+maxDev.toFixed(6)} 最差=${worst ? JSON.stringify(worst) : "-"}`);
+
+// ── A7 · 补写不静默：越域读数必须在回执里被点名（集合等式）─────────────────
+const named = new Set(sat.filter((e) => e.stateVar === "demandPressure" && orderIds.includes(e.objectId)).map((e) => e.objectId));
+const unnamed = [...oob].filter((o) => !named.has(o));
+const extra = [...named].filter((o) => !oob.has(o));
+console.log(`\n── A7 · 末拍越出 [${dpDom.min},${dpDom.max}] 的 Order.demandPressure 格 = ${oob.size} 单（PRD 预言 T∈/域 70/150，实测域外 T 计 ${tOut.size}）──`);
+console.log(`   回执点名的 demandPressure 格 = ${named.size} 单；未被点名 = ${unnamed.length}；点名了但实测不越域 = ${extra.length}`);
+if (unnamed.length) console.log(`   未被点名的样例（前 5）：${unnamed.slice(0, 5).join(",")}`);
+chk("A7 越域集合 == 回执点名集合（补写不静默）", unnamed.length === 0 && extra.length === 0);
+
+console.log(fails === 0 ? "\nWORLD PASS ✅" : `\nWORLD FAIL ❌（${fails} 条红）`);
+process.exit(fails === 0 ? 0 : 1);
