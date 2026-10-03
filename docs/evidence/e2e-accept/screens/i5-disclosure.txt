@@ -1,0 +1,1617 @@
+跳到主内容
+全域数字化智能决策支撑系统
+全域数字化智能决策支撑系统
+🕐
+健康度
+🌙
+A
+admin
+▾
+⚡ 场景启动器
+经营驾驶舱
+事件影响与对策
+▾
+规划与平衡
+年度规划
+季度规划
+月度规划
+规划体检
+规划建议
+运营复盘
+▾
+推演
+统一推演控制台
+推演沙盘
+接单可行性
+接单组合优选
+产能推演
+订单进展与卡因
+▾
+台账与地图
+订单台账
+基地地理视图
+▾
+数据接入
+连接器与上传
+规则文档审核
+合成数据
+外部信号
+隔离区
+▾
+建模与图谱
+本体图谱
+本体建模
+对象/类型浏览
+域管理
+对象接口
+本体关系
+本体切片
+切片库
+实体合并
+边界册治理
+原型 intake
+▾
+图谱体系
+▾
+规则与校准
+规则库
+校准报告
+▾
+构建与成长
+数据构建发动机
+构建 Pipeline 配置
+自成长发动机
+Agent 评测
+求解器目录
+求解器审核台
+▾
+编排与场景
+意图目录
+Agent
+Workflow
+Skill 库
+MCP
+场景入口
+智能资源治理
+计划构建画布
+兜底统计
+视图配置
+▾
+运营与审批
+Action 审批
+组织世界
+运营自动化
+定时任务
+工厂日历
+通知中心
+闭环验证(VLE)
+▾
+平台与系统
+用户管理
+权限策略
+功能开通
+LLM Provider
+配置迁移
+系统自我
+指标态势
+扰动后
+传导识别
+损失归因
+方案寻优
+演习结论
+图
+产销线路图
+底账
+传导边册
+本体与就绪
+会话 sims_demo_seed_world
+自动选中最近一条正在推演的会话
+世界态出处：结构派生的占位读数，不是实测 · 种子世界的 tick0 读数由本体结构派生（确定性占位），不是实测：推演状态变量（loadIndex/demandPressure…）在本平台不是对象属性，对象上取不到值 —— 「实测格」一项计的就是每次播种现场探到的真读数格数。凡拿它当起点算出的差值，量级不可当实测读。 · 实测格 0/7295
+状态 推演中 —— 世界会随拍推进，可施加扰动
+暂停
+恢复
+结束
+扰动
+收起
+销售与客户
+8
+产品与工程
+6
+采购与供应
+7
+计划与排产
+3
+生产制造
+4
+质量管理
+3
+设备与维护
+2
+基地与仓储交付
+4
+财务与成本
+2
+未归域
+7
+
+世界现在在 第 4 拍 · 点「施加并推演」会推到 第 5 拍
+
+扰什么 · 根源优先
+销售预测偏差（正=高估） · forecastBias
+订单变更压力 · orderChurn
+成本压力 · costPressure
+收货暂扣风险 · deliveryHoldRisk
+需求压力 · demandPressure
+交期承诺风险 · promiseRisk
+应收压力 · receivablePressure
+短缺风险 · shortageRisk
+订单行拆分压力 · splitPressure
+供应风险 · supplyRisk
+
+层级「根源」 —— 由后端按传导图入度/出度现算
+
+落点对象类型
+Model
+落点对象
+obj_model_2170-NCM
+obj_model_4680-LFP
+obj_model_4680-NCM
+obj_model_圆柱-LFP
+obj_model_方形-LFP
+obj_model_方形-NCM
+怎么扰
+设为
+增减
+乘以
+幅度
+起始拍（不早于第 4 拍）
+
+第 5 拍 = 下一拍 —— 正是这次「施加并推演」要推的那一拍（默认值）
+
+持续拍数（留空 = 永久）
+事情的类别
+需求突变
+供应中断
+产能损失
+成本冲击
+质量事件
+
+销售预测偏差（正=高估） +10 · 第 5 拍起 · 永久
+
+施加并推演
+
+已落地在第 4 拍 · 本次推到第 4 拍
+
+销售预测偏差（正=高估）：第 3 拍 1 → 第 4 拍 11（+10）
+
+推到第 4 拍后，世界里共 5573 个格子的读数变了（含世界自身的演化，不只是这一条扰动）
+
+推演过程 · 第 3 → 4 拍
+
+引用的数据
+
+对象 12,708 · 关系 12,381 · 对象类型 88 · 关系类型 86
+
+快照版本 d7d6d4c3ee40
+
+逐对象类型条数
+EquipmentOEE
+5,460
+OrderLine
+873
+Equipment
+780
+Process
+650
+InspectionResult
+520
+Order
+500
+ProductEquipmentCapability
+376
+ExceptionEvent
+372
+ProcessCapabilityWindow
+345
+QualityLot
+260
+WIPLot
+260
+WorkOrder
+260
+MaintenanceOrder
+193
+EquipmentDowntime
+166
+Operation
+150
+Line
+130
+Workshop
+130
+InventoryTxn
+128
+EquipmentAlarm
+111
+BOMDetail
+105
+DefectRecord
+85
+InspectionCharacteristic
+72
+ARInvoice
+60
+OrderPromise
+50
+CausalFactor
+37
+QualityStandard
+36
+Warehouse
+34
+ChangeoverMatrix
+30
+CustomerLocation
+30
+IncomingInspection
+30
+PurchaseOrder
+30
+MaterialBatch
+24
+Customer
+20
+Certification
+18
+FinishedGoodsInventory
+18
+ProductLineCapability
+18
+InterBaseTransfer
+17
+PlanTarget
+17
+BOMHeader
+15
+ProductVersion
+15
+Routing
+15
+Supplier
+15
+CarbonFactor
+14
+Base
+13
+EnergyMeter
+13
+FinanceAccount
+13
+MaintPlan
+13
+Shipment
+13
+Metric
+10
+CommodityPriceTrend
+9
+DataSourceHealth
+9
+EngineeringChange
+9
+MaterialBalance
+9
+Cadence
+8
+Material
+8
+Outsource
+8
+Principal
+7
+ExternalSignal
+6
+Model
+6
+ProductSeries
+6
+KSF
+5
+MaterialAlternative
+5
+GrossMarginBridge
+4
+RootCauseChain
+4
+ScenarioTrigger
+4
+SopVersionRow
+4
+AnnualScenario
+3
+CapexProject
+3
+CompetitorShare
+3
+DemandSegment
+3
+FinanceMetric
+3
+FinancePlan
+3
+LongTermAgreement
+3
+ProductPlatform
+3
+Segment
+3
+TriggerRule
+3
+ARAging
+2
+BackupSupplierPool
+2
+BidRecord
+2
+CompetitorPrice
+2
+DecisionGap
+2
+DSO
+2
+E2eProbe
+2
+OverdueRecord
+2
+PipelineOpportunity
+2
+PriceRealization
+2
+WinLossRecord
+2
+CustomsClearance
+1
+逐关系类型条数
+line_of_order
+873
+order_has_line
+873
+orderline_for_model
+873
+equip_used_in
+780
+process_uses_equipment
+780
+line_has_process
+650
+process_belongs_to_line
+650
+model_demanded_by_order
+500
+order_for_model
+500
+order_of_customer
+500
+order_to_plantarget
+458
+product_equip_capability
+376
+exc_sourced_from
+372
+capability_belongs_to_operation
+345
+fulfills
+260
+line_runs_work_order
+260
+wo_for_model
+260
+work_order_sampled_by_quality_lot
+260
+work_order_yields_wip_lot
+260
+equipment_has_maintenance_order
+193
+operation_belongs_to_routing
+150
+line_belongs_to_base
+130
+line_belongs_to_workshop
+130
+workshop_belongs_to_base
+130
+txn_for_fg
+128
+txn_from_wo
+128
+base_data_health
+117
+detail_belongs_to_bom
+105
+detail_uses_material
+105
+defect_raises_exception
+85
+wip_lot_found_defect
+85
+char_belongs_to_standard
+72
+customer_has_invoice
+60
+order_has_promise
+50
+promise_for_order
+50
+standard_belongs_to_model
+36
+warehouse_of_base
+34
+custloc_of_customer
+30
+customer_has_location
+30
+material_supplied_by_po
+30
+model_changeover
+30
+po_from_supplier
+30
+po_inspected_by
+30
+po_replenishes_material
+30
+batch_replenishes_material
+24
+material_has_batch
+24
+material_used_by_model
+24
+model_uses_material
+24
+caused_by
+23
+fg_at_warehouse
+18
+fg_of_model
+18
+model_certified_on
+18
+model_has_cert
+18
+model_producible_at
+18
+model_stocked_as_finished_goods
+18
+product_line_capability
+18
+base_dispatches_transfer
+17
+plantarget_ownedby
+17
+scenario_to_target
+17
+transfer_from_base
+17
+transfer_of_model
+17
+transfer_to_base
+17
+bom_belongs_to_version
+15
+routing_belongs_to_model
+15
+version_belongs_to_model
+15
+base_energy_meter
+13
+base_finance
+13
+base_has_shipment
+13
+base_maint_plan
+13
+metric_affects_ksf
+10
+metric_ownedby
+10
+change_affects_model
+9
+material_carbon
+8
+material_has_balance
+8
+material_has_outsource
+8
+material_supplied_by
+8
+supplier_supplies_material
+8
+model_belongs_to_series
+6
+model_in_segment
+6
+scenario_to_capex
+6
+series_belongs_to_platform
+6
+alt_for_material
+5
+material_has_alternative
+5
+scenario_to_finance
+3
+customer_has_overdue_record
+2
+po_customs_cleared_by
+1
+
+走过的本体切片
+
+切片 GLOBAL · 跳数 1 · 节点 12,708 · 边 12,381
+
+裁掉节点 0 · 裁掉边 0
+
+命中的规则
+
+喂入 46 · 命中 46 · 本拍传导 9,083 条 · 扰动写入 2 条
+
+系数来自配置 0 · 系数内联 46 · 引用失效回落 0 · 逐实例分摊 3
+
+逐规则系数与口径
+命中
+demo_base_load_to_inbound_expedite
+系数
+0.35
+内联常数
+延迟
+1 拍
+合并
+sum
+Base.loadIndex --base_has_shipment--> Shipment.inboundExpeditePressure
+命中
+demo_base_load_to_line_util
+系数
+0.5
+内联常数
+延迟
+1 拍
+合并
+sum
+Base.loadIndex --line_belongs_to_base--> Line.utilPressure
+命中
+demo_base_load_to_maint_window_squeeze
+系数
+0.4
+内联常数
+延迟
+1 拍
+合并
+sum
+Base.loadIndex --base_maint_plan--> MaintPlan.windowSqueeze
+命中
+demo_base_load_to_transfer_pressure
+系数
+0.3
+内联常数
+延迟
+1 拍
+合并
+sum
+Base.loadIndex --base_dispatches_transfer--> InterBaseTransfer.transferPressure
+命中
+demo_batch_procurement_delay_to_material_shortage
+系数
+0.6
+内联常数
+延迟
+1 拍
+合并
+sum
+MaterialBatch.procurementDelay --batch_replenishes_material--> Material.shortageRisk
+命中
+demo_customer_receivable_to_collection
+系数
+0.6
+内联常数
+延迟
+1 拍
+合并
+sum
+Customer.receivablePressure --customer_has_overdue_record--> OverdueRecord.collectionPressure
+命中
+demo_customer_receivable_to_invoice_overdue
+系数
+0.4
+内联常数
+延迟
+1 拍
+合并
+sum
+Customer.receivablePressure --customer_has_invoice--> ARInvoice.overduePressure
+命中
+demo_customer_receivable_to_location_hold
+系数
+0.5
+内联常数
+延迟
+0 拍
+合并
+sum
+Customer.receivablePressure --customer_has_location--> CustomerLocation.deliveryHoldRisk
+命中
+demo_defect_to_exception_backlog
+系数
+0.8
+内联常数
+延迟
+0 拍
+合并
+sum
+DefectRecord.defectPressure --defect_raises_exception--> ExceptionEvent.handlingBacklog
+命中
+demo_equipment_failure_to_process_queue
+系数
+0.6
+内联常数
+延迟
+0 拍
+合并
+sum
+Equipment.equipmentFailure --equip_used_in--> Process.queuePressure
+命中
+demo_equipment_load_to_repair_backlog
+系数
+0.6
+内联常数
+延迟
+1 拍
+合并
+sum
+Equipment.loadPressure --equipment_has_maintenance_order--> MaintenanceOrder.repairBacklog
+命中
+demo_forecast_bias_to_order_demand
+系数
+-0.6
+内联常数
+延迟
+0 拍
+合并
+sum
+Model.forecastBias --model_demanded_by_order--> Order.demandPressure
+命中
+demo_line_blocked_to_wo_release
+系数
+0.6
+内联常数
+延迟
+0 拍
+合并
+sum
+Line.blockedPressure --line_runs_work_order--> WorkOrder.releasePressure
+命中
+demo_line_util_to_process_queue
+系数
+0.7
+内联常数
+延迟
+0 拍
+合并
+sum
+Line.utilPressure --line_has_process--> Process.queuePressure
+命中
+demo_line_util_to_wo_release
+系数
+0.6
+内联常数
+延迟
+0 拍
+合并
+sum
+Line.utilPressure --line_runs_work_order--> WorkOrder.releasePressure
+命中
+demo_material_price_to_model_cost
+系数
+0.65
+内联常数
+权重口径
+bom_cost_share
+归一
+IN_EDGES
+铺对
+24
+零权重对
+3
+分摊耗时
+2 毫秒
+延迟
+0 拍
+合并
+sum
+Material.priceShock --material_used_by_model--> Model.costPressure
+命中
+demo_material_shortage_to_alt_switch
+系数
+0.6
+内联常数
+延迟
+0 拍
+合并
+sum
+Material.shortageRisk --material_has_alternative--> MaterialAlternative.switchPressure
+命中
+demo_material_shortage_to_balance_gap
+系数
+0.7
+内联常数
+延迟
+0 拍
+合并
+sum
+Material.shortageRisk --material_has_balance--> MaterialBalance.gapPressure
+命中
+demo_material_shortage_to_batch_turnover
+系数
+0.5
+内联常数
+延迟
+0 拍
+合并
+sum
+Material.shortageRisk --material_has_batch--> MaterialBatch.turnoverPressure
+命中
+demo_material_shortage_to_model_supply_risk
+系数
+0.7
+内联常数
+延迟
+0 拍
+合并
+sum
+Material.shortageRisk --material_used_by_model--> Model.supplyRisk
+命中
+demo_material_shortage_to_po_expedite
+系数
+0.5
+内联常数
+延迟
+0 拍
+合并
+sum
+Material.shortageRisk --material_supplied_by_po--> PurchaseOrder.expeditePressure
+命中
+demo_model_cost_to_order_cost
+系数
+0.9
+内联常数
+延迟
+0 拍
+合并
+sum
+Model.costPressure --model_demanded_by_order--> Order.costPressure
+命中
+demo_model_demand_to_base_load
+系数
+0.6
+内联常数
+延迟
+0 拍
+合并
+sum
+Model.demandLoad --model_producible_at--> Base.loadIndex
+命中
+demo_model_demand_to_cert_queue
+系数
+0.3
+内联常数
+延迟
+1 拍
+合并
+sum
+Model.demandLoad --model_has_cert--> Certification.qualificationQueue
+命中
+demo_model_demand_to_changeover_pressure
+系数
+0.4
+内联常数
+延迟
+0 拍
+合并
+sum
+Model.demandLoad --model_changeover--> ChangeoverMatrix.changeoverPressure
+命中
+demo_model_demand_to_fg_drawdown
+系数
+0.6
+内联常数
+延迟
+0 拍
+合并
+sum
+Model.demandLoad --model_stocked_as_finished_goods--> FinishedGoodsInventory.drawdownPressure
+命中
+demo_model_supply_risk_to_order_shortage
+系数
+0.8
+内联常数
+延迟
+0 拍
+合并
+sum
+Model.supplyRisk --model_demanded_by_order--> Order.shortageRisk
+命中
+demo_order_churn_to_line_split
+系数
+0.7
+内联常数
+延迟
+0 拍
+合并
+sum
+Order.orderChurn --order_has_line--> OrderLine.splitPressure
+命中
+demo_order_churn_to_model_demand_load
+系数
+0.5
+内联常数
+权重口径
+source_qty_relative
+归一
+IN_EDGES_MEAN
+铺对
+500
+零权重对
+0
+分摊耗时
+20 毫秒
+延迟
+0 拍
+合并
+sum
+Order.orderChurn --order_for_model--> Model.demandLoad
+命中
+demo_order_cost_to_customer_receivable
+系数
+0.5
+内联常数
+延迟
+0 拍
+合并
+sum
+Order.costPressure --order_of_customer--> Customer.receivablePressure
+命中
+demo_order_demand_pressure
+系数
+0.8
+内联常数
+权重口径
+source_qty_relative
+归一
+IN_EDGES_MEAN
+铺对
+500
+零权重对
+0
+分摊耗时
+1 毫秒
+延迟
+0 拍
+合并
+sum
+Order.demandPressure --order_for_model--> Model.demandLoad
+命中
+demo_order_demand_to_line_split
+系数
+0.9
+内联常数
+延迟
+0 拍
+合并
+sum
+Order.demandPressure --order_has_line--> OrderLine.splitPressure
+命中
+demo_order_shortage_to_promise_risk
+系数
+0.8
+内联常数
+延迟
+0 拍
+合并
+sum
+Order.shortageRisk --order_has_promise--> OrderPromise.promiseRisk
+命中
+demo_po_expedite_to_customs_queue
+系数
+0.4
+内联常数
+延迟
+1 拍
+合并
+sum
+PurchaseOrder.expeditePressure --po_customs_cleared_by--> CustomsClearance.clearanceQueueDays
+命中
+demo_po_expedite_to_inspection_queue
+系数
+0.6
+内联常数
+延迟
+1 拍
+合并
+sum
+PurchaseOrder.expeditePressure --po_inspected_by--> IncomingInspection.queueDays
+命中
+demo_po_expedite_to_supplier_review
+系数
+0.4
+内联常数
+延迟
+1 拍
+合并
+sum
+PurchaseOrder.expeditePressure --po_from_supplier--> Supplier.reviewPressure
+命中
+demo_po_procurement_delay_to_material_shortage
+系数
+0.8
+内联常数
+延迟
+0 拍
+合并
+sum
+PurchaseOrder.procurementDelay --po_replenishes_material--> Material.shortageRisk
+命中
+demo_process_queue_to_equipment_load
+系数
+0.5
+内联常数
+延迟
+0 拍
+合并
+sum
+Process.queuePressure --process_uses_equipment--> Equipment.loadPressure
+命中
+demo_process_queue_to_line_blocked
+系数
+0.55
+内联常数
+延迟
+0 拍
+合并
+sum
+Process.queuePressure --process_belongs_to_line--> Line.blockedPressure
+命中
+demo_supplier_delay_to_material_shortage
+系数
+0.9
+内联常数
+延迟
+0 拍
+合并
+sum
+Supplier.deliveryDelay --supplier_supplies_material--> Material.shortageRisk
+命中
+demo_supplier_procurement_delay_to_material_shortage
+系数
+0.5
+内联常数
+延迟
+1 拍
+合并
+sum
+Supplier.procurementDelay --supplier_supplies_material--> Material.shortageRisk
+命中
+demo_wip_feed_to_defect_pressure
+系数
+0.3
+内联常数
+延迟
+1 拍
+合并
+sum
+WIPLot.feedPressure --wip_lot_found_defect--> DefectRecord.defectPressure
+命中
+demo_wo_release_to_model_cost
+系数
+0.5
+内联常数
+延迟
+1 拍
+合并
+sum
+WorkOrder.releasePressure --wo_for_model--> Model.costPressure
+命中
+demo_wo_release_to_model_supply_risk
+系数
+0.5
+内联常数
+延迟
+1 拍
+合并
+sum
+WorkOrder.releasePressure --wo_for_model--> Model.supplyRisk
+命中
+demo_wo_release_to_quality_backlog
+系数
+0.5
+内联常数
+延迟
+1 拍
+合并
+sum
+WorkOrder.releasePressure --work_order_sampled_by_quality_lot--> QualityLot.inspectBacklog
+命中
+demo_wo_release_to_wip_feed
+系数
+0.7
+内联常数
+延迟
+0 拍
+合并
+sum
+WorkOrder.releasePressure --work_order_yields_wip_lot--> WIPLot.feedPressure
+
+约束
+
+取值域 32 · 未声明取值域 9 · 本拍饱和 4,657 次
+
+规则夹值 0 · 节拍闸门 0 · 闸门跳过 4
+
+逐量纲边界与阈值出处
+changeoverPressure
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减
+0.37
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+collectionPressure
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减
+0.37
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+costPressure
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减
+0.37
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+defectPressure
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减
+0.37
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+deliveryHoldRisk
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减
+0.37
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+demandLoad
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减
+0.37
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+demandPressure
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减
+0.37
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+drawdownPressure
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减
+0.37
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+equipmentFailure
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+expeditePressure
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减
+0.37
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+feedPressure
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减
+0.37
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+forecastBias
+下界
+-100
+上界
+100
+静息
+0
+量纲
+−100–100 偏差指数（正=高估）
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+gapPressure
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减
+0.37
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+inboundExpeditePressure
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减
+0.37
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+loadIndex
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减
+0.37
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+loadPressure
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减
+0.37
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+orderChurn
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+overduePressure
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减
+0.37
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+priceShock
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+promiseRisk
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减
+0.37
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+queuePressure
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减
+0.37
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+receivablePressure
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减
+0.37
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+releasePressure
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减
+0.37
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+reviewPressure
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减
+0.37
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+shortageRisk
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减
+0.37
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+splitPressure
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减
+0.37
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+supplyRisk
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减
+0.37
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+switchPressure
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减
+0.37
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+transferPressure
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减
+0.37
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+turnoverPressure
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减
+0.37
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+utilPressure
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减
+0.37
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+windowSqueeze
+下界
+0
+上界
+100
+静息
+0
+量纲
+0–100 压力指数
+衰减
+0.37
+衰减出处
+C35.pressureDecayPerTick
+规则表达式
+SimStateVar.decayPerTick == params.pressureDecayPerTick
+闸门跳过 · 4 个节点
+material.mrp
+原因
+节拍表无数据
+material.shipping
+原因
+节拍表无数据
+order.review
+原因
+节拍表无数据
+order.settlement
+原因
+节拍表无数据
+
+agent 是否参与
+
+本次 未调用 agent · 调用 0 次
+
+各环节耗时
+
+入参装配 173 毫秒 · 影子线重放 98 毫秒 · 传导 78 毫秒 · 落盘 19 毫秒 · 合计 403 毫秒
+
+今天扰不动的量（20）
+
+沙盘改的只是这个推演世界，不写真实数据。结论要落地须走 Action 审批。
+
+「被推动」判据：|Δ| ≥ 任何非零变化 · 口径 = 浮点噪声底 1e-9×max(1,|基线|,|当前|)
+读数没取全 —— 这一屏只取回 500 条，本会话共 7,295 条，屏上这些不是全部（约 6.9%）。下面标「算不出来」的卡片里，有一部分是没被取回来，不是世界里真的没有。
+根源
+被推动 0 · 未变化 6
+这一层没有变量被推动
+未变化 6 项 ▾
+枢纽
+被推动 0 · 未变化 15
+这一层没有变量被推动
+未变化 15 项 ▾
+末端
+被推动 1 · 未变化 19
+排队天数
+queueDays
+118.46
+Δ +29.92
+推演投影·非实测（种子世界的 tick0 读数由本体结构派生（确定性占位），不是实测：推演状态变量（loadIndex/demandPressure…）在本平台不是对象属性，对象上取不到值 —— 「实测格」一项计的就是每次播种现场探到的真读数格数。凡拿它当起点算出的差值，量级不可当实测读。）
+未变化 19 项 ▾
+还没有选中任何状态变量 —— 点中央任一张卡进入检视。
+扰动因素 · 关掉看变化
+?
+46 条边 · 已关 0
+销售与客户8
+产品与工程6
+采购与供应7
+计划与排产3
+生产制造4
+质量管理3
+设备与维护2
+基地与仓储交付4
+财务与成本2
+未归域7
+客户 · 应收压力→客户地点 · 收货暂扣风险
+Customer.receivablePressure —customer_has_location→ CustomerLocation.deliveryHoldRisk
+系数 0.5 · 延迟 0声明值
+电池型号 · 销售预测偏差（正=高估）→销售订单 · 需求压力
+Model.forecastBias —model_demanded_by_order→ Order.demandPressure
+系数 -0.6 · 延迟 0声明值
+电池型号 · 成本压力→销售订单 · 成本压力
+Model.costPressure —model_demanded_by_order→ Order.costPressure
+系数 0.9 · 延迟 0声明值
+电池型号 · 供应风险→销售订单 · 短缺风险
+Model.supplyRisk —model_demanded_by_order→ Order.shortageRisk
+系数 0.8 · 延迟 0声明值
+销售订单 · 订单变更压力→订单明细行 · 订单行拆分压力
+Order.orderChurn —order_has_line→ OrderLine.splitPressure
+系数 0.7 · 延迟 0声明值
+销售订单 · 成本压力→客户 · 应收压力
+Order.costPressure —order_of_customer→ Customer.receivablePressure
+系数 0.5 · 延迟 0声明值
+销售订单 · 需求压力→订单明细行 · 订单行拆分压力
+Order.demandPressure —order_has_line→ OrderLine.splitPressure
+系数 0.9 · 延迟 0声明值
+销售订单 · 短缺风险→订单承诺 · 交期承诺风险
+Order.shortageRisk —order_has_promise→ OrderPromise.promiseRisk
+系数 0.8 · 延迟 0声明值
+应用到本会话
+「应用」把当前开关落到会话上（此后这个世界按"关掉"跑 tick）。本体里的规则发布态一个字节不动。
+展开抽屉
+（无操作）
+⌃

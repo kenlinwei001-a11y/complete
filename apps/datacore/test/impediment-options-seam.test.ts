@@ -1,0 +1,593 @@
+import { describe, expect, it } from "vitest";
+import {
+  CANDIDATE_JOIN_KINDS,
+  CANDIDATE_RUNG_KINDS,
+  CAPACITY_FACTOR_BINDINGS,
+  SolutionCandidateSchema,
+  solutionCandidateId,
+  ruleParamRef,
+  type ChainImpediment,
+  type SolutionCandidate,
+} from "@platform/contracts";
+import type { LinkInstance, ObjectInstance } from "../src/domain.js";
+import { computeByProcessModel, mapCapacityContextProp } from "../src/solvers/capacity.js";
+import { detectChainImpediments } from "../src/solvers/chain-impediment.js";
+import { ADMIN, makeApp, seedBattery, type TestApp } from "./helpers.js";
+
+/**
+ * WO-SANDBOX-S3-ENUM · **阻滞点 → 候选对策枚举** SEAM（数据半 × 引擎半 · 端到端）。
+ *
+ * ══ 这个文件为什么必须存在 ═══════════════════════════════════════════════════════
+ * 枚举器（`solvers/impediment-options.ts`）与契约（`chain-sim.ts` §7）在本单之前**已经落地并接线**
+ * （`chain-impediment.ts` 的 `detectChainImpediments` 内真调用），但**没有任何测试咬这条链**：
+ * 既有的 `chain-impediment-seam.test.ts` 是 E3 判定器的接缝，全文**零处**断言 `candidates`。
+ * 这正是本仓记过的假绿第 9 形态（`G-SKILL-REFGRAPH-DEAD-EXTRACTOR`）：
+ * **实现有、接线有、测试也绿 —— 但测试咬的是别的东西，这条链一次都没被验过。**
+ *
+ * ══ 本文件咬的接缝（两半各自绿证明不了它）═══════════════════════════════════════
+ *  · **数据半** = `seedBattery` 播下的真合成种子（对象 + **一等关系行 links** + 已发布规则快照）。
+ *    候选的 join 面（`LOCUS_PROP`/`LINK_HOP`/`KEY_JOIN`）与档位面（同侪真实取值）全靠它。
+ *  · **引擎半** = `POST /a/v1/solvers/chain_impediments/invoke`
+ *    （判定 `detectChainImpediments` → 枚举 `enumerateImpedimentOptions` → 逐候选**真试算**）。
+ *
+ * ⚠ **头号纪律：只测枚举器函数本身不算数。** 除 S3-5 之外每条都走 HTTP 全链，
+ * 断言的是**回包里的候选**，不是函数返回值。
+ *
+ * ══ 每条断言都拒绝"看着合理"，一律回到真数据取证 ═════════════════════════════════
+ *  · `fromValue` 必须**逐字节等于**那个真对象上该属性的当前值（不是引擎自己记的数）。
+ *  · `toValue` 必须是**数据里真实存在的取值**（同侪某个对象上真有这个数）或**规则阈值本身**
+ *    —— 这是"零步长常数"的可执行判据：一旦有人写 `×1.1` 这类"看着合理的一步"，本条当场红。
+ *  · `join.path` 必须能在**真 links 行 / 真属性值**上复现 —— 编一条"看着合理"的路径过不了。
+ *
+ * ══ 变异反证注入点（交付说明贴原文）═══════════════════════════════════════════════
+ *  ① 枚举器恒返回空集 → S3-1/S3-2/S3-3 红。
+ *  ② `noCandidateKind` 恒 `NONE`（把"算不了"塌回"没有"）→ S3-5 红。
+ *  ③ 引擎手拼候选 id（绕开 contracts 单源构造函数）→ S3-3 红。
+ *  ④ 档位改成拍一个步长 → S3-2 红。
+ */
+
+interface CandidateStatRow {
+  impedimentId: string;
+  anchors: number;
+  probes: number;
+  effective: number;
+  emitted: number;
+  gaps: string[];
+  noCandidateKind?: "NONE" | "UNAVAILABLE";
+}
+
+interface ScanOut {
+  scanId: string;
+  counts: { total: number; BOTTLENECK: number; CONGESTION: number; BREAK: number };
+  impediments: ChainImpediment[];
+  candidateStats: CandidateStatRow[];
+  candidatesTruncated: boolean;
+  candidateProbes: number;
+}
+
+async function scan(t: TestApp, args: Record<string, unknown> = {}): Promise<ScanOut> {
+  const res = await t.app.inject({
+    method: "POST",
+    url: "/a/v1/solvers/chain_impediments/invoke",
+    headers: ADMIN,
+    payload: { args },
+  });
+  expect(res.statusCode, res.body).toBe(200);
+  return res.json().data as ScanOut;
+}
+
+/** 经**规则编辑路径**改规则（新版本 → 发布），全程不碰任何源码常量。 */
+async function editRule(
+  t: TestApp,
+  patch: { key: string; name: string; expression: string; scopeObjectTypes: string[]; severity: string; params?: Record<string, number> },
+): Promise<void> {
+  const created = await t.app.inject({ method: "POST", url: "/a/v1/rules", headers: ADMIN, payload: patch });
+  expect(created.statusCode, created.body).toBe(201);
+  const id = created.json().id as string;
+  const pub = await t.app.inject({ method: "POST", url: `/a/v1/rules/${id}/publish`, headers: ADMIN, payload: {} });
+  expect(pub.statusCode, pub.body).toBe(200);
+}
+
+/** 全部候选（跨阻滞点铺平），每条带回宿主 —— 断言要拿宿主的 locus / evidence 做交叉核对。 */
+function allCandidates(s: ScanOut): { im: ChainImpediment; c: SolutionCandidate }[] {
+  return s.impediments.flatMap((im) => (im.candidates ?? []).map((c) => ({ im, c })));
+}
+
+/** 该类型全部实例（真库里读，不是引擎回包里抄的）。 */
+const typeObjects = (t: TestApp, type: string): Promise<ObjectInstance[]> => t.repos.objects.listByType("demo", type);
+
+/** 按**任一属性值**匹配业务 id 找回真对象（引擎下发的是业务 id，库里主键是内部 `obj_` id）。 */
+function findByBusinessId(objs: readonly ObjectInstance[], businessId: string): ObjectInstance | undefined {
+  return objs.find((o) => o.id === businessId || Object.values(o.props).some((v) => typeof v === "string" && v === businessId));
+}
+
+/** 该类型该属性在**真数据**里出现过的全部数值（"档位是不是编的"就靠它判）。 */
+function realValuesOf(objs: readonly ObjectInstance[], prop: string): Set<number> {
+  const out = new Set<number>();
+  for (const o of objs) {
+    const v = o.props[prop];
+    if (typeof v === "number" && Number.isFinite(v)) out.add(v);
+  }
+  return out;
+}
+
+const round6 = (n: number): number => Math.round(n * 1e6) / 1e6;
+
+describe("WO-SANDBOX-S3-ENUM · 阻滞点 → 候选对策枚举 SEAM（真种子 → 扫描 → 候选 → 逐条溯源）", () => {
+  it("S3-1 · 端到端：真种子跑一次扫描，阻滞点真长出候选，且每条候选形状/归属/溯源三样齐备", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const s = await scan(t);
+
+    // 前置：这条链的上游（E3 判定）真的产出了阻滞点 —— 否则下面全是空跑（金丝雀）。
+    expect(s.counts.total).toBeGreaterThan(0);
+
+    const cands = allCandidates(s);
+    // ① **候选非空** —— 沙盘从"诊断器"变"推演器"的那一步，就是这一条断言。
+    expect(cands.length).toBeGreaterThan(0);
+    // ② 不是"只有一个阻滞点碰巧有解"：至少两个不同阻滞点长出了候选。
+    const withCands = s.impediments.filter((im) => (im.candidates ?? []).length > 0);
+    expect(withCands.length).toBeGreaterThanOrEqual(2);
+    // ③ 有候选的阻滞点必须构成**多方案对比**（≥2 条），否则它算不上"给了对策"。
+    for (const im of withCands) expect(im.candidates!.length).toBeGreaterThanOrEqual(2);
+
+    for (const { im, c } of cands) {
+      // 形状过契约（回包是 JSON，形状漂了这里当场红）。
+      const parsed = SolutionCandidateSchema.safeParse(c);
+      expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
+      // 归属：候选必须挂在它自己的阻滞点上。
+      expect(c.impedimentId).toBe(im.impedimentId);
+      // 溯源三件套：从哪条路 join 出来的 / 档位取自哪 / 谁算的。
+      expect(CANDIDATE_JOIN_KINDS).toContain(c.join.kind);
+      expect(c.join.path.length).toBeGreaterThan(0);
+      expect(CANDIDATE_RUNG_KINDS).toContain(c.rungKind);
+      expect(c.rungSource.length).toBeGreaterThan(0);
+      expect(c.provenance.solverKey).toBe("chain_impediments");
+      expect(c.provenance.formula.length).toBeGreaterThan(0);
+      expect(c.provenance.inputs.length).toBeGreaterThan(0);
+      // 杠杆落在真对象真属性上，且单位/值类下发（前端格式化的唯一依据）。
+      expect(c.lever.objectType.length).toBeGreaterThan(0);
+      expect(c.lever.objectId.length).toBeGreaterThan(0);
+      expect(c.lever.prop.length).toBeGreaterThan(0);
+      expect(typeof c.lever.unit).toBe("string");
+      // 拨到原处不是方案；至少一维 KPI 真的动了（掐掉杠杆接线 → 这里必红）。
+      expect(c.fromValue).not.toBe(c.toValue);
+      expect(c.dims.some((d) => d.value !== null && d.baseline !== null && d.value !== d.baseline)).toBe(true);
+      // 每一维都必须自报单位与改善方向，算不出来的维必须给理由（不许留白冒充"没影响"）。
+      for (const d of c.dims) {
+        expect(typeof d.unit).toBe("string");
+        expect(["lower", "higher"]).toContain(d.betterWhen);
+        if (d.value === null || d.baseline === null) expect(d.reason && d.reason.length > 0).toBe(true);
+      }
+    }
+
+    // ④ 逐点账在场且与候选数对得上（"为什么这个阻滞点没有方案"的唯一可查处）。
+    expect(s.candidateStats.length).toBe(s.impediments.length);
+    for (const im of s.impediments) {
+      const st = s.candidateStats.find((x) => x.impedimentId === im.impedimentId)!;
+      expect(st).toBeDefined();
+      expect(st.emitted).toBe((im.candidates ?? []).length);
+    }
+  }, 180000);
+
+  it("S3-2 · 零写死：每条候选的**落点值**与**目标档位**都能在真数据/真规则里指出出处（有步长常数即红）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const s = await scan(t);
+    const cands = allCandidates(s);
+    expect(cands.length).toBeGreaterThan(0); // 金丝雀：下面的 for 不许空转
+
+    const links: LinkInstance[] = await t.repos.links.list("demo", () => true);
+    expect(links.length).toBeGreaterThan(0); // 金丝雀：links 面真有行，否则 LINK_HOP 的断言是空跑
+
+    const seenJoinKinds = new Set<string>();
+    const seenRungKinds = new Set<string>();
+
+    for (const { im, c } of cands) {
+      const peers = await typeObjects(t, c.lever.objectType);
+      expect(peers.length).toBeGreaterThan(0); // 杠杆落在一个**真存在**的对象类型上
+
+      // ── ① fromValue 必须逐字节等于那个真对象上该属性的当前值 ──────────────────
+      const leverObj = findByBusinessId(peers, c.lever.objectId);
+      expect(leverObj, `候选 ${c.candidateId} 的杠杆对象 ${c.lever.objectType}/${c.lever.objectId} 在库里找不到`).toBeDefined();
+      const current = leverObj!.props[c.lever.prop];
+      expect(typeof current).toBe("number");
+      expect(round6(current as number)).toBe(c.fromValue);
+
+      // ── ② toValue 必须来自数据或规则，**不许是算出来的一步** ────────────────────
+      seenRungKinds.add(c.rungKind);
+      if (c.rungKind === "THRESHOLD") {
+        // 档位 = 触发该判据的规则阈值本身（改规则即改档位，见 S3-6）。
+        expect(c.toValue).toBe(im.evidence.threshold);
+      } else {
+        // 档位 = 同侪对象上**真实存在**的取值。写 `current*1.1` 这类步长常数 ⇒ 必不在集合里 ⇒ 红。
+        const real = realValuesOf(peers, c.lever.prop);
+        expect(real.has(c.toValue), `候选 ${c.candidateId} 的档位 ${c.toValue} 在真数据里不存在 ⇒ 它是编的`).toBe(true);
+      }
+
+      // ── ③ join.path 必须能在真数据上复现（编一条"看着合理"的路径过不了）──────────
+      seenJoinKinds.add(c.join.kind);
+      if (c.join.kind === "LOCUS_PROP") {
+        // 落点对象自己承载杠杆 ⇒ 杠杆对象就是阻滞点落点本身。
+        expect(c.lever.objectType).toBe(im.locus.objectType);
+        expect(c.lever.objectId).toBe(im.locus.objectId);
+      } else if (c.join.kind === "LINK_HOP") {
+        // 一跳可达：真 links 表里必须有一行把「落点对象」与「杠杆对象」连起来，且 type 与 path 自述一致。
+        const linkType = c.join.path.split(":")[0]!.trim();
+        expect(links.some((l) => l.type === linkType), `join.path 自述的关系 ${linkType} 在 links 表里不存在`).toBe(true);
+        const locusObjs = await typeObjects(t, im.locus.objectType);
+        const locusObj = findByBusinessId(locusObjs, im.locus.objectId);
+        expect(locusObj).toBeDefined();
+        const hop = links.some(
+          (l) =>
+            l.type === linkType &&
+            ((l.fromId === locusObj!.id && l.toId === leverObj!.id) || (l.toId === locusObj!.id && l.fromId === leverObj!.id)),
+        );
+        expect(hop, `候选 ${c.candidateId} 自称经 ${linkType} 一跳可达，但 links 表里没有这条边`).toBe(true);
+      } else if (c.join.kind === "KEY_JOIN") {
+        // 值键相等：path 形如 `LocusType.k = TargetType.j = 值`，两端的属性值必须真的都等于那个值。
+        const m = /^值键相等 (\S+)\.(\S+) = (\S+)\.(\S+) = (.+?)（/.exec(c.join.path);
+        expect(m, `KEY_JOIN 的 path 不是可解析的真路径原文：${c.join.path}`).not.toBeNull();
+        const [, locusType, locusProp, targetType, targetProp, value] = m!;
+        expect(locusType).toBe(im.locus.objectType);
+        expect(targetType).toBe(c.lever.objectType);
+        const locusObjs = await typeObjects(t, im.locus.objectType);
+        const locusObj = findByBusinessId(locusObjs, im.locus.objectId);
+        expect(locusObj).toBeDefined();
+        expect(String(locusObj!.props[locusProp!])).toBe(value);
+        expect(String(leverObj!.props[targetProp!])).toBe(value);
+      }
+    }
+
+    // 覆盖面金丝雀：真种子上至少走通了两条不同的 join 路与两种不同的档位来源 ——
+    // 若只剩一条路还绿，说明另一条已经悄悄死了（"接了线没数据"那族）。
+    expect(seenJoinKinds.size).toBeGreaterThanOrEqual(2);
+    expect(seenRungKinds.size).toBeGreaterThanOrEqual(1);
+  }, 180000);
+
+  it("S3-3 · 候选 id 单源：逐条可由 contracts 构造函数从候选**自身字段**重建，且全局唯一", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const s = await scan(t);
+    const cands = allCandidates(s);
+    expect(cands.length).toBeGreaterThan(0); // 金丝雀
+
+    for (const { c } of cands) {
+      // 引擎手拼 id（或拼法里混进候选外的东西）⇒ 重建对不上 ⇒ 当场红。
+      expect(c.candidateId).toBe(
+        solutionCandidateId({
+          impedimentId: c.impedimentId,
+          objectType: c.lever.objectType,
+          leverObjectId: c.lever.objectId,
+          prop: c.lever.prop,
+          rungKind: c.rungKind,
+          toValue: c.toValue,
+        }),
+      );
+    }
+    // 全局唯一：id 里的落点若退化成非唯一键（如基地 id），同基地两个实例会撞成一条 —— 本条咬住。
+    const ids = cands.map((x) => x.c.candidateId);
+    expect(new Set(ids).size).toBe(ids.length);
+  }, 180000);
+
+  it("S3-4 · 反向 · 诚实空集：确实没有对策的阻滞点 → 空候选 + 定性 NONE + 说清缺哪一维，且不报错", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const s = await scan(t); // 200 已在 scan() 里断言 —— "算不出对策"不是错误
+
+    const empties = s.impediments.filter((im) => (im.candidates ?? []).length === 0 && im.candidates !== undefined);
+    // 真种子上确实存在"够不着任何可拨动杠杆"的阻滞点（金丝雀：这条空了下面就是空跑）。
+    expect(empties.length).toBeGreaterThan(0);
+
+    for (const im of empties) {
+      // ① 空集必须**当场定性**：这是"算过了真没有"，不是"没算出来"。
+      expect(im.noCandidateKind).toBe("NONE");
+      // ② 必须说清缺哪一维（缺哪根杠杆 / 缺哪类数据），不许留白 —— 空白最容易被读成"没问题"。
+      expect(im.noCandidateReason).toBeDefined();
+      expect(im.noCandidateReason!.length).toBeGreaterThan(0);
+      // ③ 逐点账里必须有对应行，且缺口原文非空、探过的锚点数如实记账。
+      const st = s.candidateStats.find((x) => x.impedimentId === im.impedimentId)!;
+      expect(st).toBeDefined();
+      expect(st.emitted).toBe(0);
+      expect(st.noCandidateKind).toBe("NONE");
+      expect(st.gaps.length).toBeGreaterThan(0);
+      for (const g of st.gaps) expect(g.length).toBeGreaterThan(0);
+    }
+
+    // ④ "空候选"与"有候选"两态不许同时成立（契约硬约束的运行态复核）。
+    for (const im of s.impediments) {
+      if ((im.candidates ?? []).length > 0) {
+        expect(im.noCandidateReason).toBeUndefined();
+        expect(im.noCandidateKind).toBeUndefined();
+      }
+    }
+  }, 180000);
+
+  /**
+   * S3-4b · WO-IMPEDIMENT-LEVERS · **「够不着」与「够着了、试过了、没用」必须分开说**。
+   *
+   * ── 这条为什么存在（真实代价，不是假想）──────────────────────────────────────
+   * 修前：两个"没往好里动"的分支是**静默 `continue`** —— 一次试算都不记账。于是 `noCandidateReason`
+   * 里只剩下 join 侧那条「LOCUS_PROP 够不着：对象类型 X 没有任何可拨动落点」，而它**渲染在用户屏上**
+   * （`DecisionPlayPanel.tsx` 的 `im.noCandidateReason`）。真起 `SEED_DEMO=1` 实测：14 条 NONE 里
+   * **没有一条**是真的"够不着" —— 每条都探到了 2–10 个杠杆锚点、真跑了 5–34 次逐档试算，
+   * 全部因为**两维读数一动不动**被丢弃。屏上却写着"没有可拨动落点"。
+   * 代价是实的：一张工单（WO-IMPEDIMENT-LEVERS）照这句话把工作量定成"补落点册"，
+   * 而补落点册对这 14 条**一条都治不了**（三面墙实测见交回）。**报错误的病因比不报更贵。**
+   *
+   * ── 形态（CLAUDE.md 铁律 0.6 句式）────────────────────────────────────────────
+   * 「我用『join 侧报了一条缺口』当作『这条阻滞点的缺口就是够不着』的证据，而前者并不度量后者
+   *   —— join 够着了几根杠杆、试算跑了多少次，是另外两个数。」
+   *
+   * ── 双向金丝雀（缺一半这道断言就是装饰品）──────────────────────────────────
+   *  · 正向：台账必须出现在**用户看得见的那半**（`noCandidateReason`），不是只进 `candidateStats`。
+   *  · 反向：台账里的数必须是**算出来的**不是写死的 —— 用两个独立来源交叉验：
+   *      ① `tried` 必须逐条等于 `candidateStats.probes`（另一段代码另算的数）；
+   *      ② `flat + worse + effective` 必须等于 `tried`（三分法无遗漏，没有被吞掉的档位）；
+   *      ③ 各条的 `tried` 不许全相等（全等 ⇒ 是个常量串，不是现算的）。
+   */
+  it("S3-4b · 反向 · 空集的理由必须分清「够不着」与「够着了但没传导」，且台账数与逐点账对得上", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const s = await scan(t);
+
+    // 前置金丝雀：本例断言的是**算完了**那一态。预算耗尽（truncated）时产能维压根没算，
+    // 台账按设计不出（见 `impediment-options.ts` 的 `!truncated` 注释），那是 S3-5 的地盘。
+    expect(s.candidatesTruncated).toBe(false);
+
+    // 与 S3-4 同一个选集口径（`candidates !== undefined` ⇒ 枚举真跑过这一条，不是字段压根没下发）
+    const empties = s.impediments.filter((im) => (im.candidates ?? []).length === 0 && im.candidates !== undefined);
+    expect(empties.length).toBeGreaterThan(0); // 金丝雀：这条空了下面全是空跑
+
+    const LEDGER = /真试算 (\d+) 个档位 → 有效 (\d+) 个：(\d+) 个拨完两维读数[^、]*一动不动、(\d+) 个动了但没往好里动/;
+    const triedSeen: number[] = [];
+    let reachedAndTried = 0;
+
+    for (const im of empties) {
+      const st = s.candidateStats.find((x) => x.impedimentId === im.impedimentId)!;
+      if (st.probes === 0) {
+        // 一次都没试算过 ⇒ **不许**打印试算台账（否则就是拿一句套话冒充证据）。
+        expect(im.noCandidateReason).not.toMatch(LEDGER);
+        continue;
+      }
+      // 正向：台账必须落到用户看得见的那半，而不是只进 candidateStats。
+      const m = LEDGER.exec(im.noCandidateReason ?? "");
+      expect(m, `NONE 阻滞点 ${im.impedimentId} 的 noCandidateReason 缺试算台账：${im.noCandidateReason}`).not.toBeNull();
+      const [tried, eff, flat, worse] = [Number(m![1]), Number(m![2]), Number(m![3]), Number(m![4])];
+
+      // 反向①：`tried` 与另一段代码算的 `probes` 必须逐字节对上。
+      expect(tried).toBe(st.probes);
+      // 反向②：三分法无遗漏 —— 试过的每一档都必须落进三桶之一。
+      expect(flat + worse + eff).toBe(tried);
+      expect(eff).toBe(st.effective);
+      // ⚠ 这里**不许**断言 `eff === 0`：空候选有两种来路 —— 有效 0 个，或有效 1 个但不足 MIN(2)。
+      // 后者今日种子上不出现，但写死 0 就是把"今天的数据长相"当成不变量（本仓反复栽的那个坑）。
+      // 「够不着不是病因」这句只有在**一个有效候选都没有**时才成立，故按 `eff` 分支断言。
+      if (eff === 0) {
+        expect(im.noCandidateReason).toContain("不是");
+        expect(im.noCandidateReason).toContain("够不着落点");
+      }
+
+      triedSeen.push(tried);
+      if (st.anchors > 0) reachedAndTried++;
+    }
+
+    // 反向③：台账不许是常量串 —— 各条试算数必须真的不一样。
+    expect(triedSeen.length).toBeGreaterThan(1);
+    expect(new Set(triedSeen).size).toBeGreaterThan(1);
+    // 本单的核心事实：空集里**确实存在**"够着了杠杆、也真试算过"的那一类，
+    // 它与"一根杠杆都够不着"是两种缺口、修法相反。这一条空了说明种子变了，结论要重取证。
+    expect(reachedAndTried).toBeGreaterThan(0);
+  }, 180000);
+
+  /**
+   * S3-4c · WO-LEVER-WALLS · **一条 NONE 不许再以「没有可拨动落点」这种不可区分的形态上屏**。
+   *
+   * ── 这条为什么存在（实测，不是假想）──────────────────────────────────────────
+   * S3-4b 已经逼出了试算台账，但屏上**仍然**跟着一句类型级的
+   * 「对象类型 Base 在 CAPACITY_FACTOR_BINDINGS 上没有任何可拨动落点」——
+   * 而这条阻滞点实测探到 **10 根**杠杆、真跑了 **34 次**试算。**够不着 / 够着了没传导 / 没有档位可拨**
+   * 是三件事、三种修法，压成一句读者只会去补落点册，而那对后两种一条都治不了。
+   *
+   * ── 今天的分母（真种子 SEED_DEMO 实测，2026-09-19）────────────────────────────
+   * 18 个阻滞点：4 个真长出候选 / **14 个 NONE** / 0 个 UNAVAILABLE。14 条的定性分布：
+   *   · **不是当前瓶颈** 11 条（拨的是物料到货/现货库存，而当前瓶颈是设备OEE）
+   *   · **这根杠杆不进产能公式** 3 条（⑩ 产线利用率：整类拨大拨小 Σp50 逐字节不动）
+   *   · 够不着（克隆面挡住） **0 条** —— `writable` 的 11 个落点全在克隆面内，这堵"墙"今天不挡任何人
+   *   · 同组取值全同 **0 条**
+   * 11 + 3 = 14 ⇒ 三分法无遗漏。
+   *
+   * ── 双向金丝雀（缺一半这道断言就是装饰品）──────────────────────────────────
+   *  · 正向：每条 NONE 都必须带定性，且定性里的类别必须来自已知词表（不许留白、不许新词裸奔）。
+   *  · 反向：**定性必须是算出来的，不是写死的串** —— 凡声称"这根杠杆不进产能公式"，
+   *    本测试拿 `mapCapacityContextProp` **另算一遍**（整类 ×2）去核，核不上即红。
+   */
+  it("S3-4c · NONE 必须带三选一定性，且「不进产能公式」这一类要顶得住独立复算", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const s = await scan(t);
+    expect(s.candidatesTruncated).toBe(false); // 前置：算完了才谈得上定性（没算完是 S3-5 的地盘）
+
+    const nones = s.impediments.filter((im) => im.noCandidateKind === "NONE");
+    expect(nones.length).toBeGreaterThan(0); // 金丝雀：这条空了下面全是空跑
+
+    const CATS = [
+      "**没试过·够不着落点**",
+      "**没试过·落点不在克隆面内**",
+      "**试过了·不是当前瓶颈**",
+      "**试过了·这根杠杆今天不进产能公式**",
+      "**没有档位可拨·同组取值全同**",
+      "**没测出来**",
+    ] as const;
+
+    const tally = new Map<string, number>();
+    const noPathMarks = new Set<string>();
+    for (const im of nones) {
+      const why = im.noCandidateReason ?? "";
+      // ① 屏上那句类型级谎言不许再出现 —— 它正是本条要治的东西。
+      expect(why, `NONE ${im.impedimentId} 仍在用类型级措辞「没有任何可拨动落点」：${why}`).not.toContain("没有任何可拨动落点");
+      // ② 必须当场定性，且类别来自已知词表（留白最容易被读成"确实无解"）。
+      expect(why, `NONE ${im.impedimentId} 没有定性段：${why}`).toContain("定性 ——");
+      const hit = CATS.filter((k) => why.includes(k));
+      expect(hit.length, `NONE ${im.impedimentId} 的定性没有命中任何已知类别：${why}`).toBeGreaterThan(0);
+      for (const k of hit) tally.set(k, (tally.get(k) ?? 0) + 1);
+      // ③ 声称"不是当前瓶颈"就必须**点名瓶颈是谁** —— 不点名等于换了个说法继续含糊。
+      if (why.includes("**试过了·不是当前瓶颈**")) {
+        expect(why, `NONE ${im.impedimentId} 说了"不是当前瓶颈"却没点名瓶颈：${why}`).toMatch(/当前瓶颈是「[^」]+」/);
+      }
+      // ④ 收集"不进产能公式"声称里的因子圈号，下面逐个独立复算。
+      // ⚠ 只在**该分句内**取圈号，不扫整条理由：整条里还有「不是任何可拨动因子的 ruleGate」这类句子，
+      // 全串扫会把「的」当成圈号抓走（实测踩到，本条断言当场报红）——
+      // CLAUDE.md 铁律 0.6 第 6 条：「那个串出现过」不度量「那是它的赋值」，数之前先定语法位置。
+      const seg = /\*\*试过了·这根杠杆今天不进产能公式\*\*：([^；|]*)/u.exec(why);
+      if (seg) {
+        for (const m of seg[1]!.matchAll(/（因子(\S)\s/gu)) noPathMarks.add(m[1]!);
+      }
+    }
+
+    // ⑤ 三分法无遗漏：每条 NONE 至少落一类，且各类计数之和 ≥ NONE 条数。
+    const summed = [...tally.values()].reduce((a, b) => a + b, 0);
+    expect(summed, `定性计数之和 ${summed} < NONE 条数 ${nones.length} ⇒ 有条目没被归类`).toBeGreaterThanOrEqual(nones.length);
+
+    // ⑥ 反向金丝雀：定性不是写死的串 —— 「不进产能公式」的每个因子，拿另一条路**独立复算**。
+    //    整类同属性 ×2 若把 Σp50 拨动了，说明它其实有路 ⇒ 定性说谎 ⇒ 本条红。
+    const c = await t.services.solvers.loadContext("demo", undefined, { withExtended: true });
+    const objective = (ctx: typeof c): number => {
+      let total = 0;
+      for (const m of [...ctx.certByModel.keys()].sort()) {
+        for (const r of computeByProcessModel(ctx, m, CAPACITY_FACTOR_BINDINGS)) total += r.cellsPerDayP50;
+      }
+      return Math.round(total * 1e4) / 1e4;
+    };
+    const baseObj = objective(c);
+    expect(baseObj).toBeGreaterThan(0); // 金丝雀：目标函数本身活着，否则下面"都没动"是空绿
+    // 正样例先行：一个**确定有路**的因子（⑥ 工序良率）整类 ×2 必须真把目标拨动 —— 证明这套复算有鉴别力。
+    const yb = CAPACITY_FACTOR_BINDINGS.find((b) => b.mark === "⑥" && b.writable)!;
+    expect(
+      objective(mapCapacityContextProp(c, yb.objectType, yb.prop, (v) => v * 2)),
+      "金丝雀失败：整类拨动工序良率竟然不改变 Σp50 ⇒ 复算量法坏了，下面的『无路』结论一律不许信",
+    ).not.toBe(baseObj);
+    for (const mark of noPathMarks) {
+      const b = CAPACITY_FACTOR_BINDINGS.find((x) => x.mark === mark && x.writable);
+      expect(b, `定性点名了因子${mark}，但它不是一个可拨动落点`).toBeDefined();
+      const up = objective(mapCapacityContextProp(c, b!.objectType, b!.prop, (v) => (v === 0 ? 1 : v * 2)));
+      const dn = objective(mapCapacityContextProp(c, b!.objectType, b!.prop, (v) => (v === 0 ? -1 : v * 0.5)));
+      expect(
+        up === baseObj && dn === baseObj,
+        `定性声称因子${mark}（${b!.objectType}.${b!.prop}）不进产能公式，但独立复算把 Σp50 从 ${baseObj} 拨到了 ×2:${up} / ×0.5:${dn} ⇒ 定性说谎`,
+      ).toBe(true);
+    }
+    expect(noPathMarks.size + tally.size, "定性词表一条都没命中 ⇒ 这道断言是装饰品").toBeGreaterThan(0);
+  }, 180000);
+
+  it("S3-5 · 「算不了」≠「没有」：同一份数据只拧算力旋钮 → 同一批阻滞点从 NONE 翻成 UNAVAILABLE", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+
+    // 与 `SolverService.chainImpediments`（service.ts）**同一套输入装配**，只多传一个算力旋钮：
+    // `probeBudget` 刻意不做成 HTTP 入参（它是算力上界不是业务范围，进 args 会被误读成筛选条件）。
+    const c = await t.services.solvers.loadContext("demo", undefined, { withExtended: true });
+    const materialBalances = await t.repos.objects.listByType("demo", "MaterialBalance");
+    const links = await t.repos.links.list("demo", () => true);
+
+    const full = detectChainImpediments({ c, materialBalances, links, scope: {} });
+    const starved = detectChainImpediments({ c, materialBalances, links, scope: {}, probeBudget: 0 });
+
+    // 判定这一半**完全不受**算力旋钮影响：同一批阻滞点，条数与 id 逐条相同。
+    expect(starved.counts).toEqual(full.counts);
+    expect(starved.impediments.map((i) => i.impedimentId)).toEqual(full.impediments.map((i) => i.impedimentId));
+
+    // 满预算：确实有阻滞点被判成"算过了真没有"（NONE），也确实有阻滞点真长出候选。
+    expect(full.candidatesTruncated).toBe(false);
+    expect(full.impediments.some((i) => (i.candidates ?? []).length > 0)).toBe(true);
+    const fullNone = full.impediments.filter((i) => i.noCandidateKind === "NONE").map((i) => i.impedimentId);
+    expect(fullNone.length).toBeGreaterThan(0);
+    expect(full.impediments.some((i) => i.noCandidateKind === "UNAVAILABLE")).toBe(false);
+
+    // 断电后：**同一批阻滞点**一条不少，但"没有对策"的定性全部翻成 UNAVAILABLE ——
+    // 这正是本单要分开的两件事：「我算过了，没有」与「我没算出来」。
+    expect(starved.candidatesTruncated).toBe(true);
+    const starvedById = new Map(starved.impediments.map((i) => [i.impedimentId, i]));
+    for (const id of fullNone) {
+      const after = starvedById.get(id)!;
+      expect(after).toBeDefined();
+      expect(after.noCandidateKind).toBe("UNAVAILABLE");
+      // 原因文案必须**当面说明它是缺答不是答**，不许沿用"没有对策"的措辞。
+      expect(after.noCandidateReason).toContain("算不了");
+    }
+    // 断电后一条候选都产不出来（试算根本没跑），但这**不等于**"这些阻滞点没救"。
+    expect(starved.impediments.every((i) => (i.candidates ?? []).length === 0)).toBe(true);
+    expect(starved.impediments.every((i) => i.noCandidateKind === "UNAVAILABLE")).toBe(true);
+    // 逐点账同样带定性（前端/门读的是这张表，不是散文）。
+    expect(starved.candidateStats.every((x) => x.noCandidateKind === "UNAVAILABLE")).toBe(true);
+  }, 180000);
+
+  it("S3-6 · 规则半 × 枚举半：只改 C05 红线（一行代码不动）→ 新出的卡点真长出候选，且阈值档位跟着走", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const before = await scan(t);
+    const bnBefore = before.impediments.filter((i) => i.evidence.ruleKey === "C05");
+
+    // 经**规则发布真路径**把红线压到 80 —— 引擎源码一个字不改。
+    await editRule(t, {
+      key: "C05",
+      name: "产线利用率持续越线",
+      expression: `SUSTAIN(Line.utilization > ${ruleParamRef("utilizationRedlinePct")}, 3)`,
+      scopeObjectTypes: ["Line"],
+      severity: "WARN",
+      params: { utilizationRedlinePct: 80 },
+    });
+
+    const after = await scan(t);
+    const bnAfter = after.impediments.filter((i) => i.evidence.ruleKey === "C05");
+    // ① 判定半真的变了（卡点变多）。
+    expect(bnAfter.length).toBeGreaterThan(bnBefore.length);
+    // ② **枚举半跟着长出候选** —— 新出的卡点不是"多了几条只会报警的行"。
+    const bnWithCands = bnAfter.filter((i) => (i.candidates ?? []).length > 0);
+    expect(bnWithCands.length).toBeGreaterThan(bnBefore.filter((i) => (i.candidates ?? []).length > 0).length);
+    // ③ 阈值档位**跟着规则走**：凡取 THRESHOLD 档的候选，目标值必须等于新阈值 80。
+    const thresholdCands = allCandidates(after).filter((x) => x.c.rungKind === "THRESHOLD");
+    for (const { im, c } of thresholdCands) {
+      expect(im.evidence.threshold).toBe(c.toValue);
+      if (im.evidence.ruleKey === "C05") expect(c.toValue).toBe(80);
+    }
+    // ④ 每条新候选仍然逐条可溯源（阈值变了不等于溯源可以变糊）。
+    for (const im of bnWithCands) {
+      for (const c of im.candidates!) {
+        expect(c.join.path.length).toBeGreaterThan(0);
+        expect(c.rungSource.length).toBeGreaterThan(0);
+        expect(c.provenance.inputs).toContain(`${c.lever.objectType}.${c.lever.prop}`);
+      }
+    }
+  }, 180000);
+
+  it("S3-7 · R6 确定性：同输入连跑两次，候选（含 id / 排序 / 各维数值）逐字节一致", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const a = await scan(t);
+    const b = await scan(t);
+    expect(JSON.stringify(b.impediments)).toBe(JSON.stringify(a.impediments));
+    expect(JSON.stringify(b.candidateStats)).toBe(JSON.stringify(a.candidateStats));
+    // 候选在每个阻滞点内也必须是全序（逐维改善量降序 → 维数 → id），不靠输入顺序的巧合。
+    for (const im of a.impediments) {
+      const cs = im.candidates ?? [];
+      for (let i = 1; i < cs.length; i++) {
+        const p = cs[i - 1]!;
+        const q = cs[i]!;
+        const impOf = (x: SolutionCandidate) =>
+          x.dims.map((d) => (d.value === null || d.baseline === null ? 0 : d.betterWhen === "lower" ? d.baseline - d.value : d.value - d.baseline));
+        const ip = impOf(p);
+        const iq = impOf(q);
+        let decided = false;
+        for (let k = 0; k < Math.min(ip.length, iq.length); k++) {
+          if (ip[k] !== iq[k]) {
+            expect(ip[k]! > iq[k]!).toBe(true);
+            decided = true;
+            break;
+          }
+        }
+        if (!decided) expect(p.candidateId <= q.candidateId).toBe(true);
+      }
+    }
+  }, 180000);
+});

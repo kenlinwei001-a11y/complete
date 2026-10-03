@@ -1,0 +1,25 @@
+
+ RUN  v3.2.6 /home/user/complete/.claude/worktrees/agent-a3994bbb10e281b32/apps/datacore
+
+ ✓ test/m11-calibration.test.ts (16 tests) 78302ms
+   ✓ M11 校准引擎（PRD-addendum-m11-calibration C1–C9） > C1: 窗口未过期/源延迟时不配对；过期且健康后配对；error/ape 与手算一致；一个预测只配对一次  8594ms
+   ✓ M11 校准引擎（PRD-addendum-m11-calibration C1–C9） > C3: 仅爬坡偏差的合成历史 → ≥80% 偏差归因到爬坡系数；提案变幅被 clip ±10%  4044ms
+   ✓ M11 校准引擎（PRD-addendum-m11-calibration C1–C9） > C5: 构造'改了也不准'的样本 → NO_IMPROVEMENT、零提案  4006ms
+   ✓ M11 校准引擎（PRD-addendum-m11-calibration C1–C9） > C6: 批准 → 参数版本+1 且后续求解用新值；回滚恢复上一版本；runWithParams 复现旧版本  4008ms
+   ✓ M11 校准引擎（PRD-addendum-m11-calibration C1–C9） > C6b: autoApply 开关仅放行方法 A 且小变幅（方法 B 胜出时仍走审批）  7282ms
+   ✓ M11 校准引擎（PRD-addendum-m11-calibration C1–C9） > C7: 同窗多提案只放行改善最大者（其余 CASCADE_HOLD）；同参数一周内二次提案 FREQUENCY_LIMIT  3561ms
+   ✓ M11 校准引擎（PRD-addendum-m11-calibration C1–C9） > C8: APPLIED 14（模拟）日后 realizedMape 回写提案与历史（预言 vs 实现）  3657ms
+   ✓ M11 校准引擎（PRD-addendum-m11-calibration C1–C9） > C9: tick 良率下滑 → C12 → 方法A提案(含回测证据) → 批准 → 继续 tick → MAPE 收敛且报告可见全链  20553ms
+   ✓ M0-F1 RealizedOutcome 配对键（T4） > T4①③ file_upload 真传 CSV ⇒ 实料落库可追回 syncJobId · 配对前后 paired 两数都动  3878ms
+   ✓ M0-F1 RealizedOutcome 配对键（T4） > T4② provenance 残缺 ⇒ 400 并点名缺哪个字段；mock_* 申报期即拒  635ms
+   ✓ M0-F2 欠账计 GET /a/v1/calibration/debt（T1+T3） > T1① 无实料 ⇒ paired:0 · expected.minPaired:N · coveragePct:0 · 🐤 forecasts>0  4501ms
+   ✓ M0-F2 欠账计 GET /a/v1/calibration/debt（T1+T3） > T1②+T3 录 M 条配对 ⇒ 三数同步变 · 账龄随钟 +1（正控）· 墙钟未来账龄钳 0（反证）  5571ms
+   ✓ M0-F3 实料闸（T2 变异反证） > T2① paired=0 ⇒ 四项全拒且各自披露（点名能力 + 欠 N 对）· assertGateOpen 409  3881ms
+   ✓ M0-F3 实料闸（T2 变异反证） > T2② paired≥minPaired ⇒ 四项全放行 · 🐤 反向：闸读数与 debt 同源（不是第二套真相）  4121ms
+ ✓ test/prop-clamp-decay.seam.test.ts (11 tests) 24ms
+
+ Test Files  2 passed (2)
+      Tests  27 passed (27)
+   Start at  04:11:54
+   Duration  85.88s (transform 3.97s, setup 0ms, collect 6.73s, tests 78.33s, environment 0ms, prepare 159ms)
+

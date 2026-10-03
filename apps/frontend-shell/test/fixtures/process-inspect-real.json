@@ -1,0 +1,830 @@
+{
+  "P32": {
+    "process": {
+      "key": "P32",
+      "domainKey": "D05",
+      "name": "物料平衡（MRP）运行",
+      "ownerFunctionKey": "supply_chain",
+      "stdDurationDays": 1,
+      "waitKind": "WAITING_SCHEDULE",
+      "carrierTypeKey": "MaterialBalance",
+      "domainName": "采购与供应",
+      "ownerFunctionName": "供应链"
+    },
+    "runtime": {
+      "available": false,
+      "reason": "本平台**没有流程运行态**：`ProcessTask` / `ProcessInstance` 两个承载物全仓不存在（PRD-enterprise-decision-twin §5 的 E2 未实现）。没有 `ProcessTask.enteredAt` 就没有「进入这一步的时刻」，也就没有任何办法算出「此刻已卡多久」。这是**诚实缺席**，不是本次取数失败。",
+      "stdDurationDays": 1,
+      "stdDurationCaption": "标准工期（配置值，天）—— 不是实测卡顿时长",
+      "unanswerable": [
+        "这个流程此刻已经卡了多久？（需要 ProcessTask.enteredAt）",
+        "现在有几单堵在这一步？（需要 ProcessInstance 计数）",
+        "实测在制品数是多少？（需要运行态实例）"
+      ]
+    },
+    "carrier": {
+      "status": "present",
+      "typeKey": "MaterialBalance",
+      "displayName": "物料平衡",
+      "domain": "material",
+      "description": null,
+      "properties": [
+        {
+          "propKey": "coverage",
+          "displayName": "覆盖率",
+          "dataType": "number",
+          "unit": "%",
+          "isPrimaryKey": false,
+          "description": "齐套覆盖率（净需求中已被覆盖的比例）。**0–1 比率存储**，显示时 ×100 —— 与 LEVER_PROP_META['MaterialBalance.coverage'].kind='ratio' 同口径。派生属性：值由 (netDemandTon − gapTon) / netDemandTon 算出，不是独立录入的真值。",
+          "enumValues": null,
+          "derived": true
+        },
+        {
+          "propKey": "etaDate",
+          "displayName": "预计到货日",
+          "dataType": "string",
+          "unit": null,
+          "isPrimaryKey": false,
+          "description": null,
+          "enumValues": null,
+          "derived": false
+        },
+        {
+          "propKey": "gapTon",
+          "displayName": "现货缺口",
+          "dataType": "number",
+          "unit": null,
+          "isPrimaryKey": false,
+          "description": null,
+          "enumValues": null,
+          "derived": false
+        },
+        {
+          "propKey": "ltaPct",
+          "displayName": "长协覆盖率",
+          "dataType": "number",
+          "unit": null,
+          "isPrimaryKey": false,
+          "description": null,
+          "enumValues": null,
+          "derived": false
+        },
+        {
+          "propKey": "matBalId",
+          "displayName": "物料平衡编号",
+          "dataType": "string",
+          "unit": null,
+          "isPrimaryKey": true,
+          "description": null,
+          "enumValues": null,
+          "derived": false
+        },
+        {
+          "propKey": "material",
+          "displayName": "物料",
+          "dataType": "string",
+          "unit": null,
+          "isPrimaryKey": false,
+          "description": null,
+          "enumValues": null,
+          "derived": false
+        },
+        {
+          "propKey": "netDemandTon",
+          "displayName": "净需求量",
+          "dataType": "number",
+          "unit": null,
+          "isPrimaryKey": false,
+          "description": null,
+          "enumValues": null,
+          "derived": false
+        },
+        {
+          "propKey": "unit",
+          "displayName": "计量单位",
+          "dataType": "string",
+          "unit": null,
+          "isPrimaryKey": false,
+          "description": null,
+          "enumValues": null,
+          "derived": false
+        }
+      ],
+      "derivedProperties": [
+        {
+          "propKey": "coverage",
+          "displayName": "覆盖率",
+          "unit": "%",
+          "formula": "(netDemandTon - gapTon) / netDemandTon"
+        }
+      ],
+      "objectCount": 9,
+      "absentReason": null
+    },
+    "relations": [],
+    "sharedCarrierProcesses": [],
+    "levers": [
+      {
+        "leverKey": "MaterialBalance.coverage",
+        "objectTypeKey": "MaterialBalance",
+        "propKey": "coverage",
+        "label": "物料齐套·覆盖率",
+        "unit": "%",
+        "valueKind": "ratio",
+        "landingResolved": true,
+        "landingWhere": "properties",
+        "processKeys": [
+          "P32"
+        ],
+        "domains": [
+          {
+            "key": "D05",
+            "name": "采购与供应"
+          }
+        ]
+      }
+    ],
+    "carrierLayers": {
+      "sliceKey": "process-inspect:P32",
+      "version": 0,
+      "rootType": "MaterialBalance",
+      "graph": {
+        "nodes": 9,
+        "edges": 0,
+        "truncated": false,
+        "typeKeys": [
+          "MaterialBalance"
+        ],
+        "linkKeys": []
+      },
+      "snapshotVersion": "1.1",
+      "layers": [
+        {
+          "id": "business_scenario",
+          "ordinal": 1,
+          "status": "absent",
+          "count": 0,
+          "unit": "个",
+          "carrier": "reported_refs（B→A 引用上报）→ governance.sliceReferences",
+          "items": [],
+          "absentReason": "承载物在（GET …/slices/{key}/references 已接线），但 AgentCore 侧 refs/report.ts 只上报 rule 引用、从不产出 kind:\"slice\" ⇒ 反查恒空。缺的是上报方，不是切片。"
+        },
+        {
+          "id": "decision_intent",
+          "ordinal": 2,
+          "status": "absent",
+          "count": 0,
+          "unit": "个",
+          "carrier": "reported_refs.refKind ∈ {plan, intent, agent}",
+          "items": [],
+          "absentReason": "AgentCore dril/relations.ts 已算出 workflow→slice 的引用关系，但不回写 DataCore 的 reported_refs ⇒ A 侧反查取不到（关系算在了 B 侧，没有回流）。"
+        },
+        {
+          "id": "object",
+          "ordinal": 3,
+          "status": "present",
+          "count": 1,
+          "unit": "类",
+          "carrier": "objects（executeSlice 真子图 nodes）",
+          "items": [
+            {
+              "key": "MaterialBalance",
+              "label": "物料平衡（MaterialBalance）",
+              "group": "material",
+              "count": 9,
+              "detail": "9 个对象"
+            }
+          ]
+        },
+        {
+          "id": "property",
+          "ordinal": 4,
+          "status": "present",
+          "count": 8,
+          "unit": "个",
+          "carrier": "object_types.properties（PropertyDef）+ 子图 node.props",
+          "items": [
+            {
+              "key": "MaterialBalance.coverage",
+              "label": "MaterialBalance.覆盖率",
+              "group": "MaterialBalance",
+              "detail": "number · 单位 %"
+            },
+            {
+              "key": "MaterialBalance.etaDate",
+              "label": "MaterialBalance.预计到货日",
+              "group": "MaterialBalance",
+              "detail": "string"
+            },
+            {
+              "key": "MaterialBalance.gapTon",
+              "label": "MaterialBalance.现货缺口",
+              "group": "MaterialBalance",
+              "detail": "number"
+            },
+            {
+              "key": "MaterialBalance.ltaPct",
+              "label": "MaterialBalance.长协覆盖率",
+              "group": "MaterialBalance",
+              "detail": "number"
+            },
+            {
+              "key": "MaterialBalance.matBalId",
+              "label": "MaterialBalance.物料平衡编号",
+              "group": "MaterialBalance",
+              "detail": "string · 主键"
+            },
+            {
+              "key": "MaterialBalance.material",
+              "label": "MaterialBalance.物料",
+              "group": "MaterialBalance",
+              "detail": "string"
+            },
+            {
+              "key": "MaterialBalance.netDemandTon",
+              "label": "MaterialBalance.净需求量",
+              "group": "MaterialBalance",
+              "detail": "number"
+            },
+            {
+              "key": "MaterialBalance.unit",
+              "label": "MaterialBalance.计量单位",
+              "group": "MaterialBalance",
+              "detail": "string"
+            }
+          ]
+        },
+        {
+          "id": "relation",
+          "ordinal": 5,
+          "status": "absent",
+          "count": 0,
+          "unit": "种",
+          "carrier": "links（子图 edges）+ ontology_links（LinkTypeDef 基数/端类型）",
+          "items": [],
+          "absentReason": "本租户此层无数据（承载物：links（子图 edges）+ ontology_links（LinkTypeDef 基数/端类型））。"
+        },
+        {
+          "id": "event",
+          "ordinal": 6,
+          "status": "not_in_slice",
+          "count": 0,
+          "unit": "条",
+          "carrier": "objects[type=ExceptionEvent]（四源归一异常事件）+ exc_sourced_from 链路",
+          "items": [],
+          "platformCount": 372,
+          "absentReason": "平台有 372 条，但本切片的路径没纳入 —— 改切片 paths 把相关类型接进来即可取到。"
+        },
+        {
+          "id": "state",
+          "ordinal": 7,
+          "status": "absent",
+          "count": 0,
+          "unit": "个",
+          "carrier": "sim_propagation_rules.{source,target}StateVar + object_types.stateVariables + enum 属性",
+          "items": [],
+          "absentReason": "本租户此层无数据（承载物：sim_propagation_rules.{source,target}StateVar + object_types.stateVariables + enum 属性）。"
+        },
+        {
+          "id": "metric",
+          "ordinal": 8,
+          "status": "present",
+          "count": 2,
+          "unit": "个",
+          "carrier": "object_types.derivedProperties.formula + PropertyDef.unit",
+          "items": [
+            {
+              "key": "d:MaterialBalance.coverage",
+              "label": "MaterialBalance.coverage",
+              "group": "派生指标",
+              "detail": "(netDemandTon - gapTon) / netDemandTon"
+            },
+            {
+              "key": "u:MaterialBalance.coverage",
+              "label": "MaterialBalance.覆盖率",
+              "group": "带量纲度量",
+              "detail": "单位 %"
+            }
+          ]
+        },
+        {
+          "id": "time",
+          "ordinal": 9,
+          "status": "absent",
+          "count": 0,
+          "unit": "个",
+          "carrier": "ts_series.entityType + PropertyDef.temporal/date",
+          "items": [],
+          "absentReason": "本租户此层无数据（承载物：ts_series.entityType + PropertyDef.temporal/date）。"
+        },
+        {
+          "id": "rule",
+          "ordinal": 10,
+          "status": "present",
+          "count": 2,
+          "unit": "条",
+          "carrier": "rules.scopeObjectTypes ∩ 切片类型（PUBLISHED）",
+          "items": [
+            {
+              "key": "C06",
+              "label": "C06 物料齐套缺口口径(MRP)",
+              "group": "物料",
+              "detail": "MaterialBalance.gapTon > 0"
+            },
+            {
+              "key": "C16",
+              "label": "C16 齐套缺口预警",
+              "group": "物料",
+              "detail": "MaterialBalance.gapTon > 0"
+            }
+          ],
+          "platformCount": 29
+        },
+        {
+          "id": "constraint",
+          "ordinal": 11,
+          "status": "absent",
+          "count": 0,
+          "unit": "条",
+          "carrier": "slice_specs.spec.contractFixtures + rules[severity=BLOCK] + rules.params",
+          "items": [],
+          "absentReason": "本租户此层无数据（承载物：slice_specs.spec.contractFixtures + rules[severity=BLOCK] + rules.params）。"
+        },
+        {
+          "id": "data_binding",
+          "ordinal": 12,
+          "status": "present",
+          "count": 1,
+          "unit": "条",
+          "carrier": "object_types.sourceBindings（connId / dataset / 字段映射）",
+          "items": [
+            {
+              "key": "MaterialBalance:conn_4ecbqt7qa0dvsbtv:MaterialBalance",
+              "label": "MaterialBalance ← MaterialBalance",
+              "group": "conn_4ecbqt7qa0dvsbtv",
+              "count": 7,
+              "detail": "连接器 conn_4ecbqt7qa0dvsbtv · 7 个字段映射"
+            }
+          ]
+        },
+        {
+          "id": "scenario",
+          "ordinal": 13,
+          "status": "not_in_slice",
+          "count": 0,
+          "unit": "条",
+          "carrier": "objects[AnnualScenario/ScenarioTrigger] + sim_propagation_rules（传导链）",
+          "items": [],
+          "platformCount": 13,
+          "absentReason": "平台有 13 条，但本切片的路径没纳入 —— 改切片 paths 把相关类型接进来即可取到。"
+        },
+        {
+          "id": "evidence",
+          "ordinal": 14,
+          "status": "absent",
+          "count": 0,
+          "unit": "条",
+          "carrier": "derivation_specs（派生 inputs 快照来源）+ slice_specs.contractFixtures",
+          "items": [],
+          "absentReason": "本租户此层无数据（承载物：derivation_specs（派生 inputs 快照来源）+ slice_specs.contractFixtures）。"
+        },
+        {
+          "id": "action",
+          "ordinal": 15,
+          "status": "absent",
+          "count": 0,
+          "unit": "个",
+          "carrier": "object_types.actions[]（类型级绑定）+ action_types（全局注册表）",
+          "items": [],
+          "platformCount": 10,
+          "absentReason": "全局注册了 10 个 ActionType，但归因不到本切片的类型，缺口有两道：(1) 结构缺口 —— ActionType 无 targetTypeKey 字段，无法机械 join 到对象类型；(2) 持久化窄门 —— object_types.actions[] 全空，且 ontology.ts:199 upsertType 逐字段重建 def 时不抄 actions/stateVariables/functions/security，即便 pipeline/subgraph.ts:53-57 产出了也落不了库。补种子与补窄门是两件事，不许当一件做。"
+        },
+        {
+          "id": "governance",
+          "ordinal": 16,
+          "status": "present",
+          "count": 4,
+          "unit": "项",
+          "carrier": "objects.origin/epoch（子图带出）+ object_types.domain/published",
+          "items": [
+            {
+              "key": "dm:material",
+              "label": "域 material",
+              "group": "归域",
+              "count": 1,
+              "detail": "1 个类型"
+            },
+            {
+              "key": "og:SYNTHETIC",
+              "label": "来源 SYNTHETIC",
+              "group": "对象溯源",
+              "count": 9,
+              "detail": "9 个对象"
+            },
+            {
+              "key": "pb:published",
+              "label": "已发布类型",
+              "group": "发布状态",
+              "count": 1,
+              "detail": "1/1 类已发布"
+            },
+            {
+              "key": "sv:snapshot",
+              "label": "快照 1.1",
+              "group": "版本",
+              "detail": "ontologyVersion.epoch"
+            }
+          ]
+        }
+      ],
+      "summary": {
+        "total": 16,
+        "present": 6,
+        "notInSlice": 2,
+        "absent": 8
+      }
+    },
+    "carrierLayersAbsentReason": null
+  },
+  "P37": {
+    "process": {
+      "key": "P37",
+      "domainKey": "D06",
+      "name": "主生产计划（MPS）编制",
+      "ownerFunctionKey": "production_planning",
+      "stdDurationDays": 5,
+      "waitKind": "WAITING_SCHEDULE",
+      "carrierTypeKey": "ProductionSchedule",
+      "domainName": "计划与排产",
+      "ownerFunctionName": "生产计划"
+    },
+    "runtime": {
+      "available": false,
+      "reason": "本平台**没有流程运行态**：`ProcessTask` / `ProcessInstance` 两个承载物全仓不存在（PRD-enterprise-decision-twin §5 的 E2 未实现）。没有 `ProcessTask.enteredAt` 就没有「进入这一步的时刻」，也就没有任何办法算出「此刻已卡多久」。这是**诚实缺席**，不是本次取数失败。",
+      "stdDurationDays": 5,
+      "stdDurationCaption": "标准工期（配置值，天）—— 不是实测卡顿时长",
+      "unanswerable": [
+        "这个流程此刻已经卡了多久？（需要 ProcessTask.enteredAt）",
+        "现在有几单堵在这一步？（需要 ProcessInstance 计数）",
+        "实测在制品数是多少？（需要运行态实例）"
+      ]
+    },
+    "carrier": {
+      "status": "present",
+      "typeKey": "ProductionSchedule",
+      "displayName": "生产排程",
+      "domain": "process",
+      "description": null,
+      "properties": [
+        {
+          "propKey": "lineId",
+          "displayName": "产线",
+          "dataType": "ref",
+          "unit": null,
+          "isPrimaryKey": false,
+          "description": null,
+          "enumValues": null,
+          "derived": false
+        },
+        {
+          "propKey": "priority",
+          "displayName": "优先级",
+          "dataType": "number",
+          "unit": null,
+          "isPrimaryKey": false,
+          "description": null,
+          "enumValues": null,
+          "derived": false
+        },
+        {
+          "propKey": "qty",
+          "displayName": "排产数量",
+          "dataType": "number",
+          "unit": null,
+          "isPrimaryKey": false,
+          "description": null,
+          "enumValues": null,
+          "derived": false
+        },
+        {
+          "propKey": "schedId",
+          "displayName": "排程编号",
+          "dataType": "string",
+          "unit": null,
+          "isPrimaryKey": true,
+          "description": null,
+          "enumValues": null,
+          "derived": false
+        },
+        {
+          "propKey": "scheduledDate",
+          "displayName": "排产日期",
+          "dataType": "date",
+          "unit": null,
+          "isPrimaryKey": false,
+          "description": null,
+          "enumValues": null,
+          "derived": false
+        },
+        {
+          "propKey": "shift",
+          "displayName": "班次",
+          "dataType": "enum",
+          "unit": null,
+          "isPrimaryKey": false,
+          "description": null,
+          "enumValues": null,
+          "derived": false
+        },
+        {
+          "propKey": "status",
+          "displayName": "排程状态",
+          "dataType": "enum",
+          "unit": null,
+          "isPrimaryKey": false,
+          "description": null,
+          "enumValues": null,
+          "derived": false
+        },
+        {
+          "propKey": "woId",
+          "displayName": "关联工单",
+          "dataType": "ref",
+          "unit": null,
+          "isPrimaryKey": false,
+          "description": null,
+          "enumValues": null,
+          "derived": false
+        }
+      ],
+      "derivedProperties": [],
+      "objectCount": 0,
+      "absentReason": null
+    },
+    "relations": [
+      {
+        "linkKey": "sched_for_wo",
+        "direction": "out",
+        "fromTypeKey": "ProductionSchedule",
+        "toTypeKey": "WorkOrder",
+        "cardinality": "N:1",
+        "neighborTypeKey": "WorkOrder",
+        "neighborDisplayName": "生产工单",
+        "neighborObjectCount": 260
+      }
+    ],
+    "sharedCarrierProcesses": [
+      {
+        "key": "P40",
+        "name": "详细排产（APS）",
+        "domainKey": "D06",
+        "domainName": "计划与排产",
+        "ownerFunctionKey": "production_planning",
+        "ownerFunctionName": "生产计划",
+        "waitKind": "WAITING_DATA",
+        "stdDurationDays": 1
+      }
+    ],
+    "levers": [],
+    "carrierLayers": {
+      "sliceKey": "process-inspect:P37",
+      "version": 0,
+      "rootType": "ProductionSchedule",
+      "graph": {
+        "nodes": 0,
+        "edges": 0,
+        "truncated": false,
+        "typeKeys": [],
+        "linkKeys": [],
+        "empty": {
+          "reason": "no_root_objects",
+          "requiredArgs": [],
+          "missingArgs": [],
+          "rootObjectTotal": 0,
+          "argCandidates": [],
+          "message": "子图为空是因为 root 对象类型 ProductionSchedule 在本租户**一个对象都没有**（不是切片写错，是这一类还没有数据）。"
+        }
+      },
+      "snapshotVersion": "1.1",
+      "layers": [
+        {
+          "id": "business_scenario",
+          "ordinal": 1,
+          "status": "absent",
+          "count": 0,
+          "unit": "个",
+          "carrier": "reported_refs（B→A 引用上报）→ governance.sliceReferences",
+          "items": [],
+          "absentReason": "承载物在（GET …/slices/{key}/references 已接线），但 AgentCore 侧 refs/report.ts 只上报 rule 引用、从不产出 kind:\"slice\" ⇒ 反查恒空。缺的是上报方，不是切片。"
+        },
+        {
+          "id": "decision_intent",
+          "ordinal": 2,
+          "status": "absent",
+          "count": 0,
+          "unit": "个",
+          "carrier": "reported_refs.refKind ∈ {plan, intent, agent}",
+          "items": [],
+          "absentReason": "AgentCore dril/relations.ts 已算出 workflow→slice 的引用关系，但不回写 DataCore 的 reported_refs ⇒ A 侧反查取不到（关系算在了 B 侧，没有回流）。"
+        },
+        {
+          "id": "object",
+          "ordinal": 3,
+          "status": "absent",
+          "count": 0,
+          "unit": "类",
+          "carrier": "objects（executeSlice 真子图 nodes）",
+          "items": [],
+          "absentReason": "本切片未解出子图 ⇒ 这一层还没被判定过（不是「平台没有」）。子图为空是因为 root 对象类型 ProductionSchedule 在本租户**一个对象都没有**（不是切片写错，是这一类还没有数据）。"
+        },
+        {
+          "id": "property",
+          "ordinal": 4,
+          "status": "absent",
+          "count": 0,
+          "unit": "个",
+          "carrier": "object_types.properties（PropertyDef）+ 子图 node.props",
+          "items": [],
+          "absentReason": "本切片未解出子图 ⇒ 这一层还没被判定过（不是「平台没有」）。子图为空是因为 root 对象类型 ProductionSchedule 在本租户**一个对象都没有**（不是切片写错，是这一类还没有数据）。"
+        },
+        {
+          "id": "relation",
+          "ordinal": 5,
+          "status": "absent",
+          "count": 0,
+          "unit": "种",
+          "carrier": "links（子图 edges）+ ontology_links（LinkTypeDef 基数/端类型）",
+          "items": [],
+          "absentReason": "本切片未解出子图 ⇒ 这一层还没被判定过（不是「平台没有」）。子图为空是因为 root 对象类型 ProductionSchedule 在本租户**一个对象都没有**（不是切片写错，是这一类还没有数据）。"
+        },
+        {
+          "id": "event",
+          "ordinal": 6,
+          "status": "not_in_slice",
+          "count": 0,
+          "unit": "条",
+          "carrier": "objects[type=ExceptionEvent]（四源归一异常事件）+ exc_sourced_from 链路",
+          "items": [],
+          "platformCount": 372,
+          "absentReason": "本切片未解出子图 ⇒ 这一层还没被判定过（不是「平台没有」）。子图为空是因为 root 对象类型 ProductionSchedule 在本租户**一个对象都没有**（不是切片写错，是这一类还没有数据）。（平台现有 372 条。）"
+        },
+        {
+          "id": "state",
+          "ordinal": 7,
+          "status": "absent",
+          "count": 0,
+          "unit": "个",
+          "carrier": "sim_propagation_rules.{source,target}StateVar + object_types.stateVariables + enum 属性",
+          "items": [],
+          "absentReason": "本切片未解出子图 ⇒ 这一层还没被判定过（不是「平台没有」）。子图为空是因为 root 对象类型 ProductionSchedule 在本租户**一个对象都没有**（不是切片写错，是这一类还没有数据）。"
+        },
+        {
+          "id": "metric",
+          "ordinal": 8,
+          "status": "absent",
+          "count": 0,
+          "unit": "个",
+          "carrier": "object_types.derivedProperties.formula + PropertyDef.unit",
+          "items": [],
+          "absentReason": "本切片未解出子图 ⇒ 这一层还没被判定过（不是「平台没有」）。子图为空是因为 root 对象类型 ProductionSchedule 在本租户**一个对象都没有**（不是切片写错，是这一类还没有数据）。"
+        },
+        {
+          "id": "time",
+          "ordinal": 9,
+          "status": "absent",
+          "count": 0,
+          "unit": "个",
+          "carrier": "ts_series.entityType + PropertyDef.temporal/date",
+          "items": [],
+          "absentReason": "本切片未解出子图 ⇒ 这一层还没被判定过（不是「平台没有」）。子图为空是因为 root 对象类型 ProductionSchedule 在本租户**一个对象都没有**（不是切片写错，是这一类还没有数据）。"
+        },
+        {
+          "id": "rule",
+          "ordinal": 10,
+          "status": "not_in_slice",
+          "count": 0,
+          "unit": "条",
+          "carrier": "rules.scopeObjectTypes ∩ 切片类型（PUBLISHED）",
+          "items": [],
+          "platformCount": 29,
+          "absentReason": "本切片未解出子图 ⇒ 这一层还没被判定过（不是「平台没有」）。子图为空是因为 root 对象类型 ProductionSchedule 在本租户**一个对象都没有**（不是切片写错，是这一类还没有数据）。（平台现有 29 条。）"
+        },
+        {
+          "id": "constraint",
+          "ordinal": 11,
+          "status": "absent",
+          "count": 0,
+          "unit": "条",
+          "carrier": "slice_specs.spec.contractFixtures + rules[severity=BLOCK] + rules.params",
+          "items": [],
+          "absentReason": "本切片未解出子图 ⇒ 这一层还没被判定过（不是「平台没有」）。子图为空是因为 root 对象类型 ProductionSchedule 在本租户**一个对象都没有**（不是切片写错，是这一类还没有数据）。"
+        },
+        {
+          "id": "data_binding",
+          "ordinal": 12,
+          "status": "absent",
+          "count": 0,
+          "unit": "条",
+          "carrier": "object_types.sourceBindings（connId / dataset / 字段映射）",
+          "items": [],
+          "absentReason": "本切片未解出子图 ⇒ 这一层还没被判定过（不是「平台没有」）。子图为空是因为 root 对象类型 ProductionSchedule 在本租户**一个对象都没有**（不是切片写错，是这一类还没有数据）。"
+        },
+        {
+          "id": "scenario",
+          "ordinal": 13,
+          "status": "not_in_slice",
+          "count": 0,
+          "unit": "条",
+          "carrier": "objects[AnnualScenario/ScenarioTrigger] + sim_propagation_rules（传导链）",
+          "items": [],
+          "platformCount": 13,
+          "absentReason": "本切片未解出子图 ⇒ 这一层还没被判定过（不是「平台没有」）。子图为空是因为 root 对象类型 ProductionSchedule 在本租户**一个对象都没有**（不是切片写错，是这一类还没有数据）。（平台现有 13 条。）"
+        },
+        {
+          "id": "evidence",
+          "ordinal": 14,
+          "status": "absent",
+          "count": 0,
+          "unit": "条",
+          "carrier": "derivation_specs（派生 inputs 快照来源）+ slice_specs.contractFixtures",
+          "items": [],
+          "absentReason": "本切片未解出子图 ⇒ 这一层还没被判定过（不是「平台没有」）。子图为空是因为 root 对象类型 ProductionSchedule 在本租户**一个对象都没有**（不是切片写错，是这一类还没有数据）。"
+        },
+        {
+          "id": "action",
+          "ordinal": 15,
+          "status": "absent",
+          "count": 0,
+          "unit": "个",
+          "carrier": "object_types.actions[]（类型级绑定）+ action_types（全局注册表）",
+          "items": [],
+          "platformCount": 10,
+          "absentReason": "本切片未解出子图 ⇒ 这一层还没被判定过（不是「平台没有」）。子图为空是因为 root 对象类型 ProductionSchedule 在本租户**一个对象都没有**（不是切片写错，是这一类还没有数据）。（平台现有 10 个。）"
+        },
+        {
+          "id": "governance",
+          "ordinal": 16,
+          "status": "present",
+          "count": 1,
+          "unit": "项",
+          "carrier": "objects.origin/epoch（子图带出）+ object_types.domain/published",
+          "items": [
+            {
+              "key": "sv:snapshot",
+              "label": "快照 1.1",
+              "group": "版本",
+              "detail": "ontologyVersion.epoch"
+            }
+          ]
+        }
+      ],
+      "summary": {
+        "total": 16,
+        "present": 1,
+        "notInSlice": 3,
+        "absent": 12
+      }
+    },
+    "carrierLayersAbsentReason": null
+  },
+  "P32-ABSENT-PROBE": {
+    "process": {
+      "key": "P32",
+      "domainKey": "D05",
+      "name": "物料平衡（MRP）运行",
+      "ownerFunctionKey": "supply_chain",
+      "stdDurationDays": 1,
+      "waitKind": "WAITING_SCHEDULE",
+      "carrierTypeKey": "__NoSuchCarrierType__",
+      "domainName": "采购与供应",
+      "ownerFunctionName": "供应链"
+    },
+    "runtime": {
+      "available": false,
+      "reason": "本平台**没有流程运行态**：`ProcessTask` / `ProcessInstance` 两个承载物全仓不存在（PRD-enterprise-decision-twin §5 的 E2 未实现）。没有 `ProcessTask.enteredAt` 就没有「进入这一步的时刻」，也就没有任何办法算出「此刻已卡多久」。这是**诚实缺席**，不是本次取数失败。",
+      "stdDurationDays": 1,
+      "stdDurationCaption": "标准工期（配置值，天）—— 不是实测卡顿时长",
+      "unanswerable": [
+        "这个流程此刻已经卡了多久？（需要 ProcessTask.enteredAt）",
+        "现在有几单堵在这一步？（需要 ProcessInstance 计数）",
+        "实测在制品数是多少？（需要运行态实例）"
+      ]
+    },
+    "carrier": {
+      "status": "absent",
+      "typeKey": "__NoSuchCarrierType__",
+      "displayName": null,
+      "domain": null,
+      "description": null,
+      "properties": [],
+      "derivedProperties": [],
+      "objectCount": null,
+      "absentReason": "流程 P32 的承载类型 `__NoSuchCarrierType__` 在本租户已发布本体（94 个对象类型）里**查不到**。缺在「ProcessDefinition.carrierTypeKey → ObjectTypeDef」这一跳：种子期不校验该类型存在（判据在 test/process-layer.test.ts），所以这里是「配了一个还没建模的承载物」，不是本页取数失败。修法二选一：把该类型建进本体，或把这条流程的 carrierTypeKey 改指一个真实存在的类型。"
+    },
+    "relations": [],
+    "sharedCarrierProcesses": [],
+    "levers": [],
+    "carrierLayers": null,
+    "carrierLayersAbsentReason": "十六层投影**没有算**：它的 root 是承载类型 `__NoSuchCarrierType__`，而该类型在本体里查不到（见 carrier.absentReason）。返回 null 而不是 16 个空层 —— 「没算过」和「算了但为空」是两件事，混成一个「无」就是把缺口藏起来。"
+  }
+}

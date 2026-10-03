@@ -1,0 +1,24 @@
+模型对照源: [{"label":"这 30 天交不出去的货（亿）· 多少张单 · 会晚多少张","consumesEvents":false},{"label":"哪儿会出事（处）","consumesEvents":false},{"label":"产销缺口（万套）","consumesEvents":false},{"label":"N 条顺着关系推出来的结论因此改变","consumesEvents":true},{"label":"推演数据改动了多少格","consumesEvents":true}]
+契约对照源: [{"key":"cancelPct","hint":"取消比例（%）：100 = 整单取消；30 = 取消三成"},{"key":"movedPct","hint":"改地点比例（%）：100 = 整单改"},{"key":"modelId","hint":"插单型号（型号 id）"},{"key":"shortagePct","hint":"短缺比例（%，占在手库存）：100 = 库存全断"}]
+金丝雀: 模型抽到 5 行（须含 true/false 两类）=true；契约 4 条 hint 全抽到=true
+== ① 登录 ==
+== ② 进「事件影响与对策」= 左导航 nav-decision-console ==
+== ③ 读契约 hint 是否原样上屏（订单取消卡片） ==
+== ④ 加一件「物料价格变动」并算 ==
+主体选择: select:铝箔
+已按〔算一下〕，等真推演（本机实测 68–126s，故等 360s）…
+== ⑤ 判据 ==
+表头: ["读数","随本次事件","它在回答什么"]
+表体:
+  | 这 30 天交不出去的货（亿）· 多少张单 · 会晚多少张 | 背景读数 · 否 | 当前真实数据里每个基地这 30 天的紧张程度 —— 本次推演的背景，不是事件的结果。
+  | 哪儿会出事（处） | 背景读数 · 否 | 当前真实数据里扫得出的卡点与改法 —— 同样是背景。
+  | 产销缺口（万套） | 背景读数 · 否 | 读当前真实数据（在手量与需求量），不读本次推演出来的结果。
+  | N 条顺着关系推出来的结论因此改变 | 随事件变 · 是 | 你加的事顺着关系推下去，推翻了哪些结论。
+  | 推演数据改动了多少格 | 随事件变 · 是 | 你加的事落到推演数据上，改动了多少格。
+禁项命中: {"seed":true,"endpoint":true,"curl":false,"pnpm":false,"repoPath":false,"contractType":false,"woId":false,"worldTerms":false,"literalStars":false}
+金丝雀: {"hasDuShu":true,"hasNote":true} | E6 ratio: 1
+hint 新措辞在屏: false | 旧措辞残留: false
+契约对照（订单取消）: {"hasNew":true,"hasOldA":false,"hasOldB":false}
+标题行: "本屏 5 个读数（seed 42 · POST /a/v1/sim/sessions/:id/drill）—— 3 个不随你加的事变（背景读数），2 个随你加的事变" | 解析出的计数: [5,42,1,3,2] | 表内实际 背景/随事件: 3 / 2
+判据: {"C0canary":true,"C1table":true,"C2align":true,"C3answers":true,"C4count":false,"C5rUi3":true,"C6rUi4":false,"C7hint":true,"C8ratio":true,"C9backend":true}
+VERIFY_FAIL

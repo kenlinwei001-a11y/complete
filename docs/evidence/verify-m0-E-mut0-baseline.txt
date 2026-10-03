@@ -1,0 +1,12 @@
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/datacore
+
+ ✓ test/m11-calibration.test.ts (16 tests | 14 skipped) 15748ms
+   ✓ M0-F3 实料闸（T2 变异反证） > T2① paired=0 ⇒ 四项全拒且各自披露（点名能力 + 欠 N 对）· assertGateOpen 409  7899ms
+   ✓ M0-F3 实料闸（T2 变异反证） > T2② paired≥minPaired ⇒ 四项全放行 · 🐤 反向：闸读数与 debt 同源（不是第二套真相）  7834ms
+
+ Test Files  1 passed (1)
+      Tests  2 passed | 14 skipped (16)
+   Start at  11:43:40
+   Duration  31.37s (transform 7.03s, setup 0ms, collect 14.34s, tests 15.75s, environment 0ms, prepare 155ms)
+

@@ -27,6 +27,18 @@ import {
 } from "./methods.js";
 import { meanProp, patchContext, replayPairs, sliceObjectsFor } from "./replay.js";
 import { runPairing, simNow, type PairingResult } from "./pairing.js";
+import {
+  assertRealizedGateOpen,
+  gateStatusOf,
+  type LearningCapabilityKey,
+  type RealizedGateStatus,
+} from "./gate.js";
+import {
+  pairRealizedWithForecasts,
+  registerRealizedOutcome,
+  type RealizedPairingResult,
+  type RealizedRegistrationInput,
+} from "./realized.js";
 
 const BASELINE_DAYS = 14;
 const DEFAULT_THRESHOLD_PCT = 8;
@@ -74,8 +86,87 @@ export class CalibrationService {
 
   // -- §1 配对 + 元闭环（模拟时钟 tick / 周任务 / 手动触发共用） ------------------------
 
-  async runPairingOnce(tenantId: string): Promise<PairingResult> {
-    return runPairing(this.repos, this.solvers, tenantId);
+  /**
+   * M0-F1 后：一次配对 = ts 聚合配对（M11 原引擎）+ 实料配对（RealizedOutcome × 预测）。
+   * 两个 actual 源各配各的未配对预测，「一个预测只配对一次」纪律两边同守（先到先得）。
+   */
+  async runPairingOnce(tenantId: string): Promise<PairingResult & { realized: RealizedPairingResult }> {
+    const tsResult = await runPairing(this.repos, this.solvers, tenantId);
+    const realized = await this.pairRealizedOnce(tenantId);
+    return { ...tsResult, realized };
+  }
+
+  /** M0-F1：实料 × 预测配对单跑（登记后即时配对也走它）。 */
+  async pairRealizedOnce(tenantId: string): Promise<RealizedPairingResult> {
+    return pairRealizedWithForecasts(this.repos, tenantId, await this.solvers.paramsVersion(tenantId));
+  }
+
+  /**
+   * M0-F2 实料欠账计（PRD-ground-truth §2.1 F2）：`GET /a/v1/calibration/debt` 的实现。
+   * ⛔ `expected` 必填 —— 没有期望值的指标是装饰不是监控（本仓前科：`实测格 0/7295`
+   * 在屏上与启动日志里亮了几个月无人动，因为它没有目标，且报给了改不了它的人）。
+   * 🐤 存在性金丝雀：`forecasts` 必须 >0 —— 为 0 说明取数坏了，不是「没有欠账」。
+   */
+  async debt(tenantId: string): Promise<import("@platform/contracts").CalibrationDebt> {
+    const forecasts = await this.repos.calibrationForecasts.list(tenantId, () => true);
+    const pairedN = forecasts.filter((f) => f.pairedAt).length;
+    const unpairedRows = forecasts.filter((f) => !f.pairedAt);
+    const cfg = calibrationConfig(await this.solvers.getParams(tenantId));
+    const minPaired = cfg.minPairedRealized ?? EVAL_WINDOW_DAYS;
+    const { date: nowDate } = await simNow(this.repos, tenantId);
+    const byMetricMap = new Map<string, { forecasts: number; paired: number }>();
+    for (const f of forecasts) {
+      const key = `${f.solverKey}/${f.modelId}`;
+      const e = byMetricMap.get(key) ?? { forecasts: 0, paired: 0 };
+      e.forecasts++;
+      if (f.pairedAt) e.paired++;
+      byMetricMap.set(key, e);
+    }
+    return {
+      forecasts: forecasts.length,
+      paired: pairedN,
+      unpaired: unpairedRows.length,
+      coveragePct: forecasts.length === 0 ? 0 : round((pairedN / forecasts.length) * 100, 2),
+      expected: {
+        minPaired,
+        rationale:
+          `学习类能力（B7 代理模型 / C5 结构校准 / C6 经验库 / A10 搜索环）准入至少需要 ${minPaired} 对实料配对` +
+          `（缺省 = 一个评估窗口 EVAL_WINDOW_DAYS=${EVAL_WINDOW_DAYS} 的覆盖；solverParams.calibration.minPairedRealized 可覆盖）。` +
+          `当前欠 ${Math.max(0, minPaired - pairedN)} 对 —— 没有期望值的指标是装饰不是监控（PRD-ground-truth §2.1 F2）。`,
+      },
+      byMetric: [...byMetricMap.entries()]
+        .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+        .map(([metricKey, v]) => ({ metricKey, forecasts: v.forecasts, paired: v.paired })),
+      // 无未配对 ⇒ null（诚实缺席）：0 会被读成「刚预测完」，而真相是「没有欠账主体」
+      oldestUnpairedAgeDays:
+        unpairedRows.length === 0 ? null : Math.max(...unpairedRows.map((f) => Math.max(0, daysBetween(f.createdAt, nowDate)))),
+    };
+  }
+
+  /**
+   * M0-F3 实料闸（PRD-ground-truth §2.1 F3）：B7/C5/C6/A10 四项学习类能力**运行时读同一个闸**。
+   * 未达标 ⇒ 拒绝启用并披露原因，⛔ 不许降级成「用仿真数据凑合跑」。
+   */
+  async realizedGateStatus(tenantId: string): Promise<RealizedGateStatus> {
+    return gateStatusOf(await this.debt(tenantId));
+  }
+
+  /** 学习类能力入口的统一准入断言（未达标 ⇒ 409 披露）；未来 B7/C5/C6/A10 模块落地必须调它。 */
+  async assertGateOpen(tenantId: string, capability: LearningCapabilityKey): Promise<void> {
+    return assertRealizedGateOpen(this.repos, this.solvers, tenantId, capability, (t) => this.debt(t));
+  }
+
+  /**
+   * M0-F1 登记入口（三入口共用 realized.ts 登记器；本方法 = 人工录入/显式登记的服务侧门面）。
+   * importedBy/importedAt 由调用方（路由）从 AuthCtx 填好后传入；登记成功即跑一轮实料配对。
+   */
+  async registerRealized(
+    tenantId: string,
+    input: RealizedRegistrationInput,
+  ): Promise<{ outcome: Awaited<ReturnType<typeof registerRealizedOutcome>>; pairing: RealizedPairingResult }> {
+    const outcome = await registerRealizedOutcome(this.repos, tenantId, input);
+    const pairing = await this.pairRealizedOnce(tenantId);
+    return { outcome, pairing };
   }
 
   /** 模拟时钟 tick 钩子：聚合后配对 + 元闭环（C12 扫描在其后，按切片消费新配对）。 */

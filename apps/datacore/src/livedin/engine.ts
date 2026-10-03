@@ -8,6 +8,10 @@ import type { RulesService } from "../rules.js";
 import { hashString, mulberry32, randInt, round } from "../prng.js";
 import { BATTERY_SOLVER_PARAMS, BATTERY_TEMPLATE, BASES, generateBattery } from "../synthetic/battery.js";
 import { entityRefFieldOf } from "../synthetic/service.js";
+import { caseSeverityFromData } from "../solvers/risk.js";
+import { BASE_REGISTRY } from "@platform/contracts";
+// DF.13 外协红线单一来源（C08）：版本演进与版本史表达式/理由全部派生，禁内联裸阈值（R14·R-一致）。
+import { OUTSOURCE_REDLINE, OUTSOURCE_REDLINE_HISTORY, outsourceRedlineViolationExpr } from "@platform/contracts";
 import type { TsGenSpec } from "../synthetic/tsgen.js";
 import { livedMaintWindows, livedPoint, type LivedGenContext, type LivedIncident } from "./tsgen.js";
 
@@ -28,7 +32,7 @@ import { livedMaintWindows, livedPoint, type LivedGenContext, type LivedIncident
  *   2026-Q1 持续收敛（参数校准生效）
  *   2026-Q2 检修季（各基地错峰检修，产出月度下凹与 MaintPlan 同月）→ 年末稳定
  *
- * 叙事互引（Y4/Y5 强制）：危机时间窗 2025-11-18 → 2025-12-01 同时出现在
+ * 叙事互引（Y4/Y5 强制）：危机时间窗 2025-10-28 → 2025-11-10 同时出现在
  * ① riskCases CASE-007（windowFrom/To）② 已执行 Action（act_lh_*007）
  * ③ C16 规则变更复盘原因（tags 到货危机复盘）④ mapeSeries 第 21–22 周 event；
  * 延期挽回订单的 rescue.note 反向引用 caseNo + actionId。
@@ -54,22 +58,23 @@ interface CaseSpec {
   baseId: string;
   factor: string;
   crossed: string; // 越线日
-  severity: string;
+  // severity 不再写死：由 caseSeverityFromData(基地利用率 + 主瓶颈 + 危机) 真闭环派生（PRD §2.3 / P4）。
   crisis?: boolean;
 }
 
 /** 10 例告警-处置闭环案例骨架（CASE-007 = Q4 到货危机，与场景预置问答互引）。 */
+// 案例骨架 = 事件事实（哪个基地/哪个因子/何时越线/是否结构性危机）；severity 由 caseSeverityFromData 真闭环派生。
 const CASE_SPECS: CaseSpec[] = [
-  { n: 1, baseId: "hefei", factor: "设备OEE", crossed: "2025-08-12", severity: "MEDIUM" },
-  { n: 2, baseId: "xian", factor: "人力工时", crossed: "2025-09-09", severity: "MEDIUM" },
-  { n: 3, baseId: "yibin", factor: "物料齐套", crossed: "2025-09-24", severity: "HIGH" },
-  { n: 4, baseId: "liyang", factor: "换型损失", crossed: "2025-10-14", severity: "MEDIUM" },
-  { n: 5, baseId: "qingdao", factor: "物流时长", crossed: "2025-10-28", severity: "MEDIUM" },
-  { n: 6, baseId: "nanjing", factor: "良率波动", crossed: "2025-11-04", severity: "MEDIUM" },
-  { n: 7, baseId: "changzhou", factor: "物料齐套", crossed: "2025-11-18", severity: "HIGH", crisis: true },
-  { n: 8, baseId: "chengdu", factor: "设备OEE", crossed: "2026-01-20", severity: "MEDIUM" },
-  { n: 9, baseId: "changsha", factor: "瓶颈工序", crossed: "2026-03-10", severity: "HIGH" },
-  { n: 10, baseId: "huizhou", factor: "物流时长", crossed: "2026-04-21", severity: "MEDIUM" },
+  { n: 1, baseId: "hefei", factor: "设备OEE", crossed: "2025-08-12" },
+  { n: 2, baseId: "xiamen", factor: "人力工时", crossed: "2025-09-09" },
+  { n: 3, baseId: "jiangmen", factor: "物料齐套", crossed: "2025-09-24" },
+  { n: 4, baseId: "meishan", factor: "换型损失", crossed: "2025-10-14" },
+  { n: 5, baseId: "handan", factor: "物流时长", crossed: "2025-10-28" },
+  { n: 6, baseId: "wuhan", factor: "良率波动", crossed: "2025-11-04" },
+  { n: 7, baseId: "changzhou", factor: "物料齐套", crossed: "2025-10-28", crisis: true },
+  { n: 8, baseId: "chengdu", factor: "设备OEE", crossed: "2026-01-20" },
+  { n: 9, baseId: "zaozhuang", factor: "瓶颈工序", crossed: "2026-03-10" },
+  { n: 10, baseId: "yangzhou", factor: "物流时长", crossed: "2026-04-21" },
 ];
 
 /** 延期挽回链（Y5）：9 单曾延期，7 单经案例处置挽回至 ≤2 天。 */
@@ -223,7 +228,7 @@ export class LivedInEngine {
         replayTo,
         replayDays: REPLAY_DAYS,
       },
-      crisisWindow: { from: "2025-11-18", to: "2025-12-01" },
+      crisisWindow: { from: "2025-10-28", to: "2025-11-10" },
       mapeSeries: mapeSeriesFor(replayFrom),
       taskHistory: Object.entries(LIVED_IN_SCENE_HISTORY).flatMap(([scene, entries]) =>
         entries.map((e) => ({ scene, ...e })),
@@ -264,6 +269,8 @@ export class LivedInEngine {
 
   private buildCases(tenantId: string, replayFrom: string): LivedCase[] {
     const baseNames = new Map(BASES.map((b) => [b.baseId, b.name]));
+    const baseUtil = new Map(BASE_REGISTRY.map((b) => [b.baseId, b.util]));
+    const bn = BATTERY_SOLVER_PARAMS.bottleneck as { primary: Record<string, string>; defaultPrimary: string };
     const mitigations = (BATTERY_SOLVER_PARAMS.risk as { mitigations: Record<string, { key: string; name: string }[]> })
       .mitigations;
     void replayFrom;
@@ -271,6 +278,9 @@ export class LivedInEngine {
       const adopted = addDays(s.crossed, 3);
       const resolved = addDays(s.crossed, 13);
       const baseName = baseNames.get(s.baseId) ?? s.baseId;
+      // P4 真闭环：severity 由基地真实利用率 + 是否主瓶颈因子 + 危机派生（替代写死，R13 可溯源 R6 确定）。
+      const isPrimary = s.factor === (bn.primary[baseName] ?? bn.defaultPrimary);
+      const severity = caseSeverityFromData(baseUtil.get(s.baseId) ?? 0, isPrimary, s.crisis ?? false);
       const mit = (mitigations[s.factor] ?? [])[0] ?? { key: "early_stock", name: "提前备料" };
       const actionId = `act_lh_${tenantId}_${String(s.n).padStart(3, "0")}`;
       const tags = s.crisis ? ["到货危机"] : [];
@@ -283,7 +293,7 @@ export class LivedInEngine {
         baseId: s.baseId,
         baseName,
         factor: s.factor,
-        severity: s.severity,
+        severity,
         windowFrom: s.crossed,
         windowTo: resolved,
         crossedAt: s.crossed,
@@ -301,7 +311,7 @@ export class LivedInEngine {
         tags,
         curve: {
           seriesKey: "output:line",
-          entityId: `LINE-${s.baseId}`,
+          entityId: `LINE-WS-${s.baseId}-slurry`,
           from: addDays(s.crossed, -10),
           to: addDays(resolved, 7),
         },
@@ -588,7 +598,7 @@ export class LivedInEngine {
       String(a.props.segKey) < String(b.props.segKey) ? -1 : 1,
     );
     const resolutionsByIdx: Record<number, { name: string; delta: number }[]> = {
-      2: [{ name: "宜宾二线提前爬坡（C21 储能需求上修决议）", delta: 1.2 }],
+      2: [{ name: "枣庄一线提前爬坡（C21 储能需求上修决议）", delta: 1.2 }],
       4: [{ name: "正极提前备料专项（到货危机对策）", delta: 0.8 }],
       9: [{ name: "检修季错峰排产", delta: 0.5 }],
     };
@@ -607,7 +617,14 @@ export class LivedInEngine {
       const rows = segs.map((s) => {
         const share = Number(s.props.baselineShare ?? 0);
         const target = round(demand * share, 2);
-        return { key: String(s.props.segKey), name: String(s.props.name), target, rolling: target, lastActual: round(actual * share, 2), dv: 0, flagged: false };
+        // WO-P50-REMAINING-3：历史版本此前**不发** P90，前端那一列只能落回别处取数（取成了
+        // DemandSegment 的**万套/年**，与本行 万套/月 差一个分母）。这里补上同分母的下分位，
+        // 派生公式与 `SopService.step2` 的缺省路一字不差（rolling×0.936·R6 确定性）。
+        return {
+          key: String(s.props.segKey), name: String(s.props.name), target, rolling: target,
+          rollingWanPerMonthP90: round(target * 0.936, 2),
+          lastActual: round(actual * share, 2), dv: 0, flagged: false, unit: "万套/月",
+        };
       });
       const version: SopVersion = {
         id: `sop_lh_${ctx.tenantId}_${month}`,
@@ -617,7 +634,14 @@ export class LivedInEngine {
         inputs: { livedIn: true, demTotal: demand, supTotal: supply, actualOutputWan: actual, attainmentPct: attainment },
         steps: {
           s1: { changes: [], boundaryDeltaWanPerMonth: 0 },
-          s2: { rows, total: { target: demand, rolling: demand, dv: 0 } },
+          s2: {
+            rows,
+            total: {
+              target: demand, rolling: demand,
+              rollingWanPerMonthP90: round(rows.reduce((a, r) => a + r.rollingWanPerMonthP90, 0), 2),
+              dv: 0, unit: "万套/月",
+            },
+          },
           s3: { perBase: [], increments: [], sup: supply, dem: demand, gap: round(demand - supply, 4), flagged: false },
           s4: { revSum: 0, gmSum: 0, gmBudget: 16, cashCushion: 58, gmRoll: 16, gmOk: true, cashOk: true, pass: true, violations: [] },
           s5: { agenda: agendaByIdx[m] ?? [], resolutions: resolutionsByIdx[m] ?? [], supFinal: supply, gapFinal: round(demand - supply, 4) },
@@ -636,7 +660,13 @@ export class LivedInEngine {
   // -- ③ 规则演进（≥5 条版本史；C16 收紧挂「到货危机复盘」） -------------------------
 
   private async seedRuleEvolution(ctx: AuthCtx): Promise<LivedInStateRecord["ruleChanges"]> {
-    const mk = async (key: string, name: string, expression: string, description: string) => {
+    const mk = async (
+      key: string,
+      name: string,
+      expression: string,
+      description: string,
+      params?: Record<string, number>,
+    ) => {
       await this.rules.create(ctx, {
         key,
         name,
@@ -644,21 +674,32 @@ export class LivedInEngine {
         expression,
         scopeObjectTypes: key === "C16" ? ["Shipment"] : ["Order"],
         severity: "WARN",
+        ...(params ? { params } : {}),
         origin: { type: "SYNTHETIC" },
         status: "PUBLISHED",
       });
     };
-    // C08：模板 v1（>0.30）已在标准合成中发布；此处演进 v2–v4
-    await mk("C08", "外协比例红线", "Order.outsourceRatio > 0.25", "Q1 外协质量事件复盘：上限 30%→25%");
-    await mk("C08", "外协比例红线", "Order.outsourceRatio > 0.22", "连续两月外协毛利侵蚀复盘：25%→22%");
-    await mk("C08", "外协比例红线", "Order.outsourceRatio > 0.2", "年度复盘：外协质量+毛利双重约束，收紧至 20%");
+    // C08 红线演进（DF.13 单一来源 OUTSOURCE_REDLINE_HISTORY）：标准合成已发布**现行值**作 v1；
+    // 此处按版本史重放收紧过程，末条（PUBLISHED）落回现行红线 —— 表达式/复盘理由全部派生，禁内联百分数。
+    // WO-RULE-EXPR-PARAMS：**每一版都是引用式 expression + 自己那一版的 params**（不是把历史值烤进
+    // 表达式字符串）。否则这条链会重新引入 G-C08-EXPR-PARAM-SPLIT：lived-in 租户的发布态 C08
+    // 判定按 expression 里的字面量走，而 `whatIf.outsourceMax` 按 params 走，两个数又分叉了。
+    for (const h of OUTSOURCE_REDLINE_HISTORY.slice(1)) {
+      await mk(
+        OUTSOURCE_REDLINE.ruleKey,
+        OUTSOURCE_REDLINE.ruleName,
+        outsourceRedlineViolationExpr(OUTSOURCE_REDLINE.subject, { param: OUTSOURCE_REDLINE.paramKey }),
+        h.reason,
+        { [OUTSOURCE_REDLINE.paramKey]: h.maxRatio },
+      );
+    }
     // C16：齐套覆盖天数 3 → 5（到货危机复盘）
     await mk("C16", "齐套覆盖天数下限", "Shipment.coverageDays < 3", "出厂基线：关键材料齐套覆盖 ≥3 天");
     await mk(
       "C16",
       "齐套覆盖天数下限",
       "Shipment.coverageDays < 5",
-      "到货危机复盘（2025-11-18~2025-12-01）：正极到货延迟导致齐套断档，覆盖天数 3→5 天",
+      "到货危机复盘（2025-10-28~2025-11-10）：正极到货延迟导致齐套断档，覆盖天数 3→5 天",
     );
     const row = (
       key: string,
@@ -671,17 +712,26 @@ export class LivedInEngine {
       tags: string[],
     ) => ({ key, name: key === "C16" ? "齐套覆盖天数下限" : "外协比例红线", version, label, expression, reason, changedAt, status, tags });
     return [
-      row("C08", 1, "v1.0", "Order.outsourceRatio > 0.3", "场景包出厂基线（上限 30%）", "2025-07-01", "RETIRED", []),
-      row("C08", 2, "v1.1", "Order.outsourceRatio > 0.25", "Q1 外协质量事件复盘：上限 30%→25%", "2025-09-12", "RETIRED", []),
-      row("C08", 3, "v1.2", "Order.outsourceRatio > 0.22", "连续两月外协毛利侵蚀复盘：25%→22%", "2026-01-09", "RETIRED", []),
-      row("C08", 4, "v1.3", "Order.outsourceRatio > 0.2", "年度复盘：外协质量+毛利双重约束，收紧至 20%", "2026-04-03", "PUBLISHED", []),
+      // DF.13：C08 版本史逐条从 OUTSOURCE_REDLINE_HISTORY 派生（末条 PUBLISHED 即现行红线，改红线自动同步）。
+      ...OUTSOURCE_REDLINE_HISTORY.map((h) =>
+        row(
+          OUTSOURCE_REDLINE.ruleKey,
+          h.version,
+          h.label,
+          outsourceRedlineViolationExpr(OUTSOURCE_REDLINE.subject, h.maxRatio),
+          h.reason,
+          h.changedAt,
+          h.status,
+          [],
+        ),
+      ),
       row("C16", 1, "v1.0", "Shipment.coverageDays < 3", "出厂基线：关键材料齐套覆盖 ≥3 天", "2025-07-01", "RETIRED", []),
       row(
         "C16",
         2,
         "v2.0",
         "Shipment.coverageDays < 5",
-        "到货危机复盘（2025-11-18~2025-12-01）：正极到货延迟导致齐套断档，覆盖天数 3→5 天",
+        "到货危机复盘（2025-10-28~2025-11-10）：正极到货延迟导致齐套断档，覆盖天数 3→5 天",
         "2025-12-03",
         "PUBLISHED",
         ["到货危机复盘"],
@@ -740,7 +790,7 @@ export class LivedInEngine {
         status: s.status,
         ...(applied ? { appliedFrom: s.cur, appliedAt: `${addDays(s.createdAt, 2)}T08:00:00.000Z` } : {}),
         createdAt: `${s.createdAt}T07:00:00.000Z`,
-        sliceKey: `capacity_forecast|all|${s.k % 2 === 0 ? "S192-LFP" : "4680-NCM"}`,
+        sliceKey: `capacity_forecast|all|${s.k % 2 === 0 ? "圆柱-LFP" : "4680-NCM"}`,
         paramRef: { scope: s.scope, path: s.path },
         method: s.method,
         evidence: {

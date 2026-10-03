@@ -1,0 +1,3 @@
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/agent-a80b730eca94f0bb7/apps/datacore
+

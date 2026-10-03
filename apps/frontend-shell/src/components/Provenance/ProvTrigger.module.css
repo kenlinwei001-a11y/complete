@@ -1,7 +1,7 @@
 .mark {
-  color: var(--accent);
+  color: var(--accent-txt);
   font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-size: 12px;
   cursor: pointer;
   margin-left: 1px;
   user-select: none;

@@ -1,0 +1,33 @@
+[ontology-index] --check ❌ 索引已漂移（本体改了没重新生成，或有人手改了索引）：
+  节点新增（重新生成后才有）：4 个
+    + 2/E/A11
+    + 2/E/F2
+    + 2/E/F3
+    + 2/E/RealizedOutcome
+  字段变更：8 处
+    ~ 节点 10/10.5/_note1 · 字段 source_line
+        was: 434
+        now: 460
+    ~ 节点 9/ZZZ-NOT-REAL · 字段 covered_lines
+        was: 3844
+        now: 3883
+    ~ 节点 9/ZZZ-NOT-REAL · 字段 nodes_total
+        was: 1079
+        now: 1083
+    ~ 节点 9/ZZZ-NOT-REAL · 字段 object_type
+        was: 108
+        now: 112
+    ~ 节点 9/ZZZ-NOT-REAL · 字段 own_intervals
+        was: 1079
+        now: 1083
+    ~ 节点 9/ZZZ-NOT-REAL · 字段 total_lines
+        was: 3844
+        now: 3883
+    ~ 节点 <顶层> · 字段 source_lines
+        was: 3844
+        now: 3883
+    ~ 节点 <顶层> · 字段 source_sha256
+        was: "592e226be3af0dd7080a965c017961b5105bd55604194834342eb3857158d3dd"
+        now: "5bfe89c994ea39e21295db0b6fd7d010a56f996db8d4fcf46568c034596a1071"
+
+  修法：node scripts/ontology-index.mjs

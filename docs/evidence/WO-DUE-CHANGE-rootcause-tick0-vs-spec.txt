@@ -1,0 +1,17 @@
+tick0（未推进）· 会话 sims_94d1ggn7bcn91s8z
+
+金丝雀：Order 取到 500 张（total=500）
+可比 150 张 · 与规格值逐位相等 **150** · 低于 0 · 高于 0
+
+偏差最大的 8 张：
+  obj_order_SO-3391      规格=60       tick0=60           差=0
+  obj_order_SO-3402      规格=17       tick0=17           差=0
+  obj_order_SO-3415      规格=41       tick0=41           差=0
+  obj_order_SO-3420      规格=1        tick0=1            差=0
+  obj_order_SO-3431      规格=19       tick0=19           差=0
+  obj_order_SO-3437      规格=5        tick0=5            差=0
+  obj_order_SO-3445      规格=6        tick0=6            差=0
+  obj_order_SO-3452      规格=48       tick0=48           差=0
+
+规格值域 [0, 60]
+tick0 值域 [0, 60]

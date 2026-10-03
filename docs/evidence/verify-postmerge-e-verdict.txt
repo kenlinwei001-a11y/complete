@@ -1,0 +1,14 @@
+## ③e 合并树接缝跑 M0 四件套 @60d04679e 2026-09-20
+
+**全绿，零真红。**兄弟分支（shock-monotonic / saturate-exogenous / forecastbias-retire +
+WO-PROP-REVIEW-V2 等）动了同引擎区后，M0 四件套在合并树上：
+
+| 套件 | 合并树 | 旧树对照 | 证据 |
+|---|---|---|---|
+| seed-demo-propagation | **22/22** RC=0（127s） | 21/21（+1 = §6 合并带入） | verify-postmerge-b-* |
+| m11-calibration + connectors + connection-test-honest | **49/49** RC=0（127s） | 16+33=49 同数 | verify-postmerge-e-datacore-suites.* |
+| f28.calibration + sandbox-world-origin.seam | **14/14** RC=0（43s） | 14/14 同数 | verify-postmerge-e-frontend-suites.* |
+
+环境：contracts / llm-adapters dist 已在合并树重建（src +1661/+604 行差，build RC=0/0），
+vitest 根进程探针跑前报 0（空闲金丝雀通过），datacore vitest 单并发。
+✗/FAIL 字样两日志均 0 命中。

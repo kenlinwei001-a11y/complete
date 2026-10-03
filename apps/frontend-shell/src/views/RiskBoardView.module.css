@@ -1,67 +1,504 @@
-.grid {
+/* WO-CAPSIM-REPLICA · 1:1 复刻黑曜石「产能推演」看板几何（布局/间距/交互严格照抄参照 HTML
+   docs/reference-prototype-decision-platform.html §预判推演看板 .rk-* · 颜色走平台 tokens.css）。
+   数据全接真求解器（risk_timeline / bottleneck_matrix / mitigation_select / affected_orders）·禁 hashN/riskVal。 */
+
+/* 面板容器（参照 .riskwrap）：内边距 22×26 + 玫瑰调径向渐变叠加（色不随主题·仅叠加层）。 */
+.riskwrap {
+  padding: 22px 26px;
+  background: radial-gradient(1200px 700px at 70% -10%, rgba(221, 126, 158, 0.06), transparent 60%);
+}
+
+/* rk-top：标题 + 视角/窗口 chip 开关。 */
+.rkTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 4px;
+}
+.rkTop h3 {
+  font-size: 19px;
+  margin: 0 0 4px;
+}
+.rkSub {
+  font-size: 12px;
+  color: var(--muted);
+  max-width: 640px;
+  line-height: 1.55;
+}
+.rkHsel {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+/* tier-chip 药丸开关：等宽字体·选中态蓝底。 */
+.tierChip {
+  font-size: 12px;
+  padding: 6px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--line2);
+  color: var(--muted);
+  cursor: pointer;
+  transition: 0.13s;
+  font-family: var(--font-mono);
+  background: transparent;
+}
+.tierChip:hover {
+  border-color: var(--c-capacity);
+}
+.tierChipOn {
+  background: rgba(91, 124, 250, 0.16);
+  border-color: var(--c-capacity);
+  color: var(--txt);
+}
+
+/* rk-kpi 条：flex 横排 5 卡 + 可选健康度横幅。 */
+.rkKpi {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin: 14px 0 16px;
+  flex-wrap: wrap;
+}
+.rkK {
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  padding: 9px 16px;
+  background: var(--hover-tint);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rkK b {
+  font-size: 19px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.rkK span {
+  font-size: 12px;
+  color: var(--muted2);
+}
+.rkHealth {
+  font-size: 12px;
+  color: var(--warn-txt);
+  border: 1px solid rgba(232, 181, 74, 0.4);
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: rgba(232, 181, 74, 0.08);
+  max-width: 330px;
+  line-height: 1.5;
+}
+
+/* rk-grid / rk-card：auto-fill minmax(228px)·卡 hover 上浮·整卡点击。 */
+.rkGrid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(228px, 1fr));
   gap: 12px;
 }
-
-.card {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 12px;
+.rkCard {
+  border: 1px solid var(--line2);
+  border-radius: 11px;
   padding: 12px 14px;
+  background: var(--hover-tint);
   cursor: pointer;
-  transition: 0.15s;
+  transition: transform 0.15s, background 0.15s;
+  display: flex;
+  flex-direction: column;
 }
-.card:hover {
-  border-color: var(--line2);
+.rkCard:hover {
+  transform: translateY(-2px);
+  background: var(--hover-tint-strong);
 }
-.cardSelected {
-  border-color: rgba(76, 144, 240, 0.55);
-  box-shadow: 0 0 0 1px rgba(76, 144, 240, 0.3);
+.rkCardOpen {
+  outline: 2px solid rgba(221, 126, 158, 0.55);
 }
-
-.cardHead {
+.rkCH {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  gap: 6px;
+  margin-bottom: 6px;
 }
-
-.metrics {
+.rkCH b {
+  font-size: 13px;
+}
+.rkOwn {
+  font-size: 12px;
+  font-weight: 700;
+  cursor: default;
+}
+/* provenance 诚实灰徽章（合成种子·未接实测）——绝不显"实测/LIVE"（KILL-MOCK-RED·铁律 0.4）。 */
+.rkSynth {
+  display: inline-block;
+  font-size: 12px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--line2);
+  background: var(--panel2);
+  color: var(--muted2);
+  align-self: flex-start;
+  margin-bottom: 4px;
+}
+.rkCM {
   display: flex;
-  gap: 18px;
-  font-size: 11px;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.rkPeak {
+  font-size: 19px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.rkUnit {
+  font-size: 12px;
+  color: var(--muted2);
+}
+.rkChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 6px 0 2px;
+}
+.rkFchip {
+  display: inline-block;
+  font-size: 12px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid;
+  background: var(--hover-tint);
+  white-space: nowrap;
+}
+.rkCF {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
   color: var(--muted);
-  margin-bottom: 8px;
-}
-.metrics b {
-  display: block;
-  font-size: 16px;
-  margin-top: 2px;
+  margin-top: 5px;
 }
 
-.miniStrip {
+/* rk-det 展开详情：内联在网格下方（非 modal）·时间轴 + 方案 + 对话两栏。 */
+.rkDet {
+  margin-top: 18px;
+  border: 1px solid var(--line2);
+  border-radius: 12px;
+  padding: 15px 17px;
+  background: var(--hover-tint);
+}
+/* WO-DISPOSITION-INLINE-ROW（WO-R1 2026-08-13 收编）：处置详情**行内展开行**的两个类。
+   被点行左侧留一道竖条（`rkPlanRowOpen`），展开行与它同色同条 —— 视觉上把"这段详情属于哪一行"
+   直接画出来；修前详情挂在 `</table>` 之后，这层归属关系在屏上完全不存在。 */
+.rkPlanRowOpen td:first-child {
+  box-shadow: inset 2px 0 0 rgba(221, 126, 158, 0.55);
+}
+.rkPlanDetailRow > td {
+  padding: 0 8px 8px;
+  background: var(--hover-tint);
+  border-bottom: 1px solid var(--line2);
+  box-shadow: inset 2px 0 0 rgba(221, 126, 158, 0.55);
+}
+.rkDetH {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.rkDetH b {
+  font-size: 13px;
+}
+.rkDetH span {
+  font-size: 12px;
+  color: var(--muted2);
+}
+.rkTl {
+  position: relative;
+  padding: 6px 0 2px;
+  /* WO-TL-OVERFLOW：90 天全景横向不溢出面板——超宽时本容器内滚动（页面本体不横滚·守响应式）。 */
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+/* 日期刻度行：margin-left 178 = rk-flab 168 + rk-frow gap 10（严格对齐圆点起列）。 */
+.rkTicks {
   display: flex;
   gap: 2px;
+  margin: 0 0 4px 178px;
+}
+.rkTick {
+  flex: 1;
+  min-width: 4px;
+  max-width: 18px;
+  font-size: 12px;
+  color: var(--muted2);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: visible;
+  transform: translateX(-2px);
+}
+/* 单因素行：168px 标签 + 逐日圆点条。 */
+.rkFrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.rkFlab {
+  width: 168px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.rkFlab b {
+  font-size: 12px;
+}
+.rkFlab span {
+  font-size: 12px;
+  color: var(--muted2);
+  font-family: var(--font-mono);
+}
+.rkDots {
+  display: flex;
+  gap: 2px;
+  flex-wrap: nowrap;
+  flex: 1;
+}
+.rkDot {
+  width: 14px;
   height: 14px;
-}
-.miniStrip span {
+  border-radius: 50%;
+  cursor: pointer;
   flex: 1;
-  border-radius: 2px;
-}
-
-.dayRow {
-  display: flex;
-  gap: 2px;
-  margin-top: 10px;
-}
-.dayCell {
-  flex: 1;
-  height: 18px;
+  min-width: 4px;
+  max-width: 18px;
+  transition: transform 0.1s;
   border: none;
-  border-radius: 3px;
   padding: 0;
 }
-.dayCell:hover {
-  outline: 1px solid #fff;
+.rkDot:hover {
+  transform: scale(1.45);
+}
+.rkLeg {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--muted);
+  margin: 8px 0 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.rkLeg i {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: -1px;
+}
+/* 两栏：左对症方案·右人机对话（.rk-two）。 */
+.rkTwo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.wfT {
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+/* rk-sol 堆叠方案卡。 */
+.rkSol {
+  border: 1px solid var(--line2);
+  border-radius: 9px;
+  padding: 9px 11px;
+  margin-bottom: 8px;
+  background: rgba(98, 190, 119, 0.04);
+}
+.rkSolH {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.rkSolH b {
+  font-size: 12px;
+}
+.rkSolM {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+/* fc-go 采纳→工单。 */
+.fcGo {
+  padding: 3px 10px;
+  border-radius: 7px;
+  border: 1px solid rgba(196, 112, 184, 0.5);
+  background: rgba(196, 112, 184, 0.14);
+  color: var(--c-solver-txt);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.fcGo:hover {
+  background: rgba(196, 112, 184, 0.24);
+}
+.fcGo:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* ── WO-CAPACITY-QAPANEL-REAL-NL · 模板问答 ≠ 真对话，**外观必须分得开** ───────────
+ * 病灶：本页同屏并列两个「聊天框」——上面那个是关键词匹配（QaPanel），下面那个是真 NL
+ * （CapacityLiveDialog，经 orchestrator 走真求解器），而两者用的是**同一批 class**
+ * （.qaChips/.qaChip/.rkAsk/.rkAns），连标题都同以 💬 开头。于是用户把真问题打进上面那个框，
+ * 拿到一句看着像答案的兜底文，**无从判断自己那句到底被理解了没有**。
+ * 对策：真对话保持原观感不动（那条线已落地，不碰），只把模板框改成「工具」观感——
+ * 虚线边 + 静音底 + 第一层一个种类记号，一眼分得清哪个是对话、哪个是查表。
+ * 全部走 token，不写死十六进制（页面在暗/亮/暖三套主题下渲染）。 */
+.qaTpl {
+  border: 1px dashed var(--line2);
+  border-radius: 9px;
+  padding: 10px 11px;
+  background: var(--hover-tint);
+}
+/* 第一层的**可见记号**（规范 §1：诚实位可降浮层，但第一层必须留记号，静默降层等于删除）。 */
+.qaKind {
+  display: inline-block;
+  font-size: 12px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px dashed var(--line2);
+  background: var(--panel2);
+  color: var(--muted2);
+}
+/* 没匹配上时的答案框：**不许**长得像一条答案（旧实现在这里返回一句伪装成答案的兜底文）。 */
+.qaMiss {
+  border-style: dashed;
+  border-color: var(--warn-txt);
+  color: var(--warn-txt);
+}
+/* 模板框里唯一通往下方真对话的出口（点它 → 真对话滚进视野并接管焦点）。 */
+.qaEsc {
+  margin-top: 8px;
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--c-capacity);
+  background: transparent;
+  color: var(--c-capacity-txt);
+  cursor: pointer;
+}
+/* 人机对话（对话态·同源求解器 R6）：qa-chips 预设问 + 答案区 + 追问框。 */
+.qaChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.qaChip {
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 14px;
+  border: 1px solid var(--line2);
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+  transition: 0.13s;
+}
+.qaChip:hover {
+  border-color: var(--c-capacity);
+  color: var(--txt);
+}
+.rkAns {
+  border: 1px solid var(--line2);
+  border-radius: 9px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+  background: var(--hover-tint);
+  min-height: 44px;
+}
+.rkAsk {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.rkAsk input {
+  flex: 1;
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 12px;
+  background: var(--panel2);
+  color: var(--txt);
+}
+.rkAsk button {
+  padding: 7px 14px;
+  border-radius: 8px;
+  /* WO-R9-CONTRAST：白字压 --accent 仅 3.2:1 ⇒ 实心底走 --accent-solid。 */
+  border: 1px solid var(--accent-solid);
+  background: var(--accent-solid);
+  color: var(--on-accent);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+@media (max-width: 900px) {
+  .rkTwo {
+    grid-template-columns: 1fr;
+  }
+}
+
+/*
+ * WO-UI-DECLUTTER-TOP3 · 第二层折叠区（docs/CONVENTION-ui-information-layering.md §1）
+ * ────────────────────────────────────────────────────────────────────────────
+ * 第一层只放「数值 / 状态 / 名字」；**诊断信息 · 调试信息 · 逐项明细**降到一次点击之后。
+ * `<summary>` 就是规范 §1 要求的那个「可见记号」——降层不是删除，静默降层等于删除。
+ *
+ * ⚠ 刻意**不设 font-size**：本页字号已 14 级（R-UI-2 说 ≤3），新增任何字号值都是往反方向走。
+ *   两个类都从上下文继承字号，只调颜色与间距。颜色一律走 tokens.css 既有令牌
+ *   （`--muted2` / `--txt` / `--line2` / `--panel2` 三套主题都有定义，非幽灵令牌；
+ *   经 `node scripts/check-css-token-defined.mjs` 复核）。
+ */
+.rkDiag {
+  margin-top: 6px;
+  border-top: 1px solid var(--line2);
+  padding-top: 6px;
+}
+.rkDiagSum,
+.rkCases > summary {
+  cursor: pointer;
+  color: var(--muted2);
+  user-select: none;
+}
+.rkDiagSum:hover,
+.rkCases > summary:hover {
+  color: var(--txt);
+}
+.rkCases {
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  background: var(--panel2);
+  padding: 10px 12px;
+}
+.rkCases[open] > summary {
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--line2);
+  padding-bottom: 6px;
+}
+
+/* WO-DECISION-INFO-FE ③ · 多方案与代价面板的外框。
+   原本是组件里的内联 `const panelStyle = {...}`；`debattery` 门把它算成「前端写死业务数据」
+   （判据 B 数的是「顶层 const 对象里的数值字面量条数」，而 rgba(…) 里那一串数字全被计入）。
+   门的判据在这里量错了东西——样式对象不是业务数据表——但修法仍是搬进 CSS module：
+   本仓其它组件都这么做，内联样式还会绕过 css-token-defined 的令牌校验。 */
+.rkOptPanel {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line, rgba(140, 170, 200, 0.28));
+  border-radius: 6px;
+  background: var(--panel2, rgba(120, 160, 200, 0.06));
 }

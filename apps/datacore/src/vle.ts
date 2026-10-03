@@ -1,8 +1,26 @@
+import { BASE_REGISTRY } from "@platform/contracts";
 import type { AuthCtx, ValidationRunRecord } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import type { SyntheticService } from "./synthetic/service.js";
 import type { OntologyService } from "./ontology.js";
 import { newId } from "./ids.js";
+import { referenceCapacityForecast } from "./vle-oracle.js";
+import { ORDER_BOOK_SIZE, MODELS } from "./synthetic/battery.js";
+
+/**
+ * 被测求解器调用器（V5 双算注入点）：app.ts 在构造时注入 `solvers.invoke` 的轻量包装，
+ * 使 VLE 能取**被测系统真实产出**（capacity_forecast 的 P50/P90）与独立参照值双算——
+ * 但 vle.ts **绝不 import `solvers/service`**（V9 静态门强制：用被测算被测=双算形同虚设）。
+ * 注入缺省（undefined）时 ⑤段降级为「负载非退化」构造断言（向后兼容旧单测）。
+ */
+export type SolverInvoke = (
+  ctx: AuthCtx,
+  solverKey: string,
+  args: Record<string, unknown>,
+) => Promise<Record<string, unknown>>;
+
+/** 七段闭环的规范段名（assertionCov = 已验证的规范段数 / 7，非硬编码 1）。 */
+const CANONICAL_SEGMENTS = ["①接入", "②建模与对象化", "③聚合与派生", "④规则查全查准", "⑤求解器执行", "⑥行动终态", "⑦校准注入"];
 
 /**
  * 闭环验证引擎（VLE，PRD-addendum-validation-loop）。
@@ -34,7 +52,21 @@ export class VleService {
     private repos: Repos,
     private synthetic: SyntheticService,
     private ontology: OntologyService,
+    /** 被测求解器调用器（V5 双算）；undefined → ⑤段降级为构造断言。 */
+    private solverInvoke?: SolverInvoke,
   ) {}
+
+  /** ⑤ 双算容差：P50/P90 为 4 位定点累加 → 期望逐位一致；留 1e-6 吸收浮点累加序差异（R6 确定性）。 */
+  private static readonly REF_TOLERANCE = 1e-6;
+
+  /** GenSpec 已知真值：battery-manufacturing / scale=S 的核心类型行数（接入→对象化守恒下界）。
+   * Base 数量从 DF.1 单一来源 BASE_REGISTRY 派生，避免基地册扩缩后 VLE 真值漂移（G-5/R14）。
+   */
+  // WO-ORDER-BOOK-500：`Order` 由写死的 24 改为**从生成器的单一来源取**（`ORDER_BOOK_SIZE`）。
+  // 写死数字正是本条断言反复过期的原因 —— 订单簿一扩，「行数守恒」这条构造预言机
+  // 就会把「数据按设计变多了」误报成「接入丢行/串行」，而它本该度量的是后者。
+  // Base/Model 同理已各自取自注册表/型号表，此处补齐最后一个写死值。
+  private static readonly GENSPEC_S_COUNTS: Record<string, number> = { Base: BASE_REGISTRY.length, Model: MODELS.length, Order: ORDER_BOOK_SIZE };
 
   async run(
     callerCtx: AuthCtx,
@@ -56,6 +88,19 @@ export class VleService {
 
       const objects = await this.repos.objects.list(vTenant);
       const links = await this.repos.links.list(vTenant);
+
+      // ① 接入：GenSpec 已知真值 → 核心类型行数守恒（接入/对象化未丢行未串行）。
+      const countByType = (t: string) => objects.filter((o) => o.type === t).length;
+      const countMismatch = Object.entries(VleService.GENSPEC_S_COUNTS).filter(([t, n]) => countByType(t) !== n);
+      assertions.push({
+        segment: "①接入",
+        point: "接入产出核心类型行数 == GenSpec（Base/Model/Order 行数守恒）",
+        oracle: "constructed",
+        pass: countMismatch.length === 0,
+        expected: VleService.GENSPEC_S_COUNTS,
+        actual: Object.fromEntries(Object.keys(VleService.GENSPEC_S_COUNTS).map((t) => [t, countByType(t)])),
+        diff: countMismatch.length ? `行数偏离: ${countMismatch.map(([t]) => t).join(",")}` : undefined,
+      });
 
       // 构造真值：生成必产出对象（行数守恒的下界）。
       assertions.push({
@@ -90,6 +135,82 @@ export class VleService {
         expected: aggCheck.expected,
         actual: aggCheck.actual,
         diff: aggCheck.pass ? undefined : `type=${aggCheck.typeKey} prop=${aggCheck.prop}`,
+      });
+
+      // ④ 规则查全查准（独立预言机，VL7：不 import 规则引擎，用独立 plain-JS 谓词比对）。
+      //   查全(recall)：约束扫描所需字段在 Order 对象上齐备——字段缺失 = 规则静默漏判(假阴)。
+      //   查准(precision)：种子按固定步长植入的越线行(C03 demandDelta>0.5)被独立谓词当场捕获。
+      const orders = objects.filter((o) => o.type === "Order");
+      const SCAN_FIELDS = ["demandDelta", "outsourceRatio", "creditUsedRatio", "leadDays"];
+      const fieldGaps = orders.filter((o) => SCAN_FIELDS.some((f) => typeof o.props[f] !== "number")).length;
+      assertions.push({
+        segment: "④规则查全查准",
+        point: "规则所需字段在对象上齐备（查全：字段缺失→静默漏判=0）",
+        oracle: "invariant",
+        pass: orders.length > 0 && fieldGaps === 0,
+        expected: 0,
+        actual: fieldGaps,
+        diff: fieldGaps ? `${fieldGaps} 个 Order 缺约束扫描字段` : undefined,
+      });
+      const plantedC03 = orders.filter((o) => Number(o.props.demandDelta) > 0.5).length;
+      assertions.push({
+        segment: "④规则查全查准",
+        point: "植入越线行被独立谓词捕获（查准：C03 demandDelta>0.5 命中>0）",
+        oracle: "constructed",
+        pass: plantedC03 > 0,
+        expected: ">0",
+        actual: plantedC03,
+      });
+
+      // ⑤ 求解器执行（前置·构造预言机）：验"求解链有真实负载"而非空跑。
+      //   供给(Σ基地产能 gwh)与需求(Σ订单 qty)双侧均非退化 → 求解器面对真实供需缺口。
+      const bases = objects.filter((o) => o.type === "Base");
+      const supply = bases.reduce((s, o) => s + (typeof o.props.gwh === "number" ? (o.props.gwh as number) : 0), 0);
+      const demand = orders.reduce((s, o) => s + (typeof o.props.qty === "number" ? (o.props.qty as number) : 0), 0);
+      assertions.push({
+        segment: "⑤求解器执行",
+        point: "求解负载非退化（供给Σgwh>0 且 需求Σqty>0 → 非空跑）",
+        oracle: "constructed",
+        pass: supply > 0 && demand > 0,
+        expected: "supply>0 && demand>0",
+        actual: `supply=${Number(supply.toFixed(1))} demand=${demand}`,
+      });
+
+      // ⑤ 求解器执行（参照实现双算，V5 核心可证底线 / VL2）：被测 capacity_forecast 真实产出
+      //   P50/P90  vs  vle-oracle.ts 第二套独立代码算出的参照 P50/P90，逐字段比对（容差 REF_TOLERANCE）。
+      //   被测算错一个系数（如 curveMult）→ 此处当场红，diff 精确指出期望/实际/首个偏离基地。
+      //   solverInvoke 缺省（旧单测/未注入）→ 跳过双算（保留前置构造断言，向后兼容）。
+      if (this.solverInvoke) {
+        const refAssertion = await this.referenceDualCompute(vctx, objects);
+        if (refAssertion) assertions.push(refAssertion);
+      }
+
+      // ⑥ 行动终态（R4 真值经 Action，独立预言机）：每个已注册 ActionType 必有非空审批链——
+      //   空审批链 = 绕过审批直写真值的后门（R4 违反）。读注册表独立断言，不触发执行。
+      const actionTypes = await this.repos.actionTypes.list(vTenant);
+      const noChain = actionTypes.filter((a) => !Array.isArray(a.approvalChain) || a.approvalChain.length === 0);
+      assertions.push({
+        segment: "⑥行动终态",
+        point: "真值变更必经审批（已注册 ActionType 审批链非空，无直写后门）",
+        oracle: "invariant",
+        pass: actionTypes.length > 0 && noChain.length === 0,
+        expected: 0,
+        actual: noChain.length,
+        diff: noChain.length ? `空审批链: ${noChain.map((a) => a.key).join(",")}` : undefined,
+      });
+
+      // ⑦ 校准注入（学习回路注入点，独立预言机）：每个种子校准提案的模拟误差必须改善
+      //   (simulatedMapeAfter < mapeBefore)——注入即恶化 = 反校准，回路发散。
+      const proposals = await this.repos.calibrationProposals.list(vTenant);
+      const worsening = proposals.filter((p) => !(p.evidence && p.evidence.simulatedMapeAfter < p.evidence.mapeBefore));
+      assertions.push({
+        segment: "⑦校准注入",
+        point: "校准注入即收敛（提案 simulatedMapeAfter < mapeBefore，无反校准）",
+        oracle: "invariant",
+        pass: proposals.length > 0 && worsening.length === 0,
+        expected: 0,
+        actual: worsening.length,
+        diff: worsening.length ? `恶化提案: ${worsening.map((p) => p.id).join(",")}` : undefined,
       });
 
       // 不变量：同 seed 重放逐字节幂等（确定性）。
@@ -134,6 +255,80 @@ export class VleService {
 
   // -- oracles --------------------------------------------------------------
 
+  /**
+   * ⑤ 参照实现双算（V5 / VL2）：调被测 capacity_forecast 取真实 P50/P90，与独立参照预言机
+   * (`vle-oracle.referenceCapacityForecast`) 逐字段比对。被测算错任一系数 → pass=false + diff 定位。
+   * 选首个"有认证产线"的模型作被测对象（确定性：按 modelId 排序取首个可产）。
+   */
+  private async referenceDualCompute(
+    ctx: AuthCtx,
+    objects: { id: string; type: string; props: Record<string, unknown> }[],
+  ): Promise<Assertion | null> {
+    if (!this.solverInvoke) return null;
+    // 确定性选模型：取认证关系覆盖到的、modelId 最小的模型（保证 cert.size>0，求解器不抛"无认证产线"）。
+    const certLinks = await this.repos.links.list(ctx.tenantId, (l) => l.type === "model_certified_on");
+    const models = objects.filter((o) => o.type === "Model");
+    const modelById = new Map(models.map((m) => [m.id, String(m.props.modelId ?? "")]));
+    const certifiedModelIds = [...new Set(certLinks.map((l) => modelById.get(l.fromId) ?? String(l.props?.modelId ?? "")).filter(Boolean))].sort();
+    const modelId = certifiedModelIds[0];
+    if (!modelId) {
+      return {
+        segment: "⑤求解器执行",
+        point: "参照双算前置：存在可产模型（认证关系非空）",
+        oracle: "constructed",
+        pass: false,
+        expected: ">=1 个认证模型",
+        actual: 0,
+        diff: "无 model_certified_on 关系 → 无法对 capacity_forecast 双算",
+      };
+    }
+    const weeks = 6; // 整单口径缺省窗口（与被测 capacityForecast 无 batches 时一致）。
+    let actual: Record<string, unknown>;
+    try {
+      actual = await this.solverInvoke(ctx, "capacity_forecast", { modelId, weeks });
+    } catch (e) {
+      return {
+        segment: "⑤求解器执行",
+        point: `参照双算 capacity_forecast(${modelId}) 求解器可执行`,
+        oracle: "reference",
+        pass: false,
+        expected: "求解器返回 P50/P90",
+        actual: String((e as Error)?.message ?? e),
+        diff: "被测求解器抛错，无法双算",
+      };
+    }
+    const ref = await referenceCapacityForecast(this.repos, ctx.tenantId, modelId, weeks);
+    const aP50 = typeof actual.capWanP50 === "number" ? actual.capWanP50 : NaN;
+    const aP90 = typeof actual.capWanP90 === "number" ? actual.capWanP90 : NaN;
+    const dP50 = Math.abs(aP50 - ref.capWanP50);
+    const dP90 = Math.abs(aP90 - ref.capWanP90);
+    const tol = VleService.REF_TOLERANCE;
+    const pass = Number.isFinite(aP50) && Number.isFinite(aP90) && dP50 <= tol && dP90 <= tol;
+    // diff 下钻：找首个 cumTotal 与被测 perBaseRows 偏离的基地（若被测透出 perBaseRows）。
+    let firstDivergentBase: string | undefined;
+    const aRows = Array.isArray(actual.perBaseRows) ? (actual.perBaseRows as Record<string, unknown>[]) : [];
+    if (!pass && aRows.length > 0) {
+      for (const rb of ref.perBase) {
+        const match = aRows.find((r) => String(r.baseId) === rb.baseId);
+        if (match && typeof match.cumTotal === "number" && Math.abs((match.cumTotal as number) - rb.cumTotal) > tol) {
+          firstDivergentBase = `${rb.baseId}: 被测 cumTotal=${match.cumTotal} ≠ 参照 ${rb.cumTotal}`;
+          break;
+        }
+      }
+    }
+    return {
+      segment: "⑤求解器执行",
+      point: `参照实现双算 capacity_forecast(${modelId}) P50/P90（第二套独立代码比对）`,
+      oracle: "reference",
+      pass,
+      expected: { capWanP50: ref.capWanP50, capWanP90: ref.capWanP90 },
+      actual: { capWanP50: aP50, capWanP90: aP90 },
+      diff: pass
+        ? undefined
+        : `P50 期望 ${ref.capWanP50} 实际 ${aP50}（Δ${Number(dP50.toFixed(6))}）· P90 期望 ${ref.capWanP90} 实际 ${aP90}（Δ${Number(dP90.toFixed(6))}）${firstDivergentBase ? ` · 首个偏离基地 ${firstDivergentBase}` : ""}`,
+    };
+  }
+
   /** 取首个有数值属性的对象类型，比较聚合 SUM 与逐行求和。 */
   private async aggregateEqualsDetail(
     ctx: AuthCtx,
@@ -155,13 +350,17 @@ export class VleService {
     return { pass: true, expected: 0, actual: 0 };
   }
 
-  /** 同 seed 两次生成 → 对象数与属性指纹一致（在临时子租户上比对，比对后清理）。 */
+  /** 同 seed 两次生成 → 对象数与属性指纹一致（在临时子租户上比对，比对后清理）。
+   * WO-SYNTH-VALIDATION-LITE §3.2：两次均走 profile=VALIDATION_LITE（跳 TS 历史/聚合）。
+   * 指纹只覆盖对象、genPoint 不消耗对象 RNG 游标 → LITE 对象字节 === FULL，校验效力零损、2×70s→2×10s。
+   * ⚠ 仍是 tenant a + tenant b 两次**独立**真跑再比 fingerprint(a)===fingerprint(b)——
+   *   绝不退化成「跑一次 + 克隆到 b + 自比」（那是恒等假绿；反陷阱守护见 synth-validation-lite.test.ts §3）。 */
   private async determinismCheck(seed: number): Promise<{ pass: boolean; expected: string; actual: string }> {
     const a = `vle_det_a_${newId("d")}`;
     const b = `vle_det_b_${newId("d")}`;
     try {
-      await this.synthetic.runJob({ tenantId: a, userId: "vle", roles: ["admin"], attributes: {} }, { industry: "battery-manufacturing", scale: "S", seed });
-      await this.synthetic.runJob({ tenantId: b, userId: "vle", roles: ["admin"], attributes: {} }, { industry: "battery-manufacturing", scale: "S", seed });
+      await this.synthetic.runJob({ tenantId: a, userId: "vle", roles: ["admin"], attributes: {} }, { industry: "battery-manufacturing", scale: "S", seed, profile: "VALIDATION_LITE" });
+      await this.synthetic.runJob({ tenantId: b, userId: "vle", roles: ["admin"], attributes: {} }, { industry: "battery-manufacturing", scale: "S", seed, profile: "VALIDATION_LITE" });
       const fa = await this.fingerprint(a);
       const fb = await this.fingerprint(b);
       return { pass: fa === fb, expected: fa, actual: fb };
@@ -212,10 +411,11 @@ export class VleService {
     const greenSegments = new Set(
       [...segments].filter((s) => assertions.filter((a) => a.segment === s).every((a) => a.pass)),
     );
-    // 三覆盖率（本期口径）：module = 断言通过率；assertion = 已实现/登记（本期实现即登记 → 1）；
-    // loop = 段全绿比例。
+    // 三覆盖率：module = 断言通过率；assertion = **已验证的规范段数 / 7**（不再硬编码 1，诚实反映
+    // 七段闭环实际覆盖到第几段）；loop = 段全绿比例。
     const moduleCov = passed / total;
-    const assertionCov = 1;
+    const canonicalCovered = CANONICAL_SEGMENTS.filter((cs) => segments.has(cs)).length;
+    const assertionCov = canonicalCovered / CANONICAL_SEGMENTS.length;
     const loopCov = greenSegments.size / segments.size;
     const score = 0.5 * moduleCov + 0.3 * assertionCov + 0.2 * loopCov;
     return {

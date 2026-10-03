@@ -1,17 +1,30 @@
-import type { FeatureDef } from "@platform/contracts";
+import { assertSharedFeatureNames, type FeatureDef } from "@platform/contracts";
 
 /**
  * Feature registry (entitlement PRD §2 — code registry, config references it).
  * AgentCore only needs the bindings relevant to QOS routing / solver proxying /
  * scene entries; the authoritative resolved set comes from DataCore
  * (GET /a/v1/tenants/{id}/features). battery 场景包默认全开.
+ *
+ * ⚠ **本表的 `name` 一个字都不上屏**（WO-VIEWNAME-SINGLE-SOURCE 实测坐实）：本模块的全部
+ * 消费方 —— `featureEnabled` / `intentAllowed` / `solverAllowed` / `viewAllowed` /
+ * `defaultOnKeys`，以及 `server.ts` / `orchestrator.ts` / `dril/resource-registry.ts` /
+ * `features/gate.ts` —— 只读 key/bindings/requires/defaultOn，**零处读 `.name`**；
+ * AgentCore 也从不下发功能册。用户在「功能开通配置」页看到的名字来自 DataCore 的
+ * `GET /a/v1/features/registry`。
+ *
+ * 正因为它不上屏，它才最容易悄悄漂 —— 实测本表曾在 6 个键上与 DataCore 各写一个名
+ * （`view.dash` 写「经营驾驶舱」而册是「驾驶舱」…）。故名字的单一真相源改为
+ * `@platform/contracts` 的 `SHARED_FEATURE_NAMES`；下面的字面量是**受检副本**，
+ * `assertSharedFeatureNames()` 在模块加载期逐条核对，不符即抛。
+ * 本表独有、不跨服务的键（如 `view.scenarios`）不在册内，保持本地自治。
  */
-export const FEATURE_REGISTRY: FeatureDef[] = [
-  { key: "view.dash", name: "经营驾驶舱", level: "VIEW", defaultOn: true },
+export const FEATURE_REGISTRY: FeatureDef[] = assertSharedFeatureNames([
+  { key: "view.dash", name: "驾驶舱", level: "VIEW", defaultOn: true },
   { key: "view.ontology-graph", name: "本体图谱", level: "VIEW", defaultOn: true },
   {
     key: "view.risk-board",
-    name: "风险看板",
+    name: "风险推演看板",
     level: "VIEW",
     defaultOn: true,
     bindings: {
@@ -37,22 +50,24 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   },
   {
     key: "view.sop-balance",
-    name: "S&OP 平衡",
+    name: "月度规划",
     level: "VIEW",
     defaultOn: true,
     bindings: { intents: ["sop_*"], solverKeys: ["sop_balance"], apiTags: ["sop-balance"] },
   },
   {
     key: "view.project-sim",
-    name: "项目推演",
+    name: "接单可行性",
     level: "VIEW",
     defaultOn: true,
     bindings: { intents: ["capacity_feasibility"], solverKeys: ["capacity_forecast"], apiTags: ["project-sim"] },
   },
   // 剩余视图增量（前端 PRD §7.14–7.19 / 修订点 4）—— 与 DataCore FeatureRegistry 同步
-  { key: "view.annual-scenario", name: "年度情景规划台", level: "VIEW", defaultOn: true },
-  { key: "view.quarterly-rolling", name: "季度滚动看板", level: "VIEW", defaultOn: true },
-  { key: "view.order-chain", name: "订单全链聚合", level: "VIEW", defaultOn: true },
+  { key: "view.annual-scenario", name: "年度规划", level: "VIEW", defaultOn: true },
+  { key: "view.quarterly-rolling", name: "季度规划", level: "VIEW", defaultOn: true },
+  // 场景启动器视图（catalog SL2：关闭 view.scenarios → 启动器/场景卡消失）。此前未注册 → viewAllowed 恒真不可关。
+  { key: "view.scenarios", name: "场景启动器", level: "VIEW", defaultOn: true },
+  { key: "view.order-chain", name: "订单进展与卡因", level: "VIEW", defaultOn: true },
   { key: "view.geo-map", name: "基地地理视图", level: "VIEW", defaultOn: true },
   { key: "view.task-dag", name: "任务详情·编排 DAG", level: "BLOCK", defaultOn: true },
   { key: "view.graph.persp.all", name: "图谱·全景", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
@@ -64,8 +79,8 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.graph.persp.agent", name: "图谱·智能体网络", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
   { key: "view.graph.persp.loop", name: "图谱·学习闭环", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
   { key: "act.aop-finalize", name: "AOP 情景拍板", level: "ACTION", defaultOn: true, requires: ["view.annual-scenario"] },
-  { key: "shell.query-dock", name: "查询对话", level: "BLOCK", defaultOn: true },
-  { key: "qos.agent-fallback", name: "路径 B 兜底", level: "BLOCK", defaultOn: true },
+  { key: "shell.query-dock", name: "查询对话坞", level: "BLOCK", defaultOn: true },
+  { key: "qos.agent-fallback", name: "Agent 兜底（路径 B）", level: "BLOCK", defaultOn: true },
   {
     key: "view.project-sim.whatif",
     name: "What-if 调参",
@@ -88,7 +103,63 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
     bindings: { intents: ["adopt_mitigation"] },
   },
   { key: "act.export", name: "导出", level: "ACTION", defaultOn: true },
-];
+  // WO-A · No-code Plan Builder Canvas ↔ PlanDSL（与 DataCore 注册表 parity）。
+  // ⚠ `defaultOn: true` 沿用原分支作者的选择，收编时**未擅自改动** —— feature flag 的
+  // defaultOn 属产品/治理决策，不是 dev 的裁量范围；需复验方裁定后再定。
+  { key: "admin.plan-builder", name: "计划构建器", level: "BLOCK", defaultOn: true },
+  // WO-REAL-LLM-FREE-QUERY（R3 暗发·defaultOn:false·双注册 feature parity·权威集仍来自 DataCore）：
+  // CEO/块级深问走 path-B 真 LLM 自由多跳（orchestrator freeLlmEnabled 用 enabledSet.has 直判，"ALL" 降级态不触发·字节兼容）。
+  { key: "ceo.free-llm", name: "CEO 深问真 LLM 自由推理", level: "BLOCK", defaultOn: false },
+  // WO-FIVE-ROLE-AI-EMPLOYEE P1（R3 暗发·defaultOn:false·双注册 feature parity·权威集来自 DataCore）：
+  // 跨域问题→Coordinator 多角色编排（拆子问→invoke_agent 扇出调 CEO/供应链/生产/质量角色 agent→汇总）。
+  // orchestrator coordinatorEnabled 用 enabledSet.has 直判（"ALL" 降级不触发·字节兼容·不劫持单 agent path-B）。
+  { key: "agent.coordinator", name: "跨域多角色 Coordinator 编排", level: "BLOCK", defaultOn: false },
+  // WO-Phase2-C-COMPLETE（R3 暗发·defaultOn:false·字节兼容·不劫持既有 path-B）：path-A 单跳 ↔ path-B ReAct 之间的
+  // **组合路径**——runPathB 内多对口 solver 可串时 compileSolverPlan→executePlan 服务端多步 + 一次综合（不落 runAgentLoop）。
+  // orchestrator composePathEnabled 用 enabledSet.has 直判（"ALL" 降级不触发 → 既有 path-B 逐字节不变）。
+  { key: "qos.compose-path", name: "QOS 组合路径（多 solver 服务端编排）", level: "BLOCK", defaultOn: false },
+  { key: "agent.critic", name: "Agent 反思 LLM critic（确定性复盘之上的 advisory 复核·fail-open）", level: "BLOCK", defaultOn: false },
+  // WO-LOOP-CONTROL-P2（R3 暗发·defaultOn:false·双注册 feature parity·权威集来自 DataCore）：path-B agent 停滞时**升级阶梯**——
+  // rung① 换提示策略再试一轮（早于 degrade·发 agent_escalated 伪 step）→ rung③ 诚实降级（rung② 升 Coordinator 延后）。
+  // orchestrator escalationEnabled 用 enabledSet.has 直判（"ALL" 降级不触发·字节兼容·关=停滞直接 degrade·不劫持）。
+  { key: "agent.escalation", name: "Agent 停滞升级阶梯（换策略再试→诚实降级·暗发）", level: "BLOCK", defaultOn: false },
+  // WO-DRIL-P4（R3 暗发·defaultOn:false·字节兼容·不劫持既有 path-B·PRD-decision-resource-intelligence-layer §8.3）：
+  // Path-B Agent Loop 注入 DRIL 资源包（ResourceRouter.buildResourcePackage 跨 solver/slice/rule/skill/workflow 预选）
+  // 到首轮 user prompt——agent 有预置资源包 → 不再盲 discover 逐跳（round-trip ≤4·SEAM）。
+  // orchestrator drilRoutingEnabled 用 enabledSet.has 直判（"ALL" 降级不触发 → 既有 path-B 逐字节不变·组包空亦不注入）。
+  { key: "qos.dril-routing", name: "DRIL 智能资源路由（Path-B 组包注入）", level: "BLOCK", defaultOn: false },
+  { key: "qos.reasoning-trace", name: "QOS 推理旁白流（path-B agent 思考实时展示）", level: "BLOCK", defaultOn: false },
+  // #90（R3 暗发·defaultOn:false·双注册 feature parity·权威集来自 DataCore）：把**租户级已发布 Skill** 接到
+  // **默认自由问答**（泛化 path-B `runPathB→runAgentLoop`）。病灶：`buildSkillSection` 全仓只有一个调用方
+  // `engine.ts runRegisteredAgent`（注册 agent 路径·skill 绑在 `agent.skills` 上），泛化 path-B 用裸
+  // AGENT_SYSTEM_CORE、且不传 `loadSkillEnabled`/`loadSkill` → 整套 Skill 子系统（发布双门禁 / evals /
+  // 语义路由 / embedding 旋钮）对默认路径**完全不可达**。关 = 既有 path-B 逐字节不变（不劫持）。
+  { key: "agent.skill-on-free-qa", name: "自由问答挂载租户技能（默认 path-B 可见并 load_skill·暗发）", level: "BLOCK", defaultOn: false },
+  // OC7 / #92（R3 暗发·defaultOn:false·双注册 feature parity·权威集来自 DataCore）：租户 LLM token 配额**执行**。
+  // 关 = 只记账不拦（账本从此有真数据·业务零影响）；开 = 硬线耗尽拒新 QOS 任务（LLM_BUDGET_EXCEEDED）。
+  // 记账侧**不受本门控**（无条件记）——先让账本有真数据，再谈拿它做拦截，顺序反了就成了拿脏账拦人。
+  { key: "qos.llm-budget-enforce", name: "LLM token 配额执行（硬线耗尽拒新任务·暗发）", level: "BLOCK", defaultOn: false },
+  // WO-DETERMINISTIC-CROSS-DOMAIN（R3 暗发·defaultOn:false·双注册 feature parity·权威集来自 DataCore）：跨域题在**确定性层**
+  // 逐域枚举 + 并行 solver + 零 LLM 块装配（domainResolveMulti→selectDeterministicMultiRoute→runDeterministicMultiPath·排在 LLM classify 之前）。
+  // orchestrator deterministicMultiEnabled 用 enabledSet.has 直判（"ALL" 降级不触发·字节兼容·关=沿用现"跨域压分→落 LLM/单域"行为）。
+  { key: "qos.deterministic-multi-domain", name: "确定性跨域分路（多域并行 solver·零 LLM）", level: "BLOCK", defaultOn: false },
+  // WO-QOS-CROSS-DOMAIN-UNIFIED（R3 暗发·defaultOn:false·双注册 feature parity·权威集来自 DataCore）：⑤ LLM 多意图兜底——
+  // ②确定性没覆盖的跨域题 → classify 多候选（≥2 ≥tauMid·槽可填·无冲突）→ 接共享后半 runParallelRoutes 并行·确定性块装配。
+  // orchestrator multiIntentEnabled 用 enabledSet.has 直判（"ALL" 降级不触发·字节兼容·关=既有单意图/澄清路径逐字节不变）。
+  { key: "qos.multi-intent-orchestration", name: "LLM 多意图兜底（分类器多候选并行 solver·零 LLM 装配）", level: "BLOCK", defaultOn: false },
+  // WO-OPTWHATIF-NL-WIRING（R3 暗发·defaultOn:false·双注册 feature parity·权威集来自 DataCore）：结构化优化 what-if
+  // 会话路由——NL「改一系数→CP-SAT 重解→最优决策切换」→ path-A optimize_whatif（据 selection 从已发布本体真装配基线 + 真扰动重解）。
+  // orchestrator optWhatifRouteEnabled 用 enabledSet.has 直判（"ALL" 降级不触发·字节兼容·关=既有管线逐字节不变·不劫持）。
+  { key: "qos.opt-whatif-route", name: "结构化优化 what-if 会话路由（NL→optimize_whatif·CP-SAT 重解）", level: "BLOCK", defaultOn: false },
+  // WO-L2-DECOMPOSE（R3 暗发·defaultOn:false·双注册 feature parity·权威集来自 DataCore）：L2 多意图**真分解**——free-LLM
+  // 门前插一道，对复合/长问句让 LLM 产 solver 执行计划 → 确定性校验（solverKey 已注册 + 必填槽可从共享 slotBag/pageContext
+  // 抽满 + 无 scope 冲突）→ 命中即接共享后半 runParallelRoutes（补 ②/⑤ 关键词/候选漏的意图·治 novel 措辞被 free-LLM 长度门劫持）。
+  // orchestrator l2DecomposeEnabled 用 enabledSet.has 直判（"ALL" 降级不触发·字节兼容·关=free-LLM 长度门逐字节不变·零回归）。
+  { key: "qos.multi-intent-l2-decompose", name: "QOS L2 真分解（LLM 产 solver 计划·确定性校验·补漏意图）", level: "BLOCK", defaultOn: false },
+  // PRD-multi-intent-L2L3 P2（暗发·defaultOn:false）：L3 耦合联合求解——耦合链 + 组合方案型问句 → 一次 portfolio
+  // 守恒解（真传导·真残差外协·近似环诚实标）。关 → L1 独立并行 + 耦合诚实标（现状·零回归）。
+  { key: "qos.multi-intent-l3-coupled", name: "QOS L3 耦合联合求解（一次 portfolio 守恒解·真传导）", level: "BLOCK", defaultOn: false },
+], "agentcore/features/registry.ts FEATURE_REGISTRY");
 
 const BY_KEY = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));
 
@@ -101,6 +172,13 @@ const VIEW_ALIAS: Record<string, string> = {
   "plan-generate": "view.plan-generate",
   "sop-balance": "view.sop-balance",
   "project-sim": "view.project-sim",
+  // catalog 短键（VIEW_DOMAIN）→ 规范 feature：修 S18(sop)/S19(quarter) 等不可关 + 落点断点。
+  sop: "view.sop-balance",
+  quarter: "view.quarterly-rolling",
+  audit: "view.plan-audit",
+  generate: "view.plan-generate",
+  project: "view.project-sim",
+  scenarios: "view.scenarios",
   // 剩余视图增量：图谱视角视图键 graph-{persp} → BLOCK 级 feature
   "graph-all": "view.graph.persp.all",
   "graph-backbone": "view.graph.persp.backbone",

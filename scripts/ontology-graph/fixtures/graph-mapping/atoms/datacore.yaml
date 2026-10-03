@@ -1,0 +1,150 @@
+# 夹具 · **真产物顶层形态**（映射：package/counts/atoms:）+ 真产物 inbound 形态
+# （{ srcCount, selfUses, testCount, src: […], test: […] }：样例可截断、计数永远全量）。
+# ⚠ 内容与 ../../graph/atoms/datacore.yaml **逐条相同**，只有文件形状不同 ——
+#   自测据此断言：同样的数据换一种顶层写法，加载条数与全部对账结论必须一字不差。
+#   这是 2026-09-12 接缝复验红掉那一处的回归（真产物 6266 个原子被读成 5 个）。
+package: "datacore"
+counts: { atoms: 11, edges: 0 }
+atoms:
+  - id: sym:apps/datacore/src/ontology/slice-index.ts#buildSliceIndex
+    name: buildSliceIndex
+    kind: function
+    file: apps/datacore/src/ontology/slice-index.ts
+    line: 38
+    brief: "建索引：每切片一条 {sliceKey, rootType, spannedTypes}"
+    docSource: jsdoc
+    tags: [datacore, ontology, slice]
+    wo: null
+    state: wired
+    reexportOf: null
+    inbound: { srcCount: 3, selfUses: 0, selfLine: null, testCount: 0, src: [{ file: "apps/datacore/src/app.ts", line: 132 }, { file: "apps/datacore/src/app.ts", line: 6166 }, { file: "apps/datacore/src/app.ts", line: 6213 }], test: [] }
+
+  - id: sym:apps/datacore/src/solvers/portfolio.ts#lineGranularity
+    name: lineGranularity
+    kind: property
+    file: apps/datacore/src/solvers/portfolio.ts
+    line: 55
+    brief: "PortfolioInput 的线级粒度开关：开则每 Line 一个产能单元，关则每 Base 一个（旧口径字节一致）"
+    docSource: jsdoc
+    tags: [datacore, solver, portfolio, lever]
+    wo: null
+    state: wired
+    reexportOf: null
+    inbound: { srcCount: 5, selfUses: 0, selfLine: null, testCount: 0, src: [{ file: "apps/datacore/src/solvers/portfolio.ts", line: 278 }, { file: "apps/datacore/src/solvers/portfolio.ts", line: 283 }, { file: "apps/datacore/src/solvers/portfolio.ts", line: 321 }, { file: "apps/datacore/src/solvers/portfolio.ts", line: 404 }, { file: "apps/datacore/src/solvers/portfolio.ts", line: 408 }], test: [] }
+
+  - id: sym:apps/datacore/src/solvers/portfolio.ts#portfolioOptimize
+    name: portfolioOptimize
+    kind: function
+    file: apps/datacore/src/solvers/portfolio.ts
+    line: 532
+    brief: "组合排产求解器入口：订单簿 × 基地/产线产能 × 换型代价 → 排产方案与帕累托前沿"
+    docSource: jsdoc
+    tags: [datacore, solver]
+    wo: null
+    state: wired
+    reexportOf: null
+    inbound: { srcCount: 1, selfUses: 0, selfLine: null, testCount: 1, src: [{ file: "apps/datacore/src/solvers/service.ts", line: 3560 }], test: [{ file: "apps/datacore/test/portfolio.test.ts", line: 12 }] }
+
+  - id: sym:apps/datacore/src/catalog.ts#ALL_SOLVER_CATALOG
+    name: ALL_SOLVER_CATALOG
+    kind: const
+    file: apps/datacore/src/catalog.ts
+    line: 279
+    brief: "求解器全集注册表 = SOLVER_CATALOG + GENERIC_SOLVER_CATALOG + COCKPIT_SOLVER_CATALOG"
+    docSource: none
+    tags: [datacore, registry, solver-registry]
+    wo: null
+    state: wired
+    reexportOf: null
+    inbound: { srcCount: 1, selfUses: 0, selfLine: null, testCount: 1, src: [{ file: "apps/datacore/src/catalog.ts", line: 409 }], test: [{ file: "apps/datacore/test/catalog.test.ts", line: 8 }] }
+
+  - id: sym:apps/datacore/src/catalog.ts#solverRegistry
+    name: solverRegistry
+    kind: method
+    file: apps/datacore/src/catalog.ts
+    line: 404
+    brief: "A1 求解器全集注册表接口：按类目/关键词过滤 + feature 过滤，不做 ≤20 截断"
+    docSource: jsdoc
+    tags: [datacore, registry]
+    wo: null
+    state: wired
+    reexportOf: null
+    inbound: { srcCount: 1, selfUses: 0, selfLine: null, testCount: 0, src: [{ file: "apps/datacore/src/app.ts", line: 6241 }], test: [] }
+
+  - id: sym:apps/datacore/src/synthetic/battery.ts#BATTERY_RULES
+    name: BATTERY_RULES
+    kind: const
+    file: apps/datacore/src/synthetic/battery.ts
+    line: 737
+    brief: "电池行业模板的规则种子：C01..C35 中实际物化的 30 条，含表达式与 severity"
+    docSource: jsdoc
+    tags: [datacore, registry, rule-registry]
+    wo: null
+    state: wired
+    reexportOf: null
+    inbound: { srcCount: 1, selfUses: 0, selfLine: null, testCount: 0, src: [{ file: "apps/datacore/src/synthetic/service.ts", line: 214 }], test: [] }
+
+  - id: sym:apps/datacore/src/solvers/args-schemas.ts#SOLVER_ARGS_SCHEMAS
+    name: SOLVER_ARGS_SCHEMAS
+    kind: reexport
+    file: apps/datacore/src/solvers/args-schemas.ts
+    line: 18
+    brief: "薄 re-export：真表在 @platform/contracts（R1 contracts-only-shared）"
+    docSource: none
+    tags: [datacore, solver-args]
+    wo: null
+    state: wired
+    reexportOf: "packages/contracts/src/solver-args.ts#SOLVER_ARGS_SCHEMAS"
+    inbound: { srcCount: 1, selfUses: 0, selfLine: null, testCount: 1, src: [{ file: "apps/datacore/src/solvers/service.ts", line: 288 }], test: [{ file: "apps/datacore/test/solver-args.test.ts", line: 6 }] }
+
+  - id: sym:apps/datacore/src/solvers/args-schemas.ts#solverArgsSchema
+    name: solverArgsSchema
+    kind: reexport
+    file: apps/datacore/src/solvers/args-schemas.ts
+    line: 19
+    brief: "薄 re-export：按 solver key 取 zod schema"
+    docSource: none
+    tags: [datacore, solver-args]
+    wo: null
+    state: wired
+    reexportOf: "packages/contracts/src/solver-args.ts#solverArgsSchema"
+    inbound: { srcCount: 0, selfUses: 0, selfLine: null, testCount: 1, src: [], test: [{ file: "apps/datacore/test/solver-args.test.ts", line: 9 }] }
+
+  - id: sym:apps/datacore/src/solvers/args-schemas.ts#requiredArgKeys
+    name: requiredArgKeys
+    kind: reexport
+    file: apps/datacore/src/solvers/args-schemas.ts
+    line: 20
+    brief: "薄 re-export：某求解器的必填 args 键集"
+    docSource: none
+    tags: [datacore, solver-args]
+    wo: null
+    state: wired
+    reexportOf: "packages/contracts/src/solver-args.ts#requiredArgKeys"
+    inbound: { srcCount: 0, selfUses: 0, selfLine: null, testCount: 0, src: [], test: [] }
+
+  - id: sym:apps/datacore/src/solvers/args-schemas.ts#argsSatisfiable
+    name: argsSatisfiable
+    kind: reexport
+    file: apps/datacore/src/solvers/args-schemas.ts
+    line: 21
+    brief: "薄 re-export：判断给定 args 是否满足该求解器的必填集"
+    docSource: none
+    tags: [datacore, solver-args]
+    wo: null
+    state: test-only
+    reexportOf: "packages/contracts/src/solver-args.ts#argsSatisfiable"
+    inbound: { srcCount: 0, selfUses: 0, selfLine: null, testCount: 1, src: [], test: [{ file: "apps/datacore/test/solver-args.test.ts", line: 21 }] }
+
+  - id: sym:apps/datacore/src/solvers/portfolio.ts#lineModelCompat
+    name: lineModelCompat
+    kind: property
+    file: apps/datacore/src/solvers/portfolio.ts
+    line: 60
+    brief: "型号-产线兼容表：lineGranularity 开时按它过滤，缺省全兼容"
+    docSource: jsdoc
+    tags: [datacore, solver, portfolio, lever]
+    wo: null
+    state: wired
+    reexportOf: null
+    inbound: { srcCount: 2, selfUses: 0, selfLine: null, testCount: 0, src: [{ file: "apps/datacore/src/solvers/portfolio.ts", line: 408 }, { file: "apps/datacore/src/solvers/service.ts", line: 3515 }], test: [] }

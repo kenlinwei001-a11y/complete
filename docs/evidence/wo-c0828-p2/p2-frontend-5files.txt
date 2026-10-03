@@ -1,0 +1,1709 @@
+
+ RUN  v3.2.6 /Users/apple/deploy/wo-edge-wire/.claude/worktrees/p2-self/apps/frontend-shell
+
+ ❯ test/sim-rail-forms.seam.test.tsx (19 tests | 1 failed) 8267ms
+   ✓ WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ⓪ 金丝雀：子页数 = fixture 里 distinct 域数（失败 ⇒ 工具坏了，不是组件没渲染）  651ms
+   ✓ WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ① 来源臂：可选的量与中文名来自后端回包 —— 改回包，屏上跟着改  1582ms
+   ✓ WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ② 层级臂：改边集让链首从根源掉成枢纽 ⇒ 屏上分组跟着变（前端没有第二套度数计算）  334ms
+   ✓ WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ③ 写口臂：点「施加」真发 POST，载荷逐字段对拍契约写入子集（键集完全相等）  987ms
+   ✓ WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ③' 写口臂 · 留空持续拍数 ⇒ `durationTicks: null`（契约的「永久」语义，等价于旧 /act）  405ms
+   × WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ④ 做不到臂：不在世界态里的量屏上标明、且提交时真的被拦住（不许静默提交） 160ms
+     → expected '设备OEE' to contain 'Equipment.oee_current'
+   ✓ WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ④' 「不知道」与「扰不动」分得开：世界态清单没回来时报 `STATE_VARS_UNKNOWN` 57ms
+   ✓ WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ⑤ 收起态臂：`onAppliedChange` 交出「已施加什么」，标签同样来自回包  396ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑥ 金丝雀 + 默认起始拍臂：默认值由**当前拍现算** —— 改 curTick 回包，默认值跟着变  340ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑥' 默认值真被发出去：不碰起始拍直接施加 ⇒ 载荷里的 startTick = 当前拍+1 251ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑥'' 过去拍臂：填 0（以及任何 < 当前拍的值）⇒ 拦住、说原因、一个请求都不发  629ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑥''' 「不知道当前拍」与「当前拍是 0」分得开 —— 前者拦住并说不知道，不许拿 0 兜底 264ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑦ 当前拍上屏臂：屏上写明世界在第几拍，且这个数来自回包（改回包就跟着变） 265ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑧ 回执臂 · 生效：说清落在第几拍、那一格变了多少、全世界变了几个格  387ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑧a 回执臂 · 数字长相与卡墙同一口径 —— 屏上不许出现 IEEE754 的减法余数 265ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑧' 回执臂 · `simWorld` 必须在 POST **之前**读 —— 否则左端已经是施加后的值 286ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑧'' 回执臂 · 排在未来：说「还没轮到它」并给出还差几拍，**不说**「没生效」  310ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑧''' 回执臂 · 到点却没动：给出**可执行**的原因，且一个劝退字都不许有  463ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑧'''' 回执臂 · 施加前那份世界态没拿到 ⇒ 说「没法比」，**不许**印成「变了 0 个格」 225ms
+stderr | test/sim-unified-shell.seam.test.tsx > WO-SIM-TICK-GATE · 页签计数现算 / 假旋钮下屏 > ⑨' 计数没到手时说「还没取到」，**不许**印成 0 条（「不知道」≠「一条都没有」）
+Query data cannot be undefined. Please make sure to return a value other than undefined from your query function. Affected query key: ["a","sim-view-config"]
+
+ ✓ test/sim-unified-shell.seam.test.tsx (13 tests) 11764ms
+   ✓ WO-SIM-UNIFIED-SHELL · 统一推演控制台接缝门 > ⓪ 金丝雀：五区外壳挂得起来，且卡墙铺出了 fixture 声明的那些卡（失败 ⇒ 报「工具坏了」，不许读作「卡墙是空的」）  2130ms
+   ✓ WO-SIM-UNIFIED-SHELL · 统一推演控制台接缝门 > ① 卡墙来源臂：卡的**个数与名字**来自 view-config 回包 —— 改回包，屏上跟着变  1843ms
+   ✓ WO-SIM-UNIFIED-SHELL · 统一推演控制台接缝门 > ② 层级现算臂：改 propagation-rules 的**边集** ⇒ 某个变量的层级跟着变（根源 → 枢纽）  989ms
+   ✓ WO-SIM-UNIFIED-SHELL · 统一推演控制台接缝门 > ③ 只铺变化臂：未变化的不在第一层，但在「未变化 N 项」展开块里找得回来（收起 ≠ 删除）  463ms
+   ✓ WO-SIM-UNIFIED-SHELL · 统一推演控制台接缝门 > ④ 收合臂：收起 ⇒ 摘要条出现且带「已施加什么」；点「改扰动」⇒ 左栏回来  741ms
+   ✓ WO-SIM-UNIFIED-SHELL · 统一推演控制台接缝门 > ⑤ 诚实位臂：派生读数的口径标注与数字**同屏**（同一张卡内），且写着后端那句出处  482ms
+   ✓ WO-SIM-UNIFIED-SHELL · 统一推演控制台接缝门 > ⑥ 右栏检视：点卡 ⇒ 四问在屏上（含谁推的/推坏谁的系数与延迟），且「没有落点」与「算不出来」是两个态  1384ms
+   ✓ WO-SIM-UNIFIED-SHELL · 统一推演控制台接缝门 > ⑦ 抽屉：右栏「展开」进三栏抽屉，窗口天数由 ticks×tickDays **现算**（不是写死的 60）  863ms
+   ✓ WO-SIM-UNIFIED-SHELL · 统一推演控制台接缝门 > ⑧ 模式页签：顺序与文案 == 已批准 UX 规格；已接线的可点，未接线的**占位禁用**（不是隐藏）  588ms
+   ✓ WO-SIM-UNIFIED-SHELL · 统一推演控制台接缝门 > ⑨ 屏上零 markdown 记号、零接口枚举，而机器读的那份枚举仍在 data-* 上（含金丝雀与变异反证）  480ms
+   ✓ WO-SIM-TICK-GATE · 页签计数现算 / 假旋钮下屏 > ⑨ 页签计数臂：两个数都由 view-config 回包现算 —— 改回包，两处 title 跟着变  971ms
+   ✓ WO-SIM-TICK-GATE · 页签计数现算 / 假旋钮下屏 > ⑩ 假旋钮臂：钉到对照 / 追这条链**禁用占位 + 人话 title**，工单黑话一个字都不上屏  638ms
+stderr | test/console0828-decision.seam.test.tsx > WO-C0828-SEAM · 08-28 决策屏接缝门 > ④ 算一下 → 出结果：一个按钮背后五跳走完，四块结果面板同时出现且读的是同一次结果
+Warning: validateDOMNesting(...): <summary> cannot appear as a descendant of <p>.
+    at summary
+    at details
+    at p
+    at div
+    at div
+    at main
+    at div
+    at div
+    at Console0828 (/Users/apple/deploy/wo-edge-wire/.claude/worktrees/p2-self/apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:185:3)
+    at div
+    at UnifiedSimShell (/Users/apple/deploy/wo-edge-wire/.claude/worktrees/p2-self/apps/frontend-shell/src/views/sim/unified/UnifiedSimShell.tsx:285:28)
+    at QueryClientProvider (file:///Users/apple/deploy/complete/.claude/worktrees/agent-a80b730eca94f0bb7/node_modules/.pnpm/@tanstack+react-query@5.101.0_react@18.3.1/node_modules/@tanstack/react-query/build/modern/QueryClientProvider.js:20:3)
+Warning: validateDOMNesting(...): <p> cannot appear as a descendant of <p>.
+    at p
+    at div
+    at details
+    at p
+    at div
+    at div
+    at main
+    at div
+    at div
+    at Console0828 (/Users/apple/deploy/wo-edge-wire/.claude/worktrees/p2-self/apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:185:3)
+    at div
+    at UnifiedSimShell (/Users/apple/deploy/wo-edge-wire/.claude/worktrees/p2-self/apps/frontend-shell/src/views/sim/unified/UnifiedSimShell.tsx:285:28)
+    at QueryClientProvider (file:///Users/apple/deploy/complete/.claude/worktrees/agent-a80b730eca94f0bb7/node_modules/.pnpm/@tanstack+react-query@5.101.0_react@18.3.1/node_modules/@tanstack/react-query/build/modern/QueryClientProvider.js:20:3)
+Warning: validateDOMNesting(...): <div> cannot appear as a descendant of <p>.
+    at div
+    at details
+    at p
+    at div
+    at div
+    at main
+    at div
+    at div
+    at Console0828 (/Users/apple/deploy/wo-edge-wire/.claude/worktrees/p2-self/apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:185:3)
+    at div
+    at UnifiedSimShell (/Users/apple/deploy/wo-edge-wire/.claude/worktrees/p2-self/apps/frontend-shell/src/views/sim/unified/UnifiedSimShell.tsx:285:28)
+    at QueryClientProvider (file:///Users/apple/deploy/complete/.claude/worktrees/agent-a80b730eca94f0bb7/node_modules/.pnpm/@tanstack+react-query@5.101.0_react@18.3.1/node_modules/@tanstack/react-query/build/modern/QueryClientProvider.js:20:3)
+Warning: validateDOMNesting(...): <details> cannot appear as a descendant of <p>.
+    at details
+    at p
+    at div
+    at div
+    at main
+    at div
+    at div
+    at Console0828 (/Users/apple/deploy/wo-edge-wire/.claude/worktrees/p2-self/apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:185:3)
+    at div
+    at UnifiedSimShell (/Users/apple/deploy/wo-edge-wire/.claude/worktrees/p2-self/apps/frontend-shell/src/views/sim/unified/UnifiedSimShell.tsx:285:28)
+    at QueryClientProvider (file:///Users/apple/deploy/complete/.claude/worktrees/agent-a80b730eca94f0bb7/node_modules/.pnpm/@tanstack+react-query@5.101.0_react@18.3.1/node_modules/@tanstack/react-query/build/modern/QueryClientProvider.js:20:3)
+
+ ✓ test/sim-session-lifecycle.seam.test.tsx (10 tests) 5365ms
+   ✓ WO-SIM-SESSION-WIRE · 会话生命周期与变更波及面接缝门 > ⓪ 金丝雀：状态条挂得起来，且屏上那个状态来自会话清单回包 —— 改回包，屏上跟着变（失败 ⇒ 报「工具坏了」，不许读作「这块屏没做」）  1337ms
+   ✓ WO-SIM-SESSION-WIRE · 会话生命周期与变更波及面接缝门 > ① 迁移真发那一跳：按「暂停」⇒ 打出 PATCH，实参是清单里那条会话的 id 与 PAUSED（不是别的会话、也不是别的目标）  625ms
+   ✓ WO-SIM-SESSION-WIRE · 会话生命周期与变更波及面接缝门 > ② 迁移成功 ⇒ 清单被重取、屏上状态跟着翻（状态只有清单那一个出处，不在组件里另存一份副本）  356ms
+   ✓ WO-SIM-SESSION-WIRE · 会话生命周期与变更波及面接缝门 > ③ 后端 409 ⇒ 后端那句原话上屏（用户读到的是权威答案，不是前端猜的一句「失败」）  308ms
+   ✓ WO-SIM-SESSION-WIRE · 会话生命周期与变更波及面接缝门 > ④ 这一跳没走通 ⇒ 屏上说「不知道成没成」，且与 ③ 那句字面不同（两态合并成一句即红）  332ms
+   ✓ WO-SIM-SESSION-WIRE · 会话生命周期与变更波及面接缝门 > ⑥ 波及面：不问一发不发；问了才发，四桶计数与逐条上屏（只读语义不做成副作用节奏）  505ms
+   ✓ WO-SIM-SESSION-WIRE · 会话生命周期与变更波及面接缝门 > ⑦ 空集分两态：确为叶子 vs 有算不出来的部分（契约原文：items 空 + unresolved 空 才是叶子）  856ms
+   ✓ WO-SIM-SESSION-WIRE · 会话生命周期与变更波及面接缝门 > ⑨ 暂停不是单程路：暂停之后「恢复」仍然点得动，且真能迁回 RUNNING（2026-08-26 真浏览器实测抓到的死路，机器从此先说话）  372ms
+   ✓ WO-SIM-SESSION-WIRE · 会话生命周期与变更波及面接缝门 > ⑧ 波及面这一跳没走通 ⇒ 「不知道有没有波及」，与 ⑦ 的「不波及任何下游」字面不同  428ms
+ ✓ test/exposure-responds-to-perturbation.seam.test.ts (9 tests) 195ms
+ ❯ test/console0828-decision.seam.test.tsx (20 tests | 2 failed) 40831ms
+   ✓ WO-C0828-SEAM · 08-28 决策屏接缝门 > ⓪ 金丝雀：12 件事全部挂出按钮，且三种落地态都非空 —— 失败 ⇒ 报「工具坏了」，不许读作「今天没有可加的事」  913ms
+   ✓ WO-C0828-SEAM · 08-28 决策屏接缝门 > ① 到达路径：route 默认就是决策屏（不是工作台），且「专家模式」点下去真能切过去  574ms
+   ✓ WO-C0828-SEAM · 08-28 决策屏接缝门 > ② 三重不可见回归：落不了地的事**点得开**，且理由三条路都到得了（不是 disabled · 无原生 title · 点开有字） 289ms
+   ✓ WO-C0828-SEAM · 08-28 决策屏接缝门 > ②b 三态不许塌成一个：「一个实例都没有」与「有实例但没有这个量」是两句不同的话 291ms
+   ✓ WO-C0828-SEAM · 08-28 决策屏接缝门 > ③ 加事件 → 暂存：件数跟着变，**加两件必须显示 2 件**（1 件与多件在模型层不是同一段）  837ms
+   ✓ WO-C0828-SEAM · 08-28 决策屏接缝门 > ④ 算一下 → 出结果：一个按钮背后五跳走完，四块结果面板同时出现且读的是同一次结果  1157ms
+   ✓ WO-C0828-SEAM · 08-28 决策屏接缝门 > ④b 多件时主因这句话必须换成「说不清」——不许挑一个顶上（差分层看不出某一格是谁推的）  897ms
+   ✓ WO-C0828-SEAM · 08-28 决策屏接缝门 > ⑤ 诚实态 · 三行钱：算不出来的画「这次算不出来」——⛔ 不许显示 0，也不许留空  766ms
+   ✓ WO-C0828-SEAM · 08-28 决策屏接缝门 > ⑤b 诚实态 · 整跳失败：说「这次没算成」，而**不是**摆一屏 0 出来  412ms
+   ✓ WO-C0828-SEAM · 08-28 决策屏接缝门 > ⑤c 诚实态 · 扫描失败：钱照出，而卡点那半说「没问出来」——不许静默吞成「没有卡点」  305ms
+   ✓ WO-C0828-SEAM · 08-28 决策屏接缝门 > ⑥ 对照实验 · tickDays 1 vs 3：同一个第 6 拍必须给出不同日期，且差值 = 6×(3−1) = 12 天  874ms
+   ✓ WO-C0828-SEAM · 08-28 决策屏接缝门 > ⑥b 取不到起始日 ⇒ 退回「第 N 拍」并说明，⛔ 不许编一个今天顶上  412ms
+   ✓ WO-C0828-SEAM · 08-28 决策屏接缝门 > ⑦ 对策面板跟着选择走：点 A 标题是 A，点 B 变成 B，且选中态落在按钮上  906ms
+   ✓ WO-C0828-SEAM · 08-28 决策屏接缝门 > ⑦b 同名两行必须分得开：辨识串带判据码 + 落点，⛔ 不是「①②」这种序号  721ms
+   × WO-C0828-SEAM · 08-28 决策屏接缝门 > ⑦c 定价 priced 上卡：候选卡显示拨后仍受影响 N 张 · 金额，口径声明用回包真 p90 15325ms
+     → Unable to find an element by: [data-testid="c0828-price-imp_CONGESTION.MATERIAL.batch-idle_pos_ncm_b2"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_shell_e441ea"[39m
+      [33mdata-testid[39m=[32m"usim-shell"[39m
+      [33mdata-view[39m=[32m"console0828"[39m
+    [36m>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"_shell_d0049a"[39m
+        [33mdata-testid[39m=[32m"c0828-shell"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_topbar_d0049a"[39m
+          [33mdata-testid[39m=[32m"c0828-topbar"[39m
+        [36m>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"_topTitle_d0049a"[39m
+          [36m>[39m
+            [0m推演与对策[0m
+          [36m</span>[39m
+          [36m<label[39m
+            [33mclass[39m=[32m"_scopeBox_d0049a"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_scopeLbl_d0049a"[39m
+            [36m>[39m
+              [0m范围[0m
+            [36m</span>[39m
+            [36m<select[39m
+              [33mclass[39m=[32m"_scopeSel_d0049a"[39m
+              [33mdata-testid[39m=[32m"c0828-scope-select"[39m
+            [36m>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m""[39m
+              [36m>[39m
+                [0m全网（未限定）[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"changzhou"[39m
+              [36m>[39m
+                [0m常州[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"xiamen"[39m
+              [36m>[39m
+                [0m厦门[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"chengdu"[39m
+              [36m>[39m
+                [0m成都[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"meishan"[39m
+              [36m>[39m
+                [0m眉山[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"wuhan"[39m
+              [36m>[39m
+                [0m武汉[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"jiangmen"[39m
+              [36m>[39m
+                [0m江门[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"hefei"[39m
+              [36m>[39m
+                [0m合肥[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"xinyang"[39m
+              [36m>[39m
+                [0m信阳[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"zaozhuang"[39m
+              [36m>[39m
+                [0m枣庄[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"handan"[39m
+              [36m>[39m
+                [0m邯郸[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"zigong"[39m
+              [36m>[39m
+                [0m自贡[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"jinhua"[39m
+              [36m>[39m
+                [0m金华[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"yangzhou"[39m
+              [36m>[39m
+                [0m扬州[0m
+              [36m</option>[39m
+            [36m</select>[39m
+          [36m</label>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"_topTag_d0049a"[39m
+            [33mdata-testid[39m=[32m"c0828-scope-echo"[39m
+          [36m>[39m
+            [0m当前扫描范围：[0m
+            [36m<b>[39m
+              [0m未限定（全域）[0m
+            [36m</b>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"_topRight_d0049a"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_topDim_d0049a"[39m
+              [33mdata-testid[39m=[32m"c0828-restore-none"[39m
+            [36m>[39m
+              [0m本会话在服务端无扰动记录[0m
+            [36m</span>[39m
+          [36m</span>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_kpis_d0049a"[39m
+          [33mdata-testid[39m=[32m"c0828-kpis"[39m
+          [33mstyle[39m=[32m"--kpi-n: 3;"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"_kpi_d0049a"[39m
+            [33mdata-testid[39m=[32m"c0828-kpi-book"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiKey_d0049a"[39m
+            [36m>[39m
+              [0m在手订单簿合计[0m
+              [36m<span[39m
+                [33mclass[39m=[32m"_wrap_eb0151"[39m
+                [33mdata-open[39m=[32m"0"[39m
+                [33mdata-testid[39m=[32m"info-wrap-c0828-kpi-book"[39m
+              [36m>[39m
+                [36m<button[39m
+                  [33maria-expanded[39m=[32m"false"[39m
+                  [33maria-label[39m=[32m"在手订单簿合计 · 口径 —— 说明（悬停或聚焦查看）"[39m
+                  [33mclass[39m=[32m"_trigger_eb0151"[39m
+                  [33mdata-testid[39m=[32m"info-c0828-kpi-book"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [0m?[0m
+                [36m</button>[39m
+              [36m</span>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiValRow_d0049a"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"_kpiBig_d0049a _kpiBigSm_d0049a"[39m
+              [36m>[39m
+                [0m6200.0万元[0m
+              [36m</span>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiCmp_d0049a"[39m
+            [36m>[39m
+              [0m3 张单 · 2 家客户[0m
+            [36m</span>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"_kpi_d0049a"[39m
+            [33mdata-testid[39m=[32m"c0828-kpi-staged"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiKey_d0049a"[39m
+            [36m>[39m
+              [0m待施加扰动[0m
+              [36m<span[39m
+                [33mclass[39m=[32m"_wrap_eb0151"[39m
+                [33mdata-open[39m=[32m"0"[39m
+                [33mdata-testid[39m=[32m"info-wrap-c0828-kpi-staged"[39m
+              [36m>[39m
+                [36m<button[39m
+                  [33maria-expanded[39m=[32m"false"[39m
+                  [33maria-label[39m=[32m"待施加扰动 · 口径 —— 说明（悬停或聚焦查看）"[39m
+                  [33mclass[39m=[32m"_trigger_eb0151"[39m
+                  [33mdata-testid[39m=[32m"info-c0828-kpi-staged"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+    ...
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_shell_e441ea"[39m
+      [33mdata-testid[39m=[32m"usim-shell"[39m
+      [33mdata-view[39m=[32m"console0828"[39m
+    [36m>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"_shell_d0049a"[39m
+        [33mdata-testid[39m=[32m"c0828-shell"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_topbar_d0049a"[39m
+          [33mdata-testid[39m=[32m"c0828-topbar"[39m
+        [36m>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"_topTitle_d0049a"[39m
+          [36m>[39m
+            [0m推演与对策[0m
+          [36m</span>[39m
+          [36m<label[39m
+            [33mclass[39m=[32m"_scopeBox_d0049a"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_scopeLbl_d0049a"[39m
+            [36m>[39m
+              [0m范围[0m
+            [36m</span>[39m
+            [36m<select[39m
+              [33mclass[39m=[32m"_scopeSel_d0049a"[39m
+              [33mdata-testid[39m=[32m"c0828-scope-select"[39m
+            [36m>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m""[39m
+              [36m>[39m
+                [0m全网（未限定）[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"changzhou"[39m
+              [36m>[39m
+                [0m常州[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"xiamen"[39m
+              [36m>[39m
+                [0m厦门[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"chengdu"[39m
+              [36m>[39m
+                [0m成都[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"meishan"[39m
+              [36m>[39m
+                [0m眉山[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"wuhan"[39m
+              [36m>[39m
+                [0m武汉[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"jiangmen"[39m
+              [36m>[39m
+                [0m江门[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"hefei"[39m
+              [36m>[39m
+                [0m合肥[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"xinyang"[39m
+              [36m>[39m
+                [0m信阳[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"zaozhuang"[39m
+              [36m>[39m
+                [0m枣庄[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"handan"[39m
+              [36m>[39m
+                [0m邯郸[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"zigong"[39m
+              [36m>[39m
+                [0m自贡[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"jinhua"[39m
+              [36m>[39m
+                [0m金华[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"yangzhou"[39m
+              [36m>[39m
+                [0m扬州[0m
+              [36m</option>[39m
+            [36m</select>[39m
+          [36m</label>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"_topTag_d0049a"[39m
+            [33mdata-testid[39m=[32m"c0828-scope-echo"[39m
+          [36m>[39m
+            [0m当前扫描范围：[0m
+            [36m<b>[39m
+              [0m未限定（全域）[0m
+            [36m</b>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"_topRight_d0049a"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_topDim_d0049a"[39m
+              [33mdata-testid[39m=[32m"c0828-restore-none"[39m
+            [36m>[39m
+              [0m本会话在服务端无扰动记录[0m
+            [36m</span>[39m
+          [36m</span>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_kpis_d0049a"[39m
+          [33mdata-testid[39m=[32m"c0828-kpis"[39m
+          [33mstyle[39m=[32m"--kpi-n: 3;"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"_kpi_d0049a"[39m
+            [33mdata-testid[39m=[32m"c0828-kpi-book"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiKey_d0049a"[39m
+            [36m>[39m
+              [0m在手订单簿合计[0m
+              [36m<span[39m
+                [33mclass[39m=[32m"_wrap_eb0151"[39m
+                [33mdata-open[39m=[32m"0"[39m
+                [33mdata-testid[39m=[32m"info-wrap-c0828-kpi-book"[39m
+              [36m>[39m
+                [36m<button[39m
+                  [33maria-expanded[39m=[32m"false"[39m
+                  [33maria-label[39m=[32m"在手订单簿合计 · 口径 —— 说明（悬停或聚焦查看）"[39m
+                  [33mclass[39m=[32m"_trigger_eb0151"[39m
+                  [33mdata-testid[39m=[32m"info-c0828-kpi-book"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [0m?[0m
+                [36m</button>[39m
+              [36m</span>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiValRow_d0049a"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"_kpiBig_d0049a _kpiBigSm_d0049a"[39m
+              [36m>[39m
+                [0m6200.0万元[0m
+              [36m</span>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiCmp_d0049a"[39m
+            [36m>[39m
+              [0m3 张单 · 2 家客户[0m
+            [36m</span>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"_kpi_d0049a"[39m
+            [33mdata-testid[39m=[32m"c0828-kpi-staged"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiKey_d0049a"[39m
+            [36m>[39m
+              [0m待施加扰动[0m
+              [36m<span[39m
+                [33mclass[39m=[32m"_wrap_eb0151"[39m
+                [33mdata-open[39m=[32m"0"[39m
+                [33mdata-testid[39m=[32m"info-wrap-c0828-kpi-staged"[39m
+              [36m>[39m
+                [36m<button[39m
+                  [33maria-expanded[39m=[32m"false"[39m
+                  [33maria-label[39m=[32m"待施加扰动 · 口径 —— 说明（悬停或聚焦查看）"[39m
+                  [33mclass[39m=[32m"_trigger_eb0151"[39m
+                  [33mdata-testid[39m=[32m"info-c0828-kpi-staged"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+    ...
+   × WO-C0828-SEAM · 08-28 决策屏接缝门 > ⑦c-gap 定价缺格上卡：NO_BINDING 点名缺的绑定，⛔ 不渲染 0、不塌成「未定价」 15184ms
+     → Unable to find an element by: [data-testid="c0828-price-imp_CONGESTION.MATERIAL.batch-idle_pos_ncm_b2"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_shell_e441ea"[39m
+      [33mdata-testid[39m=[32m"usim-shell"[39m
+      [33mdata-view[39m=[32m"console0828"[39m
+    [36m>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"_shell_d0049a"[39m
+        [33mdata-testid[39m=[32m"c0828-shell"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_topbar_d0049a"[39m
+          [33mdata-testid[39m=[32m"c0828-topbar"[39m
+        [36m>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"_topTitle_d0049a"[39m
+          [36m>[39m
+            [0m推演与对策[0m
+          [36m</span>[39m
+          [36m<label[39m
+            [33mclass[39m=[32m"_scopeBox_d0049a"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_scopeLbl_d0049a"[39m
+            [36m>[39m
+              [0m范围[0m
+            [36m</span>[39m
+            [36m<select[39m
+              [33mclass[39m=[32m"_scopeSel_d0049a"[39m
+              [33mdata-testid[39m=[32m"c0828-scope-select"[39m
+            [36m>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m""[39m
+              [36m>[39m
+                [0m全网（未限定）[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"changzhou"[39m
+              [36m>[39m
+                [0m常州[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"xiamen"[39m
+              [36m>[39m
+                [0m厦门[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"chengdu"[39m
+              [36m>[39m
+                [0m成都[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"meishan"[39m
+              [36m>[39m
+                [0m眉山[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"wuhan"[39m
+              [36m>[39m
+                [0m武汉[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"jiangmen"[39m
+              [36m>[39m
+                [0m江门[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"hefei"[39m
+              [36m>[39m
+                [0m合肥[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"xinyang"[39m
+              [36m>[39m
+                [0m信阳[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"zaozhuang"[39m
+              [36m>[39m
+                [0m枣庄[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"handan"[39m
+              [36m>[39m
+                [0m邯郸[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"zigong"[39m
+              [36m>[39m
+                [0m自贡[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"jinhua"[39m
+              [36m>[39m
+                [0m金华[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"yangzhou"[39m
+              [36m>[39m
+                [0m扬州[0m
+              [36m</option>[39m
+            [36m</select>[39m
+          [36m</label>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"_topTag_d0049a"[39m
+            [33mdata-testid[39m=[32m"c0828-scope-echo"[39m
+          [36m>[39m
+            [0m当前扫描范围：[0m
+            [36m<b>[39m
+              [0m未限定（全域）[0m
+            [36m</b>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"_topRight_d0049a"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_topDim_d0049a"[39m
+              [33mdata-testid[39m=[32m"c0828-restore-none"[39m
+            [36m>[39m
+              [0m本会话在服务端无扰动记录[0m
+            [36m</span>[39m
+          [36m</span>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_kpis_d0049a"[39m
+          [33mdata-testid[39m=[32m"c0828-kpis"[39m
+          [33mstyle[39m=[32m"--kpi-n: 3;"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"_kpi_d0049a"[39m
+            [33mdata-testid[39m=[32m"c0828-kpi-book"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiKey_d0049a"[39m
+            [36m>[39m
+              [0m在手订单簿合计[0m
+              [36m<span[39m
+                [33mclass[39m=[32m"_wrap_eb0151"[39m
+                [33mdata-open[39m=[32m"0"[39m
+                [33mdata-testid[39m=[32m"info-wrap-c0828-kpi-book"[39m
+              [36m>[39m
+                [36m<button[39m
+                  [33maria-expanded[39m=[32m"false"[39m
+                  [33maria-label[39m=[32m"在手订单簿合计 · 口径 —— 说明（悬停或聚焦查看）"[39m
+                  [33mclass[39m=[32m"_trigger_eb0151"[39m
+                  [33mdata-testid[39m=[32m"info-c0828-kpi-book"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [0m?[0m
+                [36m</button>[39m
+              [36m</span>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiValRow_d0049a"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"_kpiBig_d0049a _kpiBigSm_d0049a"[39m
+              [36m>[39m
+                [0m6200.0万元[0m
+              [36m</span>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiCmp_d0049a"[39m
+            [36m>[39m
+              [0m3 张单 · 2 家客户[0m
+            [36m</span>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"_kpi_d0049a"[39m
+            [33mdata-testid[39m=[32m"c0828-kpi-staged"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiKey_d0049a"[39m
+            [36m>[39m
+              [0m待施加扰动[0m
+              [36m<span[39m
+                [33mclass[39m=[32m"_wrap_eb0151"[39m
+                [33mdata-open[39m=[32m"0"[39m
+                [33mdata-testid[39m=[32m"info-wrap-c0828-kpi-staged"[39m
+              [36m>[39m
+                [36m<button[39m
+                  [33maria-expanded[39m=[32m"false"[39m
+                  [33maria-label[39m=[32m"待施加扰动 · 口径 —— 说明（悬停或聚焦查看）"[39m
+                  [33mclass[39m=[32m"_trigger_eb0151"[39m
+                  [33mdata-testid[39m=[32m"info-c0828-kpi-staged"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+    ...
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_shell_e441ea"[39m
+      [33mdata-testid[39m=[32m"usim-shell"[39m
+      [33mdata-view[39m=[32m"console0828"[39m
+    [36m>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"_shell_d0049a"[39m
+        [33mdata-testid[39m=[32m"c0828-shell"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_topbar_d0049a"[39m
+          [33mdata-testid[39m=[32m"c0828-topbar"[39m
+        [36m>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"_topTitle_d0049a"[39m
+          [36m>[39m
+            [0m推演与对策[0m
+          [36m</span>[39m
+          [36m<label[39m
+            [33mclass[39m=[32m"_scopeBox_d0049a"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_scopeLbl_d0049a"[39m
+            [36m>[39m
+              [0m范围[0m
+            [36m</span>[39m
+            [36m<select[39m
+              [33mclass[39m=[32m"_scopeSel_d0049a"[39m
+              [33mdata-testid[39m=[32m"c0828-scope-select"[39m
+            [36m>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m""[39m
+              [36m>[39m
+                [0m全网（未限定）[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"changzhou"[39m
+              [36m>[39m
+                [0m常州[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"xiamen"[39m
+              [36m>[39m
+                [0m厦门[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"chengdu"[39m
+              [36m>[39m
+                [0m成都[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"meishan"[39m
+              [36m>[39m
+                [0m眉山[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"wuhan"[39m
+              [36m>[39m
+                [0m武汉[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"jiangmen"[39m
+              [36m>[39m
+                [0m江门[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"hefei"[39m
+              [36m>[39m
+                [0m合肥[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"xinyang"[39m
+              [36m>[39m
+                [0m信阳[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"zaozhuang"[39m
+              [36m>[39m
+                [0m枣庄[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"handan"[39m
+              [36m>[39m
+                [0m邯郸[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"zigong"[39m
+              [36m>[39m
+                [0m自贡[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"jinhua"[39m
+              [36m>[39m
+                [0m金华[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"yangzhou"[39m
+              [36m>[39m
+                [0m扬州[0m
+              [36m</option>[39m
+            [36m</select>[39m
+          [36m</label>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"_topTag_d0049a"[39m
+            [33mdata-testid[39m=[32m"c0828-scope-echo"[39m
+          [36m>[39m
+            [0m当前扫描范围：[0m
+            [36m<b>[39m
+              [0m未限定（全域）[0m
+            [36m</b>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"_topRight_d0049a"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_topDim_d0049a"[39m
+              [33mdata-testid[39m=[32m"c0828-restore-none"[39m
+            [36m>[39m
+              [0m本会话在服务端无扰动记录[0m
+            [36m</span>[39m
+          [36m</span>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_kpis_d0049a"[39m
+          [33mdata-testid[39m=[32m"c0828-kpis"[39m
+          [33mstyle[39m=[32m"--kpi-n: 3;"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"_kpi_d0049a"[39m
+            [33mdata-testid[39m=[32m"c0828-kpi-book"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiKey_d0049a"[39m
+            [36m>[39m
+              [0m在手订单簿合计[0m
+              [36m<span[39m
+                [33mclass[39m=[32m"_wrap_eb0151"[39m
+                [33mdata-open[39m=[32m"0"[39m
+                [33mdata-testid[39m=[32m"info-wrap-c0828-kpi-book"[39m
+              [36m>[39m
+                [36m<button[39m
+                  [33maria-expanded[39m=[32m"false"[39m
+                  [33maria-label[39m=[32m"在手订单簿合计 · 口径 —— 说明（悬停或聚焦查看）"[39m
+                  [33mclass[39m=[32m"_trigger_eb0151"[39m
+                  [33mdata-testid[39m=[32m"info-c0828-kpi-book"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [0m?[0m
+                [36m</button>[39m
+              [36m</span>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiValRow_d0049a"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"_kpiBig_d0049a _kpiBigSm_d0049a"[39m
+              [36m>[39m
+                [0m6200.0万元[0m
+              [36m</span>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiCmp_d0049a"[39m
+            [36m>[39m
+              [0m3 张单 · 2 家客户[0m
+            [36m</span>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"_kpi_d0049a"[39m
+            [33mdata-testid[39m=[32m"c0828-kpi-staged"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiKey_d0049a"[39m
+            [36m>[39m
+              [0m待施加扰动[0m
+              [36m<span[39m
+                [33mclass[39m=[32m"_wrap_eb0151"[39m
+                [33mdata-open[39m=[32m"0"[39m
+                [33mdata-testid[39m=[32m"info-wrap-c0828-kpi-staged"[39m
+              [36m>[39m
+                [36m<button[39m
+                  [33maria-expanded[39m=[32m"false"[39m
+                  [33maria-label[39m=[32m"待施加扰动 · 口径 —— 说明（悬停或聚焦查看）"[39m
+                  [33mclass[39m=[32m"_trigger_eb0151"[39m
+                  [33mdata-testid[39m=[32m"info-c0828-kpi-staged"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+    ...
+   ✓ WO-C0828-SEAM · 08-28 决策屏接缝门 > WO-SIM-PLAIN-WORDS · 加扰动表单的业务语言与时间形态 > ⑧ 对照实验 · 长度口径：持续填 3，tickDays 1→3 屏上必须从「3 天」变成「9 天」；取不到刻度则退回「3 拍」+ 原因  398ms
+   ✓ WO-C0828-SEAM · 08-28 决策屏接缝门 > WO-SIM-PLAIN-WORDS · 加扰动表单的业务语言与时间形态 > ⑨ 一次性事件查不到「持续」那一格，持续型查得到（反向臂缺一条则「永远不渲染」也会绿） 122ms
+   ✓ WO-C0828-SEAM · 08-28 决策屏接缝门 > WO-SIM-PLAIN-WORDS · 加扰动表单的业务语言与时间形态 > ⑩ 提交形状：一次性事件的载荷 `durationTicks === null`（永久）；持续型填了 3 就发 3 270ms
+   ✓ WO-C0828-SEAM · 08-28 决策屏接缝门 > WO-SIM-PLAIN-WORDS · 加扰动表单的业务语言与时间形态 > ⑪ 一个字都没删：改措辞/降层前表单上有的可读文本，改完之后一条不少 171ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/console0828-decision.seam.test.tsx > WO-C0828-SEAM · 08-28 决策屏接缝门 > ⑦c 定价 priced 上卡：候选卡显示拨后仍受影响 N 张 · 金额，口径声明用回包真 p90
+TestingLibraryElementError: Unable to find an element by: [data-testid="c0828-price-imp_CONGESTION.MATERIAL.batch-idle_pos_ncm_b2"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_shell_e441ea"[39m
+      [33mdata-testid[39m=[32m"usim-shell"[39m
+      [33mdata-view[39m=[32m"console0828"[39m
+    [36m>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"_shell_d0049a"[39m
+        [33mdata-testid[39m=[32m"c0828-shell"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_topbar_d0049a"[39m
+          [33mdata-testid[39m=[32m"c0828-topbar"[39m
+        [36m>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"_topTitle_d0049a"[39m
+          [36m>[39m
+            [0m推演与对策[0m
+          [36m</span>[39m
+          [36m<label[39m
+            [33mclass[39m=[32m"_scopeBox_d0049a"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_scopeLbl_d0049a"[39m
+            [36m>[39m
+              [0m范围[0m
+            [36m</span>[39m
+            [36m<select[39m
+              [33mclass[39m=[32m"_scopeSel_d0049a"[39m
+              [33mdata-testid[39m=[32m"c0828-scope-select"[39m
+            [36m>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m""[39m
+              [36m>[39m
+                [0m全网（未限定）[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"changzhou"[39m
+              [36m>[39m
+                [0m常州[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"xiamen"[39m
+              [36m>[39m
+                [0m厦门[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"chengdu"[39m
+              [36m>[39m
+                [0m成都[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"meishan"[39m
+              [36m>[39m
+                [0m眉山[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"wuhan"[39m
+              [36m>[39m
+                [0m武汉[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"jiangmen"[39m
+              [36m>[39m
+                [0m江门[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"hefei"[39m
+              [36m>[39m
+                [0m合肥[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"xinyang"[39m
+              [36m>[39m
+                [0m信阳[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"zaozhuang"[39m
+              [36m>[39m
+                [0m枣庄[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"handan"[39m
+              [36m>[39m
+                [0m邯郸[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"zigong"[39m
+              [36m>[39m
+                [0m自贡[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"jinhua"[39m
+              [36m>[39m
+                [0m金华[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"yangzhou"[39m
+              [36m>[39m
+                [0m扬州[0m
+              [36m</option>[39m
+            [36m</select>[39m
+          [36m</label>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"_topTag_d0049a"[39m
+            [33mdata-testid[39m=[32m"c0828-scope-echo"[39m
+          [36m>[39m
+            [0m当前扫描范围：[0m
+            [36m<b>[39m
+              [0m未限定（全域）[0m
+            [36m</b>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"_topRight_d0049a"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_topDim_d0049a"[39m
+              [33mdata-testid[39m=[32m"c0828-restore-none"[39m
+            [36m>[39m
+              [0m本会话在服务端无扰动记录[0m
+            [36m</span>[39m
+          [36m</span>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_kpis_d0049a"[39m
+          [33mdata-testid[39m=[32m"c0828-kpis"[39m
+          [33mstyle[39m=[32m"--kpi-n: 3;"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"_kpi_d0049a"[39m
+            [33mdata-testid[39m=[32m"c0828-kpi-book"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiKey_d0049a"[39m
+            [36m>[39m
+              [0m在手订单簿合计[0m
+              [36m<span[39m
+                [33mclass[39m=[32m"_wrap_eb0151"[39m
+                [33mdata-open[39m=[32m"0"[39m
+                [33mdata-testid[39m=[32m"info-wrap-c0828-kpi-book"[39m
+              [36m>[39m
+                [36m<button[39m
+                  [33maria-expanded[39m=[32m"false"[39m
+                  [33maria-label[39m=[32m"在手订单簿合计 · 口径 —— 说明（悬停或聚焦查看）"[39m
+                  [33mclass[39m=[32m"_trigger_eb0151"[39m
+                  [33mdata-testid[39m=[32m"info-c0828-kpi-book"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [0m?[0m
+                [36m</button>[39m
+              [36m</span>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiValRow_d0049a"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"_kpiBig_d0049a _kpiBigSm_d0049a"[39m
+              [36m>[39m
+                [0m6200.0万元[0m
+              [36m</span>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiCmp_d0049a"[39m
+            [36m>[39m
+              [0m3 张单 · 2 家客户[0m
+            [36m</span>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"_kpi_d0049a"[39m
+            [33mdata-testid[39m=[32m"c0828-kpi-staged"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiKey_d0049a"[39m
+            [36m>[39m
+              [0m待施加扰动[0m
+              [36m<span[39m
+                [33mclass[39m=[32m"_wrap_eb0151"[39m
+                [33mdata-open[39m=[32m"0"[39m
+                [33mdata-testid[39m=[32m"info-wrap-c0828-kpi-staged"[39m
+              [36m>[39m
+                [36m<button[39m
+                  [33maria-expanded[39m=[32m"false"[39m
+                  [33maria-label[39m=[32m"待施加扰动 · 口径 —— 说明（悬停或聚焦查看）"[39m
+                  [33mclass[39m=[32m"_trigger_eb0151"[39m
+                  [33mdata-testid[39m=[32m"info-c0828-kpi-staged"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+    ...
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_shell_e441ea"[39m
+      [33mdata-testid[39m=[32m"usim-shell"[39m
+      [33mdata-view[39m=[32m"console0828"[39m
+    [36m>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"_shell_d0049a"[39m
+        [33mdata-testid[39m=[32m"c0828-shell"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_topbar_d0049a"[39m
+          [33mdata-testid[39m=[32m"c0828-topbar"[39m
+        [36m>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"_topTitle_d0049a"[39m
+          [36m>[39m
+            [0m推演与对策[0m
+          [36m</span>[39m
+          [36m<label[39m
+            [33mclass[39m=[32m"_scopeBox_d0049a"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_scopeLbl_d0049a"[39m
+            [36m>[39m
+              [0m范围[0m
+            [36m</span>[39m
+            [36m<select[39m
+              [33mclass[39m=[32m"_scopeSel_d0049a"[39m
+              [33mdata-testid[39m=[32m"c0828-scope-select"[39m
+            [36m>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m""[39m
+              [36m>[39m
+                [0m全网（未限定）[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"changzhou"[39m
+              [36m>[39m
+                [0m常州[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"xiamen"[39m
+              [36m>[39m
+                [0m厦门[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"chengdu"[39m
+              [36m>[39m
+                [0m成都[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"meishan"[39m
+              [36m>[39m
+                [0m眉山[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"wuhan"[39m
+              [36m>[39m
+                [0m武汉[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"jiangmen"[39m
+              [36m>[39m
+                [0m江门[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"hefei"[39m
+              [36m>[39m
+                [0m合肥[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"xinyang"[39m
+              [36m>[39m
+                [0m信阳[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"zaozhuang"[39m
+              [36m>[39m
+                [0m枣庄[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"handan"[39m
+              [36m>[39m
+                [0m邯郸[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"zigong"[39m
+              [36m>[39m
+                [0m自贡[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"jinhua"[39m
+              [36m>[39m
+                [0m金华[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"yangzhou"[39m
+              [36m>[39m
+                [0m扬州[0m
+              [36m</option>[39m
+            [36m</select>[39m
+          [36m</label>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"_topTag_d0049a"[39m
+            [33mdata-testid[39m=[32m"c0828-scope-echo"[39m
+          [36m>[39m
+            [0m当前扫描范围：[0m
+            [36m<b>[39m
+              [0m未限定（全域）[0m
+            [36m</b>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"_topRight_d0049a"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_topDim_d0049a"[39m
+              [33mdata-testid[39m=[32m"c0828-restore-none"[39m
+            [36m>[39m
+              [0m本会话在服务端无扰动记录[0m
+            [36m</span>[39m
+          [36m</span>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_kpis_d0049a"[39m
+          [33mdata-testid[39m=[32m"c0828-kpis"[39m
+          [33mstyle[39m=[32m"--kpi-n: 3;"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"_kpi_d0049a"[39m
+            [33mdata-testid[39m=[32m"c0828-kpi-book"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiKey_d0049a"[39m
+            [36m>[39m
+              [0m在手订单簿合计[0m
+              [36m<span[39m
+                [33mclass[39m=[32m"_wrap_eb0151"[39m
+                [33mdata-open[39m=[32m"0"[39m
+                [33mdata-testid[39m=[32m"info-wrap-c0828-kpi-book"[39m
+              [36m>[39m
+                [36m<button[39m
+                  [33maria-expanded[39m=[32m"false"[39m
+                  [33maria-label[39m=[32m"在手订单簿合计 · 口径 —— 说明（悬停或聚焦查看）"[39m
+                  [33mclass[39m=[32m"_trigger_eb0151"[39m
+                  [33mdata-testid[39m=[32m"info-c0828-kpi-book"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [0m?[0m
+                [36m</button>[39m
+              [36m</span>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiValRow_d0049a"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"_kpiBig_d0049a _kpiBigSm_d0049a"[39m
+              [36m>[39m
+                [0m6200.0万元[0m
+              [36m</span>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiCmp_d0049a"[39m
+            [36m>[39m
+              [0m3 张单 · 2 家客户[0m
+            [36m</span>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"_kpi_d0049a"[39m
+            [33mdata-testid[39m=[32m"c0828-kpi-staged"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiKey_d0049a"[39m
+            [36m>[39m
+              [0m待施加扰动[0m
+              [36m<span[39m
+                [33mclass[39m=[32m"_wrap_eb0151"[39m
+                [33mdata-open[39m=[32m"0"[39m
+                [33mdata-testid[39m=[32m"info-wrap-c0828-kpi-staged"[39m
+              [36m>[39m
+                [36m<button[39m
+                  [33maria-expanded[39m=[32m"false"[39m
+                  [33maria-label[39m=[32m"待施加扰动 · 口径 —— 说明（悬停或聚焦查看）"[39m
+                  [33mclass[39m=[32m"_trigger_eb0151"[39m
+                  [33mdata-testid[39m=[32m"info-c0828-kpi-staged"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+    ...
+ ❯ waitForWrapper ../../../../../../complete/.claude/worktrees/agent-a80b730eca94f0bb7/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/wait-for.js:163:27
+ ❯ ../../../../../../complete/.claude/worktrees/agent-a80b730eca94f0bb7/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:86:33
+ ❯ test/console0828-decision.seam.test.tsx:990:34
+    988|     fireEvent.click(btnA);
+    989| 
+    990|     const readout = await screen.findByTestId(`c0828-price-${idA}`);
+       |                                  ^
+    991|     await waitFor(() => {
+    992|       expect(readout.textContent ?? "").toContain("拨后仍受影响");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  test/console0828-decision.seam.test.tsx > WO-C0828-SEAM · 08-28 决策屏接缝门 > ⑦c-gap 定价缺格上卡：NO_BINDING 点名缺的绑定，⛔ 不渲染 0、不塌成「未定价」
+TestingLibraryElementError: Unable to find an element by: [data-testid="c0828-price-imp_CONGESTION.MATERIAL.batch-idle_pos_ncm_b2"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_shell_e441ea"[39m
+      [33mdata-testid[39m=[32m"usim-shell"[39m
+      [33mdata-view[39m=[32m"console0828"[39m
+    [36m>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"_shell_d0049a"[39m
+        [33mdata-testid[39m=[32m"c0828-shell"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_topbar_d0049a"[39m
+          [33mdata-testid[39m=[32m"c0828-topbar"[39m
+        [36m>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"_topTitle_d0049a"[39m
+          [36m>[39m
+            [0m推演与对策[0m
+          [36m</span>[39m
+          [36m<label[39m
+            [33mclass[39m=[32m"_scopeBox_d0049a"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_scopeLbl_d0049a"[39m
+            [36m>[39m
+              [0m范围[0m
+            [36m</span>[39m
+            [36m<select[39m
+              [33mclass[39m=[32m"_scopeSel_d0049a"[39m
+              [33mdata-testid[39m=[32m"c0828-scope-select"[39m
+            [36m>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m""[39m
+              [36m>[39m
+                [0m全网（未限定）[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"changzhou"[39m
+              [36m>[39m
+                [0m常州[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"xiamen"[39m
+              [36m>[39m
+                [0m厦门[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"chengdu"[39m
+              [36m>[39m
+                [0m成都[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"meishan"[39m
+              [36m>[39m
+                [0m眉山[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"wuhan"[39m
+              [36m>[39m
+                [0m武汉[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"jiangmen"[39m
+              [36m>[39m
+                [0m江门[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"hefei"[39m
+              [36m>[39m
+                [0m合肥[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"xinyang"[39m
+              [36m>[39m
+                [0m信阳[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"zaozhuang"[39m
+              [36m>[39m
+                [0m枣庄[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"handan"[39m
+              [36m>[39m
+                [0m邯郸[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"zigong"[39m
+              [36m>[39m
+                [0m自贡[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"jinhua"[39m
+              [36m>[39m
+                [0m金华[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"yangzhou"[39m
+              [36m>[39m
+                [0m扬州[0m
+              [36m</option>[39m
+            [36m</select>[39m
+          [36m</label>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"_topTag_d0049a"[39m
+            [33mdata-testid[39m=[32m"c0828-scope-echo"[39m
+          [36m>[39m
+            [0m当前扫描范围：[0m
+            [36m<b>[39m
+              [0m未限定（全域）[0m
+            [36m</b>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"_topRight_d0049a"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_topDim_d0049a"[39m
+              [33mdata-testid[39m=[32m"c0828-restore-none"[39m
+            [36m>[39m
+              [0m本会话在服务端无扰动记录[0m
+            [36m</span>[39m
+          [36m</span>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_kpis_d0049a"[39m
+          [33mdata-testid[39m=[32m"c0828-kpis"[39m
+          [33mstyle[39m=[32m"--kpi-n: 3;"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"_kpi_d0049a"[39m
+            [33mdata-testid[39m=[32m"c0828-kpi-book"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiKey_d0049a"[39m
+            [36m>[39m
+              [0m在手订单簿合计[0m
+              [36m<span[39m
+                [33mclass[39m=[32m"_wrap_eb0151"[39m
+                [33mdata-open[39m=[32m"0"[39m
+                [33mdata-testid[39m=[32m"info-wrap-c0828-kpi-book"[39m
+              [36m>[39m
+                [36m<button[39m
+                  [33maria-expanded[39m=[32m"false"[39m
+                  [33maria-label[39m=[32m"在手订单簿合计 · 口径 —— 说明（悬停或聚焦查看）"[39m
+                  [33mclass[39m=[32m"_trigger_eb0151"[39m
+                  [33mdata-testid[39m=[32m"info-c0828-kpi-book"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [0m?[0m
+                [36m</button>[39m
+              [36m</span>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiValRow_d0049a"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"_kpiBig_d0049a _kpiBigSm_d0049a"[39m
+              [36m>[39m
+                [0m6200.0万元[0m
+              [36m</span>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiCmp_d0049a"[39m
+            [36m>[39m
+              [0m3 张单 · 2 家客户[0m
+            [36m</span>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"_kpi_d0049a"[39m
+            [33mdata-testid[39m=[32m"c0828-kpi-staged"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiKey_d0049a"[39m
+            [36m>[39m
+              [0m待施加扰动[0m
+              [36m<span[39m
+                [33mclass[39m=[32m"_wrap_eb0151"[39m
+                [33mdata-open[39m=[32m"0"[39m
+                [33mdata-testid[39m=[32m"info-wrap-c0828-kpi-staged"[39m
+              [36m>[39m
+                [36m<button[39m
+                  [33maria-expanded[39m=[32m"false"[39m
+                  [33maria-label[39m=[32m"待施加扰动 · 口径 —— 说明（悬停或聚焦查看）"[39m
+                  [33mclass[39m=[32m"_trigger_eb0151"[39m
+                  [33mdata-testid[39m=[32m"info-c0828-kpi-staged"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+    ...
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_shell_e441ea"[39m
+      [33mdata-testid[39m=[32m"usim-shell"[39m
+      [33mdata-view[39m=[32m"console0828"[39m
+    [36m>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"_shell_d0049a"[39m
+        [33mdata-testid[39m=[32m"c0828-shell"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_topbar_d0049a"[39m
+          [33mdata-testid[39m=[32m"c0828-topbar"[39m
+        [36m>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"_topTitle_d0049a"[39m
+          [36m>[39m
+            [0m推演与对策[0m
+          [36m</span>[39m
+          [36m<label[39m
+            [33mclass[39m=[32m"_scopeBox_d0049a"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_scopeLbl_d0049a"[39m
+            [36m>[39m
+              [0m范围[0m
+            [36m</span>[39m
+            [36m<select[39m
+              [33mclass[39m=[32m"_scopeSel_d0049a"[39m
+              [33mdata-testid[39m=[32m"c0828-scope-select"[39m
+            [36m>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m""[39m
+              [36m>[39m
+                [0m全网（未限定）[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"changzhou"[39m
+              [36m>[39m
+                [0m常州[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"xiamen"[39m
+              [36m>[39m
+                [0m厦门[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"chengdu"[39m
+              [36m>[39m
+                [0m成都[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"meishan"[39m
+              [36m>[39m
+                [0m眉山[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"wuhan"[39m
+              [36m>[39m
+                [0m武汉[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"jiangmen"[39m
+              [36m>[39m
+                [0m江门[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"hefei"[39m
+              [36m>[39m
+                [0m合肥[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"xinyang"[39m
+              [36m>[39m
+                [0m信阳[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"zaozhuang"[39m
+              [36m>[39m
+                [0m枣庄[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"handan"[39m
+              [36m>[39m
+                [0m邯郸[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"zigong"[39m
+              [36m>[39m
+                [0m自贡[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"jinhua"[39m
+              [36m>[39m
+                [0m金华[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"yangzhou"[39m
+              [36m>[39m
+                [0m扬州[0m
+              [36m</option>[39m
+            [36m</select>[39m
+          [36m</label>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"_topTag_d0049a"[39m
+            [33mdata-testid[39m=[32m"c0828-scope-echo"[39m
+          [36m>[39m
+            [0m当前扫描范围：[0m
+            [36m<b>[39m
+              [0m未限定（全域）[0m
+            [36m</b>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"_topRight_d0049a"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_topDim_d0049a"[39m
+              [33mdata-testid[39m=[32m"c0828-restore-none"[39m
+            [36m>[39m
+              [0m本会话在服务端无扰动记录[0m
+            [36m</span>[39m
+          [36m</span>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_kpis_d0049a"[39m
+          [33mdata-testid[39m=[32m"c0828-kpis"[39m
+          [33mstyle[39m=[32m"--kpi-n: 3;"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"_kpi_d0049a"[39m
+            [33mdata-testid[39m=[32m"c0828-kpi-book"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiKey_d0049a"[39m
+            [36m>[39m
+              [0m在手订单簿合计[0m
+              [36m<span[39m
+                [33mclass[39m=[32m"_wrap_eb0151"[39m
+                [33mdata-open[39m=[32m"0"[39m
+                [33mdata-testid[39m=[32m"info-wrap-c0828-kpi-book"[39m
+              [36m>[39m
+                [36m<button[39m
+                  [33maria-expanded[39m=[32m"false"[39m
+                  [33maria-label[39m=[32m"在手订单簿合计 · 口径 —— 说明（悬停或聚焦查看）"[39m
+                  [33mclass[39m=[32m"_trigger_eb0151"[39m
+                  [33mdata-testid[39m=[32m"info-c0828-kpi-book"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [0m?[0m
+                [36m</button>[39m
+              [36m</span>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiValRow_d0049a"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"_kpiBig_d0049a _kpiBigSm_d0049a"[39m
+              [36m>[39m
+                [0m6200.0万元[0m
+              [36m</span>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiCmp_d0049a"[39m
+            [36m>[39m
+              [0m3 张单 · 2 家客户[0m
+            [36m</span>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"_kpi_d0049a"[39m
+            [33mdata-testid[39m=[32m"c0828-kpi-staged"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_kpiKey_d0049a"[39m
+            [36m>[39m
+              [0m待施加扰动[0m
+              [36m<span[39m
+                [33mclass[39m=[32m"_wrap_eb0151"[39m
+                [33mdata-open[39m=[32m"0"[39m
+                [33mdata-testid[39m=[32m"info-wrap-c0828-kpi-staged"[39m
+              [36m>[39m
+                [36m<button[39m
+                  [33maria-expanded[39m=[32m"false"[39m
+                  [33maria-label[39m=[32m"待施加扰动 · 口径 —— 说明（悬停或聚焦查看）"[39m
+                  [33mclass[39m=[32m"_trigger_eb0151"[39m
+                  [33mdata-testid[39m=[32m"info-c0828-kpi-staged"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+    ...
+ ❯ waitForWrapper ../../../../../../complete/.claude/worktrees/agent-a80b730eca94f0bb7/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/wait-for.js:163:27
+ ❯ ../../../../../../complete/.claude/worktrees/agent-a80b730eca94f0bb7/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:86:33
+ ❯ test/console0828-decision.seam.test.tsx:1031:34
+    1029|     fireEvent.click(btnA);
+    1030| 
+    1031|     const readout = await screen.findByTestId(`c0828-price-${idA}`);
+       |                                  ^
+    1032|     await waitFor(() => {
+    1033|       expect(readout.textContent ?? "").toContain("定价缺格");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  test/sim-rail-forms.seam.test.tsx > WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ④ 做不到臂：不在世界态里的量屏上标明、且提交时真的被拦住（不许静默提交）
+AssertionError: expected '设备OEE' to contain 'Equipment.oee_current'
+
+Expected: [32m"Equipment.oee_current"[39m
+Received: [31m"设备OEE"[39m
+
+ ❯ test/sim-rail-forms.seam.test.tsx:480:29
+    478|     const oee = screen.getByTestId("rail-blocked-oee_current");
+    479|     expect(oee.getAttribute("data-reason")).toBe("NOT_A_STATE_VAR");
+    480|     expect(oee.textContent).toContain("Equipment.oee_current");
+       |                             ^
+    481|     expect(screen.getByTestId("rail-blocked-reason").textContent).toCo…
+    482|     // ── ④b 基线里它压根进不了下拉（一条传导规则都不提它）──
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  2 failed | 3 passed (5)
+      Tests  3 failed | 68 passed (71)
+   Start at  18:39:43
+   Duration  81.36s (transform 7.79s, setup 41.77s, collect 6.60s, tests 66.42s, environment 15.65s, prepare 2.91s)
+

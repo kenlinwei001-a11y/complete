@@ -1,0 +1,34 @@
+# 夹具 · **加载器坏掉**的样子：INDEX 自述 datacore 11 条 / 全图 14 条，
+# 而本分片只放了 2 条。⛔ 屏上必须报「分片加载坏了」并把归因落到
+# **第三种：本工具自己没读进来** —— 不许说成「图谱抽漏了」，更不许说成「你写错了」。
+# 2026-09-12 接缝复验就是这个形态：6266 个原子读成 5 个，一屏「无法对账」，
+# 读起来像图谱不全 ⇒ 所有人去查一个根本没病的图谱。
+package: "datacore"
+counts: { atoms: 11, edges: 0 }
+atoms:
+  - id: sym:apps/datacore/src/ontology/slice-index.ts#buildSliceIndex
+    name: buildSliceIndex
+    kind: function
+    file: apps/datacore/src/ontology/slice-index.ts
+    line: 38
+    brief: "建索引：每切片一条 {sliceKey, rootType, spannedTypes}"
+    docSource: jsdoc
+    tags: [datacore, ontology, slice]
+    wo: null
+    state: wired
+    reexportOf: null
+    inbound: { srcCount: 3, selfUses: 0, selfLine: null, testCount: 0, src: [{ file: "apps/datacore/src/app.ts", line: 132 }, { file: "apps/datacore/src/app.ts", line: 6166 }, { file: "apps/datacore/src/app.ts", line: 6213 }], test: [] }
+
+  - id: sym:apps/datacore/src/solvers/portfolio.ts#lineGranularity
+    name: lineGranularity
+    kind: property
+    file: apps/datacore/src/solvers/portfolio.ts
+    line: 55
+    brief: "PortfolioInput 的线级粒度开关：开则每 Line 一个产能单元，关则每 Base 一个（旧口径字节一致）"
+    docSource: jsdoc
+    tags: [datacore, solver, portfolio, lever]
+    wo: null
+    state: wired
+    reexportOf: null
+    inbound: { srcCount: 5, selfUses: 0, selfLine: null, testCount: 0, src: [{ file: "apps/datacore/src/solvers/portfolio.ts", line: 278 }, { file: "apps/datacore/src/solvers/portfolio.ts", line: 283 }, { file: "apps/datacore/src/solvers/portfolio.ts", line: 321 }, { file: "apps/datacore/src/solvers/portfolio.ts", line: 404 }, { file: "apps/datacore/src/solvers/portfolio.ts", line: 408 }], test: [] }
+

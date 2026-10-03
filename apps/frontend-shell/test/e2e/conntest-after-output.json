@@ -1,0 +1,61 @@
+{
+  "mode": "after",
+  "at": "2026-09-07T14:06:21.335Z",
+  "steps": [
+    "① 登录 demo/admin/demo1234 → http://127.0.0.1:5291/",
+    "② 真后端命中 5 次（禁 VITE_MOCK 已实测）",
+    "③ 点导航「数据接入」→ http://127.0.0.1:5291/admin/connections",
+    "④ rest_api + http://nonexistent.invalid/data → 屏上：\"连接失败：主机名解析不到\\n主机名解析不到：请检查主机名拼写，或确认本服务所在网络能解析该域名。\\n已实测 · http://nonexistent.invalid · 4ms\"",
+    "⑤ 金丝雀 mock_erp → 屏上：\"连接成功\\n连接可用，可读取 2 张数据表。\\n已实测 · 0ms\""
+  ],
+  "landedAfterLogin": "http://127.0.0.1:5291/",
+  "assertNoMock": {
+    "ok": true,
+    "realHits": 5,
+    "sample": [
+      "200 POST http://127.0.0.1:4051/a/v1/auth/login",
+      "200 GET http://127.0.0.1:4051/a/v1/me/workspace",
+      "200 GET http://127.0.0.1:4051/a/v1/history/watermark",
+      "200 GET http://127.0.0.1:4051/a/v1/data-health",
+      "200 GET http://127.0.0.1:4052/b/v1/scenarios"
+    ]
+  },
+  "navLinkBox": {
+    "w": 223,
+    "h": 36
+  },
+  "navSteps": "侧栏「数据接入」分组默认展开，组内条目 1 次点击直达（链接盒 223×36）",
+  "urlAfterNavClick": "http://127.0.0.1:5291/admin/connections",
+  "badHost": {
+    "input": "http://nonexistent.invalid/data",
+    "screen": {
+      "present": true,
+      "text": "连接失败：主机名解析不到\n主机名解析不到：请检查主机名拼写，或确认本服务所在网络能解析该域名。\n已实测 · http://nonexistent.invalid · 4ms"
+    }
+  },
+  "badHostShot": "conntest-after-03-badhost.png",
+  "canaryGood": {
+    "input": "mock_erp（内置样例源）",
+    "screen": {
+      "present": true,
+      "text": "连接成功\n连接可用，可读取 2 张数据表。\n已实测 · 0ms"
+    }
+  },
+  "canaryShot": "conntest-after-04-canary-good.png",
+  "canaryDiscriminates": true,
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ],
+  "apiCalls": [
+    {
+      "status": 200,
+      "url": "http://127.0.0.1:4051/a/v1/connections/test",
+      "body": "{\"ok\":false,\"reason\":\"DNS_NOT_RESOLVED\",\"message\":\"主机名解析不到：请检查主机名拼写，或确认本服务所在网络能解析该域名。\",\"target\":\"http://nonexistent.invalid\",\"latencyMs\":4,\"probed\":true}"
+    },
+    {
+      "status": 200,
+      "url": "http://127.0.0.1:4051/a/v1/connections/test",
+      "body": "{\"ok\":true,\"reason\":\"OK\",\"message\":\"连接可用，可读取 2 张数据表。\",\"latencyMs\":0,\"probed\":true}"
+    }
+  ]
+}

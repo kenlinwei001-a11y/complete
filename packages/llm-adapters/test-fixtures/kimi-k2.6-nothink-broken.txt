@@ -1,0 +1,129 @@
+```json
+{
+  "items": [
+    {
+      "locus": "电解液 · 落点 elyte_b2｜严重度 59｜实测 121 / 红线 90 天｜判据规则 C28",
+      "candidates": [
+        {
+          "solverKey": "lta_gap",
+ "how": "读电解液长协覆盖与现货缺口，按净需求输出分批PO建议，缩短采购提前期",
+          "effect": "实测121天↓，向红线90天收敛"
+        },
+        {
+          "solverKey": "supply_vulnerability",
+          "how": "扫描电解液供应商单点风险TTR，识别最该担心的备份供应源",
+          "effect": "供应脆弱性↓，采购提前期↓"
+        },
+        {
+          "solverKey": "supplier_disruption_radius",
+          "how": "假设主供断供，反向多跳算扩散半径，提前布局二级备选",
+          "effect": "韧性↑，实测天数↓"
+        },
+        {
+          "solverKey": "mitigation_select",
+          "how": "从方案库按因素打分排序，推荐电解液缺口的缓解案与草稿payload",
+          "effect": "严重度59↓，向达标收敛"
+        }
+      ],
+      "noCandidateReason":
+    },
+    {
+      "locus": "铜箔 · 落点 cu_foil_b2｜严重度 54｜实测 116 / 红线 90 天｜判据规则 C28",
+      "candidates": [
+        {
+          "solverKey": "lta_gap",
+          "how": "读铜净需求/覆盖率/现货缺口，输出分批PO建议，压缩采购周期",
+          "effect": "实测116天↓，向红线90天收敛"
+        },
+        {
+          "solverKey": "supply_vulnerability",
+          "how": "逐供应商算铜箔单点与否+TTR，定位最该担心的备份",
+          "effect": "供应脆弱性↓，采购提前期↓"
+        },
+        {
+          "solverKey": "outsourcing_split",
+          "how": "加班/外协/延期三渠道按单位成本升序贪心分配铜箔缺口",
+          "effect": "实测天数↓，严重度54↓"
+               {
+          "solverKey": "mitigation_select",
+          "how": "按因素从方案库打分排序，给铜箔缺口推荐案与草稿payload",
+          "effect": "严重度54↓，向达标收敛"
+        }
+      ],
+      "noCandidateReason": null
+    },
+    {
+      "locus "常州 · 卡点 changzhou｜严重度 40｜实测 3974.32 / 红线 1760 套/日｜判据规则 C34",
+      "candidates": [
+        {
+          "solverKey": "capacity_forecast",
+          "how": "给定型号/数量/周数，推演常州基地满足度（P50/P90、缺口率、主瓶颈）",
+          "effect": "实测3974.32套/日↓，向红线1760套/日收敛"
+        },
+        {
+          "solverKey": "bottleneck_matrix",
+          "how": "按基地×工序输出常州瓶颈强度矩阵，约束工序",
+          "effect": "识别主瓶颈工序，产能利用率优化"
+        },
+        {
+          "solverKey": "capacity_rollup",
+          "how": "把常州工序/产线产能沿本体金字塔上卷到基地维度，看清总产能天花板",
+          "effect": "产能规划清晰度↑，为扩决策提供依据"
+        },
+        {
+          "solverKey": "outsourcing_split",
+          "how": "加班/外协/延期三渠道按单位成本升序贪心分配常州产能缺口",
+          "effect": "实测产出↓至红线范围内，严重度40↓"
+        },
+        {
+          "solverKey": "apex_scenario",
+          "how": "三情景产能投资测算：供给曲线/缺口窗口/项目级IRR，决策是否扩产",
+          "effect": "中长期产能↑，实测3974.32套/日↓"
+        },
+        {
+          "solverKey": "maintenance_stagger",
+          "how": "周与交付高峰冲突时，±4周内选负荷最低周，释放产能",
+          "effect": "有效产能↑，日均产出↓向红线收敛"
+        },
+        {
+          "solverKey": "changeover_sequence",
+          "how": "最近邻贪心最小化常州换型时长，标注交期不可行单",
+ "effect": "换型损失↓，有效产能↑，实测产出↓"
+        },
+        {
+          "solverKey": "base_capacity_outlook",
+          "how": "按30/60/90天窗口前瞻推演常州四线对比，预判产能走势",
+          "effect": "产能规划前瞻性↑，严重度40"
+        }
+      ],
+      "noCandidateReason": null
+    },
+    {
+      "locus": "负极材料 · 落点 neg_graphite_b2｜严重度 52｜实测 108 / 红线 90 天｜判据规则 C28",
+      "candidates": [
+        {
+          "solver": "lta_gap",
+          "how": "读负极材料净需求/覆盖率/现货缺口，输出分批PO建议，缩短采购周期",
+          "effect": "实测108天↓，向红线90天收敛"
+        },
+        {
+          "solverKey": "supply_vulnerability",
+          "how": "逐供应商负极材料单点与否+TTR，定位最该担心的备份源",
+          "effect": "供应脆弱性↓，采购提前期↓"
+        },
+        {
+          "solverKey": "inventory_optimize",
+          "how": "设目标水位，算超储/欠储/呆滞与可释放资金，优化负库存策略",
+          "effect": "库存天数↓向目标收敛，资金占用↓"
+        },
+        {
+          "solverKey": "mitigation_select",
+          "how": "按因素从方案库打分，给负极材料缺口推荐案与草稿payload",
+          "effect": "严重度52↓，向达标"
+        }
+      ],
+      "noCandidateReason": null
+    }
+  ]
+}
+```

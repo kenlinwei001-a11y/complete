@@ -1,5 +1,6 @@
 import type { LlmClient } from "../llm/types.js";
 import type { Embedder } from "./skill-router.js";
+import { defaultRollingSummary } from "./context.js";
 
 /**
  * Phase8 生产侧认知能力：把可插拔的 summarizer / Embedder 接到真实 LLM / embedding provider。
@@ -12,12 +13,18 @@ import type { Embedder } from "./skill-router.js";
  */
 export function llmRollingSummarizer(llm: LlmClient, model: string, tenantId?: string): (notes: string[]) => Promise<string> {
   return async (notes: string[]) => {
-    const fallback = notes.slice(-12).join(" ｜ ");
+    // 兜底与循环内 CI 默认同构（确定性结构化 digest），保证 LLM 不可用时摘要不塌成裸拼接。
+    const fallback = defaultRollingSummary(notes);
     try {
       const out = await llm.compose({
         model,
+        // Claude Code / Manus 级上下文压缩：把摘要当作"可继续工作的记忆"，保留目标/已证事实（含关键实体、
+        // 求解器、已返回的关键数字）/已排除路径/待验证下一步；只复述工具已返回的内容，绝不新造数字。
         instruction:
-          "你是上下文压缩器。把以下已折叠的工具调用轨迹蒸馏成不超过 120 字的中文「前情摘要」，只保留关键实体、求解器与结论线索；不要编造数字。",
+          "你是 agent 的上下文压缩器。以下是已折叠的工具调用轨迹（较早轮次）。请蒸馏成不超过 180 字的中文「前情摘要」，" +
+          "作为后续继续推理的记忆使用。必须保留：①当前分析目标；②已确认的关键事实（关键实体/ID、涉及的求解器、" +
+          "工具已返回的关键数字——只复述、不新造、不四舍五入编造）；③已排除或已走过的路径；④尚待验证的下一步线索。" +
+          "省略寒暄与过程性措辞。若信息不足，只写已知部分，不要臆测。",
         inputs: notes,
         tenantId,
       });

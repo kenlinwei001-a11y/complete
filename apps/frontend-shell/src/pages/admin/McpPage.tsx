@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { McpServerConfig } from "@platform/contracts";
 import { fetchMcpConfigs, saveMcpConfig, testMcpConnection } from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
+import ReferencesPanel from "@/components/ReferencesPanel";
 import zh from "@/locales/zh";
 
 const t = zh.admin.mcp;
@@ -116,6 +117,9 @@ function McpEditor({ config, onChanged }: { config: McpServerConfig | null; onCh
             </button>
           )}
         </div>
+        {/* WO-REFERENCES-FAMILY（`GET /b/v1/mcp-configs/:id/references`）：
+            改/停一个 MCP 配置，会打断哪些 Agent 与流程。新建态（config==null）没有 id 可查，故不渲染。 */}
+        {config && <ReferencesPanel kind="mcp-config" id={config.id} />}
         {testMut.data && (
           <div data-testid="mcp-tools">
             <div className="section-title">{t.discoveredTools}</div>

@@ -1,0 +1,77 @@
+[ontology-index] --check ❌ 索引已漂移（本体改了没重新生成，或有人手改了索引）：
+  节点新增（重新生成后才有）：72 个
+    + 2/E/A11
+    + 2/E/F2
+    + 2/E/F3
+    + 2/E/RealizedOutcome
+    + 3/WO-PROP-REVIEW-V2
+    + 3/WO-PROP-REVIEW-V2/4 个 defer
+    + 3/WO-PROP-REVIEW-V2/6 个进表
+    + 3/WO-PROP-REVIEW-V2/FGI.coverDays --fg_of_mo
+    + 3/WO-PROP-REVIEW-V2/FGI.drawdownPressure --f
+    + 3/WO-PROP-REVIEW-V2/G-ROOT-4
+    + 3/WO-PROP-REVIEW-V2/G-ROOT-4#2
+    + 3/WO-PROP-REVIEW-V2/IncomingInspection.queue
+    + 3/WO-PROP-REVIEW-V2/MaterialAlternative.swit
+    + 3/WO-PROP-REVIEW-V2/MaterialBalance.gapPress
+    + 3/WO-PROP-REVIEW-V2/_note1
+    + 3/WO-PROP-REVIEW-V2/_note2
+    + 3/WO-PROP-REVIEW-V2/_note3
+    + 3/WO-PROP-REVIEW-V2/_note4
+    + 3/WO-PROP-REVIEW-V2/_thead
+    + 3/WO-PROP-REVIEW-V2/_thead2
+    … 另有 52 个
+  字段变更：17 处
+    ~ 节点 10/10.5/_note1 · 字段 source_line
+        was: 434
+        now: 481
+    ~ 节点 3/WO-SIM-ROOT-TRIAD/G-ROOT-1 · 字段 title
+        was: "`forecastBias` 销售预测偏差（正=高估） | `Model` | `Model.forecastBias --model_demanded_by_order--> Order.demandPressure
+        now: "`forecastBias` 销售预测偏差（正=高估） | `Model` | `Model.forecastBias --model_demanded_by_order--> Order.demandPressure
+    ~ 节点 9/ZZZ-NOT-REAL · 字段 arrow_endpoints
+        was: 297
+        now: 305
+    ~ 节点 9/ZZZ-NOT-REAL · 字段 covered_lines
+        was: 3844
+        now: 4327
+    ~ 节点 9/ZZZ-NOT-REAL · 字段 item
+        was: 75
+        now: 91
+    ~ 节点 9/ZZZ-NOT-REAL · 字段 link_chain
+        was: 43
+        now: 44
+    ~ 节点 9/ZZZ-NOT-REAL · 字段 nodes_total
+        was: 1079
+        now: 1151
+    ~ 节点 9/ZZZ-NOT-REAL · 字段 note
+        was: 132
+        now: 145
+    ~ 节点 9/ZZZ-NOT-REAL · 字段 object_type
+        was: 108
+        now: 112
+    ~ 节点 9/ZZZ-NOT-REAL · 字段 own_intervals
+        was: 1079
+        now: 1151
+    ~ 节点 9/ZZZ-NOT-REAL · 字段 subsection
+        was: 47
+        now: 50
+    ~ 节点 9/ZZZ-NOT-REAL · 字段 table_header
+        was: 29
+        now: 38
+    ~ 节点 9/ZZZ-NOT-REAL · 字段 table_row
+        was: 77
+        now: 103
+    ~ 节点 9/ZZZ-NOT-REAL · 字段 total_lines
+        was: 3844
+        now: 4327
+    ~ 节点 <顶层> · 字段 count
+        was: 43
+        now: 44
+    ~ 节点 <顶层> · 字段 source_lines
+        was: 3844
+        now: 4327
+    ~ 节点 <顶层> · 字段 source_sha256
+        was: "592e226be3af0dd7080a965c017961b5105bd55604194834342eb3857158d3dd"
+        now: "fdcd47e32cebb001ceea68c71eed7d70aa1bea68da1df0dfe1167e0040c8c9d5"
+
+  修法：node scripts/ontology-index.mjs

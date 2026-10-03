@@ -1,0 +1,37 @@
+{
+  "at": "2026-09-08T04:07:03.849Z",
+  "landed": "http://127.0.0.1:5193/",
+  "sets": {
+    "homeN": 36,
+    "navN": 17,
+    "navScrollable": {
+      "scrollH": 2956,
+      "clientH": 2956,
+      "scrolls": false
+    },
+    "onlyOnHome": [
+      "chain-line-map",
+      "transit-flow",
+      "physical-topology",
+      "node-inspector",
+      "chain-impediments",
+      "process-wait",
+      "procurement-legs",
+      "graph-all",
+      "graph-backbone",
+      "graph-flow",
+      "graph-source",
+      "graph-solver",
+      "graph-mvp",
+      "graph-agent",
+      "graph-loop",
+      "sim-console",
+      "sim-conduction",
+      "sim-attribution",
+      "sim-optimize"
+    ],
+    "onlyInNav": [],
+    "canaryBothSides": true
+  },
+  "verdict": "量法可信。首页独有 19 项，侧栏独有 0 项"
+}

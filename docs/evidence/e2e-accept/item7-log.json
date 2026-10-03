@@ -1,0 +1,333 @@
+{
+  "counters": {
+    "steps": 5,
+    "clicks": 7,
+    "navs": 7
+  },
+  "portsHit": {
+    "127.0.0.1:5181": 200,
+    "127.0.0.1:4051": 17,
+    "127.0.0.1:4052": 2
+  },
+  "netCalls": [
+    {
+      "port": "4051",
+      "path": "/a/v1/auth/refresh",
+      "status": 401,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/auth/login",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/me/workspace",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/history/watermark",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/data-health",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/scenarios",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/tenants/demo/features",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/data-categories",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/connections",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/connector-categories",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/raw-datasets",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/connections",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/object-types",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/modeling/drafts",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/quarantine",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/outbox",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/outbox",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/quarantine",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/quarantine",
+      "status": 200,
+      "method": "GET"
+    }
+  ],
+  "log": [
+    {
+      "t": "2026-09-04T02:48:10.145Z",
+      "kind": "STEP",
+      "msg": "#1 打开应用入口（唯一允许输入的 URL）"
+    },
+    {
+      "t": "2026-09-04T02:48:10.169Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:48:10.917Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:48:10.963Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "t": "2026-09-04T02:48:10.964Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "t": "2026-09-04T02:48:10.967Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/login"
+    },
+    {
+      "t": "2026-09-04T02:48:12.715Z",
+      "kind": "STEP",
+      "msg": "#2 在登录页填 demo / admin / demo1234"
+    },
+    {
+      "t": "2026-09-04T02:48:12.785Z",
+      "kind": "CLICK",
+      "msg": "#1 登录"
+    },
+    {
+      "t": "2026-09-04T02:48:12.947Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:48:16.331Z",
+      "kind": "LOGIN",
+      "msg": "登录后 URL",
+      "url": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:48:16.331Z",
+      "kind": "STEP",
+      "msg": "#3 侧边栏 →「连接器与上传」（隔离行的上游）"
+    },
+    {
+      "t": "2026-09-04T02:48:16.336Z",
+      "kind": "CLICK",
+      "msg": "#2 侧边栏 →「连接器与上传」"
+    },
+    {
+      "t": "2026-09-04T02:48:16.398Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/admin/connections"
+    },
+    {
+      "t": "2026-09-04T02:48:23.948Z",
+      "kind": "DUMP",
+      "msg": "i7-connections",
+      "chars": 2785
+    },
+    {
+      "t": "2026-09-04T02:48:24.119Z",
+      "kind": "SHOT",
+      "msg": "i7-connections"
+    },
+    {
+      "t": "2026-09-04T02:48:24.126Z",
+      "kind": "P7",
+      "msg": "连接器与上传",
+      "文件上传框": 13,
+      "按钮": "A\nadmin\n▾,▾\n规划与平衡,▾\n推演,▾\n台账与地图,▾\n数据接入,▾\n建模与图谱,▾\n图谱体系,▾\n规则与校准,▾\n构建与成长,▾\n编排与场景,▾\n运营与审批,▾\n平台与系统,新建连接,查看字段,上传文件,下载模版,替换模版,手动同步"
+    },
+    {
+      "t": "2026-09-04T02:48:24.126Z",
+      "kind": "STEP",
+      "msg": "#4 侧边栏 →「本体建模」（materialize 才会产生隔离行）"
+    },
+    {
+      "t": "2026-09-04T02:48:24.129Z",
+      "kind": "CLICK",
+      "msg": "#3 侧边栏 →「本体建模」"
+    },
+    {
+      "t": "2026-09-04T02:48:24.160Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/admin/modeling"
+    },
+    {
+      "t": "2026-09-04T02:48:32.188Z",
+      "kind": "DUMP",
+      "msg": "i7-modeling",
+      "chars": 8391
+    },
+    {
+      "t": "2026-09-04T02:48:32.337Z",
+      "kind": "SHOT",
+      "msg": "i7-modeling"
+    },
+    {
+      "t": "2026-09-04T02:48:32.340Z",
+      "kind": "P7",
+      "msg": "本体建模",
+      "按钮": "🕐,健康度,🌙,A\nadmin\n▾,▾\n规划与平衡,▾\n推演,▾\n台账与地图,▾\n数据接入,▾\n建模与图谱,▾\n图谱体系,▾\n规则与校准,▾\n构建与成长,▾\n编排与场景,▾\n运营与审批,▾\n平台与系统,AI 建议草案",
+      "有落库": false
+    },
+    {
+      "t": "2026-09-04T02:48:32.340Z",
+      "kind": "STEP",
+      "msg": "#5 侧边栏 →「隔离区」看现状与三个页签"
+    },
+    {
+      "t": "2026-09-04T02:48:32.344Z",
+      "kind": "CLICK",
+      "msg": "#4 侧边栏 →「隔离区」"
+    },
+    {
+      "t": "2026-09-04T02:48:32.378Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/admin/quarantine"
+    },
+    {
+      "t": "2026-09-04T02:48:39.418Z",
+      "kind": "DUMP",
+      "msg": "i7-quarantine-2",
+      "chars": 628
+    },
+    {
+      "t": "2026-09-04T02:48:39.511Z",
+      "kind": "SHOT",
+      "msg": "i7-quarantine-2"
+    },
+    {
+      "t": "2026-09-04T02:48:39.522Z",
+      "kind": "CLICK",
+      "msg": "#5 页签「待处理」"
+    },
+    {
+      "t": "2026-09-04T02:48:42.041Z",
+      "kind": "P7-TAB",
+      "msg": "待处理",
+      "正文": "数据集\t原因\t原始行\t说明\t操作 | 隔离区为空 ✓"
+    },
+    {
+      "t": "2026-09-04T02:48:42.044Z",
+      "kind": "CLICK",
+      "msg": "#6 页签「已重入」"
+    },
+    {
+      "t": "2026-09-04T02:48:44.579Z",
+      "kind": "P7-TAB",
+      "msg": "已重入",
+      "正文": "数据集\t原因\t原始行\t说明\t操作 | 没有已重入的记录"
+    },
+    {
+      "t": "2026-09-04T02:48:44.581Z",
+      "kind": "CLICK",
+      "msg": "#7 页签「已丢弃」"
+    },
+    {
+      "t": "2026-09-04T02:48:47.116Z",
+      "kind": "P7-TAB",
+      "msg": "已丢弃",
+      "正文": "数据集\t原因\t原始行\t说明\t操作 | 没有已丢弃的记录"
+    },
+    {
+      "t": "2026-09-04T02:48:47.124Z",
+      "kind": "P7",
+      "msg": "丢弃 UI",
+      "丢弃按钮数": 1,
+      "理由框数": 0,
+      "全部按钮": [
+        "🕐",
+        "健康度",
+        "🌙",
+        "A\nadmin\n▾",
+        "▾\n规划与平衡",
+        "▾\n推演",
+        "▾\n台账与地图",
+        "▾\n数据接入",
+        "▾\n建模与图谱",
+        "▾\n图谱体系",
+        "▾\n规则与校准",
+        "▾\n构建与成长",
+        "▾\n编排与场景",
+        "▾\n运营与审批",
+        "▾\n平台与系统",
+        "待处理",
+        "已重入",
+        "已丢弃"
+      ]
+    }
+  ]
+}

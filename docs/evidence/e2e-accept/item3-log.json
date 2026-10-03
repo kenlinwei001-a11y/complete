@@ -1,0 +1,311 @@
+{
+  "counters": {
+    "steps": 5,
+    "clicks": 4,
+    "navs": 5
+  },
+  "portsHit": {
+    "127.0.0.1:5181": 227,
+    "127.0.0.1:4051": 16,
+    "127.0.0.1:4052": 10
+  },
+  "netCalls": [
+    {
+      "port": "4051",
+      "path": "/a/v1/auth/refresh",
+      "status": 401,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/auth/login",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/me/workspace",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/history/watermark",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/data-health",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/scenarios",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/tenants/demo/features",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/scenes",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/solvers/risk_timeline/invoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/solvers/bottleneck_matrix/invoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/history/bundle",
+      "status": 404,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/propagation-rules",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/sessions",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/solvers/generic_inference/invoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/rules",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/solvers/mitigation_select/invoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/solvers/gap_attribution/invoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/live-scenarios",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/base_capacity_outlook/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/bottleneck_matrix/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/base_capacity_outlook/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/base_capacity_outlook/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/generic_inference/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/generic_inference/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/bottleneck_matrix/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/generic_inference/run",
+      "status": 200,
+      "method": "POST"
+    }
+  ],
+  "log": [
+    {
+      "t": "2026-09-04T02:54:30.656Z",
+      "kind": "STEP",
+      "msg": "#1 打开应用入口（唯一允许输入的 URL）"
+    },
+    {
+      "t": "2026-09-04T02:54:30.675Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:54:31.402Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:54:31.445Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "t": "2026-09-04T02:54:31.451Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/login"
+    },
+    {
+      "t": "2026-09-04T02:54:31.451Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "t": "2026-09-04T02:54:31.458Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "t": "2026-09-04T02:54:33.196Z",
+      "kind": "STEP",
+      "msg": "#2 在登录页填 demo / admin / demo1234"
+    },
+    {
+      "t": "2026-09-04T02:54:33.260Z",
+      "kind": "CLICK",
+      "msg": "#1 登录"
+    },
+    {
+      "t": "2026-09-04T02:54:33.467Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:54:36.817Z",
+      "kind": "LOGIN",
+      "msg": "登录后 URL",
+      "url": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:54:36.817Z",
+      "kind": "STEP",
+      "msg": "#3 侧边栏 →「产能推演」"
+    },
+    {
+      "t": "2026-09-04T02:54:36.822Z",
+      "kind": "CLICK",
+      "msg": "#2 侧边栏 →「产能推演」"
+    },
+    {
+      "t": "2026-09-04T02:54:36.847Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/v/risk"
+    },
+    {
+      "t": "2026-09-04T02:54:37.268Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "t": "2026-09-04T02:54:44.913Z",
+      "kind": "STEP",
+      "msg": "#4 展开第一张基地卡（BaseOutlookPanel 在卡内）"
+    },
+    {
+      "t": "2026-09-04T02:54:44.920Z",
+      "kind": "PROBE",
+      "msg": "含「最早越线」的卡片容器 0 个"
+    },
+    {
+      "t": "2026-09-04T02:54:44.920Z",
+      "kind": "CLICK",
+      "msg": "#3 点「常州」卡"
+    },
+    {
+      "t": "2026-09-04T02:54:52.533Z",
+      "kind": "CANARY",
+      "msg": "outlook-* testid 元素 27 个（0 ⇒ 面板没渲染，取证坏了）"
+    },
+    {
+      "t": "2026-09-04T02:54:52.538Z",
+      "kind": "P3",
+      "msg": "区间条",
+      "区间条节点数": 1,
+      "区间数值节点数": 1
+    },
+    {
+      "t": "2026-09-04T02:54:52.542Z",
+      "kind": "P3",
+      "msg": "区间条屏上数值",
+      "v": "24,745–30,157"
+    },
+    {
+      "t": "2026-09-04T02:54:52.542Z",
+      "kind": "STEP",
+      "msg": "#5 悬停区间条，读 P10 / P50 / P90 三个数"
+    },
+    {
+      "t": "2026-09-04T02:54:52.544Z",
+      "kind": "P3",
+      "msg": "找不到 outlook-forecast-band-prov"
+    },
+    {
+      "t": "2026-09-04T02:54:52.549Z",
+      "kind": "DUMP",
+      "msg": "i3-band-final",
+      "chars": 15950
+    },
+    {
+      "t": "2026-09-04T02:54:52.668Z",
+      "kind": "SHOT",
+      "msg": "i3-band-final"
+    },
+    {
+      "t": "2026-09-04T02:54:52.668Z",
+      "kind": "P3",
+      "msg": "正文字样",
+      "预测区间": true,
+      "P10": false,
+      "P50": true,
+      "P90": false
+    }
+  ]
+}

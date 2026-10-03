@@ -1,0 +1,434 @@
+/* WO-WAITING-STATES-FE · 流程等待态（四态四色）样式。
+   零硬编码颜色：全部走 styles/tokens.css 的 CSS 变量 ⇒ dark / light / warm 三套自动跟随。
+   四态色由组件注入 --kind-color（值本身也是 var(--c-*)，非 hex），
+   四个 --c-* 定义在裸 :root 且属主题不变量（tokens.css:106），三套皮下都不会失效。
+   门：process-wait.test.tsx「四态四色」组 —— 本文件出现 hex 或任何颜色函数字面量即红。 */
+
+.root {
+  /* --kind-color 的缺省定义：组件注入（inline style）优先于此；给缺省值是为让
+     「幽灵令牌」门看到定义处 —— 注入缺失时落到 --c-process 而不是继承成黑。 */
+  --kind-color: var(--c-process);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--txt);
+  font-family: var(--font-sans);
+}
+
+.head h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+.sub {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+  max-width: 92ch;
+}
+.source {
+  margin: 0;
+  color: var(--muted2);
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+.root code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.stateLine {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ── 诚实位（答得了 / 答不了）─────────────────────────────────────────────── */
+.honesty {
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--warn);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+.honesty b {
+  font-size: 12px;
+}
+.honesty p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.notMeasured {
+  color: var(--warn-txt) !important;
+}
+/* 保质期角标（WO-SCREEN-PLAINSPEAK）：「这个数什么时候核的」压成小字，
+   不与结论抢第一层的注意力；复验配方不上屏，见 locales/zh.ts 该段注释。 */
+.asOf {
+  display: block;
+  margin-top: 4px;
+  /* 原为 11px，`check-text-legibility.mjs` 的字号硬底 FLOOR_PX = 12 当场判红
+     （基线 0 → 实测 1，随 WO-SCREEN-PLAINSPEAK 的 445f7cf1 进的集成线）。
+     WO-U10-THREE-PAGES 顺手清掉这一条 —— 它与本单是同一个病（<12px 的中文），
+     且不清掉本单就没法给出「两道门改后 RC=0」这个判据。 */
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+/* ── 取数失败 / 词表漂移 ──────────────────────────────────────────────────── */
+.error,
+.drift {
+  background: var(--panel2);
+  border: 1px solid var(--line2);
+  border-left: 3px solid var(--danger);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+.error b,
+.drift b {
+  font-size: 12px;
+  color: var(--danger-txt);
+}
+.error p,
+.drift p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ── 汇总条 ───────────────────────────────────────────────────────────────── */
+.summary {
+  display: flex;
+  align-items: stretch;
+  gap: 16px;
+  flex-wrap: wrap;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+.kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 92px;
+}
+.kpi small {
+  color: var(--muted2);
+  font-size: 12px;
+}
+.kpi b {
+  font-size: 20px;
+  font-family: var(--font-mono);
+}
+.unit {
+  font-size: 12px;
+  color: var(--muted2);
+  margin-left: 3px;
+  font-family: var(--font-sans);
+}
+
+.dist {
+  flex: 1 1 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 240px;
+}
+.dist small {
+  color: var(--muted2);
+  font-size: 12px;
+}
+.distBar {
+  display: flex;
+  height: 22px;
+  border-radius: 5px;
+  overflow: hidden;
+  border: 1px solid var(--line2);
+}
+/* 每段宽度 ∝ 条数（flexGrow 由组件注入），颜色 = 该态色 —— 一眼看出哪一类等待占大头 */
+.distSeg {
+  background: var(--kind-color);
+  color: var(--on-accent);
+  font-size: 12px;
+  line-height: 22px;
+  text-align: center;
+  overflow: hidden;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* ── 单个等待态分组（四态四色的落点）───────────────────────────────────────── */
+.group {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  /* 左侧粗边 = 该态色：四组并排时最强的辨识信号 */
+  border-left: 4px solid var(--kind-color);
+  border-radius: 8px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.groupHead {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+/* 记号（人 / 数 / 外 / 钟）——四态四字，不依赖颜色也分得开（色盲可达） */
+.mark {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: var(--kind-color);
+  color: var(--on-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+}
+.groupTitle {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+.groupTitle h4 {
+  margin: 0;
+  font-size: 16px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.enum {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted2);
+  font-weight: 400;
+}
+.who {
+  margin: 3px 0 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--txt);
+}
+.hint {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted2);
+}
+.groupStats {
+  flex: 0 0 auto;
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+/* 字号层级收敛到 3 级（规范 R-UI-2，2026-08-14 · WO-UI-BURNDOWN-21）：
+     20px = 本页要回答的那几个数（顶部 KPI），**最大的这一级只给它们**
+     16px = 页标题 / 分组标题 / 分组图标 / 每组的条数
+     12px = 标签 · 判据 · 表格 · 辅助说明
+   改前是 12 / 13 / 14 / 16 / 20 五级 —— 13 与 14 两级之间肉眼分不出，
+   只是把"标题"这一级摊成了三份，读者要多做一次视觉降噪。
+   复验：node scripts/check-ui-first-layer.mjs --explain apps/frontend-shell/src/views/process/ProcessWaitView.tsx */
+.groupStats b {
+  font-size: 16px;
+  color: var(--kind-color);
+  font-family: var(--font-mono);
+}
+.groupStats small {
+  font-size: 12px;
+  color: var(--muted2);
+}
+
+.emptyGroup {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.owners {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+.ownersLabel {
+  color: var(--muted2);
+}
+.ownerChip {
+  background: var(--bg2);
+  border: 1px solid var(--line2);
+  border-radius: 999px;
+  padding: 1px 8px;
+  color: var(--muted);
+}
+.ownerChip small {
+  color: var(--muted2);
+  font-family: var(--font-mono);
+}
+
+/* ── 明细表 ───────────────────────────────────────────────────────────────── */
+.tableWrap {
+  overflow-x: auto;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.table th {
+  text-align: left;
+  color: var(--muted2);
+  font-weight: 500;
+  font-size: 12px;
+  border-bottom: 1px solid var(--line2);
+  padding: 4px 8px 4px 0;
+  white-space: nowrap;
+}
+.table td {
+  padding: 4px 8px 4px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  vertical-align: top;
+}
+.table tbody tr:hover {
+  background: var(--hover-tint);
+}
+.num {
+  text-align: right;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+/* ── WO-IA-E2E5E6 · E5 双向入口 ──────────────────────────────────────────────
+   零硬编码颜色：沿用既有语义令牌（--accent-txt / --muted2 / --line2 / --bg2），三套皮自动跟随。 */
+/* 行内「现在有 N 张单卡在这里 →」：链接色走 accent，与 drillBtn 的"可点"信号同档 */
+.stuckLink {
+  color: var(--accent-txt);
+  font-size: 12px;
+  white-space: nowrap;
+  text-decoration: none;
+  border-bottom: 1px dashed var(--line2);
+}
+.stuckLink:hover {
+  text-decoration: underline;
+}
+/* 「暂不可得」：明说 + 原因（内联同行），视觉上与 .absent 同一档（dashed 框 = 这一格算不出，不是 0） */
+.stuckNa {
+  border: 1px dashed var(--line2);
+  border-radius: 4px;
+  padding: 2px 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+/* 0 张：静默陈述，不给可点信号（没有可去的地方） */
+.stuckZero {
+  color: var(--muted2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+/* 从「流程卡点」页带 ?focus= 跳回来时的行定位高亮（文本徽标在站名 td 里，见组件注释） */
+.rowClickable[data-focus="1"] {
+  background: var(--bg2);
+  box-shadow: inset 2px 0 0 var(--accent-txt);
+}
+
+/* ── WO-V4-INSPECT · 行可点（点开 → 节点检视面板）───────────────────────────
+   零硬编码颜色：沿用既有 --c-* / --bg2 / --accent 语义令牌，三套皮自动跟随。 */
+.rowClickable {
+  cursor: pointer;
+}
+.rowClickable:hover {
+  background: var(--bg2);
+}
+.rowClickable[data-selected="1"] {
+  background: var(--bg2);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.rowBtn {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+/* ── WO-FLOWTIME · 实例下钻面板 ──────────────────────────────────────────────
+   零 hex 字面量：全部走 tokens.css 的语义变量（三套皮自动跟随），与本文件既有纪律一致。 */
+.drillBtn {
+  background: transparent;
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+.drillBtn:hover {
+  background: var(--hover-tint);
+  color: var(--txt);
+}
+.instPanel {
+  border-left: 2px solid var(--kind-color, var(--line2));
+  margin: 6px 0 10px;
+  padding: 8px 0 8px 12px;
+}
+.instHead {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 6px;
+}
+.instHead b {
+  color: var(--txt);
+  font-size: 12px;
+}
+.instHead span,
+.instHead small {
+  color: var(--muted2);
+  font-size: 12px;
+}
+/* 推导值诚实位：与 .notMeasured 同一视觉档（本文件已有该类，此处只补下钻面板专用的两个） */
+.stdCompare {
+  color: var(--muted2);
+  font-size: 12px;
+  margin: 2px 0 6px;
+}
+.absent {
+  border: 1px dashed var(--line2);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 8px 10px;
+}
+.absent b {
+  color: var(--txt);
+  display: block;
+  margin-bottom: 4px;
+}
+.absent p {
+  margin: 2px 0;
+}
+.src {
+  color: var(--muted2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  max-width: 320px;
+  overflow-wrap: anywhere;
+}

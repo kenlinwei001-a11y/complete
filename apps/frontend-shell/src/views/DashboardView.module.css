@@ -32,3 +32,26 @@
   margin-left: 5px;
   font-weight: 400;
 }
+
+/*
+ * WO-UI-DECLUTTER-TOP3 · 第二层折叠区（docs/CONVENTION-ui-information-layering.md §1）
+ * 第一层只放「数值 / 状态 / 名字」；**口径说明 · 逐项拆解 · 操作提示**降到一次点击之后，
+ * `<summary>` 就是 §1 要求的那个可见记号（降层不是删除·静默降层等于删除）。
+ *
+ * ⚠ 刻意**不设 font-size**：本页字号已 10 级（R-UI-2 说 ≤3），新增字号值是往反方向走 ——
+ *   两个类都从上下文继承字号。颜色只用 tokens.css 里确实定义过的令牌（`--muted2` / `--txt`），
+ *   经 `node scripts/check-css-token-defined.mjs` 复核，非幽灵令牌。
+ */
+.foldSum {
+  cursor: pointer;
+  color: var(--muted2);
+  user-select: none;
+}
+.foldSum:hover {
+  color: var(--txt);
+}
+/* 行内折叠：跟在一句结论后面，不另起块（用在诚实位与红灯旁：灯留第一层，理由折起来）。 */
+.foldInline {
+  display: inline;
+  margin-left: 4px;
+}

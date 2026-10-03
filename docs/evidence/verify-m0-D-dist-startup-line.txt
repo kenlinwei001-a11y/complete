@@ -1,0 +1,12 @@
+## D 预检：SEED_DEMO 启动行在 dist 构建产物 11:38:45
+### 主判据 grep 'calibration debt' apps/datacore/dist/server.js
+1
+RC_MAIN=0
+### 金丝雀（同法查已知串 'SEED_DEMO=1: demo sim world' 必须中）
+1
+RC_CANARY=0
+### dist/server.js mtime vs src/server.ts mtime（构建晚于源码改动才作数）
+9 20 11:12 /Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/datacore/dist/server.js
+9 20 10:23 /Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/datacore/src/server.ts
+### dist 里那句的上下文
+calibration debt — forecasts=${calDebt.forecasts} paired=${calDebt.paired} ` +

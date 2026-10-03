@@ -1,0 +1,103 @@
+扰动臂 session=sims_p20y9gekrcwr3b79 curTick=33 applied=["simpert_hbs75vbbdcddt7md"]
+对照臂 session=sims_y1wzrnrfyv0j6hz8 curTick=33 applied=undefined
+扰动 id=undefined
+
+对象数 扰动=4425 对照=4425 集合相同=true
+总格数=6375  差异格=64  (1.00%)
+
+── 差异按 (类.状态量) 聚合，按 |Δ| 降序 ──
+  order_SO-3391.leadDays                     n=   1  扰动=       -3.000000  对照=       14.000000  Δ=      -17.000000
+  arinvoice.overduePressure                  n=  21  扰动=        0.164942  对照=        0.160081  Δ=        0.004861
+  customerlocation_LOC-cust_18-1.deliveryHoldRisk n=   1  扰动=        0.005293  对照=        0.004905  Δ=        0.000388
+  customerlocation_LOC-cust_18-0.deliveryHoldRisk n=   1  扰动=        0.005300  对照=        0.004912  Δ=        0.000388
+  customerlocation_LOC-cust_0-0.deliveryHoldRisk n=   1  扰动=        0.022011  对照=        0.021623  Δ=        0.000388
+  customerlocation_LOC-cust_14-0.deliveryHoldRisk n=   1  扰动=        0.004788  对照=        0.004535  Δ=        0.000253
+  customerlocation_LOC-cust_14-1.deliveryHoldRisk n=   1  扰动=        0.004781  对照=        0.004528  Δ=        0.000253
+  customerlocation_LOC-cust_1-1.deliveryHoldRisk n=   1  扰动=        0.005396  对照=        0.005228  Δ=        0.000168
+  customerlocation_LOC-cust_1-0.deliveryHoldRisk n=   1  扰动=        0.005386  对照=        0.005217  Δ=        0.000168
+  customer_cust_18.receivablePressure        n=   1  扰动=        0.001476  对照=        0.001347  Δ=        0.000129
+  customer_cust_0.receivablePressure         n=   1  扰动=        0.006268  对照=        0.006139  Δ=        0.000129
+  customerlocation_LOC-cust_4-0.deliveryHoldRisk n=   1  扰动=        0.006565  对照=        0.006439  Δ=        0.000126
+  customer_cust_14.receivablePressure        n=   1  扰动=        0.001312  对照=        0.001228  Δ=        0.000084
+  customer_cust_1.receivablePressure         n=   1  扰动=        0.001503  对照=        0.001447  Δ=        0.000056
+  customerlocation_LOC-cust_5-1.deliveryHoldRisk n=   1  扰动=        0.001079  对照=        0.001030  Δ=        0.000048
+  customerlocation_LOC-cust_5-0.deliveryHoldRisk n=   1  扰动=        0.001058  对照=        0.001010  Δ=        0.000048
+  customer_cust_4.receivablePressure         n=   1  扰动=        0.001898  对照=        0.001857  Δ=        0.000042
+  customerlocation_LOC-cust_8-0.deliveryHoldRisk n=   1  扰动=        0.001950  对照=        0.001916  Δ=        0.000034
+  customer_cust_5.receivablePressure         n=   1  扰动=        0.000279  对照=        0.000263  Δ=        0.000016
+  customer_cust_8.receivablePressure         n=   1  扰动=        0.000551  对照=        0.000539  Δ=        0.000011
+  order_SO-3481.costPressure                 n=   1  扰动=        0.000105  对照=        0.000094  Δ=        0.000011
+  order_SO-3391.costPressure                 n=   1  扰动=        0.000119  对照=        0.000108  Δ=        0.000011
+  order_SO-3415.costPressure                 n=   1  扰动=        0.000103  对照=        0.000092  Δ=        0.000011
+  order_SO-3420.costPressure                 n=   1  扰动=        0.000101  对照=        0.000090  Δ=        0.000011
+  order_SO-3490.costPressure                 n=   1  扰动=        0.000119  对照=        0.000108  Δ=        0.000011
+  order_SO-3523.costPressure                 n=   1  扰动=        0.000108  对照=        0.000097  Δ=        0.000011
+  order_SO-900220.costPressure               n=   1  扰动=        0.000103  对照=        0.000092  Δ=        0.000011
+  order_SO-900260.costPressure               n=   1  扰动=        0.000119  对照=        0.000108  Δ=        0.000011
+  order_SO-900283.costPressure               n=   1  扰动=        0.000109  对照=        0.000098  Δ=        0.000011
+  order_SO-900312.costPressure               n=   1  扰动=        0.000119  对照=        0.000108  Δ=        0.000011
+  order_SO-900313.costPressure               n=   1  扰动=        0.000105  对照=        0.000094  Δ=        0.000011
+  order_SO-900317.costPressure               n=   1  扰动=        0.000102  对照=        0.000091  Δ=        0.000011
+  order_SO-900341.costPressure               n=   1  扰动=        0.000104  对照=        0.000093  Δ=        0.000011
+  order_SO-900390.costPressure               n=   1  扰动=        0.000119  对照=        0.000108  Δ=        0.000011
+  order_SO-900397.costPressure               n=   1  扰动=        0.000101  对照=        0.000090  Δ=        0.000011
+  order_SO-900401.costPressure               n=   1  扰动=        0.000104  对照=        0.000093  Δ=        0.000011
+  order_SO-900428.costPressure               n=   1  扰动=        0.000104  对照=        0.000093  Δ=        0.000011
+  order_SO-900465.costPressure               n=   1  扰动=        0.000102  对照=        0.000091  Δ=        0.000011
+  order_SO-900474.costPressure               n=   1  扰动=        0.000110  对照=        0.000099  Δ=        0.000011
+  order_SO-3402.costPressure                 n=   1  扰动=        0.000111  对照=        0.000100  Δ=        0.000011
+  order_SO-900309.costPressure               n=   1  扰动=        0.000109  对照=        0.000098  Δ=        0.000011
+  order_SO-3534.costPressure                 n=   1  扰动=        0.000105  对照=        0.000094  Δ=        0.000011
+  order_SO-900187.costPressure               n=   1  扰动=        0.000110  对照=        0.000099  Δ=        0.000011
+  order_SO-900197.costPressure               n=   1  扰动=        0.000108  对照=        0.000097  Δ=        0.000011
+
+── 钱相关类（ARInvoice/Customer/Overdue/Order/FinancePlan）全量 ──
+  order_SO-3391.leadDays                     n=   1  Δ=-17.000000   obj_order_SO-3391=-3(对照 14)
+  arinvoice.overduePressure                  n=  21  Δ=0.004861   obj_arinvoice_arinvoice_0_0=0.025689549757(对照 0.025242774913)
+  customerlocation_LOC-cust_18-1.deliveryHoldRisk n=   1  Δ=0.000388   obj_customerlocation_LOC-cust_18-1=0.005293317659(对照 0.004904841029)
+  customerlocation_LOC-cust_18-0.deliveryHoldRisk n=   1  Δ=0.000388   obj_customerlocation_LOC-cust_18-0=0.005300485021(对照 0.004912008392)
+  customerlocation_LOC-cust_0-0.deliveryHoldRisk n=   1  Δ=0.000388   obj_customerlocation_LOC-cust_0-0=0.022011271064(对照 0.021623458009)
+  customerlocation_LOC-cust_14-0.deliveryHoldRisk n=   1  Δ=0.000253   obj_customerlocation_LOC-cust_14-0=0.004787598209(对照 0.004534579718)
+  customerlocation_LOC-cust_14-1.deliveryHoldRisk n=   1  Δ=0.000253   obj_customerlocation_LOC-cust_14-1=0.00478090867(对照 0.00452789018)
+  customerlocation_LOC-cust_1-1.deliveryHoldRisk n=   1  Δ=0.000168   obj_customerlocation_LOC-cust_1-1=0.00539636612(对照 0.00522799358)
+  customerlocation_LOC-cust_1-0.deliveryHoldRisk n=   1  Δ=0.000168   obj_customerlocation_LOC-cust_1-0=0.005385853988(对照 0.005217481448)
+  customer_cust_18.receivablePressure        n=   1  Δ=0.000129   obj_customer_cust_18=0.001476163751(对照 0.001347425699)
+  customer_cust_0.receivablePressure         n=   1  Δ=0.000129   obj_customer_cust_0=0.006267961845(对照 0.006139443695)
+  customerlocation_LOC-cust_4-0.deliveryHoldRisk n=   1  Δ=0.000126   obj_customerlocation_LOC-cust_4-0=0.006564877839(对照 0.006438741042)
+  customer_cust_14.receivablePressure        n=   1  Δ=0.000084   obj_customer_cust_14=0.001311760084(对照 0.001227911779)
+  customer_cust_1.receivablePressure         n=   1  Δ=0.000056   obj_customer_cust_1=0.001502625637(对照 0.001446828321)
+  customerlocation_LOC-cust_5-1.deliveryHoldRisk n=   1  Δ=0.000048   obj_customerlocation_LOC-cust_5-1=0.001078867343(对照 0.00103042674)
+  customerlocation_LOC-cust_5-0.deliveryHoldRisk n=   1  Δ=0.000048   obj_customerlocation_LOC-cust_5-0=0.001058320902(对照 0.0010098803)
+  customer_cust_4.receivablePressure         n=   1  Δ=0.000042   obj_customer_cust_4=0.001898327883(对照 0.001856527154)
+  customerlocation_LOC-cust_8-0.deliveryHoldRisk n=   1  Δ=0.000034   obj_customerlocation_LOC-cust_8-0=0.001949668944(对照 0.001915523065)
+  customer_cust_5.receivablePressure         n=   1  Δ=0.000016   obj_customer_cust_5=0.000279045126(对照 0.000262992297)
+  customer_cust_8.receivablePressure         n=   1  Δ=0.000011   obj_customer_cust_8=0.000550716771(对照 0.000539401099)
+  order_SO-3481.costPressure                 n=   1  Δ=0.000011   obj_order_SO-3481=0.000105231188(对照 0.000094311365)
+  order_SO-3391.costPressure                 n=   1  Δ=0.000011   obj_order_SO-3391=0.000119088089(对照 0.000108168267)
+  order_SO-3415.costPressure                 n=   1  Δ=0.000011   obj_order_SO-3415=0.000102603155(对照 0.000091683333)
+  order_SO-3420.costPressure                 n=   1  Δ=0.000011   obj_order_SO-3420=0.000101169682(对照 0.00009024986)
+  order_SO-3490.costPressure                 n=   1  Δ=0.000011   obj_order_SO-3490=0.000119088089(对照 0.000108168267)
+  order_SO-3523.costPressure                 n=   1  Δ=0.000011   obj_order_SO-3523=0.000108337045(对照 0.000097417223)
+  order_SO-900220.costPressure               n=   1  Δ=0.000011   obj_order_SO-900220=0.000102603155(对照 0.000091683333)
+  order_SO-900260.costPressure               n=   1  Δ=0.000011   obj_order_SO-900260=0.000119088089(对照 0.000108168267)
+  order_SO-900283.costPressure               n=   1  Δ=0.000011   obj_order_SO-900283=0.000109053781(对照 0.000098133959)
+  order_SO-900312.costPressure               n=   1  Δ=0.000011   obj_order_SO-900312=0.000119088089(对照 0.000108168267)
+  order_SO-900313.costPressure               n=   1  Δ=0.000011   obj_order_SO-900313=0.000104753363(对照 0.000093833541)
+  order_SO-900317.costPressure               n=   1  Δ=0.000011   obj_order_SO-900317=0.000101886418(对照 0.000090966596)
+  order_SO-900341.costPressure               n=   1  Δ=0.000011   obj_order_SO-900341=0.000104036627(对照 0.000093116805)
+  order_SO-900390.costPressure               n=   1  Δ=0.000011   obj_order_SO-900390=0.000119088089(对照 0.000108168267)
+  order_SO-900397.costPressure               n=   1  Δ=0.000011   obj_order_SO-900397=0.000101408594(对照 0.000090488772)
+  order_SO-900401.costPressure               n=   1  Δ=0.000011   obj_order_SO-900401=0.000104275539(对照 0.000093355717)
+  order_SO-900428.costPressure               n=   1  Δ=0.000011   obj_order_SO-900428=0.000103558803(对照 0.000092638981)
+  order_SO-900465.costPressure               n=   1  Δ=0.000011   obj_order_SO-900465=0.000101886418(对照 0.000090966596)
+  order_SO-900474.costPressure               n=   1  Δ=0.000011   obj_order_SO-900474=0.000109531605(对照 0.000098611783)
+  order_SO-3402.costPressure                 n=   1  Δ=0.000011   obj_order_SO-3402=0.000110726165(对照 0.000099806344)
+  order_SO-900309.costPressure               n=   1  Δ=0.000011   obj_order_SO-900309=0.000108814868(对照 0.000097895047)
+  order_SO-3534.costPressure                 n=   1  Δ=0.000011   obj_order_SO-3534=0.000104514451(对照 0.00009359463)
+  order_SO-900187.costPressure               n=   1  Δ=0.000011   obj_order_SO-900187=0.000109770517(对照 0.000098850696)
+  order_SO-900197.costPressure               n=   1  Δ=0.000011   obj_order_SO-900197=0.000108098132(对照 0.000097178311)
+
+── 引擎自报的 signalToNoise（扰动臂）──
+  userContribution=17.007853545757  worldDrift=92971.96197048548  changedCells=64
+
+原始逐格差异落盘：evidence-1001/ab-raw.json  (64 格)

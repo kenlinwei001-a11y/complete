@@ -1,0 +1,236 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 2160" font-family="'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#475569"/>
+    </marker>
+    <marker id="arrG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#15803d"/>
+    </marker>
+    <style>
+      .t{font-size:14px;fill:#0f172a}.s{font-size:12px;fill:#334155}.xs{font-size:11px;fill:#64748b}
+      .mono{font-family:'SFMono-Regular',Consolas,monospace}.b{font-weight:700}
+      .h{font-size:16px;font-weight:700;fill:#0f172a}
+    </style>
+  </defs>
+
+  <rect width="1500" height="2160" fill="#f8fafc"/>
+  <text x="750" y="40" text-anchor="middle" font-size="24" font-weight="700" fill="#0f172a">FDE 故事脚本 → 倒推写回【② 数据 · ③ 本体/规则 · ⑤ 切片 · ⑥ 求解器需求】</text>
+  <text x="750" y="66" text-anchor="middle" class="s">实现 = 两段固化：理解层（唯一 LLM 步 · 可插拔）→ 倒推层（确定性纯函数 · R6 字节级一致）→ 写回层（run() 七阶段物化为真值）。<tspan class="b" fill="#b91c1c">不是可编排的预设工作流</tspan></text>
+
+  <!-- ============ 输入 ============ -->
+  <rect x="560" y="92" width="380" height="58" rx="10" fill="#1e293b"/>
+  <text x="750" y="116" text-anchor="middle" font-size="15" font-weight="700" fill="#fff">StoryScript（自然语言故事脚本）</text>
+  <text x="750" y="138" text-anchor="middle" class="xs" fill="#cbd5e1">“5万套电芯订单提前15天交付，能否满足？挤占哪些项目？影响哪些客户？利润损失？”</text>
+  <line x1="750" y1="150" x2="750" y2="178" stroke="#475569" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- ============ 理解层 ============ -->
+  <rect x="120" y="180" width="1260" height="220" rx="14" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="145" y="208" class="h" fill="#1d4ed8">理解层 · 第①段「听懂」　＝ 唯一的 LLM 步，可插拔（service.ts comprehendPlanBody）</text>
+  <text x="145" y="230" class="s">职责：把任意业务语言听成结构化「核心三件」。<tspan class="b">不产出脚手架，只产出语义。</tspan></text>
+
+  <!-- path A -->
+  <rect x="150" y="246" width="560" height="132" rx="10" fill="#fff" stroke="#60a5fa"/>
+  <text x="170" y="270" class="t b" fill="#1d4ed8">路径 A（优先）：真 LLM（Kimi，purpose=comprehend）</text>
+  <text x="170" y="292" class="s mono">llm.parseStructured(model:"comprehend", schema:LlmComprehendSchema)</text>
+  <text x="170" y="312" class="s">提示拼入<tspan class="b mono"> comprehendSystemWithSolvers(SOLVER_KEYS)</tspan>：把</text>
+  <text x="170" y="330" class="s">已注册求解器目录喂给 LLM，让它优先选真实 key。</text>
+  <text x="170" y="350" class="xs">措辞容错：name↔typeKey / type↔dataType / float→number / ```json``` 围栏剥离。</text>
+  <text x="170" y="368" class="xs">绑定缺失 / 无 key / 解析失败 → 静默回落路径 B。</text>
+
+  <!-- path B -->
+  <rect x="730" y="246" width="630" height="132" rx="10" fill="#fff" stroke="#60a5fa"/>
+  <text x="750" y="270" class="t b" fill="#1d4ed8">路径 B（兜底）：确定性关键词地板 comprehendScript(script, seed)</text>
+  <text x="750" y="292" class="s">三张写死的领域目录按关键词命中（锂电制造域）：</text>
+  <text x="750" y="312" class="s mono">ENTITIES[] 订单/基地/工序… → 对象类型</text>
+  <text x="750" y="330" class="s mono">RULES[] 交期/产能红线… → 规则　<tspan class="mono">SOLVERS[]</tspan> 产能/瓶颈… → 求解器</text>
+  <text x="750" y="350" class="xs">无网络/无时钟随机；同 (script, seed) 字节级一致（R6）。</text>
+  <text x="750" y="368" class="xs b" fill="#15803d">本次实跑走的是路径 B（key 已轮换）→ 直接产出已注册 key。</text>
+
+  <!-- core output -->
+  <line x1="430" y1="378" x2="430" y2="404" stroke="#3b82f6" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="1040" y1="378" x2="1040" y2="404" stroke="#3b82f6" stroke-width="2" marker-end="url(#arr)"/>
+  <rect x="120" y="406" width="1260" height="56" rx="10" fill="#dbeafe" stroke="#3b82f6"/>
+  <text x="145" y="430" class="t b">核心三件 core = { objectTypes[]（含字段/PK/ref）,　rules[]（表达式/scope/severity）,　solverNeeds[]（solverKey + inputFields） }　<tspan class="xs">(+ scenarioTopology 可选)</tspan></text>
+  <text x="145" y="450" class="xs">↑ 只有这三件来自“听懂”。其中 <tspan class="b">③ 本体/规则、⑥ 求解器需求</tspan> 的语义在此确定；<tspan class="b">② 数据、⑤ 切片</tspan> 还不存在 —— 它们由下一段从 ③ 机械派生。</text>
+
+  <line x1="750" y1="462" x2="750" y2="492" stroke="#475569" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- ============ 倒推层 ============ -->
+  <rect x="120" y="494" width="1260" height="486" rx="14" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="145" y="522" class="h" fill="#6d28d9">倒推层 · 第②段「装配」　＝ 确定性纯函数 assemblePlanBody(core, script, seed, SOLVER_KEYS)（comprehend.ts）</text>
+  <text x="145" y="544" class="s">职责：core 三件 → 完整 BuildPlan。<tspan class="b">写死的映射规则，无 LLM、无随机、不可编排；同 core 同输出（R6）。</tspan> 这一步才生出 ②⑤ 及全部 B 栈。</text>
+
+  <!-- ③ 本体/规则 -->
+  <rect x="145" y="560" width="295" height="400" rx="10" fill="#fff" stroke="#a78bfa"/>
+  <rect x="145" y="560" width="295" height="30" rx="10" fill="#7c3aed"/>
+  <text x="158" y="580" font-size="14" font-weight="700" fill="#fff">③ 本体 / 规则</text>
+  <text x="160" y="612" class="s b">直采（语义来自 ③ 听懂）</text>
+  <text x="160" y="634" class="xs">objectTypes：core.objectTypes 逐个</text>
+  <text x="160" y="650" class="xs">→ PlanObjectType{typeKey, domain,</text>
+  <text x="160" y="666" class="xs">properties[propKey/dataType/PK/ref]}</text>
+  <text x="160" y="690" class="xs">rules：core.rules <tspan class="b">过滤</tspan>，仅保留</text>
+  <text x="160" y="706" class="xs">scope ⊆ 已建 typeKeys 的规则</text>
+  <text x="160" y="730" class="xs b" fill="#6d28d9">实现：assemblePlanBody 头段</text>
+  <text x="160" y="746" class="xs mono">objectTypes/rules = core.map/filter</text>
+  <line x1="160" y1="762" x2="425" y2="762" stroke="#ede9fe"/>
+  <text x="160" y="784" class="s b">写回时点（run() ⑤transform）</text>
+  <text x="160" y="804" class="xs">ontology.upsertType(类型定义)</text>
+  <text x="160" y="820" class="xs">+ materialize(raw 行→对象实例)</text>
+  <text x="160" y="836" class="xs">+ rules.create(status=PUBLISHED)</text>
+  <text x="160" y="852" class="xs">+ runDerivations(派生属性)</text>
+  <text x="160" y="884" class="xs" fill="#15803d">实跑：Order/Base/Customer/Process</text>
+  <text x="160" y="900" class="xs" fill="#15803d">+ 规则 C03 全部 PUBLISHED</text>
+
+  <!-- ⑥ 求解器需求 -->
+  <rect x="450" y="560" width="295" height="400" rx="10" fill="#fff" stroke="#a78bfa"/>
+  <rect x="450" y="560" width="295" height="30" rx="10" fill="#7c3aed"/>
+  <text x="463" y="580" font-size="14" font-weight="700" fill="#fff">⑥ 求解器需求</text>
+  <text x="465" y="612" class="s b">直采 + 两道确定性变换</text>
+  <text x="465" y="634" class="xs">solverNeeds：core.solverNeeds 先</text>
+  <text x="465" y="650" class="xs"><tspan class="b">过滤</tspan>(inputFields ⊆ 已建类型)，再：</text>
+  <text x="465" y="676" class="xs b" fill="#b91c1c">① normalizeSolverKey（本轮新增）</text>
+  <text x="465" y="692" class="xs">自造名→已注册 key 的别名收敛：</text>
+  <text x="465" y="708" class="xs mono">capacity_feasibility→capacity_forecast</text>
+  <text x="465" y="724" class="xs mono">schedule_impact→affected_orders …</text>
+  <text x="465" y="740" class="xs">未命中保留→作自成长工单浮现</text>
+  <text x="465" y="764" class="xs b" fill="#6d28d9">② deriveSolverArgs（solver-args.ts）</text>
+  <text x="465" y="780" class="xs">从对象字段/ref 结构推多跳路径与</text>
+  <text x="465" y="796" class="xs">字段映射 → 写入 solverNeeds.args</text>
+  <text x="465" y="812" class="xs">运行期标量(rootId/budget)诚实留空</text>
+  <line x1="465" y1="826" x2="730" y2="826" stroke="#ede9fe"/>
+  <text x="465" y="848" class="s b">写回时点（跨系统 scaffold）</text>
+  <text x="465" y="868" class="xs">作场景声明 solverKey 下发 B 栈；</text>
+  <text x="465" y="884" class="xs mono">chain:check 门验证“已注册”，</text>
+  <text x="465" y="900" class="xs">否则 SOLVER_NOT_FOUND 即红。</text>
+  <text x="465" y="924" class="xs" fill="#15803d">实跑：capacity_forecast / shared_</text>
+  <text x="465" y="940" class="xs" fill="#15803d">bottleneck（REUSED·已注册）</text>
+
+  <!-- ② 数据 -->
+  <rect x="755" y="560" width="295" height="400" rx="10" fill="#fff" stroke="#a78bfa"/>
+  <rect x="755" y="560" width="295" height="30" rx="10" fill="#9333ea"/>
+  <text x="768" y="580" font-size="14" font-weight="700" fill="#fff">② 数据（脚手架）</text>
+  <text x="770" y="612" class="s b">派生自 ③（非听懂产物）</text>
+  <text x="770" y="634" class="xs">dataSources：objectTypes 逐个 →</text>
+  <text x="770" y="650" class="xs">一个数据源；字段 = 对象字段；</text>
+  <text x="770" y="666" class="xs mono">rowCount = 12 + hash(typeKey|seed)%12</text>
+  <text x="770" y="682" class="xs">（行数也确定性播种，R6）</text>
+  <text x="770" y="706" class="xs b" fill="#6d28d9">实现：assemblePlanBody dataSources</text>
+  <line x1="770" y1="722" x2="1035" y2="722" stroke="#ede9fe"/>
+  <text x="770" y="744" class="s b">写回时点（run() ④rawin）真实灌注</text>
+  <text x="770" y="764" class="xs">objectTypes→DatasetSpec(带 PK/refToDataset)</text>
+  <text x="770" y="780" class="xs mono">generateRelatedDatasets(specs,seed)</text>
+  <text x="770" y="796" class="xs">→ 跨表 FK 一致（子表 ref 取父表真实 PK）</text>
+  <text x="770" y="816" class="xs mono">applyScenarioTopology(...)</text>
+  <text x="770" y="832" class="xs">→ 让“被问的现象”真实存在（共享瓶颈等）</text>
+  <text x="770" y="852" class="xs mono">connectors.upload(csv) → RawDataset</text>
+  <text x="770" y="868" class="xs">走与人工上传同一条公开正门。</text>
+  <text x="770" y="900" class="xs" fill="#15803d">实跑：5 数据源 → RawDataset 前端可见</text>
+  <text x="770" y="916" class="xs" fill="#15803d">（/a/v1/objects?type=Order 真返回）</text>
+
+  <!-- ⑤ 切片 + B栈 -->
+  <rect x="1060" y="560" width="295" height="400" rx="10" fill="#fff" stroke="#a78bfa"/>
+  <rect x="1060" y="560" width="295" height="30" rx="10" fill="#9333ea"/>
+  <text x="1073" y="580" font-size="14" font-weight="700" fill="#fff">⑤ 切片（＋ B 栈脚手架）</text>
+  <text x="1075" y="612" class="s b">派生自 ③/⑥（deriveBStack）</text>
+  <text x="1075" y="634" class="xs">sliceNeeds：objectTypes 逐个 →</text>
+  <text x="1075" y="650" class="xs mono">slice_{typeKey}, rootType=typeKey, hops=[]</text>
+  <text x="1075" y="666" class="xs">（单根切片；多跳富切片待 LLM 语义层）</text>
+  <text x="1075" y="690" class="xs b" fill="#6d28d9">同一纯函数还顺带倒推全 B 栈：</text>
+  <text x="1075" y="708" class="xs">每 solver → plan_/intent_/scene_/</text>
+  <text x="1075" y="724" class="xs mono">wf_/skl_/agt_（计划/意图/场景/工作流/</text>
+  <text x="1075" y="740" class="xs">技能/Agent）—— 机械一一对应。</text>
+  <line x1="1075" y1="756" x2="1340" y2="756" stroke="#ede9fe"/>
+  <text x="1075" y="778" class="s b">写回时点（build 成功后）</text>
+  <text x="1075" y="798" class="xs mono">registerStorySlices(plan)</text>
+  <text x="1075" y="814" class="xs">→ sliceSpecs.put（SliceSpec 落库、</text>
+  <text x="1075" y="830" class="xs">切片库可见、可 resolve、带 smoke fixture）</text>
+  <text x="1075" y="850" class="xs">B 栈经 /b/v1/internal/scaffold 下 DRAFT。</text>
+  <text x="1075" y="882" class="xs" fill="#15803d">实跑：slice_order/base/customer/</text>
+  <text x="1075" y="898" class="xs" fill="#15803d">process 注册，4 节点切片可解析</text>
+
+  <!-- 倒推内部依赖箭头 ③→②⑤ -->
+  <path d="M295 962 C295 990 600 990 770 760" fill="none" stroke="#9333ea" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#arr)" opacity="0.7"/>
+  <text x="540" y="978" class="xs" fill="#9333ea" font-style="italic">②⑤ 由 ③ 机械派生（不经 LLM）</text>
+
+  <line x1="750" y1="980" x2="750" y2="1012" stroke="#475569" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- ============ 写回层 run() 七阶段 ============ -->
+  <rect x="120" y="1014" width="1260" height="300" rx="14" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.5"/>
+  <text x="145" y="1042" class="h" fill="#15803d">写回层 · run() 七阶段执行（service.ts）　＝ 把 BuildPlan 物化为真值（不是工作流引擎，是一段固定顺序的 try 流水线）</text>
+  <text x="145" y="1064" class="s">闭包硬门禁 closure 在灌注前先判：<tspan class="b">不通过即 FAILED、不写半成品</tspan>（避免脏数据）。dryRun 只预览不落库。freezePlan 命中则字节级重放。</text>
+
+  <!-- phase strip -->
+  <g>
+    <rect x="150" y="1086" width="148" height="46" rx="8" fill="#fff" stroke="#86efac"/><text x="224" y="1106" text-anchor="middle" class="s b">① intake</text><text x="224" y="1122" text-anchor="middle" class="xs">sha256(script)</text>
+    <rect x="306" y="1086" width="148" height="46" rx="8" fill="#dbeafe" stroke="#60a5fa"/><text x="380" y="1106" text-anchor="middle" class="s b">② comprehend</text><text x="380" y="1122" text-anchor="middle" class="xs">→ BuildPlan</text>
+    <rect x="462" y="1086" width="148" height="46" rx="8" fill="#fff" stroke="#86efac"/><text x="536" y="1106" text-anchor="middle" class="s b">③ gap</text><text x="536" y="1122" text-anchor="middle" class="xs">幂等去重</text>
+    <rect x="618" y="1086" width="148" height="46" rx="8" fill="#fef9c3" stroke="#eab308"/><text x="692" y="1106" text-anchor="middle" class="s b">④ rawin</text><text x="692" y="1122" text-anchor="middle" class="xs">写回 ②</text>
+    <rect x="774" y="1086" width="148" height="46" rx="8" fill="#fef9c3" stroke="#eab308"/><text x="848" y="1106" text-anchor="middle" class="s b">⑤ transform</text><text x="848" y="1122" text-anchor="middle" class="xs">写回 ③</text>
+    <rect x="930" y="1086" width="148" height="46" rx="8" fill="#fff" stroke="#86efac"/><text x="1004" y="1106" text-anchor="middle" class="s b">⑥ closure</text><text x="1004" y="1122" text-anchor="middle" class="xs">记录报告</text>
+    <rect x="1086" y="1086" width="148" height="46" rx="8" fill="#bbf7d0" stroke="#16a34a"/><text x="1160" y="1106" text-anchor="middle" class="s b">⑦ publish</text><text x="1160" y="1122" text-anchor="middle" class="xs">Action 真值</text>
+    <line x1="298" y1="1109" x2="306" y2="1109" stroke="#475569" marker-end="url(#arr)"/>
+    <line x1="454" y1="1109" x2="462" y2="1109" stroke="#475569" marker-end="url(#arr)"/>
+    <line x1="610" y1="1109" x2="618" y2="1109" stroke="#475569" marker-end="url(#arr)"/>
+    <line x1="766" y1="1109" x2="774" y2="1109" stroke="#475569" marker-end="url(#arr)"/>
+    <line x1="922" y1="1109" x2="930" y2="1109" stroke="#475569" marker-end="url(#arr)"/>
+    <line x1="1078" y1="1109" x2="1086" y2="1109" stroke="#475569" marker-end="url(#arr)"/>
+  </g>
+
+  <!-- write-back detail -->
+  <rect x="150" y="1150" width="280" height="146" rx="8" fill="#fff" stroke="#86efac"/>
+  <text x="165" y="1172" class="s b" fill="#15803d">④ rawin → ② 数据真存在</text>
+  <text x="165" y="1192" class="xs">generateRelatedDatasets（FK 一致）</text>
+  <text x="165" y="1208" class="xs">+ applyScenarioTopology（植入现象）</text>
+  <text x="165" y="1224" class="xs">+ connectors.upload → RawDataset</text>
+  <text x="165" y="1240" class="xs">+ kbDocs → 知识库</text>
+  <text x="165" y="1266" class="xs" fill="#15803d">前端 ConnectionsPage / 数据详单</text>
+  <text x="165" y="1282" class="xs" fill="#15803d">/对象查询页 真打这些端点</text>
+
+  <rect x="446" y="1150" width="300" height="146" rx="8" fill="#fff" stroke="#86efac"/>
+  <text x="461" y="1172" class="s b" fill="#15803d">⑤ transform → ③ 本体/规则真存在</text>
+  <text x="461" y="1192" class="xs">ontology.upsertType（类型定义）</text>
+  <text x="461" y="1208" class="xs">materialize（raw 行 → 对象实例 origin=MATERIALIZED）</text>
+  <text x="461" y="1224" class="xs">rules.create（PUBLISHED） + runDerivations</text>
+  <text x="461" y="1248" class="xs" fill="#15803d">驾驶舱派生属性动态算出</text>
+  <text x="461" y="1264" class="xs" fill="#15803d">（orderCount/oeeIndex…非写死）</text>
+  <text x="461" y="1284" class="xs">⑤ 切片由 registerStorySlices 同期落库</text>
+
+  <rect x="762" y="1150" width="300" height="146" rx="8" fill="#fff" stroke="#86efac"/>
+  <text x="777" y="1172" class="s b" fill="#15803d">⑥ 求解器需求 → 跨系统接线验真</text>
+  <text x="777" y="1192" class="xs">solverKey 作场景声明下发 B 栈（DRAFT scaffold）</text>
+  <text x="777" y="1208" class="xs mono">chain:check 门：声明的 solver</text>
+  <text x="777" y="1224" class="xs">必须在 DataCore 注册，否则全链红</text>
+  <text x="777" y="1248" class="xs">运行期真调：/a/v1/solvers/{key}/invoke</text>
+  <text x="777" y="1268" class="xs" fill="#15803d">实跑出真答案：affected_orders→SO-10003/</text>
+  <text x="777" y="1284" class="xs" fill="#15803d">10005；margin_attribution→倒挂归因</text>
+
+  <rect x="1078" y="1150" width="278" height="146" rx="8" fill="#ecfdf5" stroke="#16a34a"/>
+  <text x="1093" y="1172" class="s b" fill="#15803d">自洽闭环验真（validationTrace）</text>
+  <text x="1093" y="1194" class="xs">ENTITY_DEFINED · AXIOM · VERSION_PIN</text>
+  <text x="1093" y="1210" class="xs">NUMERIC_PROVENANCE（数字溯源到求解器）</text>
+  <text x="1093" y="1230" class="xs b" fill="#15803d">本次实跑：verdict = ALL_PASS</text>
+  <text x="1093" y="1250" class="xs">gapReport = ANSWERABLE</text>
+  <text x="1093" y="1266" class="xs">storyCoverage 4/4 子句已映射</text>
+  <text x="1093" y="1284" class="xs">producedArtifacts 全 PUBLISHED</text>
+
+  <!-- ============ callout ============ -->
+  <rect x="120" y="1340" width="1260" height="200" rx="14" fill="#fff7ed" stroke="#ea580c" stroke-width="1.5"/>
+  <text x="145" y="1370" class="h" fill="#c2410c">“是一个预设的工作流吗？” —— 不是。准确说法：</text>
+  <text x="145" y="1400" class="t">1. <tspan class="b">理解层（comprehend）</tspan>：是<tspan class="b">可插拔的理解</tspan>，不是工作流。LLM 优先（听懂任意业务语言）/ 确定性关键词地板兜底；二者只产「语义三件」。</text>
+  <text x="145" y="1428" class="t">2. <tspan class="b">倒推层（assemblePlanBody/deriveBStack）</tspan>：是<tspan class="b">写死在代码里的纯函数映射</tspan> —— 一组固定转换规则（map/filter/hash/别名收敛/args 推断），</text>
+  <text x="167" y="1450" class="t">无 LLM、无随机、用户不可编排；同 core 必得同 plan（R6 字节级）。<tspan class="b">②⑤ 和整套 B 栈都在这里从 ③ 机械生出。</tspan></text>
+  <text x="145" y="1478" class="t">3. <tspan class="b">写回层（run() 七阶段）</tspan>：是<tspan class="b">一段固定顺序的 try 流水线</tspan>（intake→comprehend→gap→rawin→transform→closure→publish），</text>
+  <text x="167" y="1500" class="t">不是 BPMN/可视化可配置工作流引擎；阶段顺序固定，闭包门失败即止、不写半成品。</text>
+  <text x="145" y="1528" class="s" fill="#9a3412">反讽点：倒推的<tspan class="b">产物</tspan>里确实「包含」工作流（每个求解器 → 一个 wf_xxx 两步工作流 invoke_solver→render），但倒推<tspan class="b">过程本身</tspan>是代码，不是工作流。</text>
+
+  <!-- footer mapping -->
+  <rect x="120" y="1560" width="1260" height="180" rx="14" fill="#f1f5f9" stroke="#94a3b8"/>
+  <text x="145" y="1588" class="h">一句话对账：每个编号「在哪听懂 / 在哪倒推 / 在哪写回」</text>
+  <text x="145" y="1616" class="s"><tspan class="b">③ 本体/规则</tspan>　听懂：comprehend 直采　·　倒推：assemblePlanBody 映射+scope 过滤　·　写回：transform（upsertType+materialize+rules.create+派生）</text>
+  <text x="145" y="1642" class="s"><tspan class="b">⑥ 求解器需求</tspan>　听懂：comprehend 直采　·　倒推：normalizeSolverKey 别名收敛 + deriveSolverArgs 推参　·　写回：scaffold 下发 + chain:check 验注册</text>
+  <text x="145" y="1668" class="s"><tspan class="b">② 数据</tspan>　　　听懂：无（不来自 LLM）　·　倒推：从 ③ 派生 dataSources（字段+确定性行数）　·　写回：rawin（FK 一致生成 + 拓扑植入 + 上传成 RawDataset）</text>
+  <text x="145" y="1694" class="s"><tspan class="b">⑤ 切片</tspan>　　　听懂：无（不来自 LLM）　·　倒推：deriveBStack 从 ③ 派生 slice_{typeKey}（+整套 B 栈）　·　写回：registerStorySlices 落 SliceSpec</text>
+  <text x="145" y="1722" class="xs" fill="#475569">代码锚点：apps/datacore/src/databuilder/{comprehend.ts（assemblePlanBody/deriveBStack/normalizeSolverKey）, solver-args.ts（deriveSolverArgs）, service.ts（run 七阶段/registerStorySlices）}　·　本体 §3 数据构建发动机链</text>
+
+  <text x="750" y="1772" text-anchor="middle" class="xs" fill="#94a3b8">全域数字化智能决策支撑系统 · FDE 倒推机制（理解层可插拔 · 倒推层确定性纯函数 · 写回层七阶段流水线）</text>
+</svg>

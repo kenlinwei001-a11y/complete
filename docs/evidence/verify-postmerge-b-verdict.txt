@@ -1,0 +1,15 @@
+## ③b 冲突解法案审 6fd5b7f3a（seed-demo-propagation 追加/追加）2026-09-20
+
+**裁决：解得对。**
+
+结构核验（合并结果 6fd5b7f3a 树）：
+- 「§6 在前 · A11 在后」属实：§6 WO-DEMANDLOAD-BUDGET describe :1022，M0-A11 describe :1510，A11 段注释 :1482。
+- 「补回 describe 闭合」属实：文件尾 `});`×2 正常闭合，vitest collect 无语法错。
+- vs M0 父 039694a21 = +597/−30；vs canonical 父 f15fe9aab = +122（= 我线 A11 块原量）。
+- −30 删除 = 过期的 51 条边计数断言与分组清单，被换成 **55**（注释给全出处：
+  canonical 51 − 1（WO-PROP-REVIEW-V2 方向反向是换不是增）+ 5（反向替代边 1 · 库存环 1 · 物料环 3）），
+  四处断言（propagationCount/items×2/rules）同一出处串，无哑改数。
+- 合并树的 A11 块 vs 我分支 A11 块：唯一差异 = f3307f8be 的稀疏世界修复（归 ③c），零额外丢失。
+
+决定性证据：verify-postmerge-b-seed-demo-propagation.txt/.rc —— 合并树上该套件 **22/22 绿 RC=0**
+（114.2s；含 §6 新段、§5 对照实验、M0-A11 T1+T3「截断账本与手算一致；maxNodes 放大 ⇒ 完整」）。

@@ -338,6 +338,95 @@ describe("Provenance passthrough in path A + additive workflow step types (A8.4/
   });
 });
 
+describe("A3.3 plan_slice builtin (dynamic slice deep connection)", () => {
+  it("plan_slice tool returns trace markers {planned, reused, sliceKey, rootType, spannedDomains, pathCount}", async () => {
+    const result = await t.deps.engine.runWorkflowSteps({
+      taskId: "task_plan_slice_a",
+      steps: [
+        {
+          id: "s1",
+          type: "plan_slice",
+          params: { rootType: "Order", targets: ["Base", "Material", "Customer"] },
+        },
+        {
+          id: "s2",
+          type: "resolve_slice",
+          params: { sliceKey: "{{steps.s1.output.sliceKey}}", args: {} },
+        },
+        {
+          id: "render",
+          type: "render_answer",
+          params: {
+            blocks: [
+              { type: "text", markdown: "planned={{steps.s1.output.planned}} reused={{steps.s1.output.reused}}" },
+            ],
+          },
+        },
+      ],
+      slots: {},
+      context: {},
+      ctx: { tenantId: TENANT, userId: "u1", roles: ["planner"] },
+      nesting: { callChain: [], budget: new BudgetTracker() },
+      emit: async () => undefined,
+    });
+
+    expect(result.status).toBe("COMPLETED");
+    if (result.status !== "COMPLETED") return;
+    const s1 = result.stepOutputs.s1 as {
+      planned: boolean;
+      reused: boolean;
+      sliceKey: string;
+      rootType: string;
+      spannedDomains: string[];
+      pathCount: number;
+      plan: unknown;
+    };
+    expect(s1.planned).toBe(true);
+    expect(typeof s1.reused).toBe("boolean");
+    expect(s1.sliceKey).toContain("Order");
+    expect(s1.rootType).toBe("Order");
+    expect(s1.spannedDomains).toContain("mock");
+    expect(s1.pathCount).toBe(3);
+    expect(s1.plan).toBeDefined();
+  });
+
+  it("catalog accepts plan_slice as a plan step (additive ExtendedPlanStep, contract-gap workaround)", async () => {
+    const create = await t.app.inject({
+      method: "POST",
+      url: "/api/v1/catalog/packages/pkg_battery_manufacturing/plans",
+      headers: debugHeaders(ADMIN),
+      payload: {
+        key: "order_deep_360_demo",
+        steps: [
+          {
+            id: "s1",
+            type: "plan_slice",
+            params: { rootType: "Order", targets: ["Base", "Material", "Customer"] },
+          },
+          {
+            id: "s2",
+            type: "resolve_slice",
+            params: { sliceKey: "{{steps.s1.output.sliceKey}}", args: {} },
+          },
+          {
+            id: "render",
+            type: "render_answer",
+            params: { blocks: [{ type: "text", markdown: "动态切片已规划 ⟦ref:0⟧", fromStep: "s1" }] },
+          },
+        ],
+      },
+    });
+    expect(create.statusCode).toBe(201);
+    const planId = (create.json() as { id: string }).id;
+    const publish = await t.app.inject({
+      method: "POST",
+      url: `/api/v1/catalog/plans/${planId}/publish`,
+      headers: debugHeaders(ADMIN),
+    });
+    expect(publish.statusCode).toBe(200);
+  });
+});
+
 describe("S4.2 fallback semantic clustering (string normalization + vector neighbor merge)", () => {
   it("two paraphrases cluster together; unrelated query stays separate", async () => {
     const mk = (id: string, query: string, createdAt: string) => ({

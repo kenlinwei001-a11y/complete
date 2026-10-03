@@ -58,6 +58,19 @@ export interface LlmAgentRequest {
    * 仅 Anthropic adapter（capability 开启时）下发；其它 adapter 忽略。
    */
   contextEdits?: { type: string }[];
+  /**
+   * G-9：per-call 有界超时的取消信号。工具循环侧为每轮 agent() 建 AbortController+deadline，
+   * 适配器透传给底层 SDK（messages.create / chat.completions.create 的 { signal }），
+   * 使挂住的单次调用能被上界终止（abort → AbortError，循环收敛为优雅降级）。可选，向后兼容。
+   */
+  signal?: AbortSignal;
+  /**
+   * WO-FIX-REASONING-CONTENT：强制本轮工具选择（tool_choice）。缺省 `auto`（模型自决）；
+   * 收尾/兜底轮传 `{type:"tool", name:"final_answer"}` 令模型**必须**产出结构化收尾——
+   * 破解推理型模型（kimi-k2.6 / o1 / r1）"在推理通道给结论却漏调 final_answer"的死角。
+   * 适配器各自映射：OpenAI 兼容 → tool_choice；Anthropic → tool_choice；不支持的忽略（向后兼容）。
+   */
+  toolChoice?: { type: "auto" } | { type: "tool"; name: string };
 }
 
 export interface LlmAgentResponse {
@@ -65,6 +78,13 @@ export interface LlmAgentResponse {
   stopReason: string; // "tool_use" | "end_turn" | ...
   usage: { inputTokens: number; outputTokens: number };
   raw?: unknown;
+  /**
+   * WO-FIX-REASONING-CONTENT：本轮**终结文本抢救自 reasoning_content**（推理型模型把结论写进
+   * 推理通道、content 为空且未调 final_answer）时置位。工具循环据此对该"漏调收尾"轮补一次
+   * 强制 final_answer 收尾（Manus 级韧性），而非直接降级为无溯源的散文答复。
+   * 普通文本终结（content 非空）不置位 → 既有降级路径逐字节不变（mock 从不置位）。
+   */
+  salvagedReasoning?: boolean;
 }
 
 /** Agent 运行时增量 §1.1：provider 能力声明（token 预算器/服务端 compaction）。 */
@@ -146,4 +166,30 @@ export interface TokenMetricsPort {
 export function isContextWindowExceededError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   return /model_context_window_exceeded|context window|prompt is too long/i.test(msg);
+}
+
+/**
+ * LLM 空响应护栏（PRD 空响应护栏）：当适配器/客户端**返回 undefined 或缺 usage** 的非法响应时抛此错误，
+ * 由编排层错误中间件收敛为 R7 信封 `code=LLM_EMPTY_RESPONSE`（指明 model/用途），把"裸 TypeError·reading usage"
+ * 变成可诊断错误（多因 `agent` 用途未绑定/key 失效/兼容网关返回缺 usage）。
+ */
+export class LlmEmptyResponseError extends Error {
+  readonly code = "LLM_EMPTY_RESPONSE";
+  constructor(message: string) {
+    super(message);
+    this.name = "LlmEmptyResponseError";
+  }
+}
+
+/**
+ * 校验 LLM 响应含合法 usage；缺响应/缺 usage → 抛 LlmEmptyResponseError（含 model）。
+ * 适配器 create/parse 后调用，使"空响应"早失败为结构化错误而非下游裸 deref（R7）。
+ */
+export function requireUsage(
+  resp: { usage?: { input_tokens?: number; output_tokens?: number } | null } | null | undefined,
+  model: string,
+): void {
+  if (!resp || !resp.usage) {
+    throw new LlmEmptyResponseError(`LLM 返回空响应或缺 usage（model=${model}）——检查该用途的 LLM 绑定是否配置且 key 有效`);
+  }
 }

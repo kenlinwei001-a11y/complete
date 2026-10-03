@@ -1,0 +1,629 @@
+{
+  "counters": {
+    "steps": 2,
+    "clicks": 8,
+    "navs": 11
+  },
+  "portsHit": {
+    "127.0.0.1:5181": 301,
+    "127.0.0.1:4051": 40,
+    "127.0.0.1:4052": 14
+  },
+  "netCalls": [
+    {
+      "port": "4051",
+      "path": "/a/v1/auth/refresh",
+      "status": 401,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/auth/login",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/me/workspace",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/history/watermark",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/data-health",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/scenarios",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/tenants/demo/features",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/scenes",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/propagation-rules",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/sessions",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/cross_object_occupancy/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/optimize_whatif/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/portfolio/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/scenes",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/solvers/risk_timeline/invoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/solvers/bottleneck_matrix/invoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/history/bundle",
+      "status": 404,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/mapping/registries",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/object-types",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/domains",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/versions",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/view-config",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/publish-requests",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/rules",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/invariants",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/outbox",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/outbox",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/scenes",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/view-config",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/chain_loss_attribution/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/twin/enterprise-states/latest",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/twin/enterprise-states",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/chain_loss_attribution/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/chain_impediments/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/sessions",
+      "status": 201,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/sessions",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/sessions/sims_cn2pnq901q6k4nq5/certification",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/finance_world_projection/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/sessions/sims_cn2pnq901q6k4nq5/perturbations",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/causal-graphs/sim/sims_cn2pnq901q6k4nq5",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/sessions/sims_cn2pnq901q6k4nq5/checkpoints",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/drill/state-var-layers",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/sessions/sims_demo_seed_world/perturbations",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/sessions/sims_demo_seed_world/metric-series",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/propagation-rules",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/scenes",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/quarantine",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/outbox",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/outbox",
+      "status": 200,
+      "method": "GET"
+    }
+  ],
+  "log": [
+    {
+      "t": "2026-09-04T02:31:37.298Z",
+      "kind": "STEP",
+      "msg": "#1 打开应用入口（唯一允许输入的 URL）"
+    },
+    {
+      "t": "2026-09-04T02:31:37.349Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:31:38.086Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:31:38.129Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "t": "2026-09-04T02:31:38.130Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "t": "2026-09-04T02:31:38.135Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/login"
+    },
+    {
+      "t": "2026-09-04T02:31:39.882Z",
+      "kind": "STEP",
+      "msg": "#2 在登录页填 demo / admin / demo1234"
+    },
+    {
+      "t": "2026-09-04T02:31:39.958Z",
+      "kind": "CLICK",
+      "msg": "#1 登录"
+    },
+    {
+      "t": "2026-09-04T02:31:40.173Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:31:43.508Z",
+      "kind": "LOGIN",
+      "msg": "登录后 URL",
+      "url": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:31:43.513Z",
+      "kind": "DUMP",
+      "msg": "p0-home",
+      "chars": 951
+    },
+    {
+      "t": "2026-09-04T02:31:43.513Z",
+      "kind": "SECTION",
+      "msg": "=== p1-global-sim (接单组合优选) ==="
+    },
+    {
+      "t": "2026-09-04T02:31:43.516Z",
+      "kind": "CLICK",
+      "msg": "#2 侧边栏 →「接单组合优选」"
+    },
+    {
+      "t": "2026-09-04T02:31:43.553Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/v/global-sim"
+    },
+    {
+      "t": "2026-09-04T02:31:49.105Z",
+      "kind": "DUMP",
+      "msg": "p1-global-sim",
+      "chars": 25014
+    },
+    {
+      "t": "2026-09-04T02:31:49.382Z",
+      "kind": "SHOT",
+      "msg": "p1-global-sim"
+    },
+    {
+      "t": "2026-09-04T02:31:49.382Z",
+      "kind": "URL",
+      "msg": "http://127.0.0.1:5181/v/global-sim"
+    },
+    {
+      "t": "2026-09-04T02:31:49.383Z",
+      "kind": "SECTION",
+      "msg": "=== p1-sim-optimize (方案寻优) ==="
+    },
+    {
+      "t": "2026-09-04T02:31:49.390Z",
+      "kind": "NAV-MISS",
+      "msg": "侧边栏找不到「方案寻优」"
+    },
+    {
+      "t": "2026-09-04T02:31:49.390Z",
+      "kind": "SECTION",
+      "msg": "=== p3-risk (产能推演) ==="
+    },
+    {
+      "t": "2026-09-04T02:31:49.403Z",
+      "kind": "CLICK",
+      "msg": "#3 侧边栏 →「产能推演」"
+    },
+    {
+      "t": "2026-09-04T02:31:49.493Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/v/risk"
+    },
+    {
+      "t": "2026-09-04T02:31:50.403Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "t": "2026-09-04T02:31:55.055Z",
+      "kind": "DUMP",
+      "msg": "p3-risk",
+      "chars": 4934
+    },
+    {
+      "t": "2026-09-04T02:31:55.202Z",
+      "kind": "SHOT",
+      "msg": "p3-risk"
+    },
+    {
+      "t": "2026-09-04T02:31:55.203Z",
+      "kind": "URL",
+      "msg": "http://127.0.0.1:5181/v/risk"
+    },
+    {
+      "t": "2026-09-04T02:31:55.203Z",
+      "kind": "SECTION",
+      "msg": "=== p4-ontology-relations (本体关系) ==="
+    },
+    {
+      "t": "2026-09-04T02:31:55.215Z",
+      "kind": "CLICK",
+      "msg": "#4 侧边栏 →「本体关系」"
+    },
+    {
+      "t": "2026-09-04T02:31:55.250Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/admin/ontology-relations"
+    },
+    {
+      "t": "2026-09-04T02:32:00.803Z",
+      "kind": "DUMP",
+      "msg": "p4-ontology-relations",
+      "chars": 342430
+    },
+    {
+      "t": "2026-09-04T02:32:00.954Z",
+      "kind": "SHOT",
+      "msg": "p4-ontology-relations"
+    },
+    {
+      "t": "2026-09-04T02:32:00.954Z",
+      "kind": "URL",
+      "msg": "http://127.0.0.1:5181/admin/ontology-relations"
+    },
+    {
+      "t": "2026-09-04T02:32:00.954Z",
+      "kind": "SECTION",
+      "msg": "=== p5-sim-sandbox (推演沙盘) ==="
+    },
+    {
+      "t": "2026-09-04T02:32:00.975Z",
+      "kind": "CLICK",
+      "msg": "#5 侧边栏 →「推演沙盘」"
+    },
+    {
+      "t": "2026-09-04T02:32:01.040Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/v/sim-sandbox"
+    },
+    {
+      "t": "2026-09-04T02:32:06.987Z",
+      "kind": "DUMP",
+      "msg": "p5-sim-sandbox",
+      "chars": 3407
+    },
+    {
+      "t": "2026-09-04T02:32:08.003Z",
+      "kind": "SHOT",
+      "msg": "p5-sim-sandbox"
+    },
+    {
+      "t": "2026-09-04T02:32:08.003Z",
+      "kind": "URL",
+      "msg": "http://127.0.0.1:5181/v/sim-sandbox"
+    },
+    {
+      "t": "2026-09-04T02:32:08.003Z",
+      "kind": "SECTION",
+      "msg": "=== p5-sim-unified (统一推演控制台) ==="
+    },
+    {
+      "t": "2026-09-04T02:32:08.012Z",
+      "kind": "CLICK",
+      "msg": "#6 侧边栏 →「统一推演控制台」"
+    },
+    {
+      "t": "2026-09-04T02:32:08.063Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/v/sim-unified"
+    },
+    {
+      "t": "2026-09-04T02:32:13.618Z",
+      "kind": "DUMP",
+      "msg": "p5-sim-unified",
+      "chars": 3212
+    },
+    {
+      "t": "2026-09-04T02:32:13.756Z",
+      "kind": "SHOT",
+      "msg": "p5-sim-unified"
+    },
+    {
+      "t": "2026-09-04T02:32:13.756Z",
+      "kind": "URL",
+      "msg": "http://127.0.0.1:5181/v/sim-unified"
+    },
+    {
+      "t": "2026-09-04T02:32:13.756Z",
+      "kind": "SECTION",
+      "msg": "=== p6-order (订单台账) ==="
+    },
+    {
+      "t": "2026-09-04T02:32:13.763Z",
+      "kind": "CLICK",
+      "msg": "#7 侧边栏 →「订单台账」"
+    },
+    {
+      "t": "2026-09-04T02:32:13.815Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/v/order"
+    },
+    {
+      "t": "2026-09-04T02:32:19.348Z",
+      "kind": "DUMP",
+      "msg": "p6-order",
+      "chars": 3700
+    },
+    {
+      "t": "2026-09-04T02:32:19.585Z",
+      "kind": "SHOT",
+      "msg": "p6-order"
+    },
+    {
+      "t": "2026-09-04T02:32:19.585Z",
+      "kind": "URL",
+      "msg": "http://127.0.0.1:5181/v/order"
+    },
+    {
+      "t": "2026-09-04T02:32:19.585Z",
+      "kind": "SECTION",
+      "msg": "=== p7-quarantine (隔离区) ==="
+    },
+    {
+      "t": "2026-09-04T02:32:19.606Z",
+      "kind": "CLICK",
+      "msg": "#8 侧边栏 →「隔离区」"
+    },
+    {
+      "t": "2026-09-04T02:32:19.668Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/admin/quarantine"
+    },
+    {
+      "t": "2026-09-04T02:32:25.198Z",
+      "kind": "DUMP",
+      "msg": "p7-quarantine",
+      "chars": 628
+    },
+    {
+      "t": "2026-09-04T02:32:25.302Z",
+      "kind": "SHOT",
+      "msg": "p7-quarantine"
+    },
+    {
+      "t": "2026-09-04T02:32:25.302Z",
+      "kind": "URL",
+      "msg": "http://127.0.0.1:5181/admin/quarantine"
+    }
+  ]
+}
