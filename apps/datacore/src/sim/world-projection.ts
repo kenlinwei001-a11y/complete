@@ -39,13 +39,21 @@ export interface WorldProjectionLedger {
  * 投影一格世界（就地改写 `world`），并产出**单源**账。
  *
  * @param world     待投影的世界态（就地改写：越界格被保序压回域内）。
- * @param tickStart **本拍入口前的那一份**（扰动相之前、核之前的输入）。
- *                  `undefined` = 没有"上一拍"这个概念（tick0 播种）⇒ 每格都算新读数。
+ * @param tickStart **本拍入口前的那一份**（扰动相之前、核之前的输入）—— 判据 ① 的基线。
+ *   两条路的取法（都**不是** `world` 自己，也**不许**用 `undefined` 表示"没有上一拍"）：
+ *   · 普通拍：调用方在 `state = out.next` **之前**抓住的入参（`app.ts` 主线/影子线、
+ *     `metric-series.ts` 三处同一形状）；
+ *   · tick0（播种）：传**投影之前的那份种子世界**（`seed-world.ts` 逐格复制的一份）。
+ *   🔴 为什么 tick0 **不能**传 `undefined`（"每格都算新读数"）：`saturateToDomain` 在合法域内
+ *      **不是恒等**（膝点之外要压缩）⇒ 逐格投影会把域内的铸造值整体改掉一次，那正是 E2 要抓的
+ *      「修法变成全世界重写」，且会推翻 P1 已经验过的铸造取值。传"投影前的自己"才两边都对：
+ *      域内的格 `unchanged && !outsideHardBound` ⇒ **一个字节不动**；越界格走判据 ② **当场收回**
+ *      —— tick0 实收 360 格，与 A4 的期望同源。
  * @param domains   与 `propagateTick` 第 10 位**同一份** `stateVarDomains`（⛔ 不许各取一份）。
  */
 export function projectWorldCells(
   world: TickState,
-  tickStart: TickState | undefined,
+  tickStart: TickState,
   domains: StateVarDomainLookup,
 ): WorldProjectionLedger {
   // 判据 ① **只压缩「这一拍真的产生了的新读数」**（WO-SATURATE-EXOGENOUS，原样自核内迁出）：
@@ -55,13 +63,15 @@ export function projectWorldCells(
   //  ②  **例外：存量真的在硬边界之外**（种子里就有超界真值 —— `Line.blockedPressure` 实测 27.72–182.73）
   //     ⇒ 必须收回域内，否则"声明了 [0,100]"就成了一句假话。
   //     这一条**不会**退化成 ①' 的无限循环：压缩输出恒在开区间内 ⇒ 下一拍 ② 不再成立 ⇒ **最多夹一次**。
-  // tick0（`tickStart === undefined`）没有"上一拍"，故 ①' 恒不成立 ⇒ 逐格投影（这正是 tick0 覆盖的来源）。
+  // tick0 与普通拍**走同一条判据**，差别只在基线怎么取（见函数头注）：基线 = 投影前的种子世界 ⇒
+  // 域内的格逐字节不动，只有越界格被收回。⛔ 别为了"让 tick0 也全覆盖"而在这里对 in-domain 格放行：
+  // `saturateToDomain` 在域内不是恒等，放行 = 把膝点外的铸造值整体压一次 = 全世界重写（E2）。
   const saturations: SaturationEvent[] = [];
   const declaredSeen = new Set<string>();
   const undeclaredSeen = new Set<string>();
   for (const objId of Object.keys(world).sort((a, b) => a.localeCompare(b))) {
     const bucket = world[objId]!;
-    const startBucket = tickStart?.[objId];
+    const startBucket = tickStart[objId];
     for (const stateVar of Object.keys(bucket).sort((a, b) => a.localeCompare(b))) {
       const d = domains[stateVar];
       if (d === undefined) { undeclaredSeen.add(stateVar); continue; }

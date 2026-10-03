@@ -43,6 +43,14 @@
  *   「本模块的回放曾只传 `pairWeights` 不传 `stateVarDomains`」——
  *   **接缝门在同一个地方咬了第二次，这是设计意图，不是意外。**
  *   ⇒ 本模块存在的**第二个理由**：一份实现、两个调用点。**⛔ 不许再各写一份。**
+ *
+ * 🔴 **第三件必须知道的事（WO-3ROOT-P3）——本模块只写了答案的一半**：
+ *   上面那行代数 `cur + λ·(base − rest)` 的产物**可以出域**（`λ·base` 直接继承了播种基值的
+ *   符号与量级：实测 `Material.elyte.shortageRisk` 得 −59.724650，而同一拍回执报「已夹到 0」）。
+ *   域**不在本模块里执行**，也**不许**在本模块里补一刀 —— 补了就是第二真相源，且"代数一行不改"
+ *   这条硬约束当场破。三条写路的域统一在**出口**执行：唯一投影入口 `sim/world-projection.ts`
+ *   （`projectWorldCells`），由**调用方**在本函数返回**之后**、`putTickState` **之前**调一次。
+ *   ⛔ 次序不许颠倒：先投影再合成 = 刚收回来的值又被代数覆写掉，退回病灶（见该文件头注「三条不许」）。
  */
 import { buildCellRoles, type PropagationRule, type StateVarDomainLookup, type TickState } from "@platform/contracts";
 import { stateVarValueRef } from "../synthetic/battery.js";
