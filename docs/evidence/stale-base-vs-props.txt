@@ -1,0 +1,20 @@
+# 探针 specbase-vs-props · session=sims_demo_seed_world · 2026-10-03T07:34:26.818Z
+# 规格格登记数（剥注释解析）= 25 对，类型 16 个
+# 金丝雀①：退役的 Model|forecastBias 被数到？ 否（解析器按语法位置数）
+# 会话 curTick=3 status=RUNNING baseSnapshot 对象数=4425
+# 金丝雀②：比较器对 [60 vs 61] 报不同？ 是
+# 比较格数=3733 逐位相同=3394 不同=339 props 无键=0 base 无键=1050
+# 样例（最多 12 条）：
+  obj_base_changzhou.loadIndex: props=301.819778 baseSnapshot=301.8198 Δ=-0.000022
+  obj_base_chengdu.loadIndex: props=151.633813 baseSnapshot=151.6338 Δ=0.000013
+  obj_base_handan.loadIndex: props=277.603892 baseSnapshot=277.6039 Δ=-0.000008
+  obj_base_hefei.loadIndex: props=149.007657 baseSnapshot=149.0077 Δ=-0.000043
+  obj_base_jiangmen.loadIndex: props=98.471521 baseSnapshot=98.4715 Δ=0.000021
+  obj_base_jinhua.loadIndex: props=438.018395 baseSnapshot=438.0184 Δ=-0.000005
+  obj_base_meishan.loadIndex: props=74.176504 baseSnapshot=74.1765 Δ=0.000004
+  obj_base_wuhan.loadIndex: props=129.983101 baseSnapshot=129.9831 Δ=0.000001
+  obj_base_xiamen.loadIndex: props=78.607222 baseSnapshot=78.6072 Δ=0.000022
+  obj_base_xinyang.loadIndex: props=224.685755 baseSnapshot=224.6858 Δ=-0.000045
+  obj_base_yangzhou.loadIndex: props=260.326692 baseSnapshot=260.3267 Δ=-0.000008
+  obj_base_zaozhuang.loadIndex: props=552.020928 baseSnapshot=552.0209 Δ=0.000028
+# 金丝雀③：比较格数 > 0 ？ 是（3733）

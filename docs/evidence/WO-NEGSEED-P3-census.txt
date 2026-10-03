@@ -1,0 +1,26 @@
+金丝雀⓪：baseSnapshot 4425 对象，nodeObjectIds 覆盖 4425（须 >0 且≈全部）
+金丝雀①：参与统计的 (类型·量) 格 = 51（须 >30 且 <200）
+金丝雀②（正向）：Material|shortageRisk 域={"min":0,"max":100,"restPoint":0,"decayRef":{"ruleKey":"C35","paramKey":"pressureDecayPerTick"},"unit":"0–100 压力指数","source":"压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② 世界态起点分两档取值 —— 对象上有同名属性的那些格取真读数（越界由本表声明的取值域夹住），其余由 tick0 生成式 `round(hash01(objectId|stateVar)×100)` 产出，天然落在 0–100"} base域=[-161.418,51.002] 负值格数=4
+
+=== 汇总 ===
+有域声明的格 40 / 全部 51；含负基值的格 6
+🔴 播种基值越出 domain 的格 = 9（越下界 3 / 越上界 7）
+   其中 tick1 被夹回域内的对象数合计 = 1
+
+=== 越界格逐条（按下界越界对象数降序）===
+类型|量                        域[min,max]rest   n  基值[min,max]            tick1[min,max]          越界obj 夹回
+PurchaseOrder|expeditePressure [0,100]r0         30 [-32.432,212.500]          [-12.000,170.193]            7     1  规格
+Model|supplyRisk               [0,100]r0          6 [-29.442,-28.857]          [-10.894,-10.677]            6     0  规格
+Material|shortageRisk          [0,100]r0          8 [-161.418,51.002]          [-59.725,55.579]             4     0  规格
+Base|loadIndex                 [0,100]r0         13 [74.177,552.021]           [79.408,302.202]             0     0  规格
+Customer|receivablePressure    [0,100]r0         20 [6.396,125.591]            [8.225,127.871]              0     0  规格
+Line|blockedPressure           [0,100]r0        130 [27.717,182.726]           [47.065,160.222]             0     0  规格
+Model|demandLoad               [0,100]r0          6 [23.567,138.000]           [24.058,133.887]             0     0  规格
+Order|costPressure             [0,100]r0        150 [40.000,115.000]           [40.684,116.078]             0     0  规格
+WIPLot|feedPressure            [0,100]r0        260 [111.111,111.189]          [111.374,115.049]            0     0  规格
+
+=== 无域声明但含负基值的格（域判据对它们无牙）===
+类型|量                        入度类    n  基值[min,max]                tick1[min,max]
+Order|leadDays                   -      150 [-14.000,178.000]          [-14.000,178.000]
+PurchaseOrder|procurementDelay 规格        30 [-7.000,-1.000]            [-7.000,-1.000]
+Supplier|procurementDelay      规格        15 [-6.000,5.000]             [-6.000,5.000]

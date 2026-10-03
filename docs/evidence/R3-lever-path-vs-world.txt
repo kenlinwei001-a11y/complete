@@ -1,0 +1,94 @@
+# R3 独立探针（评审员#3）· 采纳杠杆路径 × 世界读数 —— 评「派生规格不在运行期重算：C2 锚 baseSnapshot，props 一变读数就过期」
+# 环境：4019 上的 dev datacore（本工作流专用实例，未重启）· 真后端 · 无 mock
+# 分支 claude/handoff-console-c2-specbase · HEAD d7718eda4
+# 脚本 /tmp/wo-3root/r3-lever-vs-world.mjs（完整 stdout 见 /tmp/wo-3root/r3-lever.out）
+# 与上游 P2B / 评审员#1 的差异（做它们没做的，不复述）：
+#   A 走**采纳杠杆**（app.ts applyLeverWrites）这条路 —— 上游明写「未单独实测」；
+#     且目标属性 Equipment.oee_current 同时是（i）控制台真杠杆（lever-meta.ts LEVER_PROP_SPECS 在册）
+#     与（ii）派生规格输入（equipment_load_pressure = (1-oee_current)*100，cell Equipment.loadPressure
+#     已登记 STATE_VAR_VALUE_REFS）⇒ 把根因接到产品主路径上。
+#   B 【新】分支继承：从处理臂存档点 branch 出的**新**会话，基值来自世界态还是对象库真值。
+#   C 【新】可检测性：公开投影里有没有任何字段能说出「基值 ≠ 源」。
+# 全程只读 + 建会话/采纳 Action；结束时复原对象真值并逐位回读验证（RESTORED=true），未改产品代码、未 push。
+# R3 独立探针 · 2026-10-03T09:47:32.424Z
+# 目标：obj_equipment_LINE-WS-hefei-filling-assembly-E2
+#   规格输入 prop = oee_current（控制台杠杆属性）  规格 equipment_load_pressure = (1 - oee_current) * 100  →  cell loadPressure
+# 起点库真值 props.oee_current=0.828  props.loadPressure=17.2  按式子算=17.2
+# 金丝雀① 该格是规格格（式子值==库真值）：ok
+# 金丝雀② 同一次读里 oee_current 必须非空：ok
+# T=sims_jvhvnqy6x0dwhret K=sims_jgqm53z1hcreytdk（建会话 1.4s）
+# baseSnapshot loadPressure: T=17.2 K=17.2  ← 建会话时活采样（应 == 库真值 17.2）
+# 金丝雀③ 两会话基值建在同一份对象真值上（逐格比）：same=6375 diff=0
+
+## 阶段1 对照臂 K（props 未变）tick5 -> HTTP 200
+   K(tick 5) loadPressure=17.2  (基值 17.2)
+
+## 阶段2 采纳杠杆「采纳产能保障方案」写 oee_current: 0.828 -> 0.3
+   draft create HTTP=201 draftId=act_ttx07f3bqrcpr0sg 
+   submit HTTP=409  approve HTTP=200  draftStatus=EXECUTED
+   [扰动生效自证] props.oee_current=0.3（期望 0.3）· props.loadPressure=70（期望 70，证明 runDerivations 真跑了）
+   PERTURB-APPLIED=true
+
+## 阶段3 处理臂 T（props 已变）未推进时读数，再 tick5
+   T(tick 0) 变更后未推进的读数 = 17.2  (库真值 70)
+   tick T n=5 -> HTTP 200
+   T(tick 5) loadPressure=17.2    K(tick 5) loadPressure=17.2
+   [主判据] DIFF T5 vs K5 全量逐格：不同格=0（若 props→世界有活边，T 应≈70）
+   [否证判据①] 同一会话读数跳到新基值？ 否（模型未被否证）
+
+## 阶段4 建会话采样是活的（正面预言）：props 已变后新建 F
+   F=sims_7g6xfywwwmmcvc7j baseSnapshot loadPressure=70（库真值 70） ⇒ 采样点存在，之后永不回读
+
+## 阶段5 【新】分支继承：T 存档 → branch 出**新**会话 C，看 C 的基值是谁
+   checkpoint HTTP=201 tick=5 id=simcp_51wkq37631awz3ma
+   C=sims_bd531qx923r42xyz baseSnapshot loadPressure=17.2
+   T tick5 世界态 loadPressure=17.2   库真值 70
+   ⇒ 新会话 C 的基值贴近：世界态(旧) ✅ · 库真值(新) ❌ 不是库真值
+
+## 阶段6 【新】可检测性：能不能从公开数据看出这格基值已经过期
+   GET /sim/sessions/:id 顶层键 = id, tenantId, baseSnapshot, baseSnapshotProvenance, scope, status, curTick, parentCheckpointId, disabledRuleKeys, tickDays, createdAt
+   会话 JSON 里 revision/指纹/过期类字段命中 = 30（金丝雀：同串里 baseSnapshot 必然出现 ⇒ 3 次）
+   baseSnapshotProvenance[obj_equipment_LINE-WS-hefei-filling-assembly-E2][loadPressure] = "measured"（类别，不含源修订号/时间）
+   scope 键 = baseSnapshotOrigin
+   会话 createdAt=2026-10-03T09:47:32.745Z  ← 只有"会话何时建"，没有"源何时变过"
+   /world 顶层键 = tick, state, baseProvenance
+
+## 阶段7 阳性对照：/act 直接写世界 → 差器必须能看见差
+   /act obj_equipment_LINE-WS-hefei-filling-assembly-E2.loadPressure=90 -> HTTP 200
+   DIFF T6 vs K6: 不同格=2  T.loadPressure=90 K.loadPressure=17.2
+     obj_equipment_LINE-WS-hefei-filling-assembly-E2.loadPressure: T=90 K=17.2
+     obj_process_LINE-WS-hefei-filling-assembly.queuePressure: T=122.195663038861 K=120.621337312188
+
+## 阶段8 复原 props.oee_current -> 0.828
+   复原后 props.oee_current=0.828（原 0.828）props.loadPressure=17.2（原 17.2）  RESTORED=true
+
+## 会话收尾
+   sims_jvhvnqy6x0dwhret -> HTTP 200
+   sims_jgqm53z1hcreytdk -> HTTP 200
+   sims_7g6xfywwwmmcvc7j -> HTTP 200
+   sims_bd531qx923r42xyz -> HTTP 200
+
+# 判读：阶段3 DIFF=0 且 T 不随 props 走 ⇒ 「props 变 → 同一会话世界跟着变」这条边不存在（P2 根因成立）
+# 阶段7 差器非零 ⇒ 上面的 0 是"真没有差"，不是"差器瞎"
+RC=0
+
+# ── R3 自曝两处探针瑕疵（不许藏，如实登记）────────────────────────────────────
+# ① 阶段6 那行「revision/指纹/过期类字段命中 = 30」是**正则写太宽**造成的假阳性：唯一命中的串是
+#    状态变量名 "reviewPressure"（含子串 rev）。复核（只读，当场跑）：去重后命中串 = ["reviewPressure"]，
+#    逐键归因后**没有任何键**匹配 revision|sourceRev|fingerprint|stale|drift。
+#    ⇒ 正确结论是：顶层 11 个键 = id,tenantId,baseSnapshot,baseSnapshotProvenance,scope,status,curTick,
+#      parentCheckpointId,disabledRuleKeys,tickDays,createdAt —— 无一个能表达「源变过没变过」。
+# ② 目标格 Equipment.loadPressure 是**外生规格格**（入度 0），README 里那 8 格之一：K(tick5)=17.2 = 基值逐位相同。
+#    这不是缺陷、也不影响主判据（C2 合成层对该类格显式 continue，见 spec-base-synthesis.ts），
+#    反而给出最干净的读法：该格读数**恒等于建会话时采样的那个值**，props 改了也一动不动 —— 且与 C2 无关。
+
+# ── 环境事实（如实登记，与结论无关）────────────────────────────────────────────
+# 4019 这个 dev 实例在**本探针跑完之后**于 2026-10-03T09:49:04Z 死于 V8 堆 OOM：
+#   FATAL ERROR: Ineffective mark-compacts near heap limit / JavaScript heap out of memory
+#   （日志 /private/tmp/wo-console-e2e/evidence-1002/dc4019.log，pid 61057，堆到 4.1GB 上限）
+# 崩溃时正在处理的是**别的探针的会话** sims_xx8w87mfwj18sz9v 的 tick（不是本探针四个会话：
+# jvhvnqy6x0dwhret / jgqm53z1hcreytdk / 7g6xfywwwmmcvc7j / bd531qx923r42xyz）。
+# 本探针全部读数都在崩溃之前取得（每一次调用都记了 HTTP 状态码，末尾四次收尾 PATCH 全 200）。
+# ⛔ 未重启该服务（工作流硬约束）。若后续探针拿到 connection refused，那是这个 OOM，不是"世界没变"。
+# 由此产生一条与本单根因无关但影响复现的环境事实：并发多探针 × 每拍全量 4425 对象的 tick，
+# 内存模式实例会在 ~4GB 堆上限处整体死掉（内存仓储随之清零）。

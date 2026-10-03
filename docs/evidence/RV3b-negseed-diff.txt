@@ -1,0 +1,37 @@
+# 评审员#3 独立探针输出 · RV3b-negseed-diff
+# base commit=d7718eda4 (d7718eda4) · 运行产物=apps/datacore/dist (built 10-02 22:47, PID 61057 started 22:48) · 采集 2026-10-03T09:39:39Z
+# 命令: node docs/evidence/RV3b-negseed-diff.mjs
+CAPTURED_RC=0
+
+金丝雀0 ：DOMAINS=38 项 vref=function buildCellRoles=function
+金丝雀0b：规则 55 条；Material|shortageRisk 外生=false（须 false，否则 C2 会跳过它，本探针选错对象）
+会话 sims_gfzpj2deaaq56ms5 baseSnapshot=4425 对象；类型映射 4425
+t1 tick=1 saturations=829 变化格=3857
+t2 tick=2 saturations=1355 变化格=3743
+t3 tick=3 saturations=1438 变化格=3704
+t4 tick=4 saturations=1546 变化格=3807
+t5 tick=5 saturations=1640 变化格=3840
+t6 tick=6 saturations=1683 变化格=3870
+t7 tick=7 saturations=1664 变化格=3893
+t8 tick=8 saturations=1642 变化格=3917
+
+=== 汇总（8 拍；饱和事件按 C2 守卫分组）===
+正向对照：世界态在动的拍数 = 8/8
+【G-WRITE·C2 覆写组】采样 11658
+   命中 world ≡ 夹后值+λ·(base−rest) = 11658；落空 = 0
+   其中命中 world ≡ 夹后值+λ·base（rest=0 的逐位形）= 11658
+   「回执报夹到 X 而 world ≠ X」= 11562/11658
+【G-SKIP·C2 跳过组（差分对照臂）】采样 139（非规格 139 / 外生 0 / 本拍未衰减 0）
+   命中 world ≡ 夹后值 = 139；落空 = 0
+【F3】越界基值饱和采样 2468（其中规格 2468），tick≥1 落回域内 = 0
+【金丝雀·elyte.shortageRisk 逐拍】base=-161.417972
+   t1 夹后=0 world=-59.72464964 λ·base=-59.724649639999996
+   t2 夹后=0 world=-59.72464964 λ·base=-59.724649639999996
+   t3 夹后=0 world=-59.72464964 λ·base=-59.724649639999996
+   t4 夹后=0 world=-59.72464964 λ·base=-59.724649639999996
+   t5 夹后=0 world=-59.72464964 λ·base=-59.724649639999996
+   t6 夹后=0 world=-59.72464964 λ·base=-59.724649639999996
+   t7 夹后=0 world=-59.72464964 λ·base=-59.724649639999996
+   t8 夹后=0 world=-59.72464964 λ·base=-59.724649639999996
+
+判定：F1(+F3) 0 命中 / F2 0 命中（对照臂成立） / F4 0 命中

@@ -1,0 +1,11 @@
+# P2B 附：否证判据③（对象写入路是否检查/冻结会话）+ 第二条采纳路径（采纳杠杆）的可达性
+# 脚本 /tmp/wo-3root/p2b-lever.mjs ；CAPTURED_RC 为脚本真实退出码
+## F3: 采纳发生时既有会话的状态与存活
+   T sims_j9xx3zx5s1nev9xd status=RUNNING curTick=6  (采纳后仍可 tick -> HTTP 200)
+   K sims_x17qm9b5127wf2xb status=RUNNING curTick=6  (采纳后仍可 tick -> HTTP 200)
+   F sims_df87qrfghzzv6ktq status=RUNNING curTick=5  (采纳后仍可 tick -> HTTP 200)
+   当前库真值 props.demandDelta=0.6 props.demandPressure=60（已撤销回 0.6/60）
+
+## 采纳杠杆路径（app.ts applyLeverWrites，与「对象数据变更」同一份 repos.objects.put+runDerivations）
+   T2=sims_94rnrn80sv3wdpk4 K2=sims_jn7xzqp6s66dqgp4 base=60
+   draft create -> HTTP 400 {"error":{"code":"VALIDATION_ERROR","message":"payload.modelId is required","requestId":"req_0cw70sy3ax97y9z4"}}

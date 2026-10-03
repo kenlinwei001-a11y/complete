@@ -1,0 +1,14 @@
+
+> datacore@0.1.0 test /Users/apple/deploy/wo-edge-wire/apps/datacore
+> vitest run spec-cells-freshness
+
+
+ RUN  v3.2.6 /Users/apple/deploy/wo-edge-wire/apps/datacore
+
+ ✓ test/spec-cells-freshness.seam.test.ts (7 tests) 60ms
+
+ Test Files  1 passed (1)
+      Tests  7 passed (7)
+   Start at  20:15:37
+   Duration  14.93s (transform 6.52s, setup 0ms, collect 12.60s, tests 60ms, environment 0ms, prepare 770ms)
+

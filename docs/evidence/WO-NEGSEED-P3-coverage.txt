@@ -1,0 +1,43 @@
+# P3 覆盖取证：谁在看着这些越界格（带金丝雀）
+## 命令与读数（2026-10-03T09:06:23Z）
+
+### ① saturateToDomain 全 src 调用点（金丝雀：必须 ≥1，且必须落在 propagation.ts）
+$ grep -rn 'saturateToDomain' apps/datacore/src | grep -v node_modules
+/Users/apple/deploy/wo-edge-wire/apps/datacore/src/seed.ts:288: *   · `propagation.ts` `saturateToDomain(raw, min, max, rest)` —— `max === null` 那一支
+/Users/apple/deploy/wo-edge-wire/apps/datacore/src/seed.ts:1974:  //  · **不会为负**：压力族 `restPoint === min === 0` ⇒ `saturateToDomain` 下侧是**硬地板**
+/Users/apple/deploy/wo-edge-wire/apps/datacore/src/sim/propagation.ts:420: * 第一版两侧都按 `(max−min)·BAND` 切，被 §4 当场打红：`saturateToDomain(0,0,100)` **返回 12.5**。
+/Users/apple/deploy/wo-edge-wire/apps/datacore/src/sim/propagation.ts:434:export function saturateToDomain(raw: number, min: number, max: number | null, restPoint: number): number {
+/Users/apple/deploy/wo-edge-wire/apps/datacore/src/sim/propagation.ts:1101:  // 🔴 **只压缩「这一拍真的产生了的新读数」** —— `saturateToDomain` 在合法域内**不是恒等、且不幂等**
+/Users/apple/deploy/wo-edge-wire/apps/datacore/src/sim/propagation.ts:1145:      const sat = round12(saturateToDomain(raw, d.min, d.max, d.restPoint));
+
+### ② 域表导入/使用点（谁是域的真消费方）
+$ grep -rn 'STATE_VAR_DOMAINS' apps/datacore/src | grep -v node_modules | head -12
+/Users/apple/deploy/wo-edge-wire/apps/datacore/src/seed.ts:298: * **这两条订正为什么是本单的根因**：域补登记（把 5 个量纲写进 `STATE_VAR_DOMAINS`）与
+/Users/apple/deploy/wo-edge-wire/apps/datacore/src/seed.ts:2116:  // 造这个格子要动 `battery.ts` 的 `STATE_VAR_DOMAINS` / `STATE_VAR_DISPLAY_NAMES`，
+/Users/apple/deploy/wo-edge-wire/apps/datacore/src/seed.ts:2155:  // 因为它不在 `STATE_VAR_DOMAINS` 里、不夹不衰减）。`max` 才是这三个量的正确语义。
+/Users/apple/deploy/wo-edge-wire/apps/datacore/src/seed.ts:2157:  // ── 这三个量**刻意不进 `STATE_VAR_DOMAINS`** ────────────────────────────────────
+/Users/apple/deploy/wo-edge-wire/apps/datacore/src/seed.ts:2175:    // 而这三个量**不在 `STATE_VAR_DOMAINS` 里、引擎对它们不衰减**
+/Users/apple/deploy/wo-edge-wire/apps/datacore/src/solvers/chain-loss.ts:318:// 世界态里 41 种状态量，绝大多数是 **0–100 压力/风险指数**（`STATE_VAR_DOMAINS` 的
+/Users/apple/deploy/wo-edge-wire/apps/datacore/src/solvers/chain-loss.ts:322:// 天数族的名单**不是本单发明的**，是 `synthetic/battery.ts` `STATE_VAR_DOMAINS` 表头
+/Users/apple/deploy/wo-edge-wire/apps/datacore/src/solvers/chain-loss.ts:371: * 出处见上文 §2a：四个键逐条引自 `synthetic/battery.ts` `STATE_VAR_DOMAINS` 表头警告
+/Users/apple/deploy/wo-edge-wire/apps/datacore/src/solvers/chain-loss.ts:398:  // 天数族是纯积分器（`STATE_VAR_DOMAINS` 不夹不衰减），可能为负；负的等待天数没有业务含义，
+/Users/apple/deploy/wo-edge-wire/apps/datacore/src/seed-derivation-specs.ts:49:  // ⛔ 不 CLAMP：coverDays 刻意不进 STATE_VAR_DOMAINS（与天数族同一条纪律——写不出出处的
+/Users/apple/deploy/wo-edge-wire/apps/datacore/src/seed-derivation-specs.ts:69:  // ⛔ 不 CLAMP：receivablePressure 在 STATE_VAR_DOMAINS 里（0–100 压力族），
+/Users/apple/deploy/wo-edge-wire/apps/datacore/src/sim/propagation-inputs.ts:179:    // `STATE_VAR_DISPLAY_NAMES` / `STATE_VAR_DOMAINS` 两列），前端与引擎都只此一处，不留第二份。
+
+### ③ 合成层在 test/ 的命中（金丝雀：src 必中，否则量法坏）
+$ grep -rn 'makeRestoreSpecBase' apps/datacore/test   # 预期 0 命中 = 合成层零测试
+  (以上为空)
+$ grep -rn 'makeRestoreSpecBase' apps/datacore/src    # 金丝雀：必须命中
+/Users/apple/deploy/wo-edge-wire/apps/datacore/src/app.ts:69:import { makeRestoreSpecBase } from "./sim/spec-base-synthesis.js";
+/Users/apple/deploy/wo-edge-wire/apps/datacore/src/app.ts:2580:    const restoreSpecBase = makeRestoreSpecBase({
+/Users/apple/deploy/wo-edge-wire/apps/datacore/src/sim/spec-base-synthesis.ts:67:export function makeRestoreSpecBase(deps: SpecBaseSynthesisDeps): RestoreSpecBase {
+/Users/apple/deploy/wo-edge-wire/apps/datacore/src/sim/metric-series.ts:18:import { makeRestoreSpecBase } from "./spec-base-synthesis.js";
+/Users/apple/deploy/wo-edge-wire/apps/datacore/src/sim/metric-series.ts:150:  const restoreSpecBase = makeRestoreSpecBase({
+
+### ④ 播种路签名（有没有 domain 形参）
+$ sed -n '393,396p' apps/datacore/src/sim/seed-world.ts
+export async function deriveSeedBaseSnapshot(
+  repos: Repos,
+  tenantId: string,
+): Promise<{ state: TickState; origin: SeedWorldSnapshotOrigin; provenance: CellProvenance }> {

@@ -1,0 +1,35 @@
+金丝雀C1：STATE_VAR_DOMAINS=38 项 / valueRef=function
+金丝雀C2：shortageRisk 域 = 0..100（须 0..100）
+会话 sims_628qm1e6wkchenwm · 回读一致=true · curTick=0 · baseSnapshot 对象=4425
+金丝雀C3：对象→类型映射 12499 个（须 >1000）
+口径：base 越域格 = 360（规格 360 / 非规格 0）
+t1 HTTP=200 tick=1 saturations=829 本拍变化格=3857
+t2 HTTP=200 tick=2 saturations=1355 本拍变化格=4075
+t3 HTTP=200 tick=3 saturations=1438 本拍变化格=4075
+t4 HTTP=200 tick=4 saturations=1546 本拍变化格=4075
+t5 HTTP=200 tick=5 saturations=1640 本拍变化格=4075
+t6 HTTP=200 tick=6 saturations=1683 本拍变化格=4075
+t7 HTTP=200 tick=7 saturations=1664 本拍变化格=4075
+t8 HTTP=200 tick=8 saturations=1642 本拍变化格=4075
+
+=== 判别结果（8 拍）===
+正向对照：世界态变化拍数 8/8（须 =8）
+分组 A（规格 ∧ 本拍有 λ）= 11658 条；world−夹后值 == λ·base 逐位成立 = 11658
+   其中 d==0（= 夹值存活，机制漏判）= 96
+分组 B（其余：非规格或无 λ）= 139 条；d==0（= 无第二后写者，预言）= 139；d≠0（反例）= 0
+❌ 机制预言不符的点 = 0
+反例③：饱和拍上 world 仍在域外的点 = 8978 / 11797 条饱和事件
+   t1 obj_base_changzhou.loadIndex world=207.501665422955 域=[0,100] 夹后=95.828347562955 spec=true λ·base=111.67331786
+   t1 obj_base_chengdu.loadIndex world=144.718164306425 域=[0,100] 夹后=88.613653496425 spec=true λ·base=56.10451081
+   t1 obj_base_handan.loadIndex world=197.910266376973 域=[0,100] 夹后=95.196826336973 spec=true λ·base=102.71344004
+   t1 obj_base_hefei.loadIndex world=142.819217858515 域=[0,100] 夹后=87.686384768515 spec=true λ·base=55.13283309
+   t1 obj_base_jinhua.loadIndex world=259.410764655779 域=[0,100] 夹后=97.343958505779 spec=true λ·base=162.06680615
+   t1 obj_base_wuhan.loadIndex world=138.097802305883 域=[0,100] 夹后=90.004054935883 spec=true λ·base=48.09374737
+
+base 越域格 360 个（tick≥1 是否落回域内见下）
+金丝雀C4：两会话 base 在 360 个越域格上 相同=360 不同=0（须 不同=0）
+反例③（第二次扫描，4 拍）：base 越域规格格采样 1440 点，落回域内 = 9
+
+判定：A 组逐位成立 11658/11658，B 组反例 0，反例③ 9
+CAPTURED_RC=0
+CAPTURED_RC=0

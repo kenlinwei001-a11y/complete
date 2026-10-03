@@ -1,0 +1,86 @@
+# 单向可达普查（双臂）  rules=55  cells=51  session=sims_4mmz46ca220sg16m  BASE=http://127.0.0.1:4019
+# 值域册子条目=38   世界态格数=6375
+# 金丝雀A(正·实况臂) Order.demandPressure 判「单向·负」= 命中 ✓
+# 金丝雀B(反·实况臂) 系数取反后必须翻成双侧 = 未命中 ✗ 判据咬的不是符号
+# 金丝雀C(反·申报臂) 申报臂必须把该格判成双侧 = 命中 ✓
+
+## 汇总（申报臂 vs 实况臂）
+                     申报臂(平台相信的)   实况臂(世界给得起的)
+  被写过的格           39                   39
+  单向·负             0                    2   ← 「只能被往下推」
+  单向·正             34                   25   ← 「只能被往上推」
+  两侧都有             3                    12
+
+## 申报符号集 ≠ 实况符号集 的量纲（11 个）
+  shortageRisk               申报[+]  实况[+-0]  值域=[0,100] rest=0
+  gapPressure                申报[+]  实况[+0]  值域=[0,100] rest=0
+  expeditePressure           申报[+]  实况[+-0]  值域=[0,100] rest=0
+  orderChurn                 申报[+]  实况[+0]  值域=[0,100] rest=0
+  handlingBacklog            申报[+]  实况[+0]  值域=[0,null] rest=0
+  repairBacklog              申报[+]  实况[+0]  值域=[0,null] rest=0
+  forecastBias               申报[+-]  实况[+]  值域=[-100,100] rest=0
+  demandPressure             申报[+]  实况[+0]  值域=[0,100] rest=0
+  supplyRisk                 申报[+]  实况[-]  值域=[0,100] rest=0
+  splitPressure              申报[+]  实况[+0]  值域=[0,100] rest=0
+  inspectBacklog             申报[+]  实况[+0]  值域=[0,null] rest=0
+
+## 实况臂：单向 ∧ 撞硬边界（推到边界再也回不来）
+  Order.demandPressure                   入度=1 符号=- 值域[下:硬地板 上:带]
+  Order.shortageRisk                     入度=1 符号=- 值域[下:硬地板 上:带]
+
+## 实况臂：单向（全部 27 格）
+  ARInvoice.overduePressure              入度=1 符号=+ 值域[下:硬地板 上:带]  入边: Customer.receivablePressure×0.148(+)
+  Base.loadIndex                         入度=1 符号=+ 值域[下:硬地板 上:带]  入边: Model.demandLoad×0.222(+)
+  Certification.qualificationQueue       入度=1 符号=+ 值域[下:硬地板 上:无上界]  入边: Model.demandLoad×0.066(+)
+  ChangeoverMatrix.changeoverPressure    入度=1 符号=+ 值域[下:硬地板 上:带]  入边: Model.demandLoad×0.148(+)
+  Customer.receivablePressure            入度=1 符号=+ 值域[下:硬地板 上:带]  入边: Order.costPressure×0.03144963(+)
+  CustomerLocation.deliveryHoldRisk      入度=1 符号=+ 值域[下:硬地板 上:带]  入边: Customer.receivablePressure×0.185(+)
+  DefectRecord.defectPressure            入度=1 符号=+ 值域[下:硬地板 上:带]  入边: WIPLot.feedPressure×0.111(+)
+  ExceptionEvent.handlingBacklog         入度=1 符号=+ 值域[下:硬地板 上:无上界]  入边: DefectRecord.defectPressure×0.6(+)
+  FinishedGoodsInventory.drawdownPressure 入度=1 符号=+ 值域[下:硬地板 上:带]  入边: Model.demandLoad×0.222(+)
+  InterBaseTransfer.transferPressure     入度=1 符号=+ 值域[下:硬地板 上:带]  入边: Base.loadIndex×0.111(+)
+  Line.blockedPressure                   入度=1 符号=+ 值域[下:硬地板 上:带]  入边: Process.queuePressure×0.2035(+)
+  Line.utilPressure                      入度=1 符号=+ 值域[下:硬地板 上:带]  入边: Base.loadIndex×0.185(+)
+  MaintenanceOrder.repairBacklog         入度=1 符号=+ 值域[下:硬地板 上:无上界]  入边: Equipment.loadPressure×0.45(+)
+  MaintPlan.windowSqueeze                入度=1 符号=+ 值域[下:硬地板 上:带]  入边: Base.loadIndex×0.148(+)
+  Model.backlogPriceTop                  入度=1 符号=+ 值域[未声明]  入边: Order.unitPrice×1(+)
+  Model.backlogQtyTop                    入度=1 符号=+ 值域[未声明]  入边: Order.qty×1(+)
+  Order.costPressure                     入度=1 符号=+ 值域[下:硬地板 上:带]  入边: Model.costPressure×0.2775(+)
+  Order.demandPressure                   入度=1 符号=- 值域[下:硬地板 上:带]  入边: Model.forecastBias×-0.222(-)
+  Order.orderChurn                       入度=1 符号=+ 值域[下:硬地板 上:带]  入边: Customer.receivablePressure×0.1295(+)
+  Order.shortageRisk                     入度=1 符号=- 值域[下:硬地板 上:带]  入边: Model.supplyRisk×0.2775(-)
+  OrderLine.splitPressure                入度=2 符号=+ 值域[下:硬地板 上:带]  入边: Order.orderChurn×0.12140625(+0) , Order.demandPressure×0.15609375(+0)
+  OverdueRecord.collectionPressure       入度=1 符号=+ 值域[下:硬地板 上:带]  入边: Customer.receivablePressure×0.222(+)
+  Process.queuePressure                  入度=3 符号=+ 值域[下:硬地板 上:带]  入边: Equipment.equipmentFailure×0.12807661(+) , Equipment.loadPressure×0.185(+) , Line.utilPressure×0.14942302(+)
+  QualityLot.inspectBacklog              入度=1 符号=+ 值域[下:硬地板 上:无上界]  入边: WorkOrder.releasePressure×0.185(+)
+  Shipment.inboundExpeditePressure       入度=1 符号=+ 值域[下:硬地板 上:带]  入边: Base.loadIndex×0.1295(+)
+  WIPLot.feedPressure                    入度=1 符号=+ 值域[下:硬地板 上:带]  入边: WorkOrder.releasePressure×0.259(+)
+  WorkOrder.releasePressure              入度=2 符号=+ 值域[下:硬地板 上:带]  入边: Line.blockedPressure×0.13875(+) , Line.utilPressure×0.13875(+)
+
+## 实况臂：两侧都有（12 格）
+  CustomsClearance.clearanceQueueDays    入度=1 值域[未声明]  入边: PurchaseOrder.expeditePressure×0.4(+-0)
+  IncomingInspection.queueDays           入度=1 值域[下:硬地板 上:无上界]  入边: PurchaseOrder.expeditePressure×0.222(+-0)
+  Material.shortageRisk                  入度=6 值域[下:硬地板 上:带]  入边: MaterialAlternative.switchPressure×-0.111(-) , MaterialBatch.procurementDelay×0.05946418(+-0) , IncomingInspection.queueDays×0.074(+) , PurchaseOrder.procurementDelay×0.07928545(+-0) , Supplier.deliveryDelay×0.08919627(+) , Supplier.procurementDelay×0.04955336(+-0)
+  MaterialAlternative.switchPressure     入度=1 值域[下:硬地板 上:带]  入边: Material.shortageRisk×0.222(+-0)
+  MaterialBalance.gapPressure            入度=1 值域[下:硬地板 上:带]  入边: Material.shortageRisk×0.259(+-0)
+  MaterialBatch.turnoverPressure         入度=1 值域[下:硬地板 上:带]  入边: Material.shortageRisk×0.185(+-0)
+  Model.costPressure                     入度=3 值域[下:硬地板 上:带]  入边: Material.priceShock×0.109318171(+) , Order.leadDays×-0.084090909(+-) , WorkOrder.releasePressure×0.084090662(+)
+  Model.demandLoad                       入度=4 值域[下:硬地板 上:带]  入边: FinishedGoodsInventory.coverDays×-0.00698967(-) , FinishedGoodsInventory.drawdownPressure×-0.0083879(-) , Order.orderChurn×-0.00349465(-0) , Order.demandPressure×0.00698967(+0)
+  Model.supplyRisk                       入度=2 值域[下:硬地板 上:带]  入边: Material.shortageRisk×0.161875(+-0) , WorkOrder.releasePressure×0.115625(+)
+  OrderPromise.promiseRisk               入度=1 值域[下:硬地板 上:带]  入边: Order.shortageRisk×0.2775(+-0)
+  PurchaseOrder.expeditePressure         入度=2 值域[下:硬地板 上:带]  入边: MaterialBalance.gapPressure×0.185(+0) , Material.shortageRisk×0.185(+-0)
+  Supplier.reviewPressure                入度=1 值域[下:硬地板 上:带]  入边: PurchaseOrder.expeditePressure×0.148(+-0)
+
+## 实况臂：入度 0（外生根，世界唯一的信息来源）
+  Equipment.equipmentFailure             值域[下:硬地板 上:带] 世界态符号[+]
+  Equipment.loadPressure                 值域[下:硬地板 上:带] 世界态符号[+]
+  FinishedGoodsInventory.coverDays       值域[未声明] 世界态符号[+]
+  Material.priceShock                    值域[下:硬地板 上:带] 世界态符号[+]
+  MaterialBatch.procurementDelay         值域[未声明] 世界态符号[+-0]
+  Model.forecastBias                     值域[下:带 上:带] 世界态符号[+]
+  Order.leadDays                         值域[未声明] 世界态符号[+-]
+  Order.qty                              值域[未声明] 世界态符号[+]
+  Order.unitPrice                        值域[未声明] 世界态符号[+]
+  PurchaseOrder.procurementDelay         值域[未声明] 世界态符号[+-0]
+  Supplier.deliveryDelay                 值域[未声明] 世界态符号[+]
+  Supplier.procurementDelay              值域[未声明] 世界态符号[+-0]

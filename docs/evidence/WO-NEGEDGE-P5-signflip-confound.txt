@@ -1,0 +1,31 @@
+规则表 n=55
+金丝雀① Order 为靶的边 = 4（必须 >=1，否则量法坏了）
+金丝雀② forecastBias 为源的边 = 1（必须 >=1，否则量法坏了）
+★ Order.demandPressure 入边 = 1 条（正系数条数 = 0）
+    入边 Model.forecastBias k=-0.222 ref={"ruleKey":"C36","paramKey":"demo_forecast_bias_to_order_demand"} status=PUBLISHED
+全表负系数边 = 6 条（出荷态 6 条）
+金丝雀⓪ 目标边开跑态 k=-0.222 ref={"ruleKey":"C36","paramKey":"demo_forecast_bias_to_order_demand"}
+金丝雀③ 视图配置解出 Order=150 Model=6（均须 >0）
+── 臂 A · 出荷态 k=−0.222 ref={C36} ──
+  [PATCH A] HTTP=200 回读 k=-0.222 ref={"ruleKey":"C36","paramKey":"demo_forecast_bias_to_order_demand"} status=PUBLISHED ⇒ 扰动已落地
+A 出荷态: 会话=sims_wy20qan0692m3fg9 tickHTTP=200 可比单=150 | fb(base) n=6 min=1 max=88 负=0 | fb(活) 负=0 | 读数>基值+0.01 = 0/150 | 比值 min=0.370000 max=0.990039
+── 臂 B · ★判决臂 k=−0.222 ref=null（符号不变，只置空 ref）──
+  [PATCH B] HTTP=200 回读 k=-0.222 ref=null status=PUBLISHED ⇒ 扰动已落地
+B 空ref保号: 会话=sims_wdk8vzsz01bmx2kz tickHTTP=200 可比单=150 | fb(base) n=6 min=1 max=88 负=0 | fb(活) 负=0 | 读数>基值+0.01 = 0/150 | 比值 min=0.370000 max=0.990039
+── 臂 C · 翻转 k=+0.222 ref=null（复现 P3）──
+  [PATCH C] HTTP=200 回读 k=0.222 ref=null status=PUBLISHED ⇒ 扰动已落地
+C 翻转: 会话=sims_h0tkq06epvdd9a1x tickHTTP=200 可比单=150 | fb(base) n=6 min=1 max=88 负=0 | fb(活) 负=0 | 读数>基值+0.01 = 150/150 | 比值 min=1.009961 max=30.882724
+── 臂 D · 翻转保ref k=+0.222 ref={C36}（ref 优先性对照）──
+  [PATCH D] HTTP=200 回读 k=0.222 ref={"ruleKey":"C36","paramKey":"demo_forecast_bias_to_order_demand"} status=PUBLISHED ⇒ 扰动已落地
+D 翻转保ref: 会话=sims_5yt8p5w9gmpwp1jp tickHTTP=200 可比单=150 | fb(base) n=6 min=1 max=88 负=0 | fb(活) 负=0 | 读数>基值+0.01 = 0/150 | 比值 min=0.370000 max=0.990039
+共同可比单 = 150
+★B vs A（只把 ref 置空、符号不变）变化 = 0/150  ⇒ 若为 0，ref 置空本身不改变读数
+★C vs A（翻符号+置空ref）变化 = 150/150  ⇒ 正对照：扰动必须落地
+★D vs A（翻符号但保留 ref）变化 = 0/150  ⇒ 0 ⇒ ref 赢（inline 被忽略）；大 ⇒ inline 赢
+★四臂上穿计数： A=0 B=0 C=150 D=0 / 各 150
+A 前 3 大 Δ：obj_order_SO-900474 base=0 v=0.000000 Δ=0.0000 | obj_order_SO-900485 base=0 v=0.000000 Δ=0.0000 | obj_order_SO-3431 base=19 v=18.402346 Δ=-0.5977
+B 前 3 大 Δ：obj_order_SO-900474 base=0 v=0.000000 Δ=0.0000 | obj_order_SO-900485 base=0 v=0.000000 Δ=0.0000 | obj_order_SO-3431 base=19 v=18.402346 Δ=-0.5977
+C 前 3 大 Δ：obj_order_SO-900088 base=21 v=73.593595 Δ=52.5936 | obj_order_SO-900090 base=14 v=66.593595 Δ=52.5936 | obj_order_SO-900105 base=31 v=83.593595 Δ=52.5936
+回退 PATCH HTTP=200 回读 k=-0.222 ref={"ruleKey":"C36","paramKey":"demo_forecast_bias_to_order_demand"}（须 -0.222 / {"ruleKey":"C36","paramKey":"demo_forecast_bias_to_order_demand"}）
+── 结束 ──
+CAPTURED_RC=0

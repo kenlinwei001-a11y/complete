@@ -1,0 +1,12 @@
+
+① 用 tick0 行复算派生式（自证基值不是哈希占位）：
+   shortageRisk 格 0 个：复算==base（round6）0/0
+   样例 obj_material_elyte：dailyUse=undefined leadTime=undefined onHand=undefined inTransit=undefined ⇒ 复算=NaN / base=-161.417972
+   出处章（服务自陈）：elyte.shortageRisk=measured（measured=取自对象真读数）
+   金丝雀：有 shortageRisk 格的对象 = 158（须 >0）
+
+② WO 问题引用的两个数是不是 "基值"：
+   obj_material_elyte.shortageRisk: baseSnapshot=-161.417972（=-161.42）· 0.37×base=-59.72464964（=-59.72）· WO 引用数=-59.72 ⇒ 引用的是 世界态值(λ·base 的 2 位小数)，⛔ 不是基值
+   obj_model_2170-NCM.supplyRisk: baseSnapshot=-29.4419（=-29.44）· 0.37×base=-10.893503（=-10.89）· WO 引用数=-10.89 ⇒ 引用的是 世界态值(λ·base 的 2 位小数)，⛔ 不是基值
+CAPTURED_RC=0
+CAPTURED_RC=0

@@ -1,0 +1,43 @@
+披露回包顶层键: curTick, state, trace, cadence, scope, stateVarReport, pairWeighting, disclosure
+金丝雀：stateVarReport.decayApplied.demandPressure = 0.37  ✅ 路径对
+本拍 saturations 条目 829 条
+
+① 同拍对照（本拍 saturations 记 value<max，而同拍世界读数 > max）——后写铁证：
+   Base.loadIndex (obj_base_changzhou)
+      本拍夹值 raw=199.820726782 → value=95.828347562955（<max）  但同拍世界读数 = 207.501665422955 > max=100  Δ=111.673318
+   Base.loadIndex (obj_base_chengdu)
+      本拍夹值 raw=104.890302153 → value=88.613653496425（<max）  但同拍世界读数 = 144.718164306425 > max=100  Δ=56.104511
+   Base.loadIndex (obj_base_handan)
+      本拍夹值 raw=180.122299098 → value=95.196826336973（<max）  但同拍世界读数 = 197.910266376973 > max=100  Δ=102.713440
+   Base.loadIndex (obj_base_hefei)
+      本拍夹值 raw=100.75682391 → value=87.686384768515（<max）  但同拍世界读数 = 142.819217858515 > max=100  Δ=55.132833
+   Base.loadIndex (obj_base_jinhua)
+      本拍夹值 raw=285.312588813 → value=97.343958505779（<max）  但同拍世界读数 = 259.410764655779 > max=100  Δ=162.066806
+   Base.loadIndex (obj_base_wuhan)
+      本拍夹值 raw=112.52535363 → value=90.004054935883（<max）  但同拍世界读数 = 138.097802305883 > max=100  Δ=48.093747
+   Base.loadIndex (obj_base_xiamen)
+      本拍夹值 raw=80.15854986 → value=79.276191895786（<max）  但同拍世界读数 = 108.360864035786 > max=100  Δ=29.084672
+   Base.loadIndex (obj_base_xinyang)
+      本拍夹值 raw=156.64802565 → value=94.13960083939（<max）  但同拍世界读数 = 177.27333018939 > max=100  Δ=83.133729
+   Base.loadIndex (obj_base_yangzhou)
+      本拍夹值 raw=179.10181596 → value=95.158859731348（<max）  但同拍世界读数 = 191.479735771348 > max=100  Δ=96.320876
+   Base.loadIndex (obj_base_zaozhuang)
+      本拍夹值 raw=355.539508209 → value=97.954438024517（<max）  但同拍世界读数 = 302.202181384517 > max=100  Δ=204.247743
+   Base.loadIndex (obj_base_zigong)
+      本拍夹值 raw=113.28351516 → value=90.123810309528（<max）  但同拍世界读数 = 138.662827149528 > max=100  Δ=48.539017
+   Customer.receivablePressure (obj_customer_cust_0)
+      本拍夹值 raw=141.323945946137 → value=93.156230892951（<max）  但同拍世界读数 = 109.041400932951 > max=100  Δ=15.885170
+   ⇒ 同拍「夹了却又越域」的格: 645/829
+
+② 逐格轨迹（tick0 在域内 ∧ 终态越出 max）：
+   本拍就有 674 个（tick0→tick1）。各量纲前 3：
+   Base.loadIndex obj_base_jiangmen: tick0=98.471521 base=98.471521 tick1=103.703368138 域[0,100] λ·base=36.434463
+      C2 补的恰为 λ·(base−rest)=36.434463；tick0 在域内 ⇒ 越域不是种子带来的
+   Customer.receivablePressure obj_customer_cust_0: tick0=42.932892 base=42.932892 tick1=109.041400932951 域[0,100] λ·base=15.885170
+      C2 补的恰为 λ·(base−rest)=15.885170；tick0 在域内 ⇒ 越域不是种子带来的
+   Line.blockedPressure obj_line_LINE-WS-hefei-formation: tick0=95.2247 base=95.2247 tick1=113.966809734139 域[0,100] λ·base=35.233139
+      C2 补的恰为 λ·(base−rest)=35.233139；tick0 在域内 ⇒ 越域不是种子带来的
+   Process.queuePressure obj_process_LINE-WS-changzhou-assembly-aging: tick0=100 base=100 tick1=113.704347865133 域[0,100] λ·base=37.000000
+      C2 补的恰为 λ·(base−rest)=37.000000；tick0 在域内 ⇒ 越域不是种子带来的
+
+[eof]

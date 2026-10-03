@@ -1,0 +1,10 @@
+Material.elyte: dailyUse=242.6 leadTime=10 onHand=5173 inTransit=1169
+   公式=-161.41797197032150  round6=-161.417972  base=-161.417972  |Δraw|=2.97e-8  ✅ round6 逐位相等
+Material.al_foil: dailyUse=461 leadTime=14 onHand=9558 inTransit=1941
+   公式=-78.168577626278278  round6=-78.168578  base=-78.168578  |Δraw|=3.74e-7  ✅ round6 逐位相等
+Material.cu_foil: dailyUse=275.1 leadTime=13 onHand=2596 inTransit=2865
+   公式=-52.699717585213754  round6=-52.699718  base=-52.699718  |Δraw|=4.15e-7  ✅ round6 逐位相等
+Material.sep_film: dailyUse=519.9 leadTime=17 onHand=9734 inTransit=1234
+   公式=-24.096262855979099  round6=-24.096263  base=-24.096263  |Δraw|=1.44e-7  ✅ round6 逐位相等
+判定：round6(公式) === base 命中 4/4（金丝雀须 ≥1）；未取整直接相等 0/4
+⇒ 负基值来源坐实：式子算带符号净额（负=超储），播种路原样取值，全程无域夹值

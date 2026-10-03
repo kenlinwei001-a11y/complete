@@ -1,0 +1,32 @@
+# 运行树 = /Users/apple/deploy/wo-edge-wire/apps/datacore/src （dist/app.js 含 'specBase: simState(s.baseSnapshot)' -> 与 src 的 C2 锚点一致）
+
+## 模式金丝雀（同一 ERE 打在必然命中的文件上）
+  sim/seed-world.ts  repos.objects|repos.epochs|ontology.  = 2  (必须 >0)
+
+## tick 核 simAdvanceTicks 体（app.ts 2392-2730，即 4019 真跑的那段）
+  repos.objects|repos.epochs|repos.derivationSpecs|ontology. = 0
+  金丝雀 repos.sim（同区间，必须 >0）                          = 5
+  金丝雀 restoreSpecBase（同区间，必须 >0）                    = 5
+
+## 写 baseSnapshot 的全部位置（持久化会话内的世界起点）
+  app.ts:2114:      id: input.id ?? newId("sims"), tenantId: c.tenantId, baseSnapshot: base,
+  app.ts:2135:        baseSnapshot: b.baseSnapshot,
+  app.ts:2581:      baseSnapshot: s.baseSnapshot,
+  app.ts:3275:    const child: SimSession = { id: newId("sims"), tenantId: c.tenantId, baseSnapshot: simState(baseState), scope: parent.scope,
+  app.ts:4837:    const s: SimSession = { id: newId(idPrefix), tenantId: c.tenantId, baseSnapshot: {}, scope, status: "READY", curTick: 0, parentCheckpointId: null, disabledRuleKeys: [], createdAt: new Date().toISOString() };
+  sim/metric-series.ts:151:    baseSnapshot: engine.specBase, graph: engine.graph, rules, stateVarDomains: engine.stateVarDomains,
+  sim/seed-world.ts:875:    baseSnapshot: state,
+  sim/spec-base-synthesis.ts:57:  baseSnapshot: TickState;
+  repo/pg.ts:82:      baseSnapshot: r.base_snapshot as SimSession["baseSnapshot"], scope: r.scope as SimSession["scope"],
+  .baseSnapshot = （原地改写）命中数 = 0
+
+## 有没有「重铺/失效/重建」路由（ERE；金丝雀 = 能捞到 optimize 路由）
+  repair|reseed|rebuild|refresh|resync|re-seed 命中 = 0
+  金丝雀：同管道捞 optimize 路由 = 4（必须 >0）
+
+## 会话数据模型里有无 revision/指纹 字段（node 9）
+  session 记录字段（4019 实读）= id,tenantId,baseSnapshot,baseSnapshotProvenance,scope,status,curTick,parentCheckpointId,disabledRuleKeys,tickDays,createdAt -> 无 revision/fingerprint
+  provenance 只有 measured/derived/unknown 三态（实读 obj_order_SO-3391: demandPressure="measured"，即使它是规格派生格且基值已过期）
+
+## 结论
+  tick 核对对象库零访问（金丝雀均 >0，区间与模式都活着）；baseSnapshot 只写不重算；无重铺/失效路由；会话模型无源修订号。

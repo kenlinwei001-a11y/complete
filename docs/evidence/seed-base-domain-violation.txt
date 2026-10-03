@@ -1,0 +1,100 @@
+# 反向金丝雀（比较器分辨力）：-1⇒min 50⇒null 101⇒max -100(贴界)⇒null -101⇒min 500(无上界)⇒null ✓
+# 播种基值越域普查 · session=sims_8cc7mpkqbqj2erdp curTick=0 · 2026-10-03T08:47:52.603Z · BASE=http://127.0.0.1:4019
+# 世界态对象=4425 格数=6375
+# 类型映射：12499 个对象 / 100 个类型
+# 规则=55 条，(类型·量) 格=51 个（金丝雀：应 >0）
+# 域（运行进程下发）stateVarBounds=38 条 · undeclaredStateVars=9 个 · 本拍 saturations=829
+# 金丝雀：demandPressure 在册？是 forecastBias 在册？是
+# 交叉对照 dist STATE_VAR_DOMAINS：38 条
+
+## Q1 逐格：播种基值越域（域来源标 [LIVE]=运行进程 / [DIST]=dist 对照 / [无]=未声明）
+   格                                 n      base[min,max]                tick1[min,max]               base越界 tick1越界  base<0 域           源
+  WIPLot.feedPressure                 260  [111.1111,111.1888]         [111.3743,115.0486]             260    260      0  [0,100]@0        LIVE
+  Line.blockedPressure                130  [27.7166,182.7257]          [47.0654,160.2219]               49     69      0  [0,100]@0        LIVE
+  Order.costPressure                  150  [40.0000,115.0000]          [40.6841,116.0783]               16     16      0  [0,100]@0        LIVE
+  PurchaseOrder.expeditePressure       30  [-32.4324,212.5000]         [-12.0000,170.1934]              13     13      7  [0,100]@0        LIVE
+  Base.loadIndex                       13  [74.1765,552.0209]          [79.4084,302.2022]               10     12      0  [0,100]@0        LIVE
+  Model.supplyRisk                      6  [-29.4419,-28.8571]         [-10.8935,-10.6771]               6      6      6  [0,100]@0        LIVE
+  Material.shortageRisk                 8  [-161.4180,51.0022]         [-59.7246,55.5792]                4      4      4  [0,100]@0        LIVE
+  Customer.receivablePressure          20  [6.3958,125.5910]           [8.2254,127.8705]                 1      2      0  [0,100]@0        LIVE
+  Model.demandLoad                      6  [23.5669,138.0000]          [24.0581,133.8871]                1      1      0  [0,100]@0        LIVE
+  ARInvoice.overduePressure            60  [1.0000,100.0000]           [0.6300,63.0000]                  0      0      0  [0,100]@0        LIVE
+  Certification.qualificationQueue     18  [3.0000,94.0000]            [2.3400,73.3200]                  0      0      0  [0,null]@0       LIVE
+  ChangeoverMatrix.changeoverPressure   30  [4.0000,97.0000]            [6.0079,73.3440]                  0      0      0  [0,100]@0        LIVE
+  CustomerLocation.deliveryHoldRisk    30  [5.0000,99.0000]            [5.5932,80.7422]                  0      0      0  [0,100]@0        LIVE
+  CustomsClearance.clearanceQueueDays    1  [2.0000,2.0000]             [2.0000,2.0000]                   0      0      0  未声明              
+  DefectRecord.defectPressure          85  [0.0207,0.3618]             [0.0207,0.3618]                   0      0      0  [0,100]@0        LIVE
+  Equipment.equipmentFailure          780  [2.0000,22.0000]            [2.0000,22.0000]                  0      0      0  [0,100]@0        LIVE
+  Equipment.loadPressure              780  [12.5000,22.4000]           [12.5000,22.4000]                 0      0      0  [0,100]@0        LIVE
+  ExceptionEvent.handlingBacklog      372  [0.0000,100.0000]           [0.0000,25.0970]                  0      0      0  [0,null]@0       LIVE
+  FinishedGoodsInventory.coverDays     18  [1.9317,42.3444]            [1.9317,42.3444]                  0      0      0  未声明              
+  FinishedGoodsInventory.drawdownPressure   18  [5.0000,98.0000]            [24.5460,70.9560]                 0      0      0  [0,100]@0        LIVE
+  IncomingInspection.queueDays         30  [1.0000,99.0000]            [0.6300,62.3700]                  0      0      0  [0,null]@0       LIVE
+  InterBaseTransfer.transferPressure   17  [1.0000,98.0000]            [0.6300,61.7400]                  0      0      0  [0,100]@0        LIVE
+  Line.utilPressure                   130  [88.0179,95.8912]           [88.0179,95.8912]                 0      0      0  [0,100]@0        LIVE
+  MaintenanceOrder.repairBacklog      193  [0.0000,100.0000]           [0.0000,25.0000]                  0      0      0  [0,null]@0       LIVE
+  MaintPlan.windowSqueeze              13  [1.0000,96.0000]            [0.6300,60.4800]                  0      0      0  [0,100]@0        LIVE
+  Material.priceShock                   8  [2.0000,8.0000]             [2.0000,8.0000]                   0      0      0  [0,100]@0        LIVE
+  MaterialAlternative.switchPressure    5  [11.0000,95.0000]           [11.4865,69.3641]                 0      0      0  [0,100]@0        LIVE
+  MaterialBalance.gapPressure           9  [0.0000,8.9944]             [0.0000,20.2071]                  0      0      0  [0,100]@0        LIVE
+  MaterialBatch.procurementDelay       24  [1.0000,154.0000]           [1.0000,154.0000]                 0      0      0  未声明              
+  MaterialBatch.turnoverPressure       24  [8.0000,95.0000]            [0.0000,67.7784]                  0      0      0  [0,100]@0        LIVE
+  Model.backlogPriceTop                 6  [1.0000,83.0000]            [14350.0000,22660.0000]           0      0      0  未声明              
+  Model.backlogQtyTop                   6  [9.0000,54.0000]            [7463.0000,21777.0000]            0      0      0  未声明              
+  Model.costPressure                    6  [2.4653,3.8858]             [0.9122,1.6438]                   0      0      0  [0,100]@0        LIVE
+  Model.forecastBias                    6  [1.0000,88.0000]            [1.0000,88.0000]                  0      0      0  [-100,100]@0     LIVE
+  Order.demandPressure                150  [0.0000,60.0000]            [0.0000,59.7780]                  0      0      0  [0,100]@0        LIVE
+  Order.leadDays                      150  [-14.0000,178.0000]         [-14.0000,178.0000]               0      0     23  未声明              
+  Order.orderChurn                    150  [0.0000,100.0000]           [0.0000,100.0000]                 0      0      0  [0,100]@0        LIVE
+  Order.qty                           150  [708.0000,21777.0000]       [708.0000,21777.0000]             0      0      0  未声明              
+  Order.shortageRisk                  150  [0.0000,35.0000]            [0.0000,26.9922]                  0      0      0  [0,100]@0        LIVE
+  Order.unitPrice                     150  [13594.0000,22660.0000]     [13594.0000,22660.0000]           0      0      0  未声明              
+  OrderLine.splitPressure             873  [0.0000,100.0000]           [0.0000,77.6021]                  0      0      0  [0,100]@0        LIVE
+  OrderPromise.promiseRisk             50  [2.0000,97.0000]            [1.5375,67.6725]                  0      0      0  [0,100]@0        LIVE
+  OverdueRecord.collectionPressure      2  [55.0000,86.0000]           [34.6500,54.1800]                 0      0      0  [0,100]@0        LIVE
+  Process.queuePressure               650  [88.0000,100.0000]          [105.4492,114.6061]               0    650      0  [0,100]@0        LIVE
+  PurchaseOrder.procurementDelay       30  [-7.0000,-1.0000]           [-7.0000,-1.0000]                 0      0     30  未声明              
+  QualityLot.inspectBacklog           260  [0.0000,99.0000]            [0.0000,62.3700]                  0      0      0  [0,null]@0       LIVE
+  Shipment.inboundExpeditePressure     13  [10.0000,91.0000]           [6.3000,57.3300]                  0      0      0  [0,100]@0        LIVE
+  Supplier.deliveryDelay               15  [1.0000,10.0000]            [1.0000,10.0000]                  0      0      0  未声明              
+  Supplier.procurementDelay            15  [-6.0000,5.0000]            [-6.0000,5.0000]                  0      0      2  未声明              
+  Supplier.reviewPressure              15  [2.0000,77.0000]            [1.2600,48.5100]                  0      0      0  [0,100]@0        LIVE
+  WorkOrder.releasePressure           260  [1.0014,15.0270]            [17.7283,50.2273]                 0      0      0  [0,100]@0        LIVE
+
+## Q1 汇总：有播种越界的格 9/51 格 · 越界格数(对象×格) 360
+##          其中有域的格越界 9 格 · 未声明域的格 0 格
+
+## Q2/Q3 四个被点名的量 · 逐对象（前 6 个 + 最负的 2 个）
+── Material.shortageRisk · n=8 · 域=[0,100] rest=0（LIVE） · 在册 stateVarBounds=true · undeclared=false
+   obj_material_elyte                   base= -161.417972 tick1=-59.72464964 base违界=min 来源=measured
+   obj_material_al_foil                 base=  -78.168578 tick1=-28.92237386 base违界=min 来源=measured
+   obj_material_cell_case               base=   20.524626 tick1=23.873975605022 base违界=否 来源=measured
+   obj_material_cu_foil                 base=  -52.699718 tick1=-19.49889566 base违界=min 来源=measured
+   obj_material_neg_graphite            base=   51.002157 tick1=55.579190672054 base违界=否 来源=measured
+   obj_material_pos_lfp                 base=   42.856252 tick1=48.969869291483 base违界=否 来源=measured
+── Model.supplyRisk · n=6 · 域=[0,100] rest=0（LIVE） · 在册 stateVarBounds=true · undeclared=false
+   obj_model_2170-NCM                   base=    -29.4419 tick1=  -10.893503 base违界=min 来源=measured
+   obj_model_4680-NCM                   base=    -29.4419 tick1=  -10.893503 base违界=min 来源=measured
+   obj_model_4680-LFP                   base=    -28.8571 tick1=  -10.677127 base违界=min 来源=measured
+   obj_model_方形-LFP                     base=    -28.8571 tick1=  -10.677127 base违界=min 来源=measured
+   obj_model_方形-NCM                     base=    -29.4419 tick1=  -10.893503 base违界=min 来源=measured
+   obj_model_圆柱-LFP                     base=    -28.8571 tick1=  -10.677127 base违界=min 来源=measured
+── PurchaseOrder.procurementDelay · n=30 · 域=未声明 · 在册 stateVarBounds=false · undeclared=true
+   obj_purchaseorder_po_12              base=          -7 tick1=          -7 base违界=否 来源=measured
+   obj_purchaseorder_po_0               base=          -4 tick1=          -4 base违界=否 来源=measured
+   obj_purchaseorder_po_1               base=          -3 tick1=          -3 base违界=否 来源=measured
+   obj_purchaseorder_po_10              base=          -3 tick1=          -3 base违界=否 来源=measured
+   obj_purchaseorder_po_11              base=          -4 tick1=          -4 base违界=否 来源=measured
+   obj_purchaseorder_po_13              base=          -1 tick1=          -1 base违界=否 来源=measured
+── Supplier.procurementDelay · n=15 · 域=未声明 · 在册 stateVarBounds=false · undeclared=true
+   obj_supplier_SUP-015                 base=          -6 tick1=          -6 base违界=否 来源=measured
+   obj_supplier_SUP-012                 base=          -1 tick1=          -1 base违界=否 来源=measured
+   obj_supplier_SUP-001                 base=           3 tick1=           3 base违界=否 来源=measured
+   obj_supplier_SUP-002                 base=           3 tick1=           3 base违界=否 来源=measured
+   obj_supplier_SUP-003                 base=           5 tick1=           5 base违界=否 来源=measured
+   obj_supplier_SUP-004                 base=           0 tick1=           0 base违界=否 来源=measured
+   obj_supplier_SUP-005                 base=           4 tick1=           4 base违界=否 来源=measured
+   obj_supplier_SUP-006                 base=           0 tick1=           0 base违界=否 来源=measured
+
+# 金丝雀(正·已知负数必须命中)：Material.shortageRisk: base<0 数=4 base越界=4 | Model.supplyRisk: base<0 数=6 base越界=6 | PurchaseOrder.procurementDelay: base<0 数=30 base越界=0 | Supplier.procurementDelay: base<0 数=2 base越界=0
+# 金丝雀(正) 结论：命中 ✓（比较器确实看到了负数）

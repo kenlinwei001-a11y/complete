@@ -1,0 +1,7 @@
+== 判据：simAdvanceTicks 函数体（app.ts:2389-2760）内有没有对象库/版本号入口 ==
+-- 主扫描（目标：repos.objects / epochs / derivationSpecs）--
+(空 = 零命中)
+-- 金丝雀（同区间必须命中 repos.sim，否则说明区间/扫描坏了）--
+5
+-- 行数核对：区间行数 =
+     372

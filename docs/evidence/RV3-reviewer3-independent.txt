@@ -1,0 +1,30 @@
+规则表 n=55（金丝雀：须 >0）
+金丝雀① target=Order 的边 = 4（须 >=1）
+金丝雀② source=forecastBias 的边 = 1（须 >=1）
+金丝雀③ target=Order.demandPressure 的边 = 1（这就是待评的入边集合）
+    入边 Model.forecastBias k=-0.222 ref={"ruleKey":"C36","paramKey":"demo_forecast_bias_to_order_demand"} status=PUBLISHED via=model_demanded_by_order weightRef=null
+全表负系数边 = 6 条（出荷态应为 6）
+正系数入边指向 Order.demandPressure = 0（否证① 第二支：须为 0）
+── 臂 C · 零扰动对照 ──
+  [C 零扰动] 会话=sims_7n50vpd1sks8serq tickHTTP=200 | obj_model_4680-NCM.fb(活态)=50 | 可比单=150 | 越基值+0.01=0/150 | 低于基值-0.01=148/150
+  [C 零扰动] 前 3 大正 Δ：obj_order_SO-900474 base=0 v=0 Δ=0.0000 | obj_order_SO-900485 base=0 v=0 Δ=0.0000 | obj_order_SO-3431 base=19 v=18.402345512997 Δ=-0.5977
+  [C 零扰动] 前 3 大负 Δ：obj_order_SO-900325 base=60 v=22.2 Δ=-37.8000 | obj_order_SO-900400 base=60 v=22.2 Δ=-37.8000 | obj_order_SO-3476 base=48 v=17.76 Δ=-30.2400
+  [C] 播种态全模型 fb：[1,88,50,8,79,88] ⇒ {"n":6,"min":1,"max":88,"neg":0}
+── 臂 N · 靶型号 forecastBias = −50（低估；裸写不夹域）──
+  [N fb=−50] 扰动 POST HTTP=201 id=simpert_12eytnnekm4qzbst curTick=0
+  [N fb=−50] 会话=sims_t11xe1p8s9bg5ayh tickHTTP=200 | obj_model_4680-NCM.fb(活态)=-50 | 可比单=150 | 越基值+0.01=24/150 | 低于基值-0.01=125/150
+  [N fb=−50] 前 3 大正 Δ：obj_order_SO-3391 base=60 v=89.882724350146 Δ=29.8827 | obj_order_SO-3415 base=41 v=70.882724350146 Δ=29.8827 | obj_order_SO-3523 base=43 v=72.882724350146 Δ=29.8827
+  [N fb=−50] 前 3 大负 Δ：obj_order_SO-900325 base=60 v=22.2 Δ=-37.8000 | obj_order_SO-900400 base=60 v=22.2 Δ=-37.8000 | obj_order_SO-3476 base=48 v=17.76 Δ=-30.2400
+── 臂 P · 靶型号 forecastBias = +100（高估上限；同一条边的另一侧）──
+  [P fb=+100] 扰动 POST HTTP=201 id=simpert_8q0w78pecsy47vgc curTick=0
+  [P fb=+100] 会话=sims_83j288p59ed9hnas tickHTTP=200 | obj_model_4680-NCM.fb(活态)=100 | 可比单=150 | 越基值+0.01=0/150 | 低于基值-0.01=148/150
+  [P fb=+100] 前 3 大正 Δ：obj_order_SO-900474 base=0 v=0 Δ=0.0000 | obj_order_SO-900485 base=0 v=0 Δ=0.0000 | obj_order_SO-3431 base=19 v=18.402345512997 Δ=-0.5977
+  [P fb=+100] 前 3 大负 Δ：obj_order_SO-3391 base=60 v=22.2 Δ=-37.8000 | obj_order_SO-900325 base=60 v=22.2 Δ=-37.8000 | obj_order_SO-900400 base=60 v=22.2 Δ=-37.8000
+★ 控制：baseSnapshot(Order.demandPressure) C≡N ? true · C≡P ? true（须双 true，否则不可比）
+★ 仪器自证：N 臂活态 fb=-50（须 == −50）· P 臂活态 fb=100（须 == +100）
+★ 判决：C 越基值 0/150 · N 越基值 24/150 · P 越基值 0/150
+  ⇒ N 臂上穿 24/150 ⇒ 「低估(−)⇒需求上冲」那一支**在带杠杆的世界里可达**；
+     根因链里「净入流恒 ≤0 / 数值上不可达」这句只在**无外部输入的播种态**成立，须收窄。
+  ⇒ P 臂相对 C 的读数变化（同一条边的另一侧）见上两行 Δ；两臂同向相反 ⇒ 「符号即闸门」且闸门双向。
+── 结束 ──
+CAPTURED_RC=0

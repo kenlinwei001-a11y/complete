@@ -1,0 +1,23 @@
+# R2 评审员#2 · 独立复现（只读 + 建 1 条会话，未改任何对象 props、未重启服务、未 push）
+# 目的：同一会话的世界读数跟 baseSnapshot 还是跟对象库 props？F=上游建的会话（props=90 窗口内建，后被撤销回 60）
+# 脚本 /tmp/wo-r2/r2f-frozen-base.mjs（评审员自写，未复用上游脚本）；CAPTURED_RC 为脚本真实退出码
+
+# 金丝雀A 读对象 HTTP=200 props.demandDelta=0.6 props.demandPressure=60  (必须非 undefined)
+# 金丝雀B 会话枚举 条数=100  (必须 > 0)
+# 会话: sims_demo_seed_world, sims_zrmfr5fedqss2kjh, sims_w4c4vxeqtfnw5k7p, sims_qpz37hwk0mnfsypm, sims_sdmy5pxnyc2eb6ky, sims_kqnxdsrpf8dhek8b, sims_t3eqyyrr1bn61h7q, sims_cns9zkw4qtcdfq3n, sims_br104a9305rxw1t6, sims_n9d3t0dacy2mhe30, sims_c8kb60e8k0t8zbf3, sims_05avy1pwqkn6gwqy, sims_eaqtmby620xmgx7r, sims_mkwtqkmy28c89ttr, sims_rd9yd1fhpgxw9bbc, sims_mwmkapcnee8j9tav, sims_1rkrsxs9kbkvtm68, sims_4mmz46ca220sg16m, sims_8cc7mpkqbqj2erdp, sims_8gq62by79nz7tkkd, sims_d36qsqmznzcsfc2v, sims_yt1w8733yytcskre, sims_c6gpgsbc93mbrhz9, sims_g76s5wxf07s2h22p, sims_72spjnt2qx49szne, sims_wa83zwm90mhqna3s, sims_xbtp20ked79a5txz, sims_3rpxvh167y2k65pv, sims_cq4d4evk9gfm5342, sims_tme0t98x6g85xtw0, sims_8jewke5sdz6zqat2, sims_w0194gjtck99mnaq, sims_4ya1vy10prdwv6s9, sims_s6n86xf541qa8ctm, sims_dj17e9pkb4jdcetw, sims_3kvg6fyyd59jm293, sims_43s09jn8af76z0aq, sims_3q35sye2r2t0xgeq, sims_zny68gw2gew3mq9h, sims_bzy0snq2bwjkn9wf, sims_zxf84yx7ywwmak48, sims_jykd341dp93ttn5t, sims_b38k8637x95de5q5, sims_6ves8csbnnsvy5xw, sims_smxj1krcfcx2ty4r, sims_1y7a856q1dq1s1my, sims_c4arb2gp14vrbx6n, sims_snaw9hjz1c4jzhp3, sims_j9xx3zx5s1nev9xd, sims_x17qm9b5127wf2xb, sims_8k4w5erm7ynatnss, sims_df87qrfghzzv6ktq, sims_xefe3zes9skyg8mv, sims_yvf9yqpt2jtee30m, sims_94rnrn80sv3wdpk4, sims_jn7xzqp6s66dqgp4, sims_bnr4z3jnm9hf3fxs, sims_gzxdvt3f2v1w7na3, sims_tp9wmv5xkeefhb6c, sims_w47qgaqndy0cnn2g, sims_pxmxpcag9mg6gt3v, sims_rhc7jzqy64f5k8wt, sims_zjjvnh1ga6v20rhz, sims_ssm53ant2bw8f88a, sims_3f601qkmr3rpv85z, sims_y3qj1m7x7pgq0yrw, sims_6dc54xyvff5vy743, sims_e3bgkfdgfrwce3tt, sims_0sfvveac3nqp6amm, sims_9nng2c7hh6tzk3t5, sims_wgjf1rw4k0xrcca5, sims_e8na2gjps8hdcr81, sims_rdf7a6kjgncybqx4, sims_07cfh2pby9t6snns, sims_khzaz1j9t53ntrej, sims_gk071amgbq9gay8k, sims_d9kgzhstdg3zk0kg, sims_5q6z9jz5t22wy6ad, sims_ctd7ajemp7cr3bzx, sims_7zycps1r28hfrcnc, sims_dyfjp68ahttzwfcd, sims_t7qqe7a6r13w69g1, sims_dbxw5nbhnqqb3k68, sims_628qm1e6wkchenwm, sims_2tv68a8teva0yyk9, sims_c7m4dnmp8qc6ftyx, sims_w31tfg7jr9839bz6, sims_04s4mvbj23qwkkr4, sims_q6hyya240rn6d316, sims_vrjcvxyaj6ce5anj, sims_3v2vxfgkhvn57zjj, sims_gfzpj2deaaq56ms5, sims_v8gdg3nr7mf6ab72, sims_8yhfjdpd0w8f3d4p, sims_yrj8ckccp3e7hf34, sims_3p8byxhrxt7agnkj, sims_qvwjvp91wt10g47h, sims_458fxgkckvqcw76x, sims_xdv081c60kqkfdvk, sims_h2et6aczs82wxq57
+
+## 1 现库真值（对象库）props.demandDelta=0.6  ⇒ 新会话应当采样到基值 60；派生 props.demandPressure=60
+
+## 2 新建会话 N=sims_bhe5nmmh7wf78ts6（活采样）base[obj_order_SO-3391].demandPressure = 60   ⇒ 建会话那刻从库真值采样（60）✔ 命中
+
+## 3 历史会话 F=sims_df87qrfghzzv6ktq status=RUNNING curTick=6
+   F.base[obj_order_SO-3391].demandPressure = 90   （F 建于 props=0.9/派生 90 的窗口内）
+   F 当前世界读数 = 61.87570506627  （tick=6）
+   ⇒ 现库真值是 60（=0.6×100 那一系），F 读数=61.87570506627 距现库基值 1.875705
+   对照 K=sims_x17qm9b5127wf2xb base[obj_order_SO-3391].demandPressure=60 当前读数=31.18169419175
+
+## 4 种子世界 sims_demo_seed_world（固定 id · 长期存活）base[obj_order_SO-3391].demandPressure=60 世界读数=37.50141
+   出处：baseSnapshotProvenance[obj_order_SO-3391].demandPressure = "measured"
+   会话字段：baseSnapshot,baseSnapshotProvenance,createdAt,curTick,disabledRuleKeys,id,parentCheckpointId,scope,status,tenantId,tickDays
+
+# 判据：若 F/N 各自读数与本会话 base 同系、且与「现库真值」无关 ⇒ 世界跟 baseSnapshot，不跟对象库

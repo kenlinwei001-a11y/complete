@@ -1,0 +1,51 @@
+金丝雀A（必然命中）: 目标入边 1 条 ✅
+金丝雀B（必然不命中）: 虚构量纲入边 0 条 ✅ 0 命中是可信的
+   入边 key=demo_forecast_bias_to_order_demand src=Model.forecastBias coef=-0.222 delay=0 status=PUBLISHED
+   forecastBias 出边 1 条: demo_forecast_bias_to_order_demand→Order.demandPressure(-0.222)
+   forecastBias 入度 = 0（0 = 外生根，衰减相豁免）
+
+会话 sims_tp9wmv5xkeefhb6c · Order 150 个 · Model 6 个 · baseSnapshot 4425 对象
+tick HTTP=200 tick=30 · 引擎自报 λ(demandPressure) = 0.37  (report=有)
+
+③ 逐单：n=150  λ_实测=min(x/base)=0.37
+   x == λ·base（λ=0.37）的单: 98/150   其余 52
+   上穿基值 (+0.01) 的单: 0   ✅ 上界=基值 成立（与上游一致）
+   基值域 [0, 60]  终态域 [0.000000, 59.400001]
+   触地板指纹（前 6，按基值降序）：obj_order_SO-3402 17→6.29 · obj_order_SO-3415 41→15.17 · obj_order_SO-3420 1→0.37 · obj_order_SO-3445 6→2.22 · obj_order_SO-3470 10→3.7 · obj_order_SO-3476 48→17.76
+
+④ 前提核（净入流恒 ≤ 0 依赖 forecastBias ≥ 0）：
+   Model.forecastBias tick30: del_2170-NCM=1 · del_4680-LFP=88 · del_4680-NCM=50 · model_圆柱-LFP=88 · model_方形-LFP=8 · model_方形-NCM=79
+   负值个数 tick0=0/6 · tick30=0/6  ⇒ c = −0.222×fb ≤ 0 恒成立 ✅
+   forecastBias 域声明 [−100,100]，实测域 [1, 88]
+
+⑤ 反向症状扫描（C2 合成在夹值之后 ⇒ 合成值不被夹）：越域格 1214 个
+   Base.loadIndex = 204.434646888805  域[0,100]  (obj_base_changzhou)
+   Base.loadIndex = 142.934191354042  域[0,100]  (obj_base_chengdu)
+   Base.loadIndex = 194.656402127945  域[0,100]  (obj_base_handan)
+   Base.loadIndex = 140.774904105953  域[0,100]  (obj_base_hefei)
+   Base.loadIndex = 111.803592228638  域[0,100]  (obj_base_jiangmen)
+   Base.loadIndex = 256.823764808919  域[0,100]  (obj_base_jinhua)
+   Base.loadIndex = 138.69167983538  域[0,100]  (obj_base_wuhan)
+   Base.loadIndex = 117.290428398284  域[0,100]  (obj_base_xiamen)
+   Base.loadIndex = 174.67336123334  域[0,100]  (obj_base_xinyang)
+   Base.loadIndex = 188.768342974263  域[0,100]  (obj_base_yangzhou)
+   Base.loadIndex = 299.947827006531  域[0,100]  (obj_base_zaozhuang)
+   Base.loadIndex = 139.180286437281  域[0,100]  (obj_base_zigong)
+   Customer.receivablePressure = 111.813431876311  域[0,100]  (obj_customer_cust_0)
+   Customer.receivablePressure = 102.599667254733  域[0,100]  (obj_customer_cust_16)
+   Customer.receivablePressure = 129.390225370048  域[0,100]  (obj_customer_cust_6)
+   Customer.receivablePressure = 102.443031996137  域[0,100]  (obj_customer_cust_9)
+   Line.blockedPressure = 104.299566968301  域[0,100]  (obj_line_LINE-WS-changzhou-assembly)
+   Line.utilPressure = 124.840613338489  域[0,100]  (obj_line_LINE-WS-changzhou-assembly)
+   Line.utilPressure = 124.963434263319  域[0,100]  (obj_line_LINE-WS-changzhou-calendering)
+   Line.blockedPressure = 101.578310380448  域[0,100]  (obj_line_LINE-WS-changzhou-coating)
+   Line.utilPressure = 123.996798296146  域[0,100]  (obj_line_LINE-WS-changzhou-coating)
+   Line.blockedPressure = 100.28389295626  域[0,100]  (obj_line_LINE-WS-changzhou-filling)
+   Line.utilPressure = 124.345552089809  域[0,100]  (obj_line_LINE-WS-changzhou-filling)
+   Line.utilPressure = 125.078715978141  域[0,100]  (obj_line_LINE-WS-changzhou-formation)
+   Line.utilPressure = 124.764892327371  域[0,100]  (obj_line_LINE-WS-changzhou-grading)
+   其中「归派生规格所有」（C2 作用域内）的格: 1214/1214
+
+⑥ 回包未带 saturations（未披露该字段）
+
+[eof] 会话 sims_tp9wmv5xkeefhb6c

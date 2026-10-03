@@ -1,0 +1,45 @@
+① 规则表 n=55
+   金丝雀① Order 为靶的边 = 4（必然 ≥1）｜金丝雀② forecastBias 为源的边 = 1（必然 ≥1）
+   ★ Order.demandPressure 入边 = 1 条，其中 k>0 的 = 0 条
+     Model.forecastBias k=-0.222 ref={"ruleKey":"C36","paramKey":"demo_forecast_bias_to_order_demand"} status=PUBLISHED reaction=null
+   全表负系数边 = 6 条
+② 金丝雀③ 视图配置 Order=150 Model=6（必然 >0）
+   活对象 Model n=6 的 props.forecastBias = obj_model_2170-NCM:props.forecastBias=null | obj_model_4680-LFP:props.forecastBias=null | obj_model_4680-NCM:props.forecastBias=null | obj_model_圆柱-LFP:props.forecastBias=null | obj_model_方形-LFP:props.forecastBias=null | obj_model_方形-NCM:props.forecastBias=null
+③ 三臂（各自新会话，同一后端、同一时刻）
+  [PATCH A 出荷态] HTTP=200 回读 k=-0.222 ref={"ruleKey":"C36","paramKey":"demo_forecast_bias_to_order_demand"} status=PUBLISHED ⇒ 扰动已落地（回读两字段）
+── 臂 A · 出荷态 k=−0.222 ref={C36} ──
+   会话=sims_0zac2xvwm2b17qfc tickHTTP=200 可比单=150
+   铸造对表：live vs round(fnv1a01(id|forecastBias)*100) 命中 6/6 :: model_2170-NCM live=1 pred=1 | model_4680-LFP live=88 pred=88 | model_4680-NCM live=50 pred=50 | model_圆柱-LFP live=88 pred=88 | model_方形-LFP live=8 pred=8 | model_方形-NCM live=79 pred=79
+   fb 基值 n=6 = [1,88,50,88,8,79] 负数=0；fb 12拍后 负数=0
+   ★上穿(>基值+0.01) = 0/150｜比值 min=0.370000 max=0.990039
+   ★读数 ≈ λ×基值 的单数 = 98/148（λ=0.37：核内先夹、C2 在核之后补 λ·base）
+   本拍该边 trace 行 = 150｜不同 amount = 5 个 [-19.536,-17.538,-11.1,-1.776,-0.222]｜靶对象 = 150
+   trace amount 落在 {|k|×fb} 网格内的行 = 150/150
+   饱和回执 demandPressure 条目 = 100 例：raw=-7.1373→0 bound=min | raw=-1.5429→0 bound=min | raw=-10.8669→0 bound=min
+  [PATCH B 保号置空ref] HTTP=200 回读 k=-0.222 ref=null status=PUBLISHED ⇒ 扰动已落地（回读两字段）
+── 臂 B · k=−0.222 ref=null（分离「置空 ref」这个混淆变量） ──
+   会话=sims_pz4j005b50wwndna tickHTTP=200 可比单=150
+   铸造对表：live vs round(fnv1a01(id|forecastBias)*100) 命中 6/6 :: model_2170-NCM live=1 pred=1 | model_4680-LFP live=88 pred=88 | model_4680-NCM live=50 pred=50 | model_圆柱-LFP live=88 pred=88 | model_方形-LFP live=8 pred=8 | model_方形-NCM live=79 pred=79
+   fb 基值 n=6 = [1,88,50,88,8,79] 负数=0；fb 12拍后 负数=0
+   ★上穿(>基值+0.01) = 0/150｜比值 min=0.370000 max=0.990039
+   ★读数 ≈ λ×基值 的单数 = 98/148（λ=0.37：核内先夹、C2 在核之后补 λ·base）
+   本拍该边 trace 行 = 150｜不同 amount = 5 个 [-19.536,-17.538,-11.1,-1.776,-0.222]｜靶对象 = 150
+   trace amount 落在 {|k|×fb} 网格内的行 = 150/150
+   饱和回执 demandPressure 条目 = 100 例：raw=-7.1373→0 bound=min | raw=-1.5429→0 bound=min | raw=-10.8669→0 bound=min
+  [PATCH C 翻正] HTTP=200 回读 k=0.222 ref=null status=PUBLISHED ⇒ 扰动已落地（回读两字段）
+── 臂 C · k=+0.222 ref=null（正对照：扰动必须落地） ──
+   会话=sims_k6dspjtgv6wmfr4k tickHTTP=200 可比单=150
+   铸造对表：live vs round(fnv1a01(id|forecastBias)*100) 命中 6/6 :: model_2170-NCM live=1 pred=1 | model_4680-LFP live=88 pred=88 | model_4680-NCM live=50 pred=50 | model_圆柱-LFP live=88 pred=88 | model_方形-LFP live=8 pred=8 | model_方形-NCM live=79 pred=79
+   fb 基值 n=6 = [1,88,50,88,8,79] 负数=0；fb 12拍后 负数=0
+   ★上穿(>基值+0.01) = 150/150｜比值 min=1.009961 max=30.882724
+   ★读数 ≈ λ×基值 的单数 = 0/148（λ=0.37：核内先夹、C2 在核之后补 λ·base）
+   本拍该边 trace 行 = 150｜不同 amount = 5 个 [0.222,1.776,11.1,17.538,19.536]｜靶对象 = 150
+   trace amount 落在 {|k|×fb} 网格内的行 = 150/150
+   饱和回执 demandPressure 条目 = 20 例：raw=81.03175918111→79.859343572747 bound=max | raw=80.223147816122→79.320486277521 bound=max | raw=79.376603549601→78.724565658357 bound=max
+★A=0/150 B=0/150 C=150/150（上穿计数）
+★B vs A 逐单变化 = 0 ⇒ 0 表示「置空 ref」本身不改变读数
+★A vs C 逐单变化 = 150 ⇒ 大表示扰动真的改变世界（正对照）
+★A/B 读数和之差 = 0.000000（应为 0 或极小）
+回退 PATCH HTTP=200 回读 k=-0.222 ref={"ruleKey":"C36","paramKey":"demo_forecast_bias_to_order_demand"} status=PUBLISHED（须 -0.222 / {"ruleKey":"C36","paramKey":"demo_forecast_bias_to_order_demand"}）
+── 结束 ──
+CAPTURED_RC=0

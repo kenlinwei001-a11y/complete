@@ -1,0 +1,98 @@
+# R3 静态复扫（评审员#3）· 2026-10-03 · 只读
+# 脚本 /tmp/wo-3root/r3-scan.sh · 完整 stdout 见 /tmp/wo-3root/r3-scan.out
+# 目的：核待评根因的静态断言，并补上游/评审员#1 的扫描**没扫的那一个模式**（见 [1b]/[1c]）。
+# ⚠ 本文件里 [1b][1c] 是对上游证据的一处**订正**，读结论时以本节为准。
+# R3 静态复扫 · 2026-10-03T09:49:19Z · HEAD=d7718eda4 · branch=claude/handoff-console-c2-specbase
+
+== [0] 金丝雀：扫描模式本身活着 ==
+  必然命中对照（sim/seed-world.ts 里 'props' 出现次数，须 >0）: 6
+  必然命中对照（同文件 '.baseSnapshot' 出现次数，须 >0）: 15
+
+== [1] tick 核 simAdvanceTicks 体（程序化取界，不写死行号）==
+  区间 = app.ts:2392-2704（行数 313）
+  [1a] 文中直呼仓库（repos.objects|repos.epochs|derivationSpecs|ontology.）: 0
+       ↑ 上游 P2-tick-body-scope 与 R1 都报了 0。下面这一行是它们**没查**的：
+  [1b] 区间内对装配处的调用 buildPropagationInputs（必 >0）： 3
+  [1c] 装配处本体是否读对象库（传递性）：
+       5:import { cadenceFromProps } from "../synthetic/cadence.js";
+       6:import { buildPairWeights, type PairWeightReport } from "./pair-weights.js";
+       7:import { listSimWorldObjects } from "./seed-world.js";
+       121:    repos.objects.revision(c.tenantId),
+       144:  // ⚠ 成员集合走 `listSimWorldObjects`**唯一物化入口**（2026-09-15，来历见该函数头注）：
+       146:  //   `for (types) for (listByType) if (...)` —— 那就是第 6 份抄件。
+       147:  const objects: PropagationGraph["objects"] = (await listSimWorldObjects(repos, c.tenantId)).map(
+       159:  // 只经 D1 声明的唯一读回口 `cadenceFromProps` 还原，**不补默认**：EMPTY 行 / 周期不可整 tick
+       162:    (await repos.objects.listByType(c.tenantId, "Cadence"))
+       164:      .map((o) => ({ nodeId: String(o.props.nodeId ?? o.id), cadence: cadenceFromProps(o.props) })),
+       169:  const pw = await buildPairWeights(repos, c.tenantId, rules, scoped.graph);
+  [1d] listSimWorldObjects / entersSimWorld 读不读 props：
+       208:  if (o.mergedInto) return false;
+       209:  if (typeKey === "Order" && o.props["status"] === "COMPLETED") return false;
+       266:    for (const obj of rows) if (entersSimWorld(t.key, obj)) out.push({ typeKey: t.key, obj });
+  [1e] pair-weights 读不读 props：
+       536:        const raw = o.props[field];
+  [1f] cadence 读不读 props：
+       514:  if (typeof props.everyDays !== "number") return undefined;
+       516:    everyDays: props.everyDays,
+
+== [2] 既有会话的 baseSnapshot 有没有第二个写点 / 重铺路由 ==
+  [2a] 原地改写 `.baseSnapshot = `: apps/datacore/src/app.ts:0
+  [2b] 写点枚举（baseSnapshot: 出现处，读点也算，须逐条看语义）：
+       apps/datacore/src/app.ts:2114:      id: input.id ?? newId("sims"), tenantId: c.tenantId, baseSnapshot: base,
+       apps/datacore/src/app.ts:2135:        baseSnapshot: b.baseSnapshot,
+       apps/datacore/src/app.ts:2581:      baseSnapshot: s.baseSnapshot,
+       apps/datacore/src/app.ts:3275:    const child: SimSession = { id: newId("sims"), tenantId: c.tenantId, baseSnapshot: simState(baseState), scope: parent.scope,
+       apps/datacore/src/app.ts:4837:    const s: SimSession = { id: newId(idPrefix), tenantId: c.tenantId, baseSnapshot: {}, scope, status: "READY", curTick: 0, parentCheckpointId: null, disabledRuleKeys: [], createdAt: new Date().toISOString() };
+       apps/datacore/src/sim/seed-world.ts:875:    baseSnapshot: state,
+       apps/datacore/src/sim/spec-base-synthesis.ts:57:  baseSnapshot: TickState;
+       apps/datacore/src/sim/metric-series.ts:151:    baseSnapshot: engine.specBase, graph: engine.graph, rules, stateVarDomains: engine.stateVarDomains,
+       apps/datacore/src/repo/pg.ts:82:      baseSnapshot: r.base_snapshot as SimSession["baseSnapshot"], scope: r.scope as SimSession["scope"],
+  [2c] 金丝雀：模式打在一个必然命中的写法上（simState(s.baseSnapshot)）: 
+apps/datacore/src/app.ts:6
+  [2d] 路由清单里有没有 PATCH/PUT sessions/:id 改世界（"/:id" 后非 status/disabled-rules 的写路由）:
+       2249:  app.patch("/a/v1/sim/sessions/:id/status", async (req) => {
+       2870:  app.patch("/a/v1/sim/sessions/:id/disabled-rules", async (req) => {
+
+== [3] 会话数据模型里有没有「源变过没变过」的字段 ==
+  [3a] contracts/src/sim.ts 里 revision|sourceRev|sourceVersion|fingerprint|stale|drift: 0
+  [3b] 金丝雀（同文件 baseSnapshot 必 >0）: 27
+  [3c] CellProvenance 的取值域（唯一逐格出处字段）:
+       1214: * · `measured` = 播这一格时**真从对象属性上读到**的有限数（`o.props[stateVar]`）。
+       1222:export const CellOriginSchema = z.enum(["measured", "derived"]);
+       1226: * 与 `TickState` **同形**的逐格出处表：`provenance[objectId][stateVar] = "measured" | "derived"`。
+       1239:/** 逐格出处的合计（`measured`/`derived`/`unknown` 三分，口径见 `CellProvenanceSchema`）。 */
+
+== [4] 对象写入路会不会检查/冻结会话（否证判据③）==
+  applyLeverWrites 区间 = app.ts:669-697
+  [4a] 区间内 sim 会话引用（sims_|SimSession|assertSimSessionWritable|repos.sim）: 0
+  [4b] 金丝雀（必有 non-sim 仓库写，证明区间取对了）: 1
+  [4c] 对象写入诸路里搜「会话」字样的失效通知（objects.*→sim 的订阅）:
+  [4d] 金丝雀：sim 域事件名必然存在（sim.tick_completed）: 
+apps/datacore/src/app.ts:1
+
+== [5] 同仓同类问题的两台正确机器（对照）==
+  [5a] 装配缓存的世界修订号:
+       121:    repos.objects.revision(c.tenantId),
+       122:    repos.links.revision(c.tenantId),
+  [5b] 影子线指纹:
+       apps/datacore/src/app.ts:79:import { ShadowMemo, shadowFingerprint } from "./sim/shadow-memo.js";
+       apps/datacore/src/app.ts:2589:      shadowKey = shadowFingerprint({
+       apps/datacore/src/sim/assembly-memo.ts:30: *    是**先拷贝再排**）· `shadowFingerprint`（只哈希）。本模块另用 `deepFreeze` 把
+       apps/datacore/src/sim/assembly-memo.ts:30: *    是**先拷贝再排**）· `shadowFingerprint`（只哈希）。本模块另用 `deepFreeze` 把
+       apps/datacore/src/sim/rules-fingerprint.ts:12: *   —— 它经 `ruleParams` 那张表进引擎，由 `shadowFingerprint` 单独哈希。
+       apps/datacore/src/sim/shadow-memo.ts:119:export function shadowFingerprint(i: {
+
+# done（本脚本自身 rc 由调用方捕获，见同名 .rc）
+
+# ── R3 对 [1] 的读法（订正上游 n1 的措辞，机制结论不变）──────────────────────────
+# 上游 P2-tick-body-scope / 评审员#1 报「tick 核对对象库 0 命中」——那是**文本级**扫描：
+# 区间内不出现 `repos.objects` 字样。但区间内**调用了** `buildPropagationInputs`（3 次），
+# 而它传递性地读对象库：`repos.objects.revision` · `listSimWorldObjects`（其 `entersSimWorld` 读
+# `o.props["status"]` / `o.mergedInto` 决定谁进世界）· `repos.objects.listByType("Cadence")` +
+# `cadenceFromProps(o.props)`（读 `props.everyDays`）· `buildPairWeights`（读 `o.props[field]`）。
+# ⇒ 准确措辞应是：tick **每拍都回读对象库**，但读的是**结构/系数/节拍闸门**这一面；
+#    **没有任何一步把 props 刷进 TickState 的格子值** —— 「值边缺失」成立，「两侧完全解耦」说过头了。
+#    这一订正**加强**而非削弱「是缺陷不是设定」：平台已经为每拍读对象付了账，唯独值这一面不刷。
+#    ⚠ 未测边界（NOT-MEASURED，不许读成已验证）：改 Cadence.everyDays / BOM 权重类 props 是否真的
+#      改变下一拍结果，本轮**没有**实测；本轮只实测了两条规格输入 props（Order.demandDelta、
+#      Equipment.oee_current）对世界**零影响**。

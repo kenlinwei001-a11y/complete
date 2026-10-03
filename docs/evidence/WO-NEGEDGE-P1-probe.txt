@@ -1,0 +1,29 @@
+# 探针 WO-NEGEDGE-P1 · 2026-10-03T08:56:37.511Z · BASE=http://127.0.0.1:4019 · TICKS=20
+# 金丝雀⓪：不存在的会话 → HTTP 404（应 404） ok
+  建会话: HTTP 201
+  会话 sims_g76s5wxf07s2h22p · tick0 对象数 4425
+  读 tick0 世界: HTTP 200
+  读规则表: HTTP 200
+  入场边：Order.demandPressure 入度=1 系数=[-0.222] · Model.forecastBias
+  阳对照：Base.loadIndex      入度=1 系数=[0.222]
+  推 20 拍: HTTP 200
+  tick 回包 keys = curTick, state, trace, cadence, scope, stateVarReport, pairWeighting（无 decayApplied ⇒ λ 由逐单数据反解）· curTick=20
+  再推 1 拍（取 trace 拿逐单 c）: HTTP 200
+  trace：本拍规则 demo_forecast_bias_to_order_demand 命中 150 个目标对象 · 全 trace 行数 7413
+  订单对象数 = 150
+  逐单 c 取到 150 / 150（取不到 0：该单型号本拍未触发该边）
+  🔴 λ = min(λ̂) = 0.370035897（clamped 档恒 λ̂>λ、unclamped 档 λ̂=λ ⇒ min 即 λ）
+  🔴 闭环 |读数 − 预言| ≤ 0.01：150 / 150   （未触地板档 50/50 · 触地板档 100/100）
+  🔴🔴 触地板档读数 = λ·base —— **与 c 无关**：c 的绝对值在这里换任何数，读数一个字节不变
+     触地板单数 = 100 / 150（66.7%）：负贡献量级 ≥ (1−λ)λ·base
+     未触地板单的读数 = base + c/λ —— 负边**看得见**，但方向恒为负 ⇒ 仍 ≤ base
+  型号对象 6 个 · forecastBias ∈ [1, 88]  ⇒ c ∈ [-19.5360, -0.2220] 恒 ≤ 0
+  基值域 [0, 60] → 终态域 [0, 59.400058205261]  Δmax=-0.599942
+  🟢 阳对照 G · Base.loadIndex（入度1 系数+0.222）：上穿 5 / 下穿 8 / 持平 0（共 13）
+     判据：gUp > 0 ⇒ 探针有鉴别力；gUp == 0 ⇒ 工具无鉴别力，P2 作废
+
+══ 判定 ══
+  P1/P2（Order.demandPressure 上界 == 基值，无一张能上穿）：✅ 命中（150/150 全部 ≤ 基值）
+  阳对照 G：✅ 有鉴别力
+
+→ /Users/apple/deploy/wo-edge-wire/docs/evidence/WO-NEGEDGE-P1-probe.txt

@@ -1,0 +1,14 @@
+# 探针 stale-base-e2e · 2026-10-03T07:36:13.851Z · BASE=http://127.0.0.1:4019
+# 金丝雀①：不存在的会话 → HTTP 404（应为 404） ok
+  列 Order: HTTP 200
+# 目标单 obj_order_SO-3402 · demandDelta=0.17 · demandPressure(props)=17
+# 规格 order_demand_pressure = COALESCE(this.demandDelta * 100, 0) ⇒ 期望 props.demandPressure = 17
+  建会话 S: HTTP 201
+# 会话 S=sims_1rkrsxs9kbkvtm68 · baseSnapshot[obj_order_SO-3402].demandPressure = 17（= 建会话那一刻 props 的值）
+  S tick×15: HTTP 200
+  读 S world: HTTP 200
+# [改 props 之前] S 推进 15 拍后 obj_order_SO-3402.demandPressure = 6.29（旧基值 17 的传导积分）
+# 写入 demandDelta: 0.17 → 0.28（期望 props.demandPressure 17 → 28.000000000000004）
+  建草稿 对象数据变更: HTTP 400  ❌ :: {"error":{"code":"VALIDATION_ERROR","message":"payload.reason is required","requestId":"req_m0asyehv212knqe5"}}
+!! 探针异常：建草稿 对象数据变更 HTTP 400
+# 收尾探针会话 sims_1rkrsxs9kbkvtm68 → HTTP 200

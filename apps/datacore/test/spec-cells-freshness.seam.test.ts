@@ -4,6 +4,8 @@ import {
   worldCellKeys, type BaseSnapshotSource,
 } from "../src/sim/spec-cells.js";
 import { STATE_VAR_VALUE_REFS } from "../src/synthetic/battery.js";
+import { DEMO_DERIVATION_SPECS } from "../src/seed-derivation-specs.js";
+import { demoPropagationRulesWithDomain } from "../src/seed.js";
 import type { PropagationRule } from "@platform/contracts";
 import type { DerivationSpecRecord } from "../src/domain.js";
 
@@ -25,6 +27,18 @@ const rule = (sourceTypeKey: string, sourceStateVar: string, targetTypeKey: stri
   ({ sourceTypeKey, sourceStateVar, targetTypeKey, targetStateVar } as unknown as PropagationRule);
 
 describe("WO-3ROOT-P2 · spec-cells（归属 + 时效）", () => {
+
+  it("A1① · 真实 demo 规格 × 真实 demo 规则：index 键集与 \`STATE_VAR_VALUE_REFS\` **双向差集为空**（且规格数 > index.size —— 证明是过滤在起作用，不是恒等）", () => {
+    const specs = DEMO_DERIVATION_SPECS.map((x) => ({ ...x, status: "ACTIVE" }) as unknown as DerivationSpecRecord);
+    const rules = demoPropagationRulesWithDomain() as unknown as PropagationRule[];
+    const index = specCellIndex(specs, worldCellKeys(rules));
+    expect(rules.length).toBeGreaterThan(0); // 金丝雀①：规则集非空（否则 worldCellKeys 空 ⇒ index 恒空，"相等"无意义）
+    expect(specs.length).toBeGreaterThan(index.size); // 金丝雀②：确有规格被量纲空间挡在外面（28 > 25）
+    expect(Object.keys(STATE_VAR_VALUE_REFS).length).toBeGreaterThan(0); // 金丝雀③：refs 表非空
+    expect([...index.keys()].sort()).toEqual(Object.keys(STATE_VAR_VALUE_REFS).sort());
+    expect(specRefDiffs(index)).toEqual([]);
+  });
+
   it("D1 · 索引 = ACTIVE 规格 ∩ 世界量纲空间：空间外的规格**不许**进索引（widening 守卫）", () => {
     const specs = [
       spec("order_demand_pressure", "Order", "demandPressure", "COALESCE(this.demandDelta * 100, 0)"),
@@ -39,16 +53,24 @@ describe("WO-3ROOT-P2 · spec-cells（归属 + 时效）", () => {
   });
 
   it("D1 · refs 对账：specKey 不一致 / 索引里没有 ⇒ 差集非空（沿用既有「绑定断裂」抛错路径）", () => {
-    const refKey = Object.keys(STATE_VAR_VALUE_REFS)[0]!;
-    const refSpecKey = STATE_VAR_VALUE_REFS[refKey]!.specKey;
-    const [typeKey, stateVar] = refKey.split("|") as [string, string];
-    const good = specCellIndex([spec(refSpecKey, typeKey, stateVar, "0")]);
-    expect(specRefDiffs(good)).toEqual([]); // 正向：对得上 ⇒ 零差集
-    // 反向：把 specKey 改掉 ⇒ 必须报出来（不是静默通过）
-    const renamed = specCellIndex([spec("some_other_key", typeKey, stateVar, "0")]);
-    expect(specRefDiffs(renamed).join("|")).toContain(refKey);
-    // 再反向：整条规格缺位 ⇒ 也必须报出来
-    expect(specRefDiffs(new Map()).length).toBe(Object.keys(STATE_VAR_VALUE_REFS).length);
+    const refEntries = Object.entries(STATE_VAR_VALUE_REFS) as readonly (readonly [string, { specKey: string }])[];
+    const specsOf = (mutate?: (key: string, specKey: string) => string) =>
+      refEntries.map(([k, v]) => {
+        const [t, sv] = k.split("|") as [string, string];
+        return spec(mutate === undefined ? v.specKey : mutate(k, v.specKey), t, sv, "0");
+      });
+    // 正向：整张登记表都指得回 index ⇒ 零差集（⚠ 单条目 index 会报其余 24 条缺位，那是**对的**：
+    //       差集判的是「登记表里的每一格，索引里有没有、且指回同一条规格」。别再拿一格去喂它。）
+    expect(specRefDiffs(specCellIndex(specsOf()))).toEqual([]);
+    // 反向①：**只**把一格换条规格 ⇒ 恰好报出那一格（不是静默通过，也不是全表报红）
+    const refKey = refEntries[0]![0];
+    const renamed = specRefDiffs(specCellIndex(specsOf((k, sk) => (k === refKey ? "some_other_key" : sk))));
+    expect(renamed.length).toBe(1);
+    expect(renamed[0]).toContain(refKey);
+    // 反向②：索引整个空 ⇒ 25 格**全部**报出来（金丝雀：判据不是恒空）
+    const empty = specRefDiffs(new Map());
+    expect(empty.length).toBe(refEntries.length);
+    expect(empty.length).toBeGreaterThan(0);
   });
 
   it("D2 · 三态：FRESH / STALE（含逐格明细）/ UNKNOWN；props 撤回 ⇒ 必须回到 FRESH", () => {

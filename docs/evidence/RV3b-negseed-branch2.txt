@@ -1,0 +1,36 @@
+# 评审员#3 独立探针输出 · RV3b-negseed-branch2
+# base commit=d7718eda4 (d7718eda4) · 运行产物=apps/datacore/dist (built 10-02 22:47, PID 61057 started 22:48) · 采集 2026-10-03T09:39:39Z
+# 命令: node docs/evidence/RV3b-negseed-branch2.mjs
+CAPTURED_RC=0
+
+金丝雀：DOMAINS=38 会话 sims_3p8byxhrxt7agnkj
+t1 saturations=829
+t2 saturations=1355
+
+=== 越域世界态两支分解（t1–t2）===
+① 有饱和事件（夹值被 C2 丢弃）= 1805
+② 无饱和事件（核没夹过，C2 合成自己把世界态顶出域）= 414，其中「核输出估在域内」= 414
+③ 无饱和且拿不到 base/λ（判不了）= 0
+   ⚠️ t1 obj_base_jiangmen.loadIndex 域[0,100] base=98.471521 world=103.703368138 λ=0.37 核输出估=67.268905368 spec=true base在域内=true
+   ⚠️ t1 obj_line_LINE-WS-hefei-slurry.blockedPressure 域[0,100] base=81.4022 world=100.67772 λ=0.37 核输出估=70.558906 spec=true base在域内=true
+   ⚠️ t1 obj_line_LINE-WS-jiangmen-pack.blockedPressure 域[0,100] base=82.2832 world=101.6157 λ=0.37 核输出估=71.170916 spec=true base在域内=true
+   ⚠️ t1 obj_line_LINE-WS-jinhua-formation.blockedPressure 域[0,100] base=82.1038 world=101.49735 λ=0.37 核输出估=71.118944 spec=true base在域内=true
+   ⚠️ t1 obj_line_LINE-WS-jinhua-slurry.blockedPressure 域[0,100] base=87.9269 world=107.49953 λ=0.37 核输出估=74.966577 spec=true base在域内=true
+   ⚠️ t1 obj_line_LINE-WS-meishan-slitting.blockedPressure 域[0,100] base=85.9743 world=105.30273 λ=0.37 核输出估=73.492239 spec=true base在域内=true
+   ⚠️ t1 obj_line_LINE-WS-wuhan-pack.blockedPressure 域[0,100] base=81.1813 world=100.46089 λ=0.37 核输出估=70.423809 spec=true base在域内=true
+   ⚠️ t1 obj_line_LINE-WS-xinyang-calendering.blockedPressure 域[0,100] base=80.6219 world=100.00731 λ=0.37 核输出估=70.17720700000001 spec=true base在域内=true
+
+按 (类型·量)：
+   Process|queuePressure  1300
+   WIPLot|feedPressure  520
+   Line|blockedPressure  162
+   Line|utilPressure  130
+   Order|costPressure  32
+   PurchaseOrder|expeditePressure  25
+   Base|loadIndex  24
+   Model|supplyRisk  12
+   Material|shortageRisk  8
+   Customer|receivablePressure  4
+   Model|demandLoad  2
+
+金丝雀（分支①必须中）：elyte.shortageRisk 的世界态与回执见独立探针 v1/v2；本探针只做分解。

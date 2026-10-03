@@ -1,0 +1,32 @@
+WO-3ROOT-P2 · 本单已测 / 未测 分栏（诚实缺席 · PRD §九 要求的 NOT-MEASURED）
+
+── 已测（各有同名 .txt/.rc 取证件）──────────────────────────────────────────
+· 编译自证：pnpm --filter @platform/contracts build && pnpm --filter datacore build ⇒ RC=0、0 个 error TS → P2-build
+· 接缝（datacore）→ P2-seam-datacore
+    - A1① 真实 demo 规格(28 条) × 真实 demo 规则 ⇒ index 键集与 STATE_VAR_VALUE_REFS **25/25 逐键相等、双向差集为空**；
+      三条金丝雀：规则集非空 · refs 非空 · 规格数(28) > index.size(25)——证明是「世界量纲空间」过滤在起作用，不是恒等映射
+    - D1 归属：空间外的规格不许进索引（widening 守卫；反向金丝雀 = 不带 universe 时那两条确实进得来）
+    - D1 对账：整表指回 ⇒ 零差集；只改一格 ⇒ 恰好报出那 1 条；索引整个空 ⇒ 25 条全报（判据不是恒空）
+    - D2 三态：FRESH（源 revision 未变短路 + 源变了但逐格相等两条路）/ STALE（逐格明细 baseValue=60 / currentValue=90）/
+      UNKNOWN（缺源指纹 ⇒ 第三态且带 reason，⛔ 不读作 FRESH）
+    - A3 反向否证：props 撤回 ⇒ 必须回到 FRESH
+    - A9 无容差：59.999999999 vs 60 必须报 STALE（1e-9 的差也红）
+    - R6 确定性：digest 序无关、同输入同输出、改一个基值必换指纹
+    - today(c) 同口径：round(...,6)；译不出的式子 ⇒ undefined（判不了 ≠ 算成 0）
+· 接缝（frontend，模型层）→ P2-seam-frontend：后端数字原样上屏；FRESH 不出现过期措辞；UNKNOWN 不读作新鲜；
+  形状不认识（前端没拿到）与 UNKNOWN（后端说判不了）分开说；同一回包换 state ⇒ 屏上句跟着换（不是常量）
+· 回归（本单改过的壳）→ P2-shell-regression：既有 UnifiedSimShell 接缝门
+
+── 未测（NOT-MEASURED · 逐条给原因）────────────────────────────────────────
+1. 4019 真服务上的新字段/新路由：在跑的 dev 实例加载的是 10-02 的旧 dist（无 watcher），而硬约束是
+   **不许重启任何后台服务** ⇒ 无法在它上面演示 baseFreshness / POST …/reanchor。
+2. A8 屏上句（127.0.0.1:5173 真机）：依赖第 1 条。前端两句已接线 + 模型接缝绿，但**未**在浏览器上核过。
+3. A5 的「真 Fastify 实例 + 真仓储写规格库（RETIRE ⇒ evaluatedCellCount 25→24）」：本单只覆盖到
+   evaluatedCellCount = index.size 的**键级**语义（纯函数），未起 Fastify 实例真写 DerivationSpec。
+4. A4 reanchor 端到端（201 + 新会话 base=90/FRESH + scope.reanchorOf + tick5 = 62.977309629）：路由代码已落，
+   未在真服务上跑过（同第 1 条）。
+5. 四包全量 gate：本机 4 核、负载 40–130 跑不动（既有记账），判据降级为「两包 build + 两个新接缝 + 一个既有壳接缝回归」。
+6. E1 的「改对象库 props ⇒ /world 转 STALE」在真服务上的完整那一跳：既有脚本探针（P2-props-vs-frozen-base /
+   P2-live-stale-instance）在 4019 上读到「679 格 0 不一致 + SELFTEST 有鉴别力」，但那两件度量的是**当时**的一致性，
+   未走完「改 props ⇒ 回包转 STALE」全程。
+7. 规格退役（E3）在真仓储上的落点（derivationSpecs 状态改 RETIRED 后 index 少一键）：同上，未真写仓储。

@@ -1,0 +1,18 @@
+金丝雀R1：规则数 = 55（须 >0）
+金丝雀R2：isExogenous 可用 = function；抽样 Material|shortageRisk 外生? = false；Model|forecastBias 外生? = true
+
+① d==0 的 96 类：外生豁免 = 0；λ·base==0（偏移本就是 0）= 48；其余未解释 = 0
+
+② 落回域内点：与订正机制一致 = 9，不一致 = 0
+   t1 obj_purchaseorder_po_4.expeditePressure base=122.222222 world=92.35989718 λ=0.37 反推核输出=47.13767504 域=[0,100] （核输出在域内 ⇒ 复合值入域，机制内）
+   t2 obj_purchaseorder_po_1.expeditePressure base=-14.285714 world=1.552629825524 λ=0.37 反推核输出=6.838344005524 域=[0,100] （核输出在域内 ⇒ 复合值入域，机制内）
+   t2 obj_purchaseorder_po_4.expeditePressure base=122.222222 world=93.10013213 λ=0.37 反推核输出=47.87790999 域=[0,100] （核输出在域内 ⇒ 复合值入域，机制内）
+   t3 obj_purchaseorder_po_1.expeditePressure base=-14.285714 world=7.165720504113 λ=0.37 反推核输出=12.451434684113 域=[0,100] （核输出在域内 ⇒ 复合值入域，机制内）
+   t3 obj_purchaseorder_po_18.expeditePressure base=-20 world=7.469244158139 λ=0.37 反推核输出=14.869244158139 域=[0,100] （核输出在域内 ⇒ 复合值入域，机制内）
+   t3 obj_purchaseorder_po_4.expeditePressure base=122.222222 world=93.10013213 λ=0.37 反推核输出=47.87790999 域=[0,100] （核输出在域内 ⇒ 复合值入域，机制内）
+   t4 obj_purchaseorder_po_1.expeditePressure base=-14.285714 world=12.129602765328 λ=0.37 反推核输出=17.415316945328 域=[0,100] （核输出在域内 ⇒ 复合值入域，机制内）
+   t4 obj_purchaseorder_po_18.expeditePressure base=-20 world=14.998121595913 λ=0.37 反推核输出=22.398121595913 域=[0,100] （核输出在域内 ⇒ 复合值入域，机制内）
+   t4 obj_purchaseorder_po_4.expeditePressure base=122.222222 world=93.10013213 λ=0.37 反推核输出=47.87790999 域=[0,100] （核输出在域内 ⇒ 复合值入域，机制内）
+
+CAPTURED_RC=0
+CAPTURED_RC=0

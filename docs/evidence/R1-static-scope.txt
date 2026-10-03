@@ -1,0 +1,94 @@
+# R1 静态复扫 · 2026-10-03T09:42:37Z · HEAD=d7718eda4 · branch=claude/handoff-console-c2-specbase
+
+== [1] 模式金丝雀：扫描模式本身活着（必然命中的文件）==
+  sim/seed-world.ts 匹配 repos.objects|ontology. 的次数 = 2
+
+== [2] tick 核 simAdvanceTicks 体（app.ts 2389-2760）对对象库的访问 ==
+  区间行数 =      372
+  目标 repos.objects|repos.epochs|derivationSpecs|ontology. = 0
+  金丝雀 repos.sim（必须 >0） = 5
+  金丝雀 restoreSpecBase（必须 >0） = 5
+  金丝雀 baseSnapshot（必须 >0） = 7
+
+== [3] baseSnapshot 的原地改写（.baseSnapshot = ）==
+  命中 = 0
+  金丝雀：同模式打在必然命中的写法上（simState(s.baseSnapshot) 是读，不属本模式）——改用 'baseSnapshot:' 写点枚举：
+    apps/datacore/src/app.ts:2114:      id: input.id ?? newId("sims"), tenantId: c.tenantId, baseSnapshot: base,
+    apps/datacore/src/app.ts:2135:        baseSnapshot: b.baseSnapshot,
+    apps/datacore/src/app.ts:2581:      baseSnapshot: s.baseSnapshot,
+    apps/datacore/src/app.ts:3275:    const child: SimSession = { id: newId("sims"), tenantId: c.tenantId, baseSnapshot: simState(baseState), scope: parent.scope,
+    apps/datacore/src/app.ts:4837:    const s: SimSession = { id: newId(idPrefix), tenantId: c.tenantId, baseSnapshot: {}, scope, status: "READY", curTick: 0, parentCheckpointId: null, disabledRuleKeys: [], createdAt: new Date().toISOString() };
+    apps/datacore/src/sim/seed-world.ts:875:    baseSnapshot: state,
+    apps/datacore/src/sim/spec-base-synthesis.ts:57:  baseSnapshot: TickState;
+    apps/datacore/src/sim/metric-series.ts:151:    baseSnapshot: engine.specBase, graph: engine.graph, rules, stateVarDomains: engine.stateVarDomains,
+    apps/datacore/src/repo/pg.ts:82:      baseSnapshot: r.base_snapshot as SimSession["baseSnapshot"], scope: r.scope as SimSession["scope"],
+
+== [4] props 在会话存活期内的写入路（runDerivations + 直写）==
+    apps/datacore/src/timeseries.ts:362:                await this.repos.objects.put(obj);
+    apps/datacore/src/planviews.ts:412:      await this.repos.objects.put(t);
+    apps/datacore/src/planviews.ts:483:      await this.repos.objects.put(s);
+    apps/datacore/src/ontology-core.ts:132:    await this.repos.objects.put(rec);
+    apps/datacore/src/ontology-core.ts:542:          await this.repos.objects.put(obj);
+    apps/datacore/src/simclock.ts:230:        await this.repos.objects.put(o);
+    apps/datacore/src/simclock.ts:237:        await this.repos.objects.put(s);
+    apps/datacore/src/simclock.ts:272:        await this.repos.objects.put(target);
+    apps/datacore/src/opsteam/team.ts:97:    await this.repos.objects.put({
+    apps/datacore/src/modeling.ts:541:        await this.repos.objects.put({
+    apps/datacore/src/modeling.ts:622:          await this.repos.objects.put({
+    apps/datacore/src/quarantine.ts:88:    await this.repos.objects.put({
+    apps/datacore/src/calibration/service.ts:741:        await this.repos.objects.put(o);
+    apps/datacore/src/calibration/service.ts:798:        await this.repos.objects.put(obj);
+    apps/datacore/src/app.ts:690:      await repos.objects.put({ ...obj, props: { ...obj.props, [l.prop]: l.value }, origin: { type: "MANUAL" } });
+    apps/datacore/src/app.ts:802:        await repos.objects.put({ ...obj, props: { ...obj.props, ...patch }, origin: { type: "MANUAL" } });
+    apps/datacore/src/app.ts:833:          await repos.objects.put({ id: `obj_${typeKey.toLowerCase()}_${String(pkVal)}`.replace(/[^\w-]/g, "_"), tenantId: draft.tenantId, type: typeKey, props: rec.props, origin: { type: "PIPELINE", workflowId } });
+    apps/datacore/src/app.ts:905:          await repos.objects.put({ ...o, props: { ...o.props, status: "REVOKED" } });
+    apps/datacore/src/app.ts:908:        await repos.objects.put({
+    apps/datacore/src/app.ts:959:        await repos.objects.put({
+    apps/datacore/src/app.ts:998:          await repos.objects.put({
+    apps/datacore/src/app.ts:7660:        await repos.objects.put(obj);
+    apps/datacore/src/app.ts:7746:        await repos.objects.put({ id: o.id, tenantId: c.tenantId, type: o.type, props: o.props, origin: o.origin, epoch });
+    apps/datacore/src/ontology.ts:1653:            await this.repos.objects.put(obj);
+    apps/datacore/src/meta/service.ts:67:      await this.repos.objects.put(obj);
+    apps/datacore/src/databuilder/service.ts:1193:        await this.repos.objects.put({ ...o, tenantId: ctx.tenantId });
+    apps/datacore/src/databuilder/service.ts:1588:      await this.repos.objects.put(obj);
+    apps/datacore/src/solvers/service.ts:6066:    await this.repos.objects.put(obj);
+    apps/datacore/src/livedin/engine.ts:201:      await this.repos.objects.put({
+    apps/datacore/src/entity-resolution.ts:96:        await this.repos.objects.put({ ...g, props });
+    apps/datacore/src/entity-resolution.ts:103:      if (o) await this.repos.objects.put({ ...o, mergedInto: golden });
+    apps/datacore/src/entity-resolution.ts:154:      if (o && o.mergedInto === rec.goldenId) await this.repos.objects.put({ ...o, mergedInto: undefined });
+    apps/datacore/src/actions.ts:342:      await this.deps.repos.objects.put({
+    apps/datacore/src/actions.ts:361:        await this.deps.repos.objects.put({
+    apps/datacore/src/actions.ts:377:        await this.deps.repos.objects.put({
+    apps/datacore/src/synthetic/service.ts:760:        await this.repos.objects.put({
+    apps/datacore/src/synthetic/service.ts:1703:        await this.repos.objects.put({
+
+== [5] 对象真值变更有没有通往 sim 的失效链 ==
+  derivation.completed 的生产者行 = 1
+  该事件的消费方（A/B/前端三处）：
+    apps/agentcore/src/event-subscriptions.ts:32:  { event: "derivation.completed", producer: "派生管线", tier: "IN_SESSION", invalidates: ["dashboard", "risk", "scenario-data", "object-queries"] },
+    apps/frontend-shell/src/store/eventInvalidation.ts:147:  "derivation.completed": ["dashboard", "scenario-data", "object-queries"],
+  金丝雀：同法查一个 sim 会消费的事件名 sim.tick_completed（必须 >0）=
+14
+
+== [6] 仓里已有的「源变过没变过」机器（对照：同类问题在别处怎么解的）==
+  objects.revision 的消费方：
+    apps/datacore/src/sim/propagation-inputs.ts:121:    repos.objects.revision(c.tenantId),
+  金丝雀（同文件必须命中别的 revision）：
+4
+
+== [7] C2 合成层的基值来源（src 与 dist 两处都要在）==
+    src: 2362:        specBase: simState(s.baseSnapshot),
+    dist/app.js 命中 = 1
+
+== [8] 分支子会话的 baseSnapshot 来源（第二个写点，语义 ≠ 建会话采样）==
+        const cp = await repos.sim.getCheckpoint(c.tenantId, String((req.body as { checkpointId?: string })?.checkpointId));
+        if (!cp || cp.sessionId !== parent.id) throw notFound("checkpoint not found");
+        const baseState = (await repos.sim.getTickState(c.tenantId, parent.id, cp.tick))?.state ?? {};
+        const child: SimSession = { id: newId("sims"), tenantId: c.tenantId, baseSnapshot: simState(baseState), scope: parent.scope,
+          status: "READY", curTick: 0, parentCheckpointId: cp.id,
+          // 分支**继承**父会话屏蔽的边：分支的语义是"从这个存档点接着往下试"，屏蔽集属于那个世界的假设。
+          // 不继承 ⇒ 分支出来的世界会悄悄把边又打开，用户看到的数与父会话对不上却查不出原因。
+          disabledRuleKeys: [...(parent.disabledRuleKeys ?? [])],
+          createdAt: new Date().toISOString() };
+
+== done ==

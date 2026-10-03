@@ -1,0 +1,12 @@
+域表键数 = 38
+★ 下侧不可达（min<0 ⇒ 铸造式产不出负值）= 1 条：forecastBias[-100,100]
+★ 上侧不可达（max<100 ⇒ 铸造式产不出上侧）= 0 条：
+  金丝雀：min<0 命中数 = 1（须 >=1，否则量法坏了）
+  forecastBias.stateVarValueRef = null（须 null）
+  金丝雀 order_demand_pressure ref = {"specKey":"order_demand_pressure"}（须非 null 否则量法坏了）
+规则表 n = 55（金丝雀：须 >0）
+PUBLISHED 边里出现过的 source 状态变量 = 29 个
+  forecastBias: 作源的 PUBLISHED 边 1 条 [Model→Order.demandPressure k=-0.222]
+★ PUBLISHED 边的源变量里，stateVarValueRef 解析不到（无规格式）= 9 个：drawdownPressure forecastBias gapPressure leadDays orderChurn qty queueDays switchPressure unitPrice
+── 结束 ──
+CAPTURED_RC=0

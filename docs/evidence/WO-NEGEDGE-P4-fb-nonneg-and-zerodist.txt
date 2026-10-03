@@ -1,0 +1,21 @@
+金丝雀⓪ 不存在会话 HTTP=404（须 404）
+对象: Order=150 Model=6
+规则: 全=55 PUBLISHED=55
+rule[0] keys = id,key,sourceTypeKey,sourceStateVar,viaLinkKey,targetTypeKey,targetStateVar,delayTicks,description,combine,decay,clamp,weightRef,cadenceNodeId,status,coefficient,coefficientRef,domainKey,domainName,reaction,sourceTypeName,targetTypeName,version,tenantId
+  DP边 id=simpr_demo_forecast_bias_to_order_demand k=0.222 ref=null status=PUBLISHED src=? tgt=?
+  DP边 id=simpr_demo_order_demand k=0.00698967 ref={"ruleKey":"C36","paramKey":"demo_order_demand_pressure"} status=PUBLISHED src=? tgt=?
+  DP边 id=simpr_demo_order_demand_to_order_line k=0.15609375 ref={"ruleKey":"C36","paramKey":"demo_order_demand_to_line_split"} status=PUBLISHED src=? tgt=?
+★指向 Order.demandPressure 的 PUBLISHED 边 = 0 条
+★其中**正系数** = 0 条（否证① 要求 0）
+★指向 Model.forecastBias 的 PUBLISHED 边 = 0 条（0 ⇒ 外生恒定）
+臂A（零扰动·第1次）: 会话=sims_5fsv734hegj5rzdb Order读数=150
+  fb 轨迹(t:n:min:max:负) = 1:6:1:88:0 | 5:6:1:88:0 | 20:6:1:88:0
+  fb 负值出现拍数 = 0/3（否证① 要求 0）
+  读数 > 基值+0.01 = 150/150（须 0）
+臂B（零扰动·第2次）: 会话=sims_mzkxbfznmy30bqp8 Order读数=150
+  fb 轨迹(t:n:min:max:负) = 1:6:1:88:0 | 5:6:1:88:0 | 20:6:1:88:0
+  fb 负值出现拍数 = 0/3（否证① 要求 0）
+  读数 > 基值+0.01 = 150/150（须 0）
+★★零扰动对照臂：可比格 6375 · 不同 0（要求 0；!=0 ⇒ P3 正对照作废）
+★★零扰动对照臂 · Order.demandPressure 逐单不同 = 0/150（要求 0）
+CAPTURED_RC=0

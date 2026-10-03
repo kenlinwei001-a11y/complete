@@ -1,0 +1,27 @@
+会话 sims_w47qgaqndy0cnn2g · tick0 越域格 = 360
+  tick0 越域按量纲: {"loadIndex":10,"receivablePressure":1,"blockedPressure":49,"shortageRisk":4,"demandLoad":1,"supplyRisk":6,"costPressure":16,"expeditePressure":13,"feedPressure":260}
+  tick0 越域格全是"归规格所有"? 360/360
+tick1: 越域格 = 1033   按量纲 {"loadIndex":12,"receivablePressure":2,"blockedPressure":69,"shortageRisk":4,"demandLoad":1,"supplyRisk":6,"costPressure":16,"queuePressure":650,"expeditePressure":13,"feedPressure":260}
+tick5: 越域格 = 1213   按量纲 {"loadIndex":12,"receivablePressure":3,"blockedPressure":120,"utilPressure":130,"shortageRisk":4,"demandLoad":1,"supplyRisk":6,"costPressure":16,"queuePressure":650,"expeditePressure":11,"feedPressure":260}
+tick10: 越域格 = 1208   按量纲 {"loadIndex":12,"receivablePressure":4,"blockedPressure":121,"utilPressure":130,"shortageRisk":4,"demandLoad":1,"costPressure":16,"queuePressure":650,"expeditePressure":10,"feedPressure":260}
+tick20: 越域格 = 1214   按量纲 {"loadIndex":12,"receivablePressure":4,"blockedPressure":121,"utilPressure":130,"shortageRisk":4,"demandLoad":1,"costPressure":22,"queuePressure":650,"expeditePressure":10,"feedPressure":260}
+tick30: 越域格 = 1214   按量纲 {"loadIndex":12,"receivablePressure":4,"blockedPressure":121,"utilPressure":130,"shortageRisk":4,"demandLoad":1,"costPressure":22,"queuePressure":650,"expeditePressure":10,"feedPressure":260}
+
+③ 反事实逐格（取 tick30 越域且基值也越域的格，各量纲前 3）：
+  Base.loadIndex (obj_base_changzhou)
+     tick0=301.819778  基值=301.819778  tick30=204.434646888805  域[0,100]  restPoint=0
+     基值本身越域? 是 ⇒ 越域来自播种
+  Customer.receivablePressure (obj_customer_cust_0)
+     tick0=42.932892  基值=42.932892  tick30=111.813431876311  域[0,100]  restPoint=0
+     基值本身越域? 否 ⇒ 越域不是基值带来的
+  Line.blockedPressure (obj_line_LINE-WS-changzhou-assembly)
+     tick0=53.1309  基值=53.1309  tick30=104.299566968301  域[0,100]  restPoint=0
+     基值本身越域? 否 ⇒ 越域不是基值带来的
+  Line.utilPressure (obj_line_LINE-WS-changzhou-assembly)
+     tick0=92.5496  基值=92.5496  tick30=124.840613338489  域[0,100]  restPoint=0
+     基值本身越域? 否 ⇒ 越域不是基值带来的
+  Material.shortageRisk (obj_material_al_foil)
+     tick0=-78.168578  基值=-78.168578  tick30=-28.92237386  域[0,100]  restPoint=0
+     基值本身越域? 是 ⇒ 越域来自播种
+
+[eof]

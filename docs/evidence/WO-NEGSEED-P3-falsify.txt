@@ -1,0 +1,13 @@
+F2 obj_material_elyte.shortageRisk  base=-161.417972  props=-161.417972  相等
+F2 obj_material_al_foil.shortageRisk  base=-78.168578  props=-78.168578  相等
+F2 obj_model_2170-NCM.supplyRisk  base=-29.4419  props=-29.4419  相等
+F2 obj_purchaseorder_po_0.procurementDelay  base=-4  props=-4  相等
+F2 obj_supplier_SUP-015.procurementDelay  base=-6  props=-6  相等
+F2 判定：✅ 未推翻（播种路逐字节取值）  (n=5)
+金丝雀(反向)：base 与 world0 应逐字节相等 ⇒ ✅ 相等
+F1 obj_material_elyte.shortageRisk base=-161.417972 t5=-59.72464964 预测=-59.72464964 ✅ (饱和不动点⇒应 = λ·base)
+F1 obj_material_al_foil.shortageRisk base=-78.168578 t5=-28.92237386 预测=-28.92237386 ✅ (饱和不动点⇒应 = λ·base)
+F1 obj_model_2170-NCM.supplyRisk base=-29.4419 t5=-8.341328990359 预测=-10.893503 ❌ (饱和不动点⇒应 = λ·base)
+F1 obj_purchaseorder_po_0.procurementDelay base=-4 t5=-4 预测=-4 ✅ (外生⇒应恒 = base)
+F1 obj_supplier_SUP-015.procurementDelay base=-6 t5=-6 预测=-6 ✅ (外生⇒应恒 = base)
+F1 判定：❌ 推翻

@@ -1,0 +1,11 @@
+[1] 会话 sims_demo_seed_world 字段全集（11）：baseSnapshot, baseSnapshotProvenance, createdAt, curTick, disabledRuleKeys, id, parentCheckpointId, scope, status, tenantId, tickDays
+[1b] 名称上像「新鲜度信号」的字段：（0 个）
+     注：baseSnapshotScale = null（尺寸合计，不是新鲜度）
+[1c] 反向金丝雀（正则必须能认出这类名）：命中 ["worldRev","derivedAt"] ⇒ 正则活着
+[2] baseSnapshot[obj_order_SO-3391].demandPressure = 60（类型 number）
+[2a] 取回对象 id=obj_order_SO-3391 type=Order（必须 id=obj_order_SO-3391）
+[2b] 对象 props.demandDelta = 0.6（类型 number）  ⇒ 规格式 demandDelta×100 = 60
+[2c] 等价今天成立？ baseCell=60 specNow=60 ⇒ 相等（等价成立，但没有任何东西在守它）
+[3] 会话记录（含 scope）里出现 "revision"/"rev" 字样：没有
+    scope 键：baseSnapshotOrigin, label, seedPerturbation, seedWorld, seedWorldCompletedTicks
+VERDICT: 金丝雀全中，读数可用

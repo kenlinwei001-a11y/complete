@@ -1,0 +1,16 @@
+对照臂格数 = 6
+  外生(无域) obj_purchaseorder_po_0.procurementDelay base=-4
+  外生(无域) obj_supplier_SUP-015.procurementDelay base=-6
+  外生(无域) obj_purchaseorder_po_12.procurementDelay base=-7
+  非规格(域内衰减) obj_arinvoice_arinvoice_0_0.overduePressure base=15
+  非规格(域内衰减) obj_arinvoice_arinvoice_0_1.overduePressure base=69
+  非规格(域内衰减) obj_arinvoice_arinvoice_0_2.overduePressure base=16
+
+对照臂点位 = 36；其中 world 恰等于 λ·base 的点位 = 0（预测 0，否则归因被推翻）
+  obj_purchaseorder_po_0.procurementDelay [外生(无域)] base=-4 λb=-1.48 | world=-4,-4,-4,-4,-4,-4 | lam=-,-,-,-,-,-
+  obj_supplier_SUP-015.procurementDelay [外生(无域)] base=-6 λb=-2.22 | world=-6,-6,-6,-6,-6,-6 | lam=-,-,-,-,-,-
+  obj_purchaseorder_po_12.procurementDelay [外生(无域)] base=-7 λb=-2.59 | world=-7,-7,-7,-7,-7,-7 | lam=-,-,-,-,-,-
+  obj_arinvoice_arinvoice_0_0.overduePressure [非规格(域内衰减)] base=15 λb=5.55 | world=9.45,12.307568016,23.891895188157,31.51358554654,36.322343934881,39.351980236012 | lam=0.37,0.37,0.37,0.37,0.37,0.37
+  obj_arinvoice_arinvoice_0_1.overduePressure [非规格(域内衰减)] base=69 λb=25.53 | world=43.47,33.740168016,37.394433188157,40.02018448654,41.681501267081,42.728249355298 | lam=0.37,0.37,0.37,0.37,0.37,0.37
+  obj_arinvoice_arinvoice_0_2.overduePressure [非规格(域内衰减)] base=16 λb=5.92 | world=10.08,12.704468016,24.141942188157,31.67111515654,36.421587589181,39.414503738221 | lam=0.37,0.37,0.37,0.37,0.37,0.37
+判定：✅ 对照臂干净 —— λ·base 偏移是规格格专属，归因到 C2 成立

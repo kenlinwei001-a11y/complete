@@ -1,0 +1,118 @@
+# P1 边符号普查 · 2026-10-03T08:58:31Z · 真后端 4019
+# 复现：curl -s -H 'X-Debug-User: demo:admin:admin' http://127.0.0.1:4019/a/v1/sim/propagation-rules -o /tmp/wo-3root/rules.json
+金丝雀①：总 55 · PUBLISHED 55 · 负系数 6 · 正系数 49
+参与传导的目标格 39 个（(类型·量) 粒度）
+金丝雀②（反向）：target 里含 forecastBias 的格 = 0（预期 0，已退役）
+金丝雀③（正向）：Order|demandPressure 入度=1 系数=-0.222
+金丝雀④（鉴别力）：正负混合的格 = 3（必须 >0，否则 oneWay 判定无鉴别力）
+
+════ 总账 ════
+有入边的目标格 (类型·量)：39
+  净入流符号单一（全正 或 全负）：36  (92.3%)
+  其中 全负（该格永远只能被往下推）：1  (2.6%)
+  正负混合（双向）：3  (7.7%)
+
+──── A. 全负入边（恒 ≤ 0，只能被往下压）────
+目标格                                       入度 系数
+Order|demandPressure                      1    -0.222
+
+──── B. 全正入边（恒 ≥ 0，只能被往上推）────
+目标格                                       入度 系数
+Process|queuePressure                     3    0.12807661, 0.185, 0.14942302
+PurchaseOrder|expeditePressure            2    0.185, 0.185
+WorkOrder|releasePressure                 2    0.13875, 0.13875
+Model|supplyRisk                          2    0.161875, 0.115625
+OrderLine|splitPressure                   2    0.12140625, 0.15609375
+Shipment|inboundExpeditePressure          1    0.1295
+Line|utilPressure                         1    0.185
+MaintPlan|windowSqueeze                   1    0.148
+InterBaseTransfer|transferPressure        1    0.111
+Order|orderChurn                          1    0.1295
+OverdueRecord|collectionPressure          1    0.222
+ARInvoice|overduePressure                 1    0.148
+CustomerLocation|deliveryHoldRisk         1    0.185
+ExceptionEvent|handlingBacklog            1    0.6
+MaintenanceOrder|repairBacklog            1    0.45
+MaterialAlternative|switchPressure        1    0.222
+MaterialBalance|gapPressure               1    0.259
+MaterialBatch|turnoverPressure            1    0.185
+Order|costPressure                        1    0.2775
+Base|loadIndex                            1    0.222
+Certification|qualificationQueue          1    0.066
+ChangeoverMatrix|changeoverPressure       1    0.148
+FinishedGoodsInventory|drawdownPressure   1    0.222
+Order|shortageRisk                        1    0.2775
+Customer|receivablePressure               1    0.03144963
+Model|backlogPriceTop                     1    1
+Model|backlogQtyTop                       1    1
+OrderPromise|promiseRisk                  1    0.2775
+CustomsClearance|clearanceQueueDays       1    0.4
+IncomingInspection|queueDays              1    0.222
+Supplier|reviewPressure                   1    0.148
+Line|blockedPressure                      1    0.2035
+DefectRecord|defectPressure               1    0.111
+QualityLot|inspectBacklog                 1    0.185
+WIPLot|feedPressure                       1    0.259
+
+──── C. 双向（既有正也有负入边）────
+Material|shortageRisk                     入度6  +5/−1  [-0.111, 0.05946418, 0.074, 0.07928545, 0.08919627, 0.04955336]
+Model|demandLoad                          入度4  +1/−3  [-0.00698967, -0.0083879, -0.00349465, 0.00698967]
+Model|costPressure                        入度3  +2/−1  [0.109318171, -0.084090909, 0.084090662]
+
+──── D. 全 0 系数（占位边）────
+
+明细 → /tmp/wo-3root/p1-edge-sign-census.json
+
+===== JOIN 取值域 =====
+金丝雀A（工具活着）：STATE_VAR_DOMAINS 条数 = 38
+金丝雀B（正向必中）：demandPressure = {"min":0,"max":100,"restPoint":0,"decayRef":{"ruleKey":"C35","paramKey":"pressureDecayPerTick"},"unit":"0–100 压力指数","source":"压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② 世界态起点分两档取值 —— 对象上有同名属性的那些格取真读数（越界由本表声明的取值域夹住），其余由 tick0 生成式 `round(hash01(objectId|stateVar)×100)` 产出，天然落在 0–100"}
+金丝雀C（反向）：forecastBias = {"min":-100,"max":100,"restPoint":0,"decayRef":{"ruleKey":"C35","paramKey":"pressureDecayPerTick"},"unit":"−100–100 偏差指数（正=高估）","source":"压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② 世界态起点分两档取值 —— 对象上有同名属性的那些格取真读数（越界由本表声明的取值域夹住），其余由 tick0 生成式 `round(hash01(objectId|stateVar)×100)` 产出，天然落在 0–100；方向性出处 = 上表 forecastBias 行注释「唯一带方向的量纲（正=高估/负=低估）」⇒ 静息点取 0 而非下界，下界取 −max 以保持两侧对称"}
+
+════ JOIN 结果 ════
+目标格(类型·量) 总数          39
+  无域声明（引擎不夹不衰减）   3
+  净入流符号单一               36  (92.3%)
+    其中 全正（只能往上推）     35
+    其中 全负（只能往下压）     1
+  入度恰好 = 1（单点依赖）      31  (79.5%)
+
+🔴 净入流方向**指向吸收边界**的格（单+该边界 band=0 硬夹）:
+   压向下界（rest===min）  1
+   推向上界（rest===max）  0
+   · Order|demandPressure                   入度1 系数[-0.222] 域[0,100] rest=0
+
+──── 入度=1 且全负/全正（最脆形态）逐条 ────
+   ARInvoice|overduePressure              c=0.148        域[0,100] 
+   Base|loadIndex                         c=0.222        域[0,100] 
+   Certification|qualificationQueue       c=0.066        域[0,null] 
+   ChangeoverMatrix|changeoverPressure    c=0.148        域[0,100] 
+   Customer|receivablePressure            c=0.03144963   域[0,100] 
+   CustomerLocation|deliveryHoldRisk      c=0.185        域[0,100] 
+   CustomsClearance|clearanceQueueDays    c=0.4          域[?,?] 
+   DefectRecord|defectPressure            c=0.111        域[0,100] 
+   ExceptionEvent|handlingBacklog         c=0.6          域[0,null] 
+   FinishedGoodsInventory|drawdownPressure c=0.222        域[0,100] 
+   IncomingInspection|queueDays           c=0.222        域[0,null] 
+   InterBaseTransfer|transferPressure     c=0.111        域[0,100] 
+   Line|blockedPressure                   c=0.2035       域[0,100] 
+   Line|utilPressure                      c=0.185        域[0,100] 
+   MaintenanceOrder|repairBacklog         c=0.45         域[0,null] 
+   MaintPlan|windowSqueeze                c=0.148        域[0,100] 
+   MaterialAlternative|switchPressure     c=0.222        域[0,100] 
+   MaterialBalance|gapPressure            c=0.259        域[0,100] 
+   MaterialBatch|turnoverPressure         c=0.185        域[0,100] 
+   Model|backlogPriceTop                  c=1            域[?,?] 
+   Model|backlogQtyTop                    c=1            域[?,?] 
+   Order|costPressure                     c=0.2775       域[0,100] 
+   Order|demandPressure                   c=-0.222       域[0,100] 🔴入地板
+   Order|orderChurn                       c=0.1295       域[0,100] 
+   Order|shortageRisk                     c=0.2775       域[0,100] 
+   OrderPromise|promiseRisk               c=0.2775       域[0,100] 
+   OverdueRecord|collectionPressure       c=0.222        域[0,100] 
+   QualityLot|inspectBacklog              c=0.185        域[0,null] 
+   Shipment|inboundExpeditePressure       c=0.1295       域[0,100] 
+   Supplier|reviewPressure                c=0.148        域[0,100] 
+   WIPLot|feedPressure                    c=0.259        域[0,100] 
+
+明细 → /tmp/wo-3root/p1-sign-domain-join.json
+CAPTURED_RC=0

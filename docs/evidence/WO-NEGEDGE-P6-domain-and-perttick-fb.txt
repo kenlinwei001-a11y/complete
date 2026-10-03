@@ -1,0 +1,19 @@
+域表键数 = 38（金丝雀：必须 >=30）
+★ min<0 的域键 = 1 条 ⇒ forecastBias[-100,100] rest=0
+forecastBias 域 = {"min":-100,"max":100,"restPoint":0,"decayRef":{"ruleKey":"C35","paramKey":"pressureDecayPerTick"},"unit":"−100–100 偏差指数（正=高估）","source":"压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② 世界态起点分两档取值 —— 对象上有同名属性的那些格取真读数（越界由本表声明的取值域夹住），其余由 tick0 生成式 `round(hash01(objectId|stateVar)×100)` 产出，天然落在 0–100；方向性出处 = 上表 forecastBias 行注释「唯一带方向的量纲（正=高估/负=低估）」⇒ 静息点取 0 而非下界，下界取 −max 以保持两侧对称"}
+★ stateVarValueRef("Model","forecastBias") = null（根因链第4层说应为 undefined）
+  金丝雀：stateVarValueRef("Order","demandPressure") = {"specKey":"order_demand_pressure"}（必非 undefined，否则量法坏了）
+会话=sims_8py6xwb56xzq7tac baseSnapshot 对象数 = 4425（金丝雀：必须 >0）
+★ baseSnapshot 越域格 = 360 / 在域格 = 5450 / 无域键格 = 565（金丝雀：在域格必须 >0）
+   越域样例：Base.loadIndex=301.8198 域[0,100] | Base.loadIndex=151.6338 域[0,100] | Base.loadIndex=277.6039 域[0,100] | Base.loadIndex=149.0077 域[0,100] | Base.loadIndex=438.0184 域[0,100] | Base.loadIndex=129.9831 域[0,100] | Base.loadIndex=224.6858 域[0,100] | Base.loadIndex=260.3267 域[0,100]
+⇒ 若越域格 > 0 ⇒ 播种路**没有**「写 state 前统一投影到 [min,max]」这一步（否证④ 不成立）
+   Model.forecastBias tick0 = [1,88,50,88,8,79] n=6
+   tick 1 活态 fb = [1,88,50,88,8,79] 负=0
+   tick 2 活态 fb = [1,88,50,88,8,79] 负=0
+   tick 4 活态 fb = [1,88,50,88,8,79] 负=0
+   tick12 活态 fb = [1,88,50,88,8,79] 负=0
+   tick24 活态 fb = [1,88,50,88,8,79] 负=0
+★ 否证① 全量：48 个 (拍,型号) 样本，min=1 max=88，**负值个数 = 0**
+   负值 0 次 ⇒ 未推翻「唯一入源结构性非负」
+── 结束 ──
+CAPTURED_RC=0

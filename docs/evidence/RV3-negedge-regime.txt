@@ -1,0 +1,88 @@
+# 评审员#3 独立复核 · 2026-10-03T09:28:57.355Z · BASE=http://127.0.0.1:4019/a/v1 · TICKS=30
+# 金丝雀⓪（取数路活着）：不存在的会话 → HTTP 404（应 404） ✅
+  GET /sim/propagation-rules: HTTP 200
+# 金丝雀A（必然命中）：Order|demandPressure 入边 1 条 ✅
+# 金丝雀B（必然不命中）：虚构量纲入边 0 条 ✅ 0 命中可信
+   入边 demo_forecast_bias_to_order_demand :: Model.forecastBias --×-0.222--> Order.demandPressure
+   Model.forecastBias 入度 = 0（0 = 外生根 ⇒ 衰减相豁免、值取播种占位）
+
+# 金丝雀C（域表解析活着）：压力族名 32 个 · 总域 38 条（期望 38） ✅
+# 金丝雀D（正向必有）：demandPressure = {"min":0,"max":100,"rest":0} ✅
+# 金丝雀E（规格归属表解析）：STATE_VAR_VALUE_REFS 命中 25 条（剥注释后上游读数 25）
+   其中含 Order|demandPressure = true · 含 Model|forecastBias = false（退役，应 false）
+  POST /sim/sessions: HTTP 201
+  GET world@tick0 sims_t7qqe7a6r13w69g1: HTTP 200
+  GET session sims_t7qqe7a6r13w69g1: HTTP 200
+
+会话 S1 = sims_t7qqe7a6r13w69g1 · Order 150 个 · baseSnapshot 4425 对象
+# 金丝雀F（tick0 锚）：demandPressure 世界态 == baseSnapshot 的单 150/150 ✅
+  POST /sim/sessions/{id}/tick (最后一拍 · disclose): HTTP 200
+# 引擎自报 λ(demandPressure) = 0.37 ✅
+# 最后一拍 trace：行 7413 · 目标边行 150（= Order 数？ ✅）
+  GET world@tick30: HTTP 200
+
+════ 逐单判别（H1 = 夹值在合成前[现行]，H3 = 合成在夹值前，H2 = 无夹值）════
+逐单格数 150
+  H0（无 C2 · 纯积分器，收敛到 0）        命中 2/150
+  H1（现行：clamp((1−λ)x+c) + λ·base）      命中 125/150
+  H2（无夹值：base + c/λ）                 命中 25/150
+  H3（合成在夹值前：clamp((1−λ)x + λ·base + c)）命中 27/150
+  ★ 判别带（H1 给出 λ·base 常数、H3 给出 >0 且二者可分辨）: 8 单
+     obj_order_SO-3415 model=obj_model_4680-NCM base=41 c=-11.1 实测=15.17 · H1=15.17 H3=11.000000000000002 ⇒ 实测站 H1
+     obj_order_SO-3523 model=obj_model_4680-NCM base=43 c=-11.1 实测=15.91 · H1=15.91 H3=13.000000000000002 ⇒ 实测站 H1
+     obj_order_SO-900187 model=obj_model_4680-NCM base=43 c=-11.1 实测=15.91 · H1=15.91 H3=13.000000000000002 ⇒ 实测站 H1
+     obj_order_SO-900260 model=obj_model_4680-NCM base=33 c=-11.1 实测=12.21 · H1=12.209999999999999 H3=3 ⇒ 实测站 H1
+     obj_order_SO-900325 model=obj_model_圆柱-LFP base=60 c=-19.536 实测=22.2 · H1=22.2 H3=7.199999999999996 ⇒ 实测站 H1
+     obj_order_SO-900341 model=obj_model_4680-NCM base=31 c=-11.1 实测=11.47 · H1=11.47 H3=1.0000000000000036 ⇒ 实测站 H1
+     obj_order_SO-900400 model=obj_model_4680-LFP base=60 c=-19.536 实测=22.2 · H1=22.2 H3=7.199999999999996 ⇒ 实测站 H1
+     obj_order_SO-900401 model=obj_model_4680-NCM base=44 c=-11.1 实测=16.28 · H1=16.28 H3=14.000000000000009 ⇒ 实测站 H1
+  ★ 深夹带（H1 → λ·base、H3 → 0）: 90 单 · 实测站 H1 90/90 ✅
+  # 未夹值档收敛残差自证：实测−H1 == (base−H1)·(1−λ)^30 命中 25/25 ✅（那 25 条不是反例，是第 30 拍还没收敛完）
+  H1 反例（实测 ≠ H1）: 25 单 ⚠ 前 8 条：
+     obj_order_SO-3391 base=60 c=-11.1 实测=30.000028664063 H1=30.000000000000007 H2=30.000000000000007 H3=30.000000000000007
+     obj_order_SO-3452 base=48 c=-1.776 实测=43.20000458625 H1=43.2 H2=43.199999999999996 H3=43.199999999999996
+     obj_order_SO-3458 base=60 c=-1.776 实测=55.20000458625 H1=55.2 H2=55.199999999999996 H3=55.199999999999996
+     obj_order_SO-3464 base=43 c=-1.776 实测=38.20000458625 H1=38.2 H2=38.199999999999996 H3=38.199999999999996
+     obj_order_SO-3495 base=9 c=-1.776 实测=4.20000458625 H1=4.200000000000001 H2=4.200000000000001 H3=4.200000000000001
+     obj_order_SO-3501 base=60 c=-1.776 实测=55.20000458625 H1=55.2 H2=55.199999999999996 H3=55.199999999999996
+     obj_order_SO-3518 base=39 c=-1.776 实测=34.20000458625 H1=34.2 H2=34.199999999999996 H3=34.199999999999996
+     obj_order_SO-900029 base=24 c=-1.776 实测=19.20000458625 H1=19.200000000000003 H2=19.2 H3=19.2
+
+# 上界判据（Order.demandPressure 读数 ≤ 基值 + 0.01）: 上穿 0/150 ✅
+# 「读数 == λ·base」常数档: 100/150（上游 98/150）
+# 阳对照（同尺子 · 全世界）：读数 > 基值 的格 2173 个（须 >0，否则探针无鉴别力）✅
+     obj_arinvoice_arinvoice_0_0.overduePressure 15→44.724978898939
+     obj_arinvoice_arinvoice_0_2.overduePressure 16→44.724979854408
+     obj_arinvoice_arinvoice_1_0.overduePressure 15→37.013013661544
+     obj_arinvoice_arinvoice_10_2.overduePressure 1→35.860893895974
+     obj_arinvoice_arinvoice_11_0.overduePressure 15→30.973790920233
+  GET /sim/view-config: HTTP 200
+
+# 域逃逸扫描：声明域外的 (对象·量) 格 1214 个（C2 前应为 0 —— 种子越界由夹值收回）
+     queuePressure: 650 格
+     feedPressure: 260 格
+     utilPressure: 130 格
+     blockedPressure: 121 格
+     costPressure: 22 格
+     loadIndex: 12 格
+     expeditePressure: 10 格
+     receivablePressure: 4 格
+     obj_base_changzhou.loadIndex = 204.434646888805 域[0,100] 规格格=true
+     obj_base_chengdu.loadIndex = 142.934191354042 域[0,100] 规格格=true
+     obj_base_handan.loadIndex = 194.656402127945 域[0,100] 规格格=true
+     obj_base_hefei.loadIndex = 140.774904105953 域[0,100] 规格格=true
+     obj_base_jiangmen.loadIndex = 111.803592228638 域[0,100] 规格格=true
+     obj_base_jinhua.loadIndex = 256.823764808919 域[0,100] 规格格=true
+  POST /sim/sessions (S2 对照): HTTP 201
+  GET world@tick30 (S2): HTTP 200
+
+# 零扰动对照（S1 vs S2 同种子）：demandPressure 逐字节相同 150/150 · 不同 0 ✅ 世界自身行为，可复现
+
+# 涌现属性普查（自算）：有入边的目标格 39 · 全正 35 · 全负 1 · 双向 3
+# 金丝雀G（普查有鉴别力）：全正 > 0 且 双向 > 0 —— 全正=35 双向=3 ✅
+   🔴 全负格 Order|demandPressure 入度=1 系数=[-0.222] · 域 rest=0 min=0 ⇒ 硬地板=true · 规格格=true
+# ⇒ 「符号单一 ∧ 指向硬地板 ∧ 规格格」的格共 1 个 —— **全仓没有任何地方算过这个合取**（本行是现算的）
+
+# 结论速览：H1 命中 125/150（现行递推）· H3 命中 27/150（合成在夹值前）
+#          判别带 8 单 · 上穿基值 0/150 · 域逃逸 1214 格
+CAPTURED_RC=0

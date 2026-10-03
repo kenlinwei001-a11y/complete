@@ -1,0 +1,45 @@
+# P2B · 实测：改「规格输入 prop」后，同一会话的世界格读数是否跟着变（否证判据①②③+反向）
+# 后端 = 4019 上的 dev datacore（pid 61057, PORT=4019 SEED_DEMO=1, cwd /Users/apple/deploy/wo-edge-wire, dist 构建于 2026-10-02 22:47:08 / 进程起于 22:48:16）
+# 目标格 obj_order_SO-3391.demandPressure；规格输入 prop = demandDelta；规格式 COALESCE(this.demandDelta*100, 0)
+# 方法：T(treat) 与 K(ctrl) 两会话由同一种子世界建出（baseSnapshot 逐键相同，4425/4425）
+#   · 对照臂 K 先在 props 未变时 tick5 → 天然轨迹
+#   · 施加：Action「对象数据变更」经 draft→submit→approve 落成 props 真值 + runDerivations（HTTP 201/200，draftStatus=EXECUTED）
+#   · 扰动生效自证：props.demandDelta 0.6→0.9 且派生 props.demandPressure 60→90（若 props 没变，本轮读数作废）
+#   · 处理臂 T 在 props 已变后 tick5 → 与 K5 全 4425 对象逐格比
+#   · 阳性对照：/act 直接写世界，证明「逐格差器」有鉴别力（不是差器瞎）
+# 否证判据①（读数跳新基值）→ 未触发；②（存在 props→baseSnapshot 活边）→ 未找到；③（对象写入路检查会话）→ 未观察到
+# 脚本 /tmp/wo-3root/p2b-final.mjs ；CAPTURED_RC 为该脚本真实退出码
+# 目标格 obj_order_SO-3391.demandPressure  规格输入 prop = demandDelta  规格式 = COALESCE(this.demandDelta*100, 0)
+# 起点库真值 props.demandDelta=0.6 props.demandPressure=60
+# T(treat)=sims_j9xx3zx5s1nev9xd K(ctrl)=sims_x17qm9b5127wf2xb
+# baseSnapshot obj_order_SO-3391.demandPressure: T=60 K=60
+
+## 阶段1 对照臂 K 在 props 未变时 tick5 -> HTTP 200
+   K(tick 5) obj_order_SO-3391.demandPressure=32.977309629  (基值 60)
+
+## 阶段2 采纳 Action「对象数据变更」写规格输入 prop
+   draft create HTTP=201 approve HTTP=200 draftStatus=EXECUTED
+   PERTURB-APPLIED=true  props.demandDelta: 0.6 -> 0.9   props.demandPressure(派生重算): 60 -> 90
+
+## 阶段3 处理臂 T 在 props 已变后 tick5
+   T(tick 0) 变更后未推进的读数 = 60  (库真值 90)
+   tick T n=5 -> HTTP 200
+   T(tick 5) obj_order_SO-3391.demandPressure=32.977309629    K(tick 5) obj_order_SO-3391.demandPressure=32.977309629
+   DIFF T5 vs K5 全 4425 对象逐格: 不同格=0   (若 props->world 有活边，T 应≈90)
+
+## 阶段4 反向否证：改回 props，看已有会话是否跟随
+   变更后新建会话 F=sims_df87qrfghzzv6ktq base obj_order_SO-3391.demandPressure=90  <- 建会话(活采样) 对齐库真值 90？
+   撤销 draft approve HTTP=200 draftStatus=EXECUTED props.demandDelta=0.6 props.demandPressure=60
+   F(tick 5, 建于基值 90) obj_order_SO-3391.demandPressure=62.977309629  <- 撤销后未回落到 60 系链
+   K(tick 5) obj_order_SO-3391.demandPressure=32.977309629 (基值 60)  | F 与 K 之差=30.000000000 ≈ 基值差 30
+
+## 阶段5 阳性对照：/act 直接写世界（证明差器有鉴别力）
+   /act obj_order_SO-3391.demandPressure=77 -> HTTP 200
+   DIFF T6 vs K6 after /act: 不同格=5  T.demandPressure=59.61
+     obj_model_4680-NCM.demandLoad: T=22.83720551875 K=22.510214096958
+     obj_order_SO-3391.demandPressure: T=59.61 K=31.87570506627
+     obj_orderline_SO-3391-L1.splitPressure: T=27.269613512211 K=20.397946687113
+     obj_orderline_SO-3391-L2.splitPressure: T=31.458688160214 K=24.587021335116
+     obj_orderline_SO-3391-L3.splitPressure: T=27.269613512211 K=20.397946687113
+
+# 结论：阶段3 若 DIFF=0 且 T 读数不随 props 走 ⇒ 「props 变 → 世界跟着变」这条边不存在（P2 根因成立）

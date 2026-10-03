@@ -1,0 +1,50 @@
+# R1（评审员#1）独立探针 · P3 待评根因的作用域界定（不是复述上游）
+# 2026-10-03 · 4019 真后端（PID 61057，dist 建于 38f449d51 22:47）· 只读+建会话/推 tick，未改产品代码
+# 环境核验：git diff --stat 38f449d51..HEAD -- apps/datacore/src 为空（= 运行 dist 的源码提交与 tip 逐字节同）
+#            ⇒ 上一阶段「src mtime 新于运行产物」的限定不成立（mtime 是 checkout 时间，内容未变）
+# 探针：WO-NEGSEED-R1-scope.mjs（本次输出原文如下）
+# 判据 Q1 机制复核 / Q2 回执↔世界态 / Q3【新】越域按 base 域内·域外拆分 + C2 造越域是否有人记账
+
+金丝雀A：STATE_VAR_DOMAINS=38 项（须 ≥38）
+金丝雀B：shortageRisk 域={"min":0,"max":100,"restPoint":0,"decayRef":{"ruleKey":"C35","paramKey":"pressureDecayPerTick"},"unit":"0–100 压力指数","source":"压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② 世界态起点分两档取值 —— 对象上有同名属性的那些格取真读数（越界由本表声明的取值域夹住），其余由 tick0 生成式 `round(hash01(objectId|stateVar)×100)` 产出，天然落在 0–100"}（须 min=0 才可判越界）
+会话 sims_ctd7ajemp7cr3bzx · baseSnapshot 对象=4425
+金丝雀C：类型映射覆盖 4425/4425 · tick0=0
+
+[tick0] 世界态越域格 = 360（base 越域 360 / base 域内 0）
+[t1] 越域格=1033（base域内 674 / base域外 359）· 回执 829（规格格 822）· 回执值==世界态 12/822 · C2造的越域(kernelOut在域内) 674（其中回执没点名 95）
+[t2] 越域格=1186（base域内 828 / base域外 358）· 回执 1355（规格格 1345）· 回执值==世界态 12/1345 · C2造的越域(kernelOut在域内) 828（其中回执没点名 23）
+[t3] 越域格=1200（base域内 843 / base域外 357）· 回执 1438（规格格 1426）· 回执值==世界态 12/1426 · C2造的越域(kernelOut在域内) 843（其中回执没点名 2）
+[t4] 越域格=1211（base域内 854 / base域外 357）· 回执 1546（规格格 1530）· 回执值==世界态 12/1530 · C2造的越域(kernelOut在域内) 854（其中回执没点名 1）
+[t5] 越域格=1213（base域内 857 / base域外 356）· 回执 1640（规格格 1623）· 回执值==世界态 12/1623 · C2造的越域(kernelOut在域内) 857（其中回执没点名 1）
+
+=== 负基值规格格（17 个对象·量）逐拍：x=世界态, λb=λ·base, sat=回执是否点名 ===
+  obj_material_al_foil|shortageRisk base=-78.168578 λ·base=-28.92237386 | λb* , λb* , λb* , λb* , λb*   (*=本拍回执点名)
+  obj_material_cu_foil|shortageRisk base=-52.699718 λ·base=-19.49889566 | λb* , λb* , λb* , λb* , λb*   (*=本拍回执点名)
+  obj_material_elyte|shortageRisk base=-161.417972 λ·base=-59.72464964 | λb* , λb* , λb* , λb* , λb*   (*=本拍回执点名)
+  obj_material_sep_film|shortageRisk base=-24.096263 λ·base=-8.91561731 | λb* , λb* , -7.990648 , -6.519290 , -5.032499   (*=本拍回执点名)
+  obj_model_2170-NCM|supplyRisk base=-29.4419 λ·base=-10.893503 | λb* , λb* , λb* , -10.530771 , -8.341329   (*=本拍回执点名)
+  obj_model_4680-LFP|supplyRisk base=-28.8571 λ·base=-10.677127 | λb* , λb* , λb* , λb* , -8.714397   (*=本拍回执点名)
+
+=== 汇总（5 拍）===
+Q1 机制复核：饱和拍 world ≠ 夹后值+λ·(base−rest) 的点位 = 0（分母 6746）
+Q2 回执↔世界态：回执值 == 世界态 60 / 回执值 ≠ 世界态 6686（分母 6746）
+Q3 越域全量：tick0 = 360（base域内 0）
+   t1 越域 1033（base域内 674 / base域外 359）
+   t2 越域 1186（base域内 828 / base域外 358）
+   t3 越域 1200（base域内 843 / base域外 357）
+   t4 越域 1211（base域内 854 / base域外 357）
+   t5 越域 1213（base域内 857 / base域外 356）
+Q3 细分：C2 造的越域（base 域内 ∧ C2 作用域 ∧ kernelOut 仍在域内）= 4056
+        其中本拍回执【没点名】= 122 · 回执点名了 = 3934 · kernelOut 也在域外 = 0
+   ⚠️ t1 obj_base_jiangmen.loadIndex base=98.471521(域内) world=103.703368138 域=[0,100] kernelOut=67.268905368(域内) 回执无此格
+   ⚠️ t1 obj_line_LINE-WS-hefei-slurry.blockedPressure base=81.4022(域内) world=100.67772 域=[0,100] kernelOut=70.558906(域内) 回执无此格
+   ⚠️ t1 obj_line_LINE-WS-jiangmen-pack.blockedPressure base=82.2832(域内) world=101.6157 域=[0,100] kernelOut=71.170916(域内) 回执无此格
+   ⚠️ t1 obj_line_LINE-WS-jinhua-formation.blockedPressure base=82.1038(域内) world=101.49735 域=[0,100] kernelOut=71.118944(域内) 回执无此格
+   ⚠️ t1 obj_line_LINE-WS-jinhua-slurry.blockedPressure base=87.9269(域内) world=107.49953 域=[0,100] kernelOut=74.966577(域内) 回执无此格
+   ⚠️ t1 obj_line_LINE-WS-meishan-slitting.blockedPressure base=85.9743(域内) world=105.30273 域=[0,100] kernelOut=73.492239(域内) 回执无此格
+   ⚠️ t1 obj_line_LINE-WS-wuhan-pack.blockedPressure base=81.1813(域内) world=100.46089 域=[0,100] kernelOut=70.423809(域内) 回执无此格
+   ⚠️ t1 obj_line_LINE-WS-xinyang-calendering.blockedPressure base=80.6219(域内) world=100.00731 域=[0,100] kernelOut=70.177207(域内) 回执无此格
+
+判定：Q1 未推翻 · Q2 矛盾 6686/6746 · Q3 C2造越域 4056 且全无回执记账
+
+CAPTURED_RC=0

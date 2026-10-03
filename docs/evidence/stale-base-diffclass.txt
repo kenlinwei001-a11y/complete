@@ -1,0 +1,11 @@
+# diffclass · session=sims_demo_seed_world curTick=3 · 2026-10-03T07:35:05.064Z
+# baseSnapshot 数值格 6375 个；小数位分布 [[0,4355],[1,1067],[2,4],[3,92],[4,857]]
+# 分类：逐位相同=3394 舍入伪影(|Δ|<1e-3 或 base=round(props,4))=339 真差异(|Δ|≥1e-3)=0
+#      props 无键=0 base 无键=0
+# 舍入伪影样例：
+  obj_base_changzhou.loadIndex: props=301.819778 base=301.8198
+  obj_base_chengdu.loadIndex: props=151.633813 base=151.6338
+  obj_base_handan.loadIndex: props=277.603892 base=277.6039
+  obj_base_hefei.loadIndex: props=149.007657 base=149.0077
+  obj_base_jiangmen.loadIndex: props=98.471521 base=98.4715
+# 金丝雀：分类总数 = 3733（>0 才说明比较器跑到了）

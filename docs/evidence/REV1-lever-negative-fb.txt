@@ -1,0 +1,14 @@
+金丝雀：view-config 解出 Model=6 Order=150（须 >0）
+靶型号 = obj_model_4680-NCM（type=Model，须为 Model，否则量法坏了）
+── 臂 C · 零扰动对照 ──
+  [C 零扰动] 会话=sims_7tr1ectcxc35jwk3 tickHTTP=200 | obj_model_4680-NCM.forecastBias(活态)=50 | 可比单=150 | 越基值+0.01 = 0/150 | 世界末拍 tick=12
+  [C 零扰动] 前 3 大 Δ：obj_order_SO-900474 base=0 v=0 Δ=0.0000 | obj_order_SO-900485 base=0 v=0 Δ=0.0000 | obj_order_SO-3431 base=19 v=18.402345512997 Δ=-0.5977
+── 臂 N · forecastBias 设为 −50（低估）──
+  [N fb=−50] 扰动 POST HTTP=201 id=simpert_76eqjrvfed1m2373 curTick=0
+  [N fb=−50] 会话=sims_rr96k25yrcmjej91 tickHTTP=200 | obj_model_4680-NCM.forecastBias(活态)=-50 | 可比单=150 | 越基值+0.01 = 24/150 | 世界末拍 tick=12
+  [N fb=−50] 前 3 大 Δ：obj_order_SO-3391 base=60 v=89.882724350146 Δ=29.8827 | obj_order_SO-3415 base=41 v=70.882724350146 Δ=29.8827 | obj_order_SO-3523 base=43 v=72.882724350146 Δ=29.8827
+★ 仪器自证：N 臂活态 forecastBias=-50（须 == −50）⇒ 扰动已落地
+★ 判决：C 越基值 0/150 · N 越基值 24/150
+  ⇒ 「净入流恒 ≤0」在**带杠杆的世界里不成立**（不可达是播种态的性质，不是结构上的不可能）
+── 结束 ──
+CAPTURED_RC=0

@@ -1,0 +1,78 @@
+# R2 评审员#2 · 独立静态扫描（每条否定结论配必然命中金丝雀；脚本 /tmp/wo-r2/r2f-scan.sh）
+# 运行树 = /Users/apple/deploy/wo-edge-wire（apps/datacore/src）
+
+# 运行树 = /Users/apple/deploy/wo-edge-wire/apps/datacore/src
+# 金丝雀总闸：grep 工具活着吗
+  canary: grep -c 'await' app.ts = 674  (必须 >0)
+
+## A) baseSnapshot 就地改写（'.baseSnapshot ='）
+./app.ts:2101:    const derived = input.baseSnapshot === undefined ? await deriveSeedBaseSnapshot(repos, c.tenantId) : null;
+./sim/shadow-memo.ts:191: * 该不变量由 `shadow-memo.seam.test.ts` §4 的**源码扫描**守着（剥注释后咬 `.baseSnapshot =`
+./repo/memory.ts:61: *     `shadow-memo.seam.test.ts` §4 的源码扫描守着（剥注释后咬 `.baseSnapshot =` 赋值，全仓零处）。
+  ↑ 其中 app.ts:2101 是 '===' 比较、另两条是注释正文（逐行人工核）
+
+## A2) baseSnapshot 的全部写入点（对象字面量键）
+./app.ts:2114:      id: input.id ?? newId("sims"), tenantId: c.tenantId, baseSnapshot: base,
+./app.ts:2135:        baseSnapshot: b.baseSnapshot,
+./app.ts:2581:      baseSnapshot: s.baseSnapshot,
+./app.ts:3275:    const child: SimSession = { id: newId("sims"), tenantId: c.tenantId, baseSnapshot: simState(baseState), scope: parent.scope,
+./app.ts:4837:    const s: SimSession = { id: newId(idPrefix), tenantId: c.tenantId, baseSnapshot: {}, scope, status: "READY", curTick: 0, parentCheckpointId: null, disabledRuleKeys: [], createdAt: new Date().toISOString() };
+./sim/seed-world.ts:875:    baseSnapshot: state,
+./sim/spec-base-synthesis.ts:57:  baseSnapshot: TickState;
+./sim/metric-series.ts:151:    baseSnapshot: engine.specBase, graph: engine.graph, rules, stateVarDomains: engine.stateVarDomains,
+./repo/pg.ts:82:      baseSnapshot: r.base_snapshot as SimSession["baseSnapshot"], scope: r.scope as SimSession["scope"],
+
+## A3) 世界态写入点 putTickState 调用
+./app.ts:2125:    await repos.sim.putTickState({ sessionId: s.id, tenantId: c.tenantId, tick: 0, state: simState(base), pending: [], trace: null });
+./app.ts:2678:        await repos.sim.putTickState({ sessionId: s.id, tenantId: c.tenantId, tick: curTick, state, pending, trace });
+./app.ts:3131:    await repos.sim.putTickState({
+./app.ts:3282:    await repos.sim.putTickState({ sessionId: child.id, tenantId: c.tenantId, tick: 0, state: simState(baseState), pending: [], trace: null });
+  金丝雀：getTickState 调用 = 21 (必须 >0)
+
+## B) tick 核（app.ts 2392-2722）内对对象库/规格库的直接访问
+  repos.objects|repos.epochs|repos.derivationSpecs|ontology. = 0
+  金丝雀1 repos.sim（同区间，必须>0）= 4
+  金丝雀2 await（同区间，必须>0）= 10
+  ⚠ 同区间**确实调**了会读对象库的装配器 buildPropagationInputs：
+    app.ts:2532:       const inp = await buildPropagationInputs(repos, c, resolveSimScope(s.scope), propRules);
+  ⇒ 该装配器内部读对象库（含 repos.objects.revision()）：
+    sim/propagation-inputs.ts:121:    repos.objects.revision(c.tenantId),
+
+## C) 有没有「重铺/失效/重建」会话的路由
+  repair|reseed|rebuild|refresh|resync|re-seed 命中 = 1
+  金丝雀 同管道捞 optimize 路由 = 4 (必须>0)
+
+## D) 会话数据模型有无源修订号/指纹字段
+423:   * ⚠ **刻意 optional 而非 required** —— 沿用本文件 `SimSession.disabledRuleKeys` / `tickDays`
+1261:  baseSnapshot: TickStateSchema, // tick0 世界态（合成/连接器/切片物化而来，走正门）
+1273:  baseSnapshotProvenance: CellProvenanceSchema.optional(),
+1282:  curTick: z.number().int().default(0),
+1311:  disabledRuleKeys: z.array(z.string()).optional(),
+1317:   * `grep -rn tickDays` 全仓 **0 命中**；金丝雀：同目录 `durationTicks` 在
+1349:  tickDays: z.number().int().min(1).optional(),
+1355: * 「推演 N 天」→ 要推几个 tick（PRD §4.5 的 `ceil(N / tickDays)`）。
+  金丝雀：revision|fingerprint 在 SimSessionSchema 段内命中 = 0  (0 = 确实没有)
+
+## E) 播种世界（demo 长期会话）复用判据
+    const completeness = seedWorldCompleteness(existing);
+    if (completeness === "INCOMPLETE") {
+      // ── 🔴 半残态：**不许**在这里报"幂等命中"走开（那正是本单要治的病）──────────────
+      // 实测形态：`status=READY, cur_tick=0`，tick 态只剩 tick0，扰动零条 —— 播种被杀在
+      // `createSession` 与 `tick` 之间。旧守卫看到"有东西了"就走开，日志打的是一句
+  金丝雀：seedWorldCompleteness 函数体命中 = 2  (必须>0)
+
+## F) 对象写入路会不会看会话
+  simclock.ts : 对象写入=3 句  sim会话引用=0
+  modeling.ts : 对象写入=2 句  sim会话引用=0
+  ontology.ts : 对象写入=1 句  sim会话引用=0
+  ontology-core.ts : 对象写入=2 句  sim会话引用=0
+  entity-resolution.ts : 对象写入=3 句  sim会话引用=0
+  databuilder/service.ts : 对象写入=2 句  sim会话引用=0
+  timeseries.ts : 对象写入=1 句  sim会话引用=0
+  金丝雀：app.ts 里 repos.sim.* = 69 (必须>0)
+
+# 结论
+  A 全仓库无就地改写；A2/A3 全部写点都在建会话/分支/占位/act/tick —— 无 props→base 的活边、无重铺路由
+  B tick 体自身看不到对象库；但经由 buildPropagationInputs 读结构+分摊权重（权重通道是活的且带 revision 键）
+  D 会话模型无 revision/指纹；E 播种世界复用只看完成标记
+  F 对象写入路零会话引用 ⇒ 采纳不检查、不冻结任何会话

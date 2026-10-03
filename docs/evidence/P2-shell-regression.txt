@@ -1,0 +1,30 @@
+
+> frontend-shell@0.1.0 test /Users/apple/deploy/wo-edge-wire/apps/frontend-shell
+> vitest run sim-unified-shell
+
+
+ RUN  v3.2.6 /Users/apple/deploy/wo-edge-wire/apps/frontend-shell
+
+stderr | test/sim-unified-shell.seam.test.tsx > WO-SIM-TICK-GATE · 页签计数现算 / 假旋钮下屏 > ⑨' 计数没到手时说「还没取到」，**不许**印成 0 条（「不知道」≠「一条都没有」）
+Query data cannot be undefined. Please make sure to return a value other than undefined from your query function. Affected query key: ["a","sim-view-config"]
+
+ ✓ test/sim-unified-shell.seam.test.tsx (13 tests) 10848ms
+   ✓ WO-SIM-UNIFIED-SHELL · 统一推演控制台接缝门 > ⓪ 金丝雀：五区外壳挂得起来，且卡墙铺出了 fixture 声明的那些卡（失败 ⇒ 报「工具坏了」，不许读作「卡墙是空的」）  1641ms
+   ✓ WO-SIM-UNIFIED-SHELL · 统一推演控制台接缝门 > ① 卡墙来源臂：卡的**个数与名字**来自 view-config 回包 —— 改回包，屏上跟着变  1469ms
+   ✓ WO-SIM-UNIFIED-SHELL · 统一推演控制台接缝门 > ② 层级现算臂：改 propagation-rules 的**边集** ⇒ 某个变量的层级跟着变（根源 → 枢纽）  1129ms
+   ✓ WO-SIM-UNIFIED-SHELL · 统一推演控制台接缝门 > ③ 只铺变化臂：未变化的不在第一层，但在「未变化 N 项」展开块里找得回来（收起 ≠ 删除）  487ms
+   ✓ WO-SIM-UNIFIED-SHELL · 统一推演控制台接缝门 > ④ 收合臂：收起 ⇒ 摘要条出现且带「已施加什么」；点「改扰动」⇒ 左栏回来  837ms
+   ✓ WO-SIM-UNIFIED-SHELL · 统一推演控制台接缝门 > ⑤ 诚实位臂：派生读数的口径标注与数字**同屏**（同一张卡内），且写着后端那句出处  356ms
+   ✓ WO-SIM-UNIFIED-SHELL · 统一推演控制台接缝门 > ⑥ 右栏检视：点卡 ⇒ 四问在屏上（含谁推的/推坏谁的系数与延迟），且「没有落点」与「算不出来」是两个态  1177ms
+   ✓ WO-SIM-UNIFIED-SHELL · 统一推演控制台接缝门 > ⑦ 抽屉：右栏「展开」进三栏抽屉，窗口天数由 ticks×tickDays **现算**（不是写死的 60）  475ms
+   ✓ WO-SIM-UNIFIED-SHELL · 统一推演控制台接缝门 > ⑧ 模式页签：顺序与文案 == 已批准 UX 规格；已接线的可点，未接线的**占位禁用**（不是隐藏）  505ms
+   ✓ WO-SIM-UNIFIED-SHELL · 统一推演控制台接缝门 > ⑨ 屏上零 markdown 记号、零接口枚举，而机器读的那份枚举仍在 data-* 上（含金丝雀与变异反证）  497ms
+   ✓ WO-SIM-TICK-GATE · 页签计数现算 / 假旋钮下屏 > ⑨ 页签计数臂：两个数都由 view-config 回包现算 —— 改回包，两处 title 跟着变  1356ms
+   ✓ WO-SIM-TICK-GATE · 页签计数现算 / 假旋钮下屏 > ⑨' 计数没到手时说「还没取到」，**不许**印成 0 条（「不知道」≠「一条都没有」）  359ms
+   ✓ WO-SIM-TICK-GATE · 页签计数现算 / 假旋钮下屏 > ⑩ 假旋钮臂：钉到对照 / 追这条链**禁用占位 + 人话 title**，工单黑话一个字都不上屏  551ms
+
+ Test Files  1 passed (1)
+      Tests  13 passed (13)
+   Start at  20:16:26
+   Duration  47.31s (transform 11.10s, setup 14.43s, collect 15.85s, tests 10.85s, environment 3.66s, prepare 952ms)
+

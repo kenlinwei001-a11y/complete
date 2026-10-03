@@ -1,0 +1,31 @@
+WO-NEGEDGE-P7 · 静态否证判据（否证③⑤ + 第5层铸造不看域）· 全部带金丝雀 · v2（订正 C2 记数）
+命令目录 = /Users/apple/deploy/wo-edge-wire  (2026-10-03 19:31:24)
+
+[C1] 否证④/第5层：seed-world.ts 对 STATE_VAR_DOMAINS 的引用数（应为 0）
+  count = 0
+  金丝雀 seedHash01（同文件，必 >=1）= 2
+
+[C2] 否证⑤：有没有门/测试断言「**铸造值分布**能取到声明语义两侧」
+  查法：grep -rnE '两侧|负半轴' apps/datacore/test/*.ts  →  再筛 forecastBias|seedHash|铸造
+  ⚠ v1 这行曾印成「0 命中」，实测**不是 0**（本仓老病：报否定结论前先自证）。逐条列出命中：
+    ⚠ apps/datacore/test/prop-clamp-decay.seam.test.ts:149:    // 带方向的量纲（forecastBias 域 −100..100 · 静息点 0）：下侧**有**空间 ⇒ 两侧都保序
+  命中总数 = 1
+  ⇒ 唯一命中就是 prop-clamp-decay.seam.test.ts:149，它测的是**夹子函数本身**
+     （「下侧有空间 ⇒ 两侧都保序」= saturateToDomain(−100,100,0) 的保序性），
+     **不是**「铸造出来的值分布能否取到两侧」⇒ 守卫高度错位。
+  旁证（另一类断言也不是两侧断言）：sim-real-cells.seam.test.ts:413-416 只断 Set(vals).size > 1
+     （「6 个型号不全等」≠「取到 restPoint 两侧」）⇒ **否证⑤ 不成立**
+  金丝雀（证明量法非空）：grep -c '两侧' prop-clamp-decay.seam.test.ts = 2
+
+[C3] 否证③：找「forecastBias 就该非负 / demandPressure 不得高于基值 / 属有意设计」的成文
+  查法：grep -rnE 'forecastBias' docs/*.md apps/datacore/src/seed-derivation-specs.ts | grep -E '有意|刻意|就该|设计如此|不得高于|不应超过'
+  唯一命中：
+    docs/SYSTEM-ONTOLOGY.md:1957:> `forecastBias → demandPressure` 有意为之（预测偏差带方向，需求压力不带），**不是回归**。
+  金丝雀：「刻意」在两份源文件命中 = battery.ts:19 / specs:1
+  读全文后定性（System-ONTO 1950-1979）：1957 说的是**这条边存在、demandPressure 由根源降级为枢纽是有意的**
+  （「不是回归」= 相对收编时的入度计数而言），**不是**「forecastBias 就该非负」。
+  同一份本体 :1976 自己把它登记为缺口：「⚠ 占位 ∈ [0,100] 恒非负 ⇒ 这条负边只单向传导，「低估(−)」那一支仍进不去」；
+  seed.ts:2127 / seed-derivation-specs.ts:166 / seed-demo-propagation.test.ts:1827-1830 均写「遗留缺口（未闭）」
+  ⇒ **否证③ 不成立**，第 4~6 层仍是缺陷而非业务意图
+
+CAPTURED_RC=0

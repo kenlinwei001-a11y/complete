@@ -1,0 +1,8 @@
+
+> @platform/contracts@0.1.0 build /Users/apple/deploy/wo-edge-wire/packages/contracts
+> tsc -p tsconfig.json
+
+
+> datacore@0.1.0 build /Users/apple/deploy/wo-edge-wire/apps/datacore
+> tsc -p tsconfig.json && node -e "require('fs').copyFileSync('src/solvers/sandbox-runner.mjs','dist/solvers/sandbox-runner.mjs')"
+

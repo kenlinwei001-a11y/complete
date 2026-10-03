@@ -1,0 +1,14 @@
+
+> frontend-shell@0.1.0 test /Users/apple/deploy/wo-edge-wire/apps/frontend-shell
+> vitest run spec-base-freshness
+
+
+ RUN  v3.2.6 /Users/apple/deploy/wo-edge-wire/apps/frontend-shell
+
+ ✓ test/spec-base-freshness.test.ts (5 tests) 164ms
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  20:15:59
+   Duration  20.35s (transform 5.79s, setup 13.53s, collect 42ms, tests 164ms, environment 4.20s, prepare 699ms)
+

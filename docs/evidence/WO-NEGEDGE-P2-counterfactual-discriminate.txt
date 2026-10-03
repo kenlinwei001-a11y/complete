@@ -1,0 +1,5 @@
+① 未知 key：HTTP=400 code=UNKNOWN_PROPAGATION_RULE_KEY  ✅ 通路是活的（不静默忽略）
+② 屏蔽 demo_order_demand_pressure：HTTP=200 全图不同格=1572  Model.demandLoad 不同对象=6  ✅ 单条屏蔽确实改变读数
+③ 屏蔽 demo_forecast_bias_to_order_demand：HTTP=200 全图不同格=712  suppressedFired=["demo_customer_reaction_cut_order","demo_forecast_bias_to_order_demand"]
+   判定：✅ 有差异
+④ 空屏蔽 vs 单屏蔽 的 counterfactualState 不同格数 = 334  ✅ 屏蔽确实改了反事实态

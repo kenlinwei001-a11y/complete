@@ -1,0 +1,28 @@
+会话 sims_3f601qkmr3rpv85z tick=30
+Model.demandLoad（基值 → t30）: 2170-NCM:138→131.076496447102 4680-LFP:46.4→35.273297067965 4680-NCM:31→21.809772630495 圆柱-LFP:68→62.295666296435 方形-LFP:23.566879→22.245042082803 方形-NCM:53.333333→44.916822933587
+候选 c = 0.222×demandLoad(t30): 29.0990, 7.8307, 4.8418, 13.8296, 4.9384, 9.9715
+
+Base.loadIndex 逐对象（基值 / t30 / 比值 / 拟合）:
+  obj_base_changzhou         301.8198     204.4346 r=0.6773  best=clamped c=29.0990 err=9.28e+1
+  obj_base_chengdu           151.6338     142.9342 r=0.9426  best=free c=4.8418 err=2.18e+1
+  obj_base_handan            277.6039     194.6564 r=0.7012  best=clamped c=29.0990 err=9.19e+1
+  obj_base_hefei             149.0077     140.7749 r=0.9447  best=free c=4.8418 err=2.13e+1
+  obj_base_jiangmen           98.4715     111.8036 r=1.1354  best=free c=4.9384 err=1.50e-2
+  obj_base_jinhua            438.0184     256.8238 r=0.5863  best=clamped c=29.0990 err=9.48e+1
+  obj_base_meishan            74.1765      87.5235 r=1.1799  best=free c=4.9384 err=3.78e-6
+  obj_base_wuhan             129.9831     138.6917 r=1.0670  best=free c=4.8418 err=4.38e+0
+  obj_base_xiamen             78.6072     117.2904 r=1.4921  best=free c=13.8296 err=1.31e+0
+  obj_base_xinyang           224.6858     174.6734 r=0.7774  best=free c=4.8418 err=6.31e+1
+  obj_base_yangzhou          260.3267     188.7683 r=0.7251  best=free c=4.8418 err=8.46e+1
+  obj_base_zaozhuang         552.0209     299.9478 r=0.5434  best=clamped c=29.0990 err=9.57e+1
+  obj_base_zigong            131.1865     139.1803 r=1.0609  best=free c=4.8418 err=5.09e+0
+  上穿 5 · 下穿 8 · 持平 0   （上游记「8/13 下穿、5/13 上穿」）
+  ⚠ 判别：被夹住的格读数 = λ·base = 0.37·base **恒 < base** ⇒ 下穿由「夹住」解释，不需要第二条机制
+
+乙) 早拍会话 sims_6dc54xyvff5vy743 tick=2
+   关边臂 HTTP=200  == 起点(tick2) 的单: 150/150   全图不同格=3852
+   不关边臂 HTTP=200 == 起点(tick2) 的单: 89/150   全图不同格=3913
+   两臂 demandPressure 不同单数 = 61
+   判读：关边 ⇒ 该格入度 0 ⇒ isExogenous ⇒ 衰减豁免 + C2 跳过 ⇒ 冻在起点（≠「没贡献」）
+
+CAPTURED_RC=0

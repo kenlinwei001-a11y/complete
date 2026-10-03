@@ -1,0 +1,16 @@
+金丝雀① 必然命中 customer_places_order = ✅
+金丝雀② 虚构链路 ___nope___ 命中 = 0 ✅
+SO-3391 邻接链路: customer_places_order,fulfills,line_of_order,model_demanded_by_order,order_for_model,order_has_line,order_has_promise,order_of_customer,order_to_plantarget,promise_for_order
+
+Order 总数=150 解析到型号=150 解析不到=0
+型号 | X.fb | 带单数 | X′.fb | 预言Δ=x*−base=−0.6·fb′ | 上穿?
+4680-LFP | 88 | 37 | 77 | -46.2 | 否
+方形-LFP | 8 | 28 | -85 | +51 | 是
+2170-NCM | 1 | 25 | -98 | +58.8 | 是
+4680-NCM | 50 | 24 | 1 | -0.6 | 否
+方形-NCM | 79 | 21 | 58 | -34.8 | 否
+圆柱-LFP | 88 | 15 | 75 | -45 | 否
+
+预言：上穿基值(+0.01) 单数 = 53/150（X 实测 0/150）
+预言：x* 越出声明域 [0,100] 的单数 = 70/150  ← 交办 companion 单（补写不重夹）
+参考：base=0 的单 2/150

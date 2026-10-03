@@ -1,0 +1,49 @@
+# 评审员#1 独立探针 · 2026-10-03T09:41:03.766Z · API=http://127.0.0.1:4019/a/v1
+# 会话进程自证：dist/app.js mtime=2026-10-02T14:47:08.058Z
+# 金丝雀① 不存在的会话 → HTTP 404（应 404） ok
+# 列 Order HTTP 200 · items=50
+# 目标单 obj_order_SO-3402（不是上游的 SO-3391）· demandDelta=0.17 · demandPressure(props)=17 · 规格 demandPressure = this.demandDelta*100 ⇒ 期望 17
+# T=sims_458fxgkckvqcw76x K=sims_xdv081c60kqkfdvk
+# 两会话 baseSnapshot 逐格位比较：same=6375 diff=0 (对照成立)
+# baseSnapshot obj_order_SO-3402.demandPressure: T=17 K=17 · 库真值 props.demandPressure=17 ⇒ 建会话时采样一致？ 是
+
+## 阶段1 对照臂 K props 未变 tick5 → HTTP 200
+   K(tick 5) obj_order_SO-3402.demandPressure=6.29（起点基值 17）
+
+## 阶段2 采纳「对象数据变更」写 demandDelta: 0.17 → 0.24
+   draft create HTTP 201 · id=act_sw5h4qygxrc4byx4
+   submit HTTP 409 · approve HTTP 200 · draftStatus=EXECUTED
+   [扰动生效自证] 回读 props.demandDelta=0.24（期望 0.24）· props.demandPressure=24（期望 24）
+
+## 阶段3 变更后同一时刻三方对照（T 未推进）
+   T(tick 0) 世界 obj_order_SO-3402.demandPressure = 17   ← 会话建于旧 props
+   新建会话 F=sims_h2et6aczs82wxq57 baseSnapshot obj_order_SO-3402.demandPressure = 24   ← 建于新 props
+   库真值 props.demandPressure = 24
+   T 的世界读数 == 新基值？ 否（模型未被否证）   |T−Fbase| = 7.000000
+   [出处章] baseSnapshotProvenance[obj_order_SO-3402].demandPressure = "measured"  kind=DERIVED
+
+## 阶段4 处理臂 T 在 props 已变后 tick5 → HTTP 200
+   T(tick 5) obj_order_SO-3402.demandPressure=6.29    K(tick 5) obj_order_SO-3402.demandPressure=6.29
+   DIFF T vs K 全量逐格：不同格=0（若 props→world 有活边，T 应≈24）
+
+## 阶段5 阳性对照 /act obj_order_SO-3402.demandPressure=77 → HTTP 200
+   DIFF T6 vs K6（/act 之后）：不同格=3  T.demandPressure=43.7
+     obj_model_4680-NCM.demandLoad: T=23.560652552222 K=22.510214096958
+     obj_order_SO-3402.demandPressure: T=43.7 K=6.29
+     obj_orderline_SO-3402-L1.splitPressure: T=40.05798793206 K=29.02059886956
+   ⇒ 差器有鉴别力
+
+## 复原 props
+   ⚠ 复原失败：PROP is not defined
+# 收尾 sims_458fxgkckvqcw76x → HTTP 200
+# 收尾 sims_xdv081c60kqkfdvk → HTTP 200
+# 收尾 sims_h2et6aczs82wxq57 → HTTP 200
+
+## 评审员#1 事后复核（追加，不修改上面的原始输出）
+# ① 上面 finally 里那行「⚠ 复原失败：PROP is not defined」是探针自身的作用域 bug（PROP 用 const 声明在 try 块内，finally 里不可见），**不是复原失败**。
+#    复原的三次请求（create/submit/approve）在该行之前已经发出。复核命令（只读）：
+#    curl /a/v1/objects/Order/obj_order_SO-3402 → demandDelta=0.17 demandPressure=17 （原值 0.17/17）
+#    curl /a/v1/objects/Order/obj_order_SO-3391 → demandDelta=0.6 demandPressure=60 （上游锚点，本次未碰）
+# ② 阶段2 的 submit 回 HTTP 409 而 approve 回 200 且 draftStatus=EXECUTED —— 「扰动生效自证」一行的回读（0.24/24）证明写入确实落地，故 409 不影响本轮读数。
+# ③ 正面预言（模型自带）：建会话那一刻采样是活的 —— 阶段3 的新会话 F base=24 == 库真值 24，同时刻 T 的 tick0 世界读数仍是 17（旧基值）。
+# ④ 阳性对照有鉴别力：/act 后 T6 vs K6 差 3 格；且 T.demandPressure 77 →(1 拍)→ 43.7，正是 C2 式 x'=(1−λ)x+λ·base+c = 0.63×77+0.37×17−11.1 = 43.7 —— 直接写世界的值也被拉回**过期基值 17**（库真值是 24）。

@@ -1,0 +1,47 @@
+# 评审员#3 独立探针输出 · RV3b-negseed-scan
+# base commit=d7718eda4 (d7718eda4) · 运行产物=apps/datacore/dist (built 10-02 22:47, PID 61057 started 22:48) · 采集 2026-10-03T09:39:39Z
+# 命令: node docs/evidence/RV3b-negseed-scan.mjs
+CAPTURED_RC=0
+
+金丝雀：DOMAINS=38（须 ≥38）
+会话 sims_yrj8ckccp3e7hf34；baseSnapshot 4425 对象
+金丝雀a：基值在域内格 5450（须 >0）；越域格 360（须 >0）
+t1 世界态越域点：基值越域 359 / 基值在域内 674  ← F5 命中
+   ⚠️ t1 obj_base_jiangmen.loadIndex 域[0,100] base=98.471521 world=103.703368138 λ=0.37
+   ⚠️ t1 obj_base_xiamen.loadIndex 域[0,100] base=78.607222 world=108.360864035786 λ=0.37
+   ⚠️ t1 obj_customer_cust_0.receivablePressure 域[0,100] base=42.932892 world=109.041400932951 λ=0.37
+   ⚠️ t1 obj_line_LINE-WS-hefei-formation.blockedPressure 域[0,100] base=95.2247 world=113.966809734139 λ=0.37
+   ⚠️ t1 obj_line_LINE-WS-hefei-grading.blockedPressure 域[0,100] base=88.7172 world=108.111506968042 λ=0.37
+t2 世界态越域点：基值越域 358 / 基值在域内 828  ← F5 命中
+   ⚠️ t2 obj_base_jiangmen.loadIndex 域[0,100] base=98.471521 world=107.108489748152 λ=0.37
+   ⚠️ t2 obj_base_xiamen.loadIndex 域[0,100] base=78.607222 world=116.061200130316 λ=0.37
+   ⚠️ t2 obj_customer_cust_0.receivablePressure 域[0,100] base=42.932892 world=111.227645797306 λ=0.37
+   ⚠️ t2 obj_line_LINE-WS-changzhou-assembly.utilPressure 域[0,100] base=92.5496 world=124.499484284711 λ=0.37
+   ⚠️ t2 obj_line_LINE-WS-changzhou-calendering.utilPressure 域[0,100] base=92.852 world=124.640227019265 λ=0.37
+t3 世界态越域点：基值越域 357 / 基值在域内 843  ← F5 命中
+   ⚠️ t3 obj_base_jiangmen.loadIndex 域[0,100] base=98.471521 world=109.104134005464 λ=0.37
+   ⚠️ t3 obj_base_xiamen.loadIndex 域[0,100] base=78.607222 world=117.182582861406 λ=0.37
+   ⚠️ t3 obj_customer_cust_0.receivablePressure 域[0,100] base=42.932892 world=111.275574598383 λ=0.37
+   ⚠️ t3 obj_customer_cust_9.receivablePressure 域[0,100] base=27.856396 world=101.323165475265 λ=0.37
+   ⚠️ t3 obj_line_LINE-WS-changzhou-assembly.utilPressure 域[0,100] base=92.5496 world=124.890212606708 λ=0.37
+t4 世界态越域点：基值越域 357 / 基值在域内 854  ← F5 命中
+   ⚠️ t4 obj_base_jiangmen.loadIndex 域[0,100] base=98.471521 world=110.266775797395 λ=0.37
+   ⚠️ t4 obj_base_xiamen.loadIndex 域[0,100] base=78.607222 world=117.308929148812 λ=0.37
+   ⚠️ t4 obj_customer_cust_0.receivablePressure 域[0,100] base=42.932892 world=111.276375385386 λ=0.37
+   ⚠️ t4 obj_customer_cust_9.receivablePressure 域[0,100] base=27.856396 world=101.444573087398 λ=0.37
+   ⚠️ t4 obj_line_LINE-WS-changzhou-assembly.blockedPressure 域[0,100] base=53.1309 world=102.789779198231 λ=0.37
+
+总计世界态越域点 = 4630（基值越域 ）
+【F5】基值在域内而世界态越域 = 3199
+按 (类型·量) 聚合：
+   Process|queuePressure  基值越域点 0 / 基值在域内点 2600 ← obj_process_LINE-WS-changzhou-assembly-aging base=100 world=113.704347865133
+   WIPLot|feedPressure  基值越域点 1040 / 基值在域内点 0 
+   Line|utilPressure  基值越域点 0 / 基值在域内点 390 ← obj_line_LINE-WS-changzhou-assembly base=92.5496 world=124.499484284711
+   Line|blockedPressure  基值越域点 196 / 基值在域内点 189 ← obj_line_LINE-WS-hefei-formation base=95.2247 world=113.966809734139
+   Order|costPressure  基值越域点 64 / 基值在域内点 0 
+   PurchaseOrder|expeditePressure  基值越域点 43 / 基值在域内点 6 ← obj_purchaseorder_po_23 base=100 world=103.79705581
+   Base|loadIndex  基值越域点 40 / 基值在域内点 8 ← obj_base_jiangmen base=98.471521 world=103.703368138
+   Model|supplyRisk  基值越域点 24 / 基值在域内点 0 
+   Material|shortageRisk  基值越域点 16 / 基值在域内点 0 
+   Customer|receivablePressure  基值越域点 4 / 基值在域内点 6 ← obj_customer_cust_0 base=42.932892 world=109.041400932951
+   Model|demandLoad  基值越域点 4 / 基值在域内点 0 

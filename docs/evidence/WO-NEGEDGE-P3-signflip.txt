@@ -1,0 +1,43 @@
+WO-NEGEDGE-P3 · 符号闸门判决实验（净入流符号是唯一闸门的直接证据）
+环境：4019 datacore（SEED_DEMO=1 内存态）· 2026-10-03 18:0x · 脚本 WO-NEGEDGE-P3-signflip.mjs
+设计：对照臂 k=-0.222（出荷态）vs 翻转臂 k=+0.222 且 coefficientRef=null，各开新会话推 12 拍。
+
+★ H1 主判据（先声明后测量）：把唯一入边系数符号翻转 ⇒ 必须出现读数 > 基值+0.01 的单。
+  实测：对照臂 0/150 → 翻转臂 **150/150**（基值>0 子集 148/148）。
+  正对照（扰动必须落地）：两次会话读数不同 150/150 格。
+  ⇒ 「超载侧（低估支）进不了这一格」不是数值能力问题，是**净入流符号**问题：符号一翻，全 150 张单当场越基值。
+  样本：obj_order_SO-900325 base=60 ctl=22.2 flip=104.543813973262 Δ=+82.3438
+        obj_order_SO-3476  base=48 ctl=17.76 flip=97.619343572747 Δ=+79.8593
+  附带事实：翻转臂读数至 104.54 > 声明域 max=100 —— 与复评员 RV2B「world 越域 9485/9485 全在 C2 作用域内」同族（C2 合成在夹值之后）。
+
+金丝雀：目标边 k=-0.222 status=PUBLISHED ref={"ruleKey":"C36",...}；入边=1 条（Model.forecastBias）
+  源值 tick0：n=6 min=1 max=88 **负数=0**（对照臂实测）
+回退：PATCH 回 k=-0.222 + 还原 coefficientRef，逐字段回读一致；规则数 55。
+
+⛔ 上一版（p3b）作废的原因 —— 本仓老病的一次直接实例，写在这里防复发：
+  p3b 只 PATCH 了 coefficient 并「回读自己写的那个字段」=+0.222，就当成扰动生效；
+  实测 0/150 变化。判别实验（改 -0.444，同样只改 inline 字段）仍 0 变化 ⇒ 扰动根本没进引擎。
+  真因：引擎按 **coefficientRef** 解析系数，ref 非空时 inline coefficient 不参与计算
+  （phase-2 脚本注释已写明此坑：WO-NEGEDGE-P2-kx-ab.mjs「同时置空 coefficientRef，否则 ref 优先」）。
+  ⇒ 形态：「我用『回读到了我自己刚写进去的那个字段』当作『这条改动生效了』的证据，
+     而前者并不度量后者 —— 生效取决于另一个字段是否让位。」
+  ⇒ 判据（本单新增）：凡用 PATCH 做扰动，必须①同时置空竞争字段 ②带**同臂正对照**（读数真的变了），
+     两条缺一，读数一律 NOT-MEASURED，⛔ 不许读成「无影响」。
+
+--- 探针原始输出（/tmp/wo-3root/p3c.out）---
+金丝雀⓪ k=-0.222 ref={"ruleKey":"C36","paramKey":"demo_forecast_bias_to_order_demand"} status=PUBLISHED
+对照臂 k=-0.222: 会话=sims_h2kkg0xq46z16hcw Order=150 fb(n=6) min=1 max=88 负=0
+  对照臂 读数>基值+0.01 = 0/150（须 0）
+扰动 PATCH HTTP=200 回读 coefficient=0.222 coefficientRef=null（须 0.222 / null）
+翻转臂 k=+0.222 ref=null: 会话=sims_ertyb19yrg85keae Order=150 fb(n=6) min=1 max=88 负=0
+正对照（扰动必须落地）：读数变化 150/150 格
+★H1：翻转臂 > 基值+0.01 的单 = 150/150
+   基值>0 子集：148/148
+   ↑ obj_order_SO-900325 base=60 ctl=22.2 flip=104.543813973262 Δ=82.3438
+   ↑ obj_order_SO-900400 base=60 ctl=22.2 flip=104.543813973262 Δ=82.3438
+   ↑ obj_order_SO-3476 base=48 ctl=17.76 flip=97.619343572747 Δ=79.8593
+   ↑ obj_order_SO-900479 base=47 ctl=17.39 flip=96.986255076716 Δ=79.5963
+   ↑ obj_order_SO-900043 base=46 ctl=17.02 flip=96.340486277521 Δ=79.3205
+H2 代数：预测 c/λ 集合 {0.6, 52.8, 30, 4.8, 47.4}；命中 = 0/148
+回退 PATCH HTTP=200 回读 k=-0.222 ref={"ruleKey":"C36","paramKey":"demo_forecast_bias_to_order_demand"}（须 -0.222 / {"ruleKey":"C36","paramKey":"demo_forecast_bias_to_order_demand"}）
+CAPTURED_RC=0

@@ -1,0 +1,21 @@
+金丝雀A：域表条数 = 38；demandPressure 在表内 = true {"min":0,"max":100,"rest":0}
+会话 sims_pxmxpcag9mg6gt3v tick=30 对象 4425
+
+比较 5810 个（对象·量）格（只数声明了域的量）
+  tick0 域外: 360   tick30 域外: 1214
+  ★ tick0 在域内、tick30 跑到域外: 865  （其中规格格 865 · 入度>0 865）
+   obj_base_jiangmen.loadIndex [Base|loadIndex] tick0=98.471521 tick30=111.803592228638 域[0,100] spec=true 入度=1
+   obj_base_xiamen.loadIndex [Base|loadIndex] tick0=78.607222 tick30=117.290428398284 域[0,100] spec=true 入度=1
+   obj_order_SO-900025.costPressure [Order|costPressure] tick0=89 tick30=101.207268972694 域[0,100] spec=true 入度=1
+   obj_order_SO-900199.costPressure [Order|costPressure] tick0=89 tick30=100.848946322422 域[0,100] spec=true 入度=1
+   obj_order_SO-900384.costPressure [Order|costPressure] tick0=89 tick30=100.848946322422 域[0,100] spec=true 入度=1
+   obj_order_SO-900406.costPressure [Order|costPressure] tick0=88 tick30=100.12669659915 域[0,100] spec=true 入度=1
+   obj_order_SO-900448.costPressure [Order|costPressure] tick0=88 tick30=101.133558325935 域[0,100] spec=true 入度=1
+   obj_order_SO-900496.costPressure [Order|costPressure] tick0=87 tick30=100.580505965576 域[0,100] spec=true 入度=1
+   obj_line_LINE-WS-changzhou-assembly.blockedPressure [Line|blockedPressure] tick0=53.1309 tick30=104.299566968301 域[0,100] spec=true 入度=1
+   obj_line_LINE-WS-changzhou-assembly.utilPressure [Line|utilPressure] tick0=92.5496 tick30=124.840613338489 域[0,100] spec=true 入度=1
+   obj_line_LINE-WS-changzhou-calendering.utilPressure [Line|utilPressure] tick0=92.852 tick30=124.963434263319 域[0,100] spec=true 入度=1
+   obj_line_LINE-WS-changzhou-coating.blockedPressure [Line|blockedPressure] tick0=47.6858 tick30=101.578310380448 域[0,100] spec=true 入度=1
+金丝雀C（同尺子）：Order.demandPressure 在域内 150/150，域外 0 ✅ 与「被地板压住」一致
+
+CAPTURED_RC=0

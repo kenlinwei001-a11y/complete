@@ -1,0 +1,15 @@
+金丝雀：dist seedHash01("obj_model_X|forecastBias") = 0.485 vs 副本 = 0.485 ⇒ 同式
+会话=sims_mywtn7yys04pjaqp baseSnapshot 对象数=4425 Model 数=6（金丝雀：均须>0）
+★A 哈希式复算：逐位同 6 / 不同 0 / 非数 0（共 6 型号）
+   obj_model_2170-NCM live=1 hash式=1 ✓逐位同
+   obj_model_4680-LFP live=88 hash式=88 ✓逐位同
+   obj_model_4680-NCM live=50 hash式=50 ✓逐位同
+   obj_model_圆柱-LFP live=88 hash式=88 ✓逐位同
+   obj_model_方形-LFP live=8 hash式=8 ✓逐位同
+   obj_model_方形-NCM live=79 hash式=79 ✓逐位同
+★ 全 baseSnapshot 里带 forecastBias 的格 = 6 个（类型分布：["Model"]）
+   值域 min=1 max=88 负值个数=0
+chain-loss-matrix HTTP=200 顶层键=nodes,bases,cells,rowTotals,colTotals,residual,money,summary
+neighbors(obj_model_2170-NCM) HTTP=200
+── 结束 ──
+CAPTURED_RC=0
