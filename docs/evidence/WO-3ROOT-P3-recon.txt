@@ -1,0 +1,52 @@
+## WO-3ROOT-P3 主对账探针（A2/A3/A4/A5-tick0/A7/A8）—— 双实例差分：FIX=4399（本分支 dist）/ OLD=4019（未修）
+> 命令 `node docs/evidence/WO-3ROOT-P3-recon.mjs`（原跑于 /tmp/p3probe/WO-3ROOT-P3-recon.mjs，副本逐字节相同）· 取数 2026-10-03 21:14:17 · 实例 4399=本分支构建 / 4019=未修构建
+> 判据（跑前声明）：tick0 是两实例**唯一**同源的一拍（都给同一份播种世界，未推过拍）⇒ 全部差分判据落在 tick0；
+> tick≥1 的跨实例差分**不作判据**（投影后的世界是下一拍输入 ⇒ 轨迹分叉是反馈，不是静默改动；见 `WO-3ROOT-P3-dev.md` 记的判据错误）。
+> 断言：A5① 台账外变化=0 / A5② 台账 value=新读数 且 raw=OLD / A2 点名格 world===回执.value 违反=0（OLD 对照臂须>0）/
+> A3 越界格=0（OLD 须>0）/ A4 tick0 saturations≥1（基线 0）/ A7 破不动点 / A8 R6 两会话逐格 0 差。
+CAPTURED_RC=0
+
+金丝雀⓪：STATE_VAR_DOMAINS=38 项（须 ≥38）, shortageRisk 域=0–100, valueRef(Material,shortageRisk)=true
+金丝雀①：FIX /world keys=[tick,state,baseProvenance,baseStateVarReport]（须含 baseStateVarReport）; OLD keys=[tick,state,baseProvenance]（须不含）
+金丝雀②：世界对象数 FIX=4425 / OLD=4425（须相等且 >4000）
+金丝雀③（A4）：FIX tick0 saturations=360（须 ≥1；基线 0）declared=38 undeclared=9
+           OLD baseStateVarReport=undefined（基线：无此键）
+扫描面：有声明域的格 = 5810（对象 4425）
+
+=== A5 tick0 双向全量差分（5810 格，两实例唯一同源的一拍）===
+差异格 = 360（须 >0）; 其中被点名 = 360; 无台账 = 0（须 0）; value 不符 = 0（须 0）; raw ≠ OLD = 0（须 0）
+台账总数 = 360; 台账里但世界未变的格 = 0（须 0）
+t1 FIX saturations=1128 OLD saturations=829 本拍变化格=3686
+t2 FIX saturations=1299 OLD saturations=1355 本拍变化格=4042
+t3 FIX saturations=1322 OLD saturations=1438 本拍变化格=4022
+t4 FIX saturations=1339 OLD saturations=1546 本拍变化格=4001
+t5 FIX saturations=1350 OLD saturations=1640 本拍变化格=3991
+t6 FIX saturations=1382 OLD saturations=1683 本拍变化格=3987
+t7 FIX saturations=1415 OLD saturations=1664 本拍变化格=3985
+t8 FIX saturations=1438 OLD saturations=1642 本拍变化格=3985
+
+=== tick≥1 台账自洽（5810 格 × 8 拍）===
+两实例轨迹分叉格总数 = 20174（这是**预期**的：投影回灌下一拍输入，不作判据）
+台账空条目（raw===value） = 0（须 0）; 被点名但本拍世界未变 = 0（须 0）
+
+=== A2 回执 ↔ 世界态 ===
+FIX 点名 10673 个点位，world ≠ 回执.value = 0（须 0）
+OLD 点名 11797 个点位，world ≠ 回执.value = 11562（对照臂，须 >0；基线 2468/2468）
+
+=== A3 越界格 ===
+FIX 越界格点位数 = 0（路 A 须 0）; OLD = 9485（须 >0）
+
+=== A7 破不动点 obj_material_elyte.shortageRisk ===
+   t1 FIX=3.103272484122 (λ·base=-59.72464964) OLD=-59.72466 回执点名FIX=false
+   t2 FIX=7.52237208384 (λ·base=-59.72464964) OLD=-59.72466 回执点名FIX=false
+   t3 FIX=10.017461574572 (λ·base=-59.72464964) OLD=-59.72466 回执点名FIX=false
+   t4 FIX=11.407333701767 (λ·base=-59.72464964) OLD=-59.72466 回执点名FIX=false
+   t5 FIX=12.15983714287 (λ·base=-59.72464964) OLD=-59.72466 回执点名FIX=false
+   t6 FIX=12.572139519326 (λ·base=-59.72464964) OLD=-59.72466 回执点名FIX=false
+   t7 FIX=12.813137279397 (λ·base=-59.72464964) OLD=-59.72466 回执点名FIX=false
+   t8 FIX=12.97374297102 (λ·base=-59.72464964) OLD=-59.72466 回执点名FIX=false
+
+=== A8 R6 确定性（4425 格 × 5 拍 × 2 会话）===
+逐格差 = 0（须 0）; saturations 序列不一致的拍数 = 0（须 0）; 金丝雀：会话1 五拍 saturations 合计 = 6438（须 >0）, 世界五拍后在动 = true
+
+判定：✅ A2/A3/A4/A5(tick0 双向)/A7/A8 全部成立

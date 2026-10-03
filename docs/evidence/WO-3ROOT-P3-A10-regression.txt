@@ -1,0 +1,40 @@
+## WO-3ROOT-P3 · A10 回归（diff 半径内 4 条接缝门）
+> 命令 `cd apps/datacore && pnpm exec vitest run test/sim-real-cells.seam.test.ts test/sim-domain-entry.seam.test.ts test/prop-clamp-decay.seam.test.ts test/sim-seed-world.seam.test.ts --testTimeout=120000 --maxWorkers=2` · 取数 2026-10-03 21:15:06
+> 前置：`pnpm --filter @platform/contracts build` RC=0（本档同批）。
+> 期望：4 文件全绿 + `sim-real-cells` 的 EXCEPTIONS 断言仍绿（它咬 props，本单不动 props）。
+CAPTURED_RC=0
+
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/wf_57a1536c-d93-26/apps/datacore
+
+stdout | test/sim-seed-world.seam.test.ts > WO-SIM-SEED-WORLD · 种子世界接缝 > ⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身
+[SIM-SEED-WORLD ⑤b] 白名单对象=223 每对象最多7格 ⇒ 批大小=71 批数=4（上限=500）
+
+ ✓ test/sim-real-cells.seam.test.ts (20 tests) 118362ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂2 量纲：全扫 STATE_VAR_DOMAINS 已声明域的变量逐个不越域；无域族归档「刻意无上界」  2087ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > ⓐ 引擎归属：derivationSpecs 清成 0 条 ⇒ 25 个 targetProp 全部消失（证明是引擎②算的）  27839ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂3 敏感性：Customer.receivables ×2 ⇒ receivablePressure 精确 ×2（线性式）  3668ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂3 敏感性：Equipment.health_score ↓10 ⇒ equipmentFailure 精确 ↑10（反向线性）  4437ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂4 反向：拿掉 Line.max_capacity_day ⇒ blockedPressure 退回（COALESCE 兜 0，非写死常数）  3733ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂5 变异反证：把 equipmentFailure 的『100 −』改成『100 +』⇒ 臂1 锚定断言当场红  32756ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > R6 确定性：同 (seed=42) 重铺世界 ⇒ measuredCells / totalCells 逐字节一致  1639ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > §3 绑定判据：valueRef 指向不存在的 specKey ⇒ 播种当场抛错变红（⛔ 不静默回落哈希）  994ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > §退役 · `model_forecast_bias` 与它的 valueRef 登记必须同时不存在（残留任一处即红）  797ms
+stdout | test/sim-seed-world.seam.test.ts > WO-SIM-SEED-WORLD · 种子世界接缝 > ⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身
+[SIM-SEED-WORLD ⑤b] 合并后 1167 格（一次发完会是 1167>500 ⇒ truncated:true，这就是本条曾经的红）
+
+ ✓ test/sim-domain-entry.seam.test.ts (6 tests) 38771ms
+   ✓ WO-3ROOT-P3 · 声明域是世界态写出的入口不变量 > §4 tick0 · 播种世界逐格过入口：声明域内 0 越界格、账非空且与落盘逐位一致  348ms
+   ✓ WO-3ROOT-P3 · 声明域是世界态写出的入口不变量 > §5 R6 · 同输入两跑：世界态与 tick0 账**逐字节**一致  921ms
+ ✓ test/prop-clamp-decay.seam.test.ts (11 tests) 272ms
+ ✓ test/sim-seed-world.seam.test.ts (4 tests) 212839ms
+   ✓ WO-SIM-SEED-WORLD · 种子世界接缝 > ① 播种 → GET /a/v1/sim/sessions 里有一条 RUNNING(curTick≥1)、baseSnapshot 非空；② tick 态落盘且真动过；③ 幂等  51784ms
+   ✓ WO-SIM-SEED-WORLD · 种子世界接缝 > ⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身  81910ms
+   ✓ WO-SIM-SEED-WORLD · 种子世界接缝 > ⑥ 确定性（R6）：同一份世界重播一遍，选出来的落点与幅度**逐字节一致**  78191ms
+   ✓ WO-SIM-SEED-WORLD · 种子世界接缝 > ④ 诚实缺席：零传导规则/零物化对象的租户**不建空世界**（空 baseSnapshot 的 RUNNING = 另一种占位）  951ms
+
+ Test Files  4 passed (4)
+      Tests  41 passed (41)
+   Start at  21:09:47
+   Duration  247.47s (transform 18.87s, setup 0ms, collect 82.54s, tests 370.24s, environment 1ms, prepare 3.07s)
+

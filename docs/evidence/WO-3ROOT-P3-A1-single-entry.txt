@@ -1,0 +1,43 @@
+## WO-3ROOT-P3 · A1 单入口存在性（三条写路收敛到唯一投影入口）
+> 生成器 `docs/evidence/WO-3ROOT-P3-A1-evidence.sh`（原跑于 /tmp/p3probe/A1-evidence.sh，副本逐字节相同）· 取数 2026-10-03 21:14:56
+> 树 /Users/apple/deploy/complete/.claude/worktrees/wf_57a1536c-d93-26（分支 claude/handoff-3root-P3-negative-seed-base）
+> 判据：① 三个写点全部经 world-projection；② saturateToDomain 的函数调用点收敛到 1 处；③ 金丝雀（已知必中）先行。
+
+-- 金丝雀（已知必中，先证 grep 工具活着）--
+$ grep -rn stateVarValueRef apps/datacore/src | wc -l  =>        11
+$ grep -rn propagateTick( apps/datacore/src | wc -l      =>         8
+$ grep -rn putTickState apps/datacore/src | wc -l        =>        30
+
+-- ① 三条写路的写点（播种 / 核 / 合成）--
+$ grep -rn projectWorldCells( apps/datacore/src
+apps/datacore/src/app.ts:2658:          projectWorldCells(driftState, replayStart, stateVarDomains);
+apps/datacore/src/app.ts:2703:          projectWorldCells(state, tickStart, stateVarDomains),
+apps/datacore/src/app.ts:2722:          projectWorldCells(driftState, driftTickStart, stateVarDomains);
+apps/datacore/src/app.ts:4637:    projectWorldCells(probeWorld, probeStart, inp.stateVarDomains);
+apps/datacore/src/sim/seed-world.ts:534:  const tick0Ledger = projectWorldCells(state, tick0Start, domains);
+apps/datacore/src/sim/world-projection.ts:54:export function projectWorldCells(
+apps/datacore/src/sim/metric-series.ts:176:      projectWorldCells(state, tickStart, engine.stateVarDomains);
+
+-- ② 唯一函数调用点（要求：只有 world-projection.ts 一处是真调用）--
+$ grep -rn saturateToDomain( apps/datacore/src | grep -v "export function"
+apps/datacore/src/seed.ts:288: *   · `propagation.ts` `saturateToDomain(raw, min, max, rest)` —— `max === null` 那一支
+apps/datacore/src/sim/world-projection.ts:85:      const sat = round12(saturateToDomain(raw, d.min, d.max, d.restPoint));
+apps/datacore/src/sim/propagation.ts:420: * 第一版两侧都按 `(max−min)·BAND` 切，被 §4 当场打红：`saturateToDomain(0,0,100)` **返回 12.5**。
+
+上面这组里真正是函数调用的行（排掉注释/定义）：
+apps/datacore/src/sim/world-projection.ts:85:      const sat = round12(saturateToDomain(raw, d.min, d.max, d.restPoint));
+
+-- ③ 传导核内已不再夹值（原第 4 步调用点已移出，只剩注释与定义）--
+$ grep -n saturateToDomain apps/datacore/src/sim/propagation.ts
+420: * 第一版两侧都按 `(max−min)·BAND` 切，被 §4 当场打红：`saturateToDomain(0,0,100)` **返回 12.5**。
+434:export function saturateToDomain(raw: number, min: number, max: number | null, restPoint: number): number {
+1112:  // ⚠ 判据 ①（防暗流护栏）与 `saturateToDomain` 的非幂等性**原样迁到了那个入口**，一条都没丢 ——
+出现总行数: 3（其中定义 1 行，其余为注释）
+
+-- ④ 五处调用点各自落点（PRD A9：全部接同一入口；本单实测 6 处 = app.ts 4 + metric-series 1 + seed-world 1）--
+apps/datacore/src/app.ts:2658:          projectWorldCells(driftState, replayStart, stateVarDomains);
+apps/datacore/src/app.ts:2703:          projectWorldCells(state, tickStart, stateVarDomains),
+apps/datacore/src/app.ts:2722:          projectWorldCells(driftState, driftTickStart, stateVarDomains);
+apps/datacore/src/app.ts:4637:    projectWorldCells(probeWorld, probeStart, inp.stateVarDomains);
+apps/datacore/src/sim/metric-series.ts:176:      projectWorldCells(state, tickStart, engine.stateVarDomains);
+apps/datacore/src/sim/seed-world.ts:534:  const tick0Ledger = projectWorldCells(state, tick0Start, domains);
