@@ -67,6 +67,9 @@ import { reconstructAndPersist } from "./process/reconstruct.js"; // WO-FLOWTIME
 import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
 import { makeRestoreSpecBase } from "./sim/spec-base-synthesis.js";
+// 唯一投影入口（WO-3ROOT-P3）：三条写路（播种 / 传导核 / C2 合成）之后、`putTickState` 之前，
+// 由它统一把越界读数收回声明域并**单源记账**。⛔ 别在别处再夹一次（两处记账 = 新的矛盾源）。
+import { mergeStateVarDisclosure, projectWorldCells } from "./sim/world-projection.js";
 import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow（PRD v2）· 本体建模工作流 upsert·嫁接自 main
 import { ForecastAdoptionPayloadSchema } from "@platform/contracts"; // WO-SIM-ACTION-REAL · 采纳产能预测结论 payload 契约
 import { SchemeAdoptionPayloadSchema } from "@platform/contracts"; // WO-ADOPT-SCHEME-CARRIER · 采纳经营方案 payload 契约（量纲逐字段标注）
@@ -117,7 +120,7 @@ import { nodeLossShare, type ChainLossResult } from "./solvers/chain-loss.js";
 // WO-SANDBOX-E4：`cadenceFromProps`（Cadence 落库行 → Cadence 的**唯一**读回口）刻意**不在本文件 import** ——
 // 它只该出现在装配处 `sim/propagation-inputs.ts` 里，与上面 `buildCadenceGates` / `scopePropagationGraph` 同一条纪律。
 // WO-STATEVAR-DISPLAYNAME：推演状态变量中文名的**唯一**投影口（单源表在 battery.ts，两条路由共用此函数）
-import { stateVarDisplayNames, stateVarDisplayName, stateVarValueRefs } from "./synthetic/battery.js";
+import { stateVarDisplayNames, stateVarDisplayName, stateVarDomains, stateVarValueRefs } from "./synthetic/battery.js";
 // WO-SIM-DRILL-P12 · 推演演习（事件型扰动 → 数据驱动路由 → 真调求解器 → 归一成卡点清单）。
 // 算法全在 sim/drill-scan.ts（纯函数扫描器）与 sim/drill-orchestrator.ts（编排+归一），本文件只做 IO 装配。
 // ⚠ 与上面的 `sim/drill.ts`（WO-SIM-BE-DRILL·根因二级下钻）**是两件不同的事**，别混：
@@ -2098,7 +2101,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
      * 用 `??` 会把前者也拖去派生 —— 那是替调用方改主意。`createCheckpointBranch`
      * 之类按快照建会话的路径传的是具体的 `TickState`，不受本支影响，逐字节同旧。
      */
-    const derived = input.baseSnapshot === undefined ? await deriveSeedBaseSnapshot(repos, c.tenantId) : null;
+    // 第 3 位 = 域册子（与 `propagateTick` 第 10 位**同一个访问器**）：tick0 也要过唯一投影入口，
+    // 否则世界从第 0 拍起就带着越界读数落地，而回执对它们零条记账（PRD §一 事实 12）。
+    const derived = input.baseSnapshot === undefined
+      ? await deriveSeedBaseSnapshot(repos, c.tenantId, stateVarDomains())
+      : null;
     const base = input.baseSnapshot ?? derived?.state ?? {};
     const provenance = input.baseSnapshotProvenance ?? derived?.provenance;
     /**
@@ -2107,9 +2114,23 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
      * 明细只随单条会话下发。调用方自带世界时**不写**这个记号：那份世界不是我们派生的，
      * 替它声明出处就是编。
      */
+    /**
+     * ⚠ `baseSnapshotStateVarReport` = **tick0 那一批的单源账**（越界收回 + 未声明点名），
+     * 与 `baseSnapshotOrigin` 同一条纪律：只在我们**派生**了这个世界时才记 ——
+     * 调用方自带世界时，那份世界没经过我们的入口，替它声明"已对账"就是编。
+     *
+     * 为什么落在 `scope`（而不是新开一列）：`scope` 是两边仓储都原样存的 jsonb，
+     * 加一个键**零迁移**就两端一致；新开列要么漏掉 pg 那一侧、要么就得动 migrations（本单范围外）。
+     * 为什么在这里就下发：Y4 要求「会话创建后**首拍** `/world` / `/tick` 必须能看到 tick0 这一批」，
+     * 而 `curTick=0` 时没有"上一拍回执"可看 ⇒ 必须随会话本身带出去。
+     */
     const scope = derived === null
       ? (input.scope ?? {})
-      : { ...(input.scope ?? {}), baseSnapshotOrigin: derived.origin };
+      : {
+          ...(input.scope ?? {}),
+          baseSnapshotOrigin: derived.origin,
+          baseSnapshotStateVarReport: derived.stateVarReport,
+        };
     const s: SimSession = {
       id: input.id ?? newId("sims"), tenantId: c.tenantId, baseSnapshot: base,
       ...(provenance === undefined ? {} : { baseSnapshotProvenance: provenance }),
@@ -2253,6 +2274,21 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     await setSimSessionStatus(c, s, body.status);
     return { id: s.id, status: s.status, curTick: s.curTick };
   });
+  /**
+   * tick0 那一批的**单源账**（WO-3ROOT-P3）—— 从会话 `scope.baseSnapshotStateVarReport` 里取。
+   *
+   * ⚠ 它为什么必须从 `scope` 取、而不是现算：现算拿不到"播种当时"那一份了（世界已被推进），
+   * 而对账的前提正是回执与落盘的**同一个数**。账在建会话那一刻就已经和世界一起算好、一起存下
+   * （见 `createSimSessionWorld`：`scope.baseSnapshotStateVarReport`）。
+   *
+   * 缺键 ⇒ `null`，与 `baseProvenance` 同一条第三态纪律：**不许默认成空账**——
+   * 老会话 / 调用方自带世界那一档压根没经过入口，回一份空账等于替它声明"已对账"。
+   * ⚠ 这条同时服务 A4：`curTick=0` 时没有"上一拍回执"可看，tick0 这一批只能随会话带上。
+   */
+  const simBaseStateVarReport = (s: SimSession): StateVarDisclosure | null => {
+    const raw = s.scope["baseSnapshotStateVarReport"];
+    return raw === undefined ? null : (raw as StateVarDisclosure);
+  };
   app.get("/a/v1/sim/sessions/:id/world", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.sandbox");
     const s = await getSimOr404(c, (req.params as { id: string }).id);
@@ -2267,7 +2303,15 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
      * 消费方（`SandboxView` / `EdgeActivePanel`）据此逐格区分显示。缺键 = 出处未知（老会话、
      * 或调用方自带世界那一档），前端按第三态渲染，**不许并进 `derived`**。
      */
-    return { tick: s.curTick, state: await simCurrent(c, s), baseProvenance: s.baseSnapshotProvenance ?? {} };
+    return {
+      tick: s.curTick,
+      state: await simCurrent(c, s),
+      baseProvenance: s.baseSnapshotProvenance ?? {},
+      // tick0 那一批的单源账（WO-3ROOT-P3 · 服务 Y4/A4）：与 `baseProvenance` 并列下发 ——
+      // 两者讲的是**同一格**（起点）：一个讲逐格出处，一个讲"起点这一批谁越界、被收回到哪、
+      // 哪些量压根没声明域"。缺键 = 这条会话没经过播种入口（老会话 / 调用方自带世界）。
+      baseStateVarReport: simBaseStateVarReport(s),
+    };
   });
   // M0-A11 解释切片（PRD-ground-truth §4）：从已完成 tick 的 trace 反向收敛目标格的因果子图。
   // ⛔ 只读投影 —— 不参与计算、不裁剪传导范围（计算范围卡 20 会切断真实传导链，得到的是错的推演）。
@@ -2602,11 +2646,16 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         for (let t = 0; t < s.curTick; t++) {
           // ⚠ 影子线必须与真实线**同一份** pairWeights/stateVarDomains —— 两条线只许差「有没有扰动」
           // 这一个变量，任何别的差异都会直接污染信噪比那个读数。
+          const replayStart = driftState; // 本拍入口前那一份（投影判据 ① 的基线，同主线）
           const d = propagateTick(graph, driftState, propRules, driftPending, t, ruleParams, cadenceGates, [], pairWeights, stateVarDomains);
           driftState = d.next; driftPending = d.pending;
           // ⚠ 重放段也必须走同一合成：影子态会被 `shadowMemo` 存下来给后续请求复用，
           //    这里少补一次，下一刻就与主线不是同一套语义（`signalToNoise` 直接污染）。
           restoreSpecBase(driftState, d.stateVarReport.decayApplied);
+          // ⚠ 重放段同样过**唯一投影入口**（同一判据、同一份域册子）：主线夹了而影子线不夹，
+          //    两条线的差就不再是"有没有扰动"，而是"有没有夹" —— 那会直接写进信噪比。
+          //    影子线的账不进回执（回执讲的是**主世界**），故只取副作用、丢弃返回值。
+          projectWorldCells(driftState, replayStart, stateVarDomains);
         }
         shadowMemo.put(shadowKey, s.curTick, { state: driftState, pending: driftPending });
       }
@@ -2629,6 +2678,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       const beforeTick = curTick; // 当前 tick t（结算 pending arriveTick===t）
       if (engineTick) {
         const stopEngine = timer.start("engine");
+        // 本拍**入口前**那一份（扰动相之前、核之前）—— 投影判据 ① 拿它当「上一拍」的基线，
+        // 故必须在 `state = out.next` **之前**抓住：那之后 `state` 已经是本拍的产物了。
+        const tickStart = state;
         const out = propagateTick(
           graph, state, propRules, pending, beforeTick, ruleParams, cadenceGates,
           await perturbationsForTick(beforeTick + 1), // 引擎产出的是 tick+1 那一格
@@ -2638,14 +2690,24 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         state = out.next; pending = out.pending; unresolvedGates = out.unresolvedGates;
         unresolvedWeights = out.unresolvedWeights;
         appliedPerturbations = out.appliedPerturbations;
-        stateVarsDisclosure = out.stateVarReport;
         // C2 合成（见上方 `restoreSpecBase`）：必须在核**之后**、落盘**之前**。
         restoreSpecBase(state, out.stateVarReport.decayApplied);
+        // ── 唯一投影入口（WO-3ROOT-P3）─────────────────────────────────────────
+        // 三条写路（播种 / 传导核 / C2 合成）**全部写完之后**、`putTickState` **之前**，
+        // 单点执行 + 单源记账 —— 这就是「回执说的」与「落盘的」能是同一个数的全部理由。
+        // 🔴 次序不是风格问题：C2 会在核之后把刚夹住的值改写成 `λ·base`（病灶见
+        //    `sim/world-projection.ts` 头注 / PRD §一 事实 7），故投影**必须**排在它后面；
+        //    而 `putTickState` 排在它后面，落盘与回执才同源。两边挪一个都会退回病灶。
+        stateVarsDisclosure = mergeStateVarDisclosure(
+          out.stateVarReport,
+          projectWorldCells(state, tickStart, stateVarDomains),
+        );
         // 还手触发清单取**最后一拍**（与 stateVarReport 同一口径）：披露层讲的是
         // 「这一次推进结束时的世界」，不是把 n 拍的触发累加起来（那会把同一个客户数 n 遍）。
         reactionActors = out.reactionActors;
         // 影子线：同一拍、同一份图/规则/闸门/权重/取值域，**扰动清空** ⇒ 世界自身漂移。
         if (driftState !== null) {
+          const driftTickStart = driftState; // 本拍入口前那一份（同主线的 `tickStart`）
           const d = propagateTick(
             graph, driftState, propRules, driftPending, beforeTick, ruleParams, cadenceGates,
             [], pairWeights, stateVarDomains,
@@ -2653,6 +2715,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
           driftState = d.next; driftPending = d.pending;
           // 影子线与主线**同一合成**：两条线只许差「有没有扰动」这一个变量。
           restoreSpecBase(driftState, d.stateVarReport.decayApplied);
+          // ⚠ 同一投影入口：不投影 ⇒ 主线被夹回域内、影子线留着越界值，两条线的差就不再是
+          //    「有没有扰动」而是「有没有夹」—— `worldDrift` / `signalToNoise` 被直接污染。
+          //    🔴 且必须在 `shadowMemo.put` **之前**：存进去的那一格会被后续请求当成本拍的影子态
+          //    复用，未投影就存 = 缓存了一条与主线语义不同的世界线，且它还会被继续往前推。
+          projectWorldCells(driftState, driftTickStart, stateVarDomains);
           // 进了一拍 ⇒ 把新那一格存下：**下一次请求就不必再从头重放**（这正是本单的全部收益）。
           // 存的是刚算出来的量，不额外跑 propagateTick（多跑一次就白省了）。
           if (shadowKey !== null) {
@@ -2796,6 +2863,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return {
       curTick: s.curTick,
       state: r.state,
+      // tick0 那一批的单源账（WO-3ROOT-P3 · 服务 A4）：`n=0` 时下面的逐拍 `stateVarReport`
+      // 恒 `null`（没跑核 ⇒ 没有本拍账），而"世界从第 0 拍起就带着这一批被收回去的读数"
+      // 这件事必须**在首拍就看得见** —— 所以它随会话带上，不依赖跑了多少拍。
+      baseStateVarReport: simBaseStateVarReport(s),
       ...(r.propagate
         ? {
             trace: r.trace,
@@ -4546,13 +4617,24 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const propRules = await listPublishedPropRules(c);
     if (propRules.length === 0) return { fired: 0, declared: 0 };
     const inp = await buildPropagationInputs(repos, c, scope, propRules);
+    // ⚠ 本单只**接投影入口**，不动探针的输入口径：实参仍 9 个（不补第 10 位 `domains`），
+    //    认证结论与引入本单前逐字节相同（RL9）。
+    const probeStart = await simCurrent(c, s); // 入口前那一份 —— 投影判据 ① 的基线（只读，全程不被改写）
+    const probeWorld = simState(probeStart);   // 待投影的那一份（核与入口都就地改写它）
     const out = propagateTick(
-      inp.graph, simState(await simCurrent(c, s)), propRules,
+      inp.graph, probeWorld, propRules,
       [], // pending：探针不续跑在途队列（见上）
       s.curTick, inp.ruleParams, inp.cadenceGates,
       [], // perturbations：探针不重放扰动（见上）
       inp.pairWeights, // 与真 tick 同一份权重表（同装配处）——少喂它，认证就会说"这条边不通"而真 tick 通
     );
+    // 唯一投影入口（WO-3ROOT-P3 · 五处调用点之四「单拍探针路」）：本路产出**丢弃**（认证只数
+    // `fired`，它取 `out.trace`/`out.pending`，而投影一个字节都改不到那两样 ⇒ 本行的账无处消费）。
+    // 仍然接同一入口，是为了让**任何一处** `propagateTick` 的产物都满足同一条入口不变量 ——
+    // 探针的世界态一旦被将来的改动拿去用（哪怕只是"顺便回给前端看看"），它已经在域内了；
+    // 少接一处 = 留一条"产出过世界态却没过入口"的路，而这正是本单要收掉的形态。
+    // 域册子取 `buildPropagationInputs` 的那一份（与真 tick 同一处装配），⛔ 不另取一份新的。
+    projectWorldCells(probeWorld, probeStart, inp.stateVarDomains);
     // 只数**本租户已发布规则**产出的那些（`firedPropagationRuleKeys` 已剔掉扰动行与延迟到达行；
     // 这一层交集是第二道保险，也让"fired ≤ declared"在类型之外有实据）。
     const declared = new Set(propRules.map((r) => r.key));
