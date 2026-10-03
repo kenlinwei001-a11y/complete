@@ -1,7 +1,7 @@
 /**
  * WO-NUMERIC-REDLINE-BLOCK · **分路处置**的引擎级接缝断言（两条路各自的交付出口）。
  *
- * 本文件与 `numeric-redline-block.seam.test.ts` 分工：
+ * 本文件与 `numeric-redline-parity.seam.test.ts` 分工：
  *   · 那份钉 **dsh 路重组装**层（拒绝判据本身）；
  *   · 本份钉 **engine 交付出口**层——同一份「凭空的数」在两条路上得到**不同处置**，
  *     且两个处置都能被机器读出来（outcome + 屏上原文 + 计数器）。
