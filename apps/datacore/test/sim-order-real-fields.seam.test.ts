@@ -52,6 +52,8 @@ async function runWorld(t: TestApp, toTick: number, perturbations: readonly Pert
     engine: {
       graph: inputs.graph, ruleParams: inputs.ruleParams, cadenceGates: inputs.cadenceGates,
       pairWeights: inputs.pairWeights, stateVarDomains: inputs.stateVarDomains,
+      // C2 合成基值：本测试没有会话，`seed` 就是那份不含扰动的 tick0（= 路由的 `s.baseSnapshot`）。
+      specBase: seed,
     },
     rules: [...rules],
     perturbations,

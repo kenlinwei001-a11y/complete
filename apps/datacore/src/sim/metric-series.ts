@@ -15,6 +15,7 @@ import {
   type TickState,
 } from "@platform/contracts";
 import { stateVarDisplayName } from "../synthetic/battery.js";
+import { makeRestoreSpecBase } from "./spec-base-synthesis.js";
 import {
   propagateTick,
   type CadenceGateLookup,
@@ -67,6 +68,16 @@ export interface MetricSeriesEngine {
    * **只有合并态才同时具备两者**，也只有合并态会漏喂一个 —— 这正是 SEAM-GATE 要防的那种断法。
    */
   stateVarDomains: StateVarDomainLookup;
+  /**
+   * C2 合成层的基值（`state = 派生基值 + 累积传导量`）。**必须是不含扰动的 tick0 行**
+   * （`app.ts` 的 `s.baseSnapshot`）—— ⛔ **不是本模块的 `seed`**：
+   * `seed` 是「本会话自己的 tick0 行」，`/act` 直写过 tick0 时它与 `baseSnapshot` 不同，
+   * 而生产 tick 路锚的是 `baseSnapshot`。两边基值不同源 = 曲线与落盘世界分叉，
+   * 那正是本文件 `stateVarDomains` 那条注释记着的事故形态。
+   * 扰动不该进基值：它是叠加在基值上的瞬态，该落在「累积传导量」那一半里。
+   * ⚠ 必填、不给缺省：可选字段会被静默漏传，而漏传的表现是「曲线看着正常但对不上数」。
+   */
+  specBase: TickState;
 }
 
 /** 一条回放出来的世界线。`states[i]` = tick `i` 的世界态；`traces[i]` = **产出**那一格时的轨迹。 */
@@ -135,6 +146,10 @@ export function replayWorldLine(args: {
     return out;
   };
 
+  // 与生产 tick 路**同一个工厂**（`spec-base-synthesis.ts` 头注坑 2：只改那边不改这边 = 分叉）。
+  const restoreSpecBase = makeRestoreSpecBase({
+    baseSnapshot: engine.specBase, graph: engine.graph, rules, stateVarDomains: engine.stateVarDomains,
+  });
   let state = states[0]!;
   let pending: DelayedContribution[] = []; // tick0 行的 pending 恒 `[]`（`POST /sessions` 建的就是空的）
   for (let tick = 0; tick < toTick; tick++) {
@@ -146,6 +161,8 @@ export function replayWorldLine(args: {
         engine.stateVarDomains,  // 第 10 位 —— 缺它，曲线就与真 tick 走两套物理
       );
       state = out.next;
+      // C2 合成：必须在核**之后**（拿得到本拍实际生效的 λ）、入 `states` **之前**。
+      restoreSpecBase(state, out.stateVarReport.decayApplied);
       pending = out.pending;
       // 无传导规则的世界：本格若没有任何扰动动作，轨迹保持 `null`（与 tick 路逐字节相同）。
       traces.push(propagate || out.trace.length > 0 ? out.trace : null);

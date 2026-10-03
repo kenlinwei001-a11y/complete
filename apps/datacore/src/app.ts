@@ -66,6 +66,7 @@ import { reconstructAndPersist } from "./process/reconstruct.js"; // WO-FLOWTIME
 // DF.13 外协红线单一来源（C08）：live-scenarios 触红线判定读契约，禁内联裸阈值。
 import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
+import { makeRestoreSpecBase } from "./sim/spec-base-synthesis.js";
 import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow（PRD v2）· 本体建模工作流 upsert·嫁接自 main
 import { ForecastAdoptionPayloadSchema } from "@platform/contracts"; // WO-SIM-ACTION-REAL · 采纳产能预测结论 payload 契约
 import { SchemeAdoptionPayloadSchema } from "@platform/contracts"; // WO-ADOPT-SCHEME-CARRIER · 采纳经营方案 payload 契约（量纲逐字段标注）
@@ -2357,6 +2358,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       engine: {
         graph: engine.graph, ruleParams: engine.ruleParams, cadenceGates: engine.cadenceGates,
         pairWeights: engine.pairWeights, stateVarDomains: engine.stateVarDomains,
+        // C2 合成基值：⛔ 用 `s.baseSnapshot`（不含扰动），**不是**上面那个 `seed` —— 见模型层字段注释。
+        specBase: simState(s.baseSnapshot),
       },
       publishedRules: published,
       activeRules: active,
@@ -2568,6 +2571,18 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
      *   进来（`disabledRuleKeys` / 定价的裸基准），同一个会话同一拍上会有**两份不同的**影子态。
      *   指纹里含 `rules` 正是为了这个 —— 少了它，两条规则集互相读到对方的影子线。
      */
+    /**
+     * C2 合成层：`state = 派生基值 + 累积传导量`。**实现与判据见 `sim/spec-base-synthesis.ts` 头注**
+     * （那里逐条记了本层的病灶、三条不许，以及第一版踩过的两个坑）。
+     * ⚠ **回放环 `metric-series.ts` 必须调同一个工厂** —— 它是本函数的**手工镜像副本**
+     *   （该文件自述「逐行对齐」），只改这里不改那里 = 曲线与落盘世界分叉。
+     */
+    const restoreSpecBase = makeRestoreSpecBase({
+      baseSnapshot: s.baseSnapshot,
+      graph,
+      rules: propRules,
+      stateVarDomains,
+    });
     let shadowKey: string | null = null;
     if (wantDrift) {
       const stopShadow = timer.start("shadow");
@@ -2589,6 +2604,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
           // 这一个变量，任何别的差异都会直接污染信噪比那个读数。
           const d = propagateTick(graph, driftState, propRules, driftPending, t, ruleParams, cadenceGates, [], pairWeights, stateVarDomains);
           driftState = d.next; driftPending = d.pending;
+          // ⚠ 重放段也必须走同一合成：影子态会被 `shadowMemo` 存下来给后续请求复用，
+          //    这里少补一次，下一刻就与主线不是同一套语义（`signalToNoise` 直接污染）。
+          restoreSpecBase(driftState, d.stateVarReport.decayApplied);
         }
         shadowMemo.put(shadowKey, s.curTick, { state: driftState, pending: driftPending });
       }
@@ -2621,6 +2639,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         unresolvedWeights = out.unresolvedWeights;
         appliedPerturbations = out.appliedPerturbations;
         stateVarsDisclosure = out.stateVarReport;
+        // C2 合成（见上方 `restoreSpecBase`）：必须在核**之后**、落盘**之前**。
+        restoreSpecBase(state, out.stateVarReport.decayApplied);
         // 还手触发清单取**最后一拍**（与 stateVarReport 同一口径）：披露层讲的是
         // 「这一次推进结束时的世界」，不是把 n 拍的触发累加起来（那会把同一个客户数 n 遍）。
         reactionActors = out.reactionActors;
@@ -2631,6 +2651,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
             [], pairWeights, stateVarDomains,
           );
           driftState = d.next; driftPending = d.pending;
+          // 影子线与主线**同一合成**：两条线只许差「有没有扰动」这一个变量。
+          restoreSpecBase(driftState, d.stateVarReport.decayApplied);
           // 进了一拍 ⇒ 把新那一格存下：**下一次请求就不必再从头重放**（这正是本单的全部收益）。
           // 存的是刚算出来的量，不额外跑 propagateTick（多跑一次就白省了）。
           if (shadowKey !== null) {

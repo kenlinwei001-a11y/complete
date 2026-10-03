@@ -139,6 +139,9 @@ async function censusWorldLines(t: TestApp, sessionId: string): Promise<{
   const engine = {
     graph: inputs.graph, ruleParams: inputs.ruleParams, cadenceGates: inputs.cadenceGates,
     pairWeights: inputs.pairWeights, stateVarDomains: inputs.stateVarDomains,
+    // C2 合成基值：路由喂的是 `s.baseSnapshot`（**不含扰动**），这里逐条对齐它 ——
+    // 注意**不是**上面那个 `seed`（`/act` 直写过 tick0 时两者不同）。少喂一样 = 曲线与落盘世界分家。
+    specBase: s.baseSnapshot,
   };
   const actualLine = replayWorldLine({ seed, engine, rules: active, perturbations, toTick: s.curTick });
   const baselineLine = replayWorldLine({ seed, engine, rules: active, perturbations: [], toTick: s.curTick });
