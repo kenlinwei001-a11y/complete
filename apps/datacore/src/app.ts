@@ -128,6 +128,8 @@ import {
   DRILL_EVENT_SPECS,
   DRILL_UNIVERSAL_ROUTES,
   assertDrillRoutingTableComplete,
+  // WO-3ROOT-P1 §3.1(b)：C2 补写越域的点名**复用既有 `saturations` 通道**（不新造字段）。
+  type SaturationEvent,
   // WO-MATERIAL-REPRICE：事件 → 世界态落点的**唯一解释器**（落点写在契约规格表里，不是这里的 if）。
   drillStateEffectFor,
   drillStateEffectAbsolute,
@@ -2577,14 +2579,29 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
      * ⚠ **回放环 `metric-series.ts` 必须调同一个工厂** —— 它是本函数的**手工镜像副本**
      *   （该文件自述「逐行对齐」），只改这里不改那里 = 曲线与落盘世界分叉。
      */
+    /**
+     * C2 补写越域点名的落点（WO-3ROOT-P1 §3.1(b)）—— **复用既有回执通道** `stateVarReport.saturations`。
+     * ⚠ 只收**生产线**：影子线/回放段另建一个**不带 sink** 的实例 —— 两条世界线互相污染
+     * （`sim/spec-base-synthesis.ts` 头注「坑 2」）是本仓反复炸过的那一族病。
+     */
+    const c2OutOfDomain: SaturationEvent[] = [];
     const restoreSpecBase = makeRestoreSpecBase({
       baseSnapshot: s.baseSnapshot,
       graph,
       rules: propRules,
       stateVarDomains,
+      outOfDomain: c2OutOfDomain,
     });
+    /** 影子线专用（不点名）：哨兵 `null` = 本会话无扰动 ⇒ 一次都不建。 */
+    let restoreSpecBaseShadow: ReturnType<typeof makeRestoreSpecBase> | null = null;
     let shadowKey: string | null = null;
     if (wantDrift) {
+      restoreSpecBaseShadow = makeRestoreSpecBase({
+        baseSnapshot: s.baseSnapshot,
+        graph,
+        rules: propRules,
+        stateVarDomains,
+      });
       const stopShadow = timer.start("shadow");
       shadowKey = shadowFingerprint({
         tenantId: c.tenantId,
@@ -2606,7 +2623,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
           driftState = d.next; driftPending = d.pending;
           // ⚠ 重放段也必须走同一合成：影子态会被 `shadowMemo` 存下来给后续请求复用，
           //    这里少补一次，下一刻就与主线不是同一套语义（`signalToNoise` 直接污染）。
-          restoreSpecBase(driftState, d.stateVarReport.decayApplied);
+          //    ⛔ 但走**不点名的**那一个实例：重放段的越域格不属于本次推进的世界线。
+          restoreSpecBaseShadow!(driftState, d.stateVarReport.decayApplied);
         }
         shadowMemo.put(shadowKey, s.curTick, { state: driftState, pending: driftPending });
       }
@@ -2640,7 +2658,19 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         appliedPerturbations = out.appliedPerturbations;
         stateVarsDisclosure = out.stateVarReport;
         // C2 合成（见上方 `restoreSpecBase`）：必须在核**之后**、落盘**之前**。
+        c2OutOfDomain.length = 0; // 逐拍清空：口径与 `stateVarsDisclosure` 一致，只讲**最后一拍**
         restoreSpecBase(state, out.stateVarReport.decayApplied);
+        // C2 补写成了一拍的**最后一次写** ⇒ 它推出去的越域读数在核里没人再对账（旧式铸造下这档
+        // 从不触发 ⇒ 一直是条静默路径）。并进**同一份**披露（⛔ 不新造通道；⛔ 就地不夹）。
+        // ⚠ 合并后重排：核的序列本就按 (objectId, stateVar) 排好，重排对它是恒等（稳定排序）。
+        if (c2OutOfDomain.length > 0) {
+          stateVarsDisclosure = {
+            ...out.stateVarReport,
+            saturations: [...out.stateVarReport.saturations, ...c2OutOfDomain].sort(
+              (a, b) => a.objectId.localeCompare(b.objectId) || a.stateVar.localeCompare(b.stateVar),
+            ),
+          };
+        }
         // 还手触发清单取**最后一拍**（与 stateVarReport 同一口径）：披露层讲的是
         // 「这一次推进结束时的世界」，不是把 n 拍的触发累加起来（那会把同一个客户数 n 遍）。
         reactionActors = out.reactionActors;
@@ -2651,8 +2681,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
             [], pairWeights, stateVarDomains,
           );
           driftState = d.next; driftPending = d.pending;
-          // 影子线与主线**同一合成**：两条线只许差「有没有扰动」这一个变量。
-          restoreSpecBase(driftState, d.stateVarReport.decayApplied);
+          // 影子线与主线**同一合成**：两条线只许差「有没有扰动」这一个变量（但**不点名**，见上）。
+          restoreSpecBaseShadow!(driftState, d.stateVarReport.decayApplied);
           // 进了一拍 ⇒ 把新那一格存下：**下一次请求就不必再从头重放**（这正是本单的全部收益）。
           // 存的是刚算出来的量，不额外跑 propagateTick（多跑一次就白省了）。
           if (shadowKey !== null) {
