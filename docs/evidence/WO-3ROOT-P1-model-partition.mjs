@@ -131,6 +131,10 @@ console.log(`\n── A3 · 上穿基值(+0.01) 单数 = ${cross.size}/${orderId
 }
 chk("A3 集合等式 {上穿} == {fb′<0 的型号的单}", onlyCross.length === 0 && onlyPred.length === 0,
   `只在实测不在预言=${onlyCross.length} 只在预言不在实测=${onlyPred.length}`);
+// ⛔ 非退化守卫（A6「断言必须能红」）：**0==0 的空集等式不算成立** —— 旧式铸造下 `pred` 恒空、
+//    `cross` 也恒空，集合等式会**免疫**地通过，A3 就失去鉴别力（实测：C 回退臂 0/150 时等式仍 ✅）。
+chk("A3 非退化（上穿集与预言集都非空）", cross.size > 0 && pred.size > 0,
+  `上穿=${cross.size} 预言=${pred.size}`);
 
 // ── A4 · 量级：x* = base − 0.6·fb′ 可预言（限域内，避开 companion 单）──────
 chk(`A4 域内 ${inDom} 单（PRD 期望 80）|实测 − (base − 0.6·fb′)| ≤ 0.01`, inDom > 0 && maxDev <= 0.01,

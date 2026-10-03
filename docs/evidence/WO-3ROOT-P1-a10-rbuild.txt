@@ -1,0 +1,57 @@
+# A10 · 四包构建（PRD A10 末条命令：pnpm -r build）
+# 命令：pnpm -r build   （输出全文 /tmp/p1-a10-rbuild2.log，此处存头 30 行 + 尾 15 行）
+# 起跑前已确认：数据库实例不在本单范围；本命令只读源码 + 写各包 dist。
+# ⛔ 判 RC 不看 tail —— RC 单独落 A10_RBUILD2_RC 行，见文件尾。
+
+## 头部
+Scope: 6 of 7 workspace projects
+packages/contracts build$ tsc -p tsconfig.json
+packages/llm-adapters build$ tsc -p tsconfig.json
+packages/llm-adapters build: Done
+packages/contracts build: Done
+apps/datacore build$ tsc -p tsconfig.json && node -e "require('fs').copyFileSync('src/solvers/sandbox-runner.mjs','dist/solvers/sandbox-runner.mjs')"
+apps/agentcore build$ tsc -p tsconfig.json
+apps/frontend-shell build$ tsc -p tsconfig.build.json --noEmit && vite build
+apps/agentcore build: Done
+apps/datacore build: Done
+apps/frontend-shell build: vite v5.4.21 building for production...
+apps/frontend-shell build: transforming...
+apps/frontend-shell build: ✓ 1415 modules transformed.
+apps/frontend-shell build: rendering chunks...
+apps/frontend-shell build: computing gzip size...
+apps/frontend-shell build: dist/index.html                                         0.40 kB │ gzip:   0.32 kB
+apps/frontend-shell build: dist/assets/PlanGenerateView-D0SWfJFN.css               0.04 kB │ gzip:   0.06 kB
+apps/frontend-shell build: dist/assets/LedgerView-Buymu9J0.css                     0.36 kB │ gzip:   0.23 kB
+apps/frontend-shell build: dist/assets/ObjectTypesBrowserPage-BYlDyThD.css         0.37 kB │ gzip:   0.24 kB
+apps/frontend-shell build: dist/assets/PmDag-DoJFIOdq.css                          0.46 kB │ gzip:   0.29 kB
+apps/frontend-shell build: dist/assets/FeaturesPage-0pnirdI3.css                   0.49 kB │ gzip:   0.29 kB
+apps/frontend-shell build: dist/assets/ScopeHonestyBadge-CAC8lAEx.css              0.56 kB │ gzip:   0.30 kB
+apps/frontend-shell build: dist/assets/RiskPopover-PODZndAp.css                    0.57 kB │ gzip:   0.29 kB
+apps/frontend-shell build: dist/assets/DashboardView-BknS3SHm.css                  0.67 kB │ gzip:   0.37 kB
+apps/frontend-shell build: dist/assets/LoginPage-Dt7UXhmD.css                      0.68 kB │ gzip:   0.36 kB
+apps/frontend-shell build: dist/assets/DecisionPlayPanel-BqFl33yP.css              0.71 kB │ gzip:   0.33 kB
+apps/frontend-shell build: dist/assets/LayeredDag-_tESQ4SU.css                     0.90 kB │ gzip:   0.46 kB
+apps/frontend-shell build: dist/assets/WorkflowsPage-C6tTfIHK.css                  0.96 kB │ gzip:   0.48 kB
+apps/frontend-shell build: dist/assets/BoundaryPage-CkcL-Rfc.css                   0.96 kB │ gzip:   0.46 kB
+apps/frontend-shell build: dist/assets/RuleDocsPage-BV954wec.css                   0.99 kB │ gzip:   0.48 kB
+
+## 尾部
+apps/frontend-shell build: dist/assets/SlicesPage-BDlqx3Ji.js                     37.30 kB │ gzip:  11.45 kB
+apps/frontend-shell build: dist/assets/DashboardView-C1FuSXrX.js                  39.08 kB │ gzip:  13.45 kB
+apps/frontend-shell build: dist/assets/OntologyRelationsPage-CdjaeX71.js          41.34 kB │ gzip:  12.64 kB
+apps/frontend-shell build: dist/assets/DecisionPlayPanel-CjFxiZIW.js              42.68 kB │ gzip:  13.64 kB
+apps/frontend-shell build: dist/assets/DecisionConsoleView-c23RPFH9.js            46.64 kB │ gzip:  19.00 kB
+apps/frontend-shell build: dist/assets/DataBuilderPage-Q3qM3gB9.js                63.63 kB │ gzip:  20.49 kB
+apps/frontend-shell build: dist/assets/GlobalSimView-BolzildE.js                  76.52 kB │ gzip:  28.12 kB
+apps/frontend-shell build: dist/assets/RiskBoardView-DlS96nyR.js                 114.92 kB │ gzip:  37.06 kB
+apps/frontend-shell build: dist/assets/UnifiedSimShell-C7HVdtKo.js               159.41 kB │ gzip:  62.43 kB
+apps/frontend-shell build: dist/assets/SandboxView-Brc4ShIY.js                   180.17 kB │ gzip:  63.49 kB
+apps/frontend-shell build: dist/assets/index-Ca0DyZLl.js                         811.49 kB │ gzip: 302.01 kB
+apps/frontend-shell build: dist/assets/index-IPQXjAEw.js                       1,042.31 kB │ gzip: 346.46 kB
+apps/frontend-shell build: ✓ built in 1m 15s
+apps/frontend-shell build: Done
+A10_RBUILD2_RC=0
+
+## 错误扫描（error TS / ERR_PNPM / Failed 行数）
+hits=0
+（0 ⇒ 四包构建零错误）

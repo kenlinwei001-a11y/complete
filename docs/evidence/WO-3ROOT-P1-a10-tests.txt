@@ -1,0 +1,70 @@
+# A10 · 回归半径（按 diff 半径取；⛔ 不假装全量）
+# 命令：pnpm --filter datacore test -- test/sim-real-cells.seam.test.ts test/sim-seed-world.seam.test.ts \
+#        test/process-tick-coverage.seam.test.ts test/seed-demo-propagation.test.ts test/sim-root-triad.seam.test.ts
+# ⚠ 实测发现：pnpm 的 '--' 未把文件名当过滤条件（vitest 落到全库）⇒ 实跑面 > 要求面。
+#   要求的 5 文件**前 25 个文件内已全部跑完且全绿**（见下），此后**主动停手**：
+#   本机 4 核共享、单文件最长 8.4 分钟，跑遍全库 ≈ 数小时 —— 按禁令 4「不许白烧」与
+#   PRD「按 diff 半径取，⛔ 不假装全量」停。⛔ 未跑到的一律记 NOT-MEASURED。
+
+## ① PRD 点名的 5 个文件（全绿，逐条）
+ ✓ test/seed-demo-propagation.test.ts (27 tests) 530992ms
+ ✓ test/sim-seed-world.seam.test.ts (4 tests) 223641ms
+ ✓ test/sim-real-cells.seam.test.ts (22 tests) 144006ms
+ ✓ test/sim-root-triad.seam.test.ts (5 tests) 208471ms
+ ✓ test/process-tick-coverage.seam.test.ts (7 tests) 120793ms
+
+## ② 停手前已跑完的全部文件（顺带覆盖，共 40 个唯一文件）
+✓ test/action-adopt-mitigation.seam.test.ts (7 tests) 208963ms
+✓ test/action-executor-carriers.seam.test.ts (8 tests) 139318ms
+✓ test/action-plan-change-levers.seam.test.ts (17 tests) 507627ms
+✓ test/assembly-memo.seam.test.ts (12 tests) 140087ms
+✓ test/chain-impediment-seam.test.ts (19 tests) 424009ms
+✓ test/chain-loss-attribution.test.ts (10 tests) 240656ms
+✓ test/databuilder.test.ts (36 tests) 33731ms
+✓ test/decision-causal-graph.test.ts (16 tests) 185072ms
+✓ test/decision-info-seam.test.ts (9 tests) 205513ms
+✓ test/engine-scope-fidelity-2.seam.test.ts (28 tests) 44976ms
+✓ test/finance-worldstate.seam.test.ts (12 tests) 299978ms
+✓ test/impact-propagation.seam.test.ts (14 tests) 17487ms
+✓ test/impediment-options-seam.test.ts (9 tests) 276187ms
+✓ test/m11-calibration.test.ts (16 tests) 502940ms
+✓ test/metric-series.seam.test.ts (12 tests) 200735ms
+✓ test/ontology-core.test.ts (17 tests) 17269ms
+✓ test/ontology-governance.test.ts (20 tests) 452087ms
+✓ test/opt-pareto-assemble.seam.test.ts (16 tests) 16673ms
+✓ test/org-world.test.ts (28 tests) 17201ms
+✓ test/process-flow-time.seam.test.ts (11 tests) 199834ms
+✓ test/process-instance.test.ts (23 tests) 19841ms
+✓ test/process-step-template.seam.test.ts (18 tests) 38171ms
+✓ test/process-tick-coverage.seam.test.ts (7 tests) 120793ms
+✓ test/prov-drillfield-truth.test.ts (10 tests) 347427ms
+✓ test/relation-edit-gaps.seam.test.ts (7 tests) 159148ms
+✓ test/sandbox-d4-aggregates.seam.test.ts (11 tests) 282975ms
+✓ test/sandbox-e4-cadence-propagation.seam.test.ts (8 tests) 39528ms
+✓ test/sandbox-g1-seam.test.ts (14 tests) 85641ms
+✓ test/seed-demo-propagation.test.ts (27 tests) 530992ms
+✓ test/sim-act-close.seam.test.ts (6 tests) 19521ms
+✓ test/sim-cert-contract-reconcile.seam.test.ts (10 tests) 11317ms
+✓ test/sim-drill.seam.test.ts (22 tests) 446768ms
+✓ test/sim-perturbation.test.ts (19 tests) 16406ms
+✓ test/sim-real-cells.seam.test.ts (22 tests) 144006ms
+✓ test/sim-root-procurement.seam.test.ts (6 tests) 216002ms
+✓ test/sim-root-triad.seam.test.ts (5 tests) 208471ms
+✓ test/sim-seed-world.seam.test.ts (4 tests) 223641ms
+✓ test/sim-trial-scope-reconcile.seam.test.ts (9 tests) 6516ms
+✓ test/solver-arghints-contract.seam.test.ts (13 tests) 2328ms
+✓ test/workspace-sim-console.seam.test.ts (12 tests) 223176ms
+
+## ③ 失败扫描（含金丝雀）
+判据 A：文件表头带 '| N failed' 的文件数 = 0
+判据 B：行首 ✗/× 行数 = 0（金丝雀：同一扫描器对人造行 '   × 人造失败' 命中 1 ⇒ 扫描器活着）
+（'×' 在日志里的 53 处出现全部是边标签倍数如 '--×0.65-->'，非失败标记；'EXECUTION_FAILED' 是被测断言里的业务枚举文本）
+
+## ④ NOT-MEASURED（明写，⛔ 不许读成「四包全绿」）
+- apps/datacore/test/ 其余族：本轮未跑完（停手原因见头注）
+- apps/agentcore、apps/frontend-shell：本轮未跑
+- 本机四包全量门跑不动（既有判例：896 测试文件 ≈ 75h）
+
+## ⑤ 四包构建（另件证据）
+见 `WO-3ROOT-P1-a10-rbuild.txt`（`pnpm -r build`，CAPTURED_RC=0，零 error TS/ERR_PNPM）。
+本文件只覆盖**测试**半径的实测与 NOT-MEASURED。
