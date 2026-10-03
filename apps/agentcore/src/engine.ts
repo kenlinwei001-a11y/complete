@@ -35,7 +35,8 @@ import { runWorkflow, type ExtendedPlanStep, type WorkflowResult } from "./workf
 import { newId } from "./ids.js";
 // WO-NUMERIC-REDLINE-BLOCK：判别位/文案单源。`util/numerics.js` **不属于** dsh-runtime，
 // 静态 import 它不触碰休眠面（dormancy 只禁静态 import `dsh-runtime` / `packages/dsh-harness`）。
-import { NUMERIC_REDLINE_CODE } from "./util/numerics.js";
+// WO-DSH-REDLINE-PARITY：`NUMERIC_REDLINE_CODE` 的 import 已随 dsh 硬拦一并删除（对齐原生路后
+// 无人再产出该 code）。判据本身 `util/numerics.js` 的 `scanBlocks` 未动，仍是下面两处处置计数的单源。
 
 // ---------------------------------------------------------------------------
 // WO-SKILL-2 · Skill 运行时辅助（provenance 策略 / 写模式 / 规则引用预检后验）
@@ -812,23 +813,16 @@ export class ExecutionEngine {
         this.dshToolExecuteRuns.delete(runToken);
       }
       if (!dsh.result.ok) {
-        // WO-NUMERIC-REDLINE-BLOCK：数字红线拦截走**用户可读原文**（reassemble 已把 R-UI-4 合规的
-        // 那句话放进 errors[0]），不套「dsh 重组装拒绝：」这个内部前缀——被拦的是终端用户会看的答案，
-        // 屏上得是一句他能据以行动的话，不是内核名。其余拒绝（schema / provenance / writeMode）
-        // 维持既有前缀与文案，逐字节旧行为（dsh-e2e-honesty L5.P2a/P2b 两条断言咬的就是它们）。
-        const redlineBlocked = dsh.result.code === NUMERIC_REDLINE_CODE;
-        if (redlineBlocked) this.deps.metrics.numericRedline.inc({ path: "AGENT_DSH", action: "blocked" });
+        // WO-DSH-REDLINE-PARITY：数字红线自 2026-10-03 起**不再走这条拒绝路**（原 `redlineBlocked`
+        // 分支已删）—— 它此前把 R-UI-4 合规的原文直接上屏而不套「dsh 重组装拒绝：」前缀，是唯一的
+        // 例外；对齐原生路后，dsh 出口只剩下面这些**真正的治理拒绝**（schema / provenance / writeMode），
+        // 一律维持既有前缀与文案，逐字节旧行为（dsh-e2e-honesty L5.P2a/P2b 两条断言咬的就是它们）。
         return {
           outcome: "FAILED",
           answer: {
             trustLevel: "AGENT_EXPLORATORY",
             blocks: [
-              {
-                type: "text",
-                markdown: redlineBlocked
-                  ? dsh.result.errors.join("; ")
-                  : `dsh 重组装拒绝：${dsh.result.errors.join("; ")}`,
-              },
+              { type: "text", markdown: `dsh 重组装拒绝：${dsh.result.errors.join("; ")}` },
             ],
             provenance: [],
             unverifiedNumerics: false,
@@ -867,6 +861,14 @@ export class ExecutionEngine {
       if (dsh.result.stats) {
         dshRun.totalInputTokens = dsh.result.stats.tokenUsage.uncachedInputTokens;
         dshRun.totalOutputTokens = dsh.result.stats.tokenUsage.outputTokens;
+      }
+      // WO-DSH-REDLINE-PARITY（仓主 2026-10-03 裁决）· dsh 路数字红线改为**只报不断**，对齐原生路：
+      // 与下方原生路采样点（`AGENT_NATIVE`/`would_block`）**同一阶段、同一判据、同一 action** ——
+      // 两处都在 `applyPostChecks` **之前**，量的都是 agent 交付出来的那份答案；判据同取
+      // `answer.unverifiedNumerics`（=`scanBlocks(blocks)` 单源）。⇒ 两路的数自此**直接可比**，
+      // 这正是 #17 DSH 双跑成立的前提（此前一个记 blocked、一个记 would_block，比值不度量任何东西）。
+      if (dsh.result.answer.unverifiedNumerics) {
+        this.deps.metrics.numericRedline.inc({ path: "AGENT_DSH", action: "would_block" });
       }
       const checked = await applyPostChecks({
         outcome: dsh.result.outcome,

@@ -31,7 +31,7 @@
 
 import { AnswerBlockSchema, type AgentIteration, type Answer, type AnswerBlock, type ProvenanceRef } from "@platform/contracts";
 import { z } from "zod";
-import { scanBlocks, NUMERIC_REDLINE_CODE, NUMERIC_REDLINE_MESSAGE } from "../util/numerics.js";
+import { scanBlocks } from "../util/numerics.js";
 // WO-DSH-REFLECT-PARITY：复盘判据**单源复用** `agent/reflect.ts`（原生路同一份四查），
 // 本文件不另写第二套 —— 两份实现必漂，正是本仓「不许另抄一份」铁律防的那个形态。
 import { reflectAnswer } from "../agent/reflect.js";
@@ -113,7 +113,7 @@ export type ReassembledRun =
    * 逐字节旧行为）：WO-NUMERIC-REDLINE-BLOCK 用它让 engine 出口**不靠匹配文案**就能识别
    * 数字红线拦截 —— 拿错误串当判别键会在文案一改就静默失灵（本仓「拿 X 当 Y 的证据」老病）。
    */
-  | { ok: false; errors: string[]; code?: typeof NUMERIC_REDLINE_CODE };
+  | { ok: false; errors: string[] };
 
 /** N2·D-2 · stats 三键（与 dsh host projections.values 同形子集；oracle 对账见 A2）。 */
 export interface DshRunStats {
@@ -686,26 +686,35 @@ export function reassembleDshRun(events: readonly DshSessionEvent[], opts: Reass
     return { ok: false, errors: ["挂载的 Skill 为 WRITE/审批类型，final_answer 必须包含 action_draft 块"] };
   }
 
-  // WO-NUMERIC-REDLINE-BLOCK · **dsh 路无条件阻断**（仓主 2026-09-08 架构原则：
-  // 「所有计算原则上使用求解器而不是 agent(LLM) 来计算」）。
+  // ══ WO-DSH-REDLINE-PARITY（仓主 2026-10-03 裁决）· dsh 路**不再阻断**，对齐原生路 ═══════════
   //
-  // 上面两道 governance 拒绝**都不度量数字红线**：`required` 查的是 `provenance.length === 0`，
-  // 一条 provenance + 十个编造数字照过。本检查补的正是那个缺口——
-  // **agent 自撰答案正文里出现未溯源数值 ⇒ 拒绝该产出**，不是标注、不是计数、不看 policy 档位。
+  // 本处原为 `if (scanBlocks(blocks)) return {ok:false, code:NUMERIC_REDLINE}` —— **无条件硬拦**。
+  // 裁决依据是配对实测（同一句排产问话、同一 agent、同一提示词、同一判据 `scanBlocks`）：
+  //   · 原生路答案 `unverifiedNumerics=true` ⇒ **照常整份交付**（三方案 + 5 条溯源 + 33 条规则）；
+  //   · dsh 路**同等质量**的答案（三方案 + 9 处 ⟦ref:N⟧）⇒ **整份拒绝**，用户只看到一句红线文案。
+  //   ⇒ 同一个判据、同一个值，两条路两种结局。dsh 臂因此**结构上交付不了**本平台的目标产物
+  //     （「形成多个方案和方案比对」），且与答案质量无关：模型答得再好，只要有一个句子的数字没带
+  //     ⟦ref:N⟧，整份就没了 —— 而模型确实做不到句句不漏（实测 9 处引用仍有 2 句漏）。
   //
-  // 位置刻意钉在这里（三点，改动前先读完）：
-  //  ① **在 BUDGET_EXHAUSTED 诚实摘要头拼接之前** ⇒ 扫的是 agent 写的字，
-  //     不含平台自己拼的那句头（否则平台文案自触红线 = 自伤）。
-  //  ② **stall / 预算两个早退分支（上方 :541/:570）不设此拦** ⇒ 那两支的正文是
-  //     **平台拼的**诚实降级摘要（`loopRepeatCap=3` 是平台常量不是模型编的数）。
-  //     在那里拦 = 把一次诚实降级降成 FAILED，用户从「看到部分线索」退成「什么都没有」，严格更差。
-  //  ③ 判据复用 `scanBlocks` 单源、一字未改（放宽判据 = 门还在牙没了）。
+  // 为什么选「对齐」而不是「收紧原生路」：收紧是一次**平台级**产品动作，须同时作用于两条路
+  //   （仓主原则「所有计算用求解器」不区分内核）。只拦一条时 #17 的 DSH 双跑不成立 ——
+  //   两臂不在同一交付契约下，比值不度量任何东西。
   //
-  // 原生路（`runAgentLoop`）**刻意不设此拦**——先只报不断、只统计「若阻断会拦下多少」
-  // （engine 侧 numericRedline{action:"would_block"}），收不收紧是产品裁决不在本单。
-  if (scanBlocks(blocks)) {
-    return { ok: false, errors: [NUMERIC_REDLINE_MESSAGE], code: NUMERIC_REDLINE_CODE };
-  }
+  // ⚠️ **本单一个字没动判据**：`scanBlocks` 仍是单源、仍是 `unverifiedNumerics` 的取值处
+  //   （下方 answer 组装），两条路的处置计数也仍是同一个 `numericRedline` 计数器
+  //   （engine 侧现均为 `would_block`）。**降的是处置，不是检测。**
+  //
+  // ⚠️ 对齐的代价，明写在这里（不许读成「红线不灵了」）：一份「一条 provenance + 十个编造数字」
+  //   的产出，今天**照样交付**，只带 `unverifiedNumerics:true` 诚实标。这正是原生路的既有口径。
+  //   真要把红线推成平台级**阻断**，先修下面这条 —— 否则收紧的力度取决于模型爱不爱写编号列表。
+  //
+  // ⚠️ 检测器自身已登记的缺陷（**本单未修**，对齐后它不再拦人，但会污染 `would_block` 计数）：
+  //   切句器 `(?<=\.)(?=\s|$)` 在半角序号的句点后切一刀 ⇒ `"1. 某句"` 被切成 `["1.", " 某句"]`，
+  //   独立段 `"1."` 无引用标记且匹配数字正则 ⇒ 判违规。实测两份答案共 12 处触发，**7 处（58%）
+  //   是 markdown 有序列表序号**（`1.`/`2.`/`3.`）。⇒ 该门今天度量的是「引用格式完备度」，
+  //   不是「数字是不是模型编的」—— 求解器真跑出来的数字，同句没带 ⟦ref:N⟧ 一样判裸数。
+  //   形态：「我用『这句里有数字字符且无引用标记』当作『这个数字是模型编的』的证据，
+  //   而前者并不度量后者。」（仓内既有的 multihop 真实语料已把这条钉过一次，见 reassemble 测试。）
 
   // WO-DSH-REFLECT-PARITY · 收尾前确定性复盘（`agent/reflect.ts` 单源四查；与原生路 `opts.reflect` 同判据同门控）。
   //
@@ -714,7 +723,8 @@ export function reassembleDshRun(events: readonly DshSessionEvent[], opts: Reass
   // 故走第二支：**把残余缺口明写进答案**，不静默发半成品（KILL-MOCK-RED 同口径）。
   // ⛔ 不许把这条读成「已对齐原生路完整语义」——差的就是那一轮重规划，登记在案。
   //
-  // 位置：在红线检查**之后** —— 平台自己拼的缺口文案不是 agent 写的字，不进红线面（原生路同序）。
+  // 位置：与原生路**同序**（`loop.ts` 的 reflect 支同样把缺口块拼进 blocks 后，再以扫描值出 answer）
+  // —— 故 `unverifiedNumerics` 两路都含平台自撰的缺口文案，口径一致，无可比性问题。
   let reflected = false;
   let replanReasons: string[] | undefined;
   if (opts.reflect) {

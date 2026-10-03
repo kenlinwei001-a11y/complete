@@ -36,7 +36,7 @@ import { reassembleDshRun, type DshSessionEvent } from "../src/dsh-runtime/reass
 import { DEV_JARGON, GAP_HEADER } from "./reflect-jargon.js";
 
 // ---------------------------------------------------------------------------
-// 帧构造（形态照 dsh-runtime-reassemble.test.ts / numeric-redline-block.seam.test.ts，不另立第二套）
+// 帧构造（形态照 dsh-runtime-reassemble.test.ts / numeric-redline-parity.seam.test.ts，不另立第二套）
 // ---------------------------------------------------------------------------
 const toolCall = (callId: string, name: string, args: unknown): DshSessionEvent => ({
   type: "tool/call",

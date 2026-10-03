@@ -15,7 +15,6 @@ import {
   reassembleDshRun,
   type DshSessionEvent,
 } from "../src/dsh-runtime/reassemble.js";
-import { NUMERIC_REDLINE_CODE } from "../src/util/numerics.js";
 
 const toolCall = (callId: string, name: string, args: unknown): DshSessionEvent => ({
   type: "tool/call",
@@ -194,16 +193,20 @@ describe("reassemble · 治理拒证（loop.ts acceptFinalAnswer 同口径）", 
     expect(r.ok, "治理要求 provenance，而软收尾恒空 —— 这一档必须照拒（软收尾不是万能放行）").toBe(false);
   });
 
-  it("★ 反向金丝雀·乙：软收尾**不许**绕过数字红线（正文里的裸数照样拦）", () => {
+  it("★ 反向金丝雀·乙：软收尾的正文**照样进扫描面**（不是绕过检测的后门）", () => {
     const events = [
       assistantMessage("本次排产可提升产出 12345 件"),
       toolCall("c9", "final_answer", { blocks: [{ type: "nonsense" }] }),
       turnEnd("completed"),
     ];
     const r = reassembleDshRun(events);
-    expect(r.ok, "软收尾的正文**同样**要过红线 —— 否则模型只要故意把 final_answer 写坏就能绕过红线").toBe(false);
-    if (r.ok) return;
-    expect(r.code).toBe(NUMERIC_REDLINE_CODE);
+    // WO-DSH-REDLINE-PARITY：红线自 2026-10-03 起降为「只报不断」，本支与原生路同口径 ⇒ **交付**。
+    expect(r.ok, "软收尾应交付（红线不再阻断）；此处若红：dsh 侧又被加回了阻断，属产品裁决不是实现细节").toBe(true);
+    if (!r.ok) return;
+    expect(
+      r.answer.unverifiedNumerics,
+      "软收尾的正文**同样**要进扫描面 —— 否则模型只要故意把 final_answer 写坏，就能让裸数免检",
+    ).toBe(true);
   });
 });
 
@@ -766,32 +769,39 @@ describe("WO-DSH-PROD-READY W9-full · hostToolCalls 侧表合流（四态+tc_+�
 });
 
 // ---------------------------------------------------------------------------
-// WO-NUMERIC-REDLINE-BLOCK · 数字红线 × 黄金夹具：**误报面的实测证据**
+// 数字红线 × 黄金夹具：**误报面的实测证据**（WO-DSH-REDLINE-PARITY 后仍保留）
 //
-// ⚠ 这一节存在的理由，是把本单最贵的一个发现钉在机器上、而不是留在报告里：
-// 数字红线的判据 `hasUnverifiedNumerics` 原本是给**诚实标**用的（源文件头注自称
-// "Non-blocking flag"），它把**有序列表序号**（`1.` `2.` …）与**非业务计数**
-// （「共读取 6 个文件」）一并咬住。当这同一个判据被提升成**硬阻断**，
-// 这些原本可容忍的误报就变成了**合法答案被毙**。
+// ⚠ 这一节存在的理由，是把最贵的一个发现钉在机器上、而不是留在报告里：
+// 数字红线的判据 `hasUnverifiedNumerics` 把**有序列表序号**（`1.` `2.` …）与**非业务计数**
+// （「共读取 6 个文件」）一并咬住 —— 它数的是「这段文本里有没有数字字符」，
+// 而不是「有没有模型编的业务数字」。
 //
 // 本仓唯一一份**真实录制**的 dsh 运行（hist-multihop·763 帧）就是活证据：
-// 它的答案正文没有一个业务数字，全是文件链的序号与计数 —— 照样被红线拦下。
+// 它的答案正文没有一个业务数字，全是文件链的序号与计数 —— 照样被判违规。
 //
 // 形态（铁律 0.6 句式）：
 //   「我用『我手写的反向对照放行了』当作『合法答案不会被误杀』的证据，而前者并不度量后者
 //     —— 反向对照是我自己造的，真实语料才是尺子。」
 //
-// ⇒ 结论**不是**「把判据改松」（WO 明令禁止：判据改松 = 门还在牙没了），
-//   而是：**dsh 路今天 defaultOn:false ⇒ 严格档安全**；
-//   若要把红线推到原生路，这里就是它的代价清单，由仓主据此裁决。
+// ══ 2026-10-03 之后的真实行为（改动前先读，别照旧注释想当然）════════════════════
+//  · **序号那一类已修**（`LIST_ORDINAL_RE`）：纯有序列表不再触发，双向金丝雀在
+//    `numeric-redline-parity.seam.test.ts` §0.2。
+//  · **非业务计数那一类未修** ⇒ 本夹具今天的 `unverifiedNumerics` 仍是 true ——
+//    但 dsh 路**不再据此阻断**（仓主 2026-10-03 裁决：对齐原生路·只报不断），故它**交付**。
+//  · ⇒ 本节钉的两件事：① dsh 路**不阻断**；② 误报面**仍在**（诚实标如实保留）。
+//    哪天检测面变干净了，②会红 —— 逼人来读这段说明，而不是静默改变。
 // ---------------------------------------------------------------------------
-describe("WO-NUMERIC-REDLINE-BLOCK · 红线在真实语料上的误报面（钉住，防静默改变）", () => {
-  it("真实录制的 multihop 语料：答案零业务数字，仍被红线拦下（误报面的量级证据）", () => {
+describe("数字红线 · 真实语料的误报面（钉住，防静默改变）", () => {
+  it("真实录制的 multihop 语料：**交付**（不再阻断），但诚实标如实保留（误报面仍在）", () => {
     const { frames } = loadDshFixture("hist-multihop.json");
     const r = reassembleDshRun(frames);
-    expect(r.ok, "此处若变绿：红线判据被放宽了 —— 那是产品裁决，不是实现细节").toBe(false);
-    if (r.ok) return;
-    expect(r.code).toBe(NUMERIC_REDLINE_CODE);
+    expect(r.ok, "此处若红：dsh 路又被加回了阻断 —— 那是产品裁决，不是实现细节").toBe(true);
+    if (!r.ok) return;
+    expect(
+      r.answer.unverifiedNumerics,
+      "该语料全是文件链序号与计数、零业务数字。序号类已修、计数类未修 ⇒ 今天仍应被判违规。" +
+        "此处若变红：检测面变了（修好了计数类？扩了检测面？）—— 属行为变更，来读本节头注再改。",
+    ).toBe(true);
   });
 
   it("金丝雀：同一条路**只把序号/计数去掉**就放行 ⇒ 拦它的确实是那些数字，不是别的", () => {
