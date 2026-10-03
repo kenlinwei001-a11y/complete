@@ -3897,6 +3897,75 @@ STATE_VAR_DOMAINS.blockedPressure = {
     "归压力族收口（⚠ 本键走真值支：Line 对象上有同名属性，与上面 31 个派生支成员的出处差这一句）",
 };
 
+// ══════════════════════════════════════════════════════════════════════════
+// 播种期占位真值的**铸造器**（WO-3ROOT-P1 · 判据 = 声明域的**形状**，不是量纲名）
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 旧占位式的跨度 —— ⚠ **它不是业务上界**。
+ *
+ * `max: null` 的域（积压/天数族）在域表里明写「不拍上界」；本常量**不给它们补一个上界**，
+ * 只记下铸造器引入前那条式子 `Math.round(u × 100)` 的跨度，供「无界 ⇒ 无可派生的上界」
+ * 这一档**逐字节回放**旧行为。
+ * ⛔ 不许被任何夹值 / 域查询 / 校验读走（读了就是把「拒绝发明上界」偷偷变成「发明了上界 100」）。
+ */
+const PLACEHOLDER_SPAN = 100;
+
+/**
+ * 占位真值铸造：把 `u = seedHash01(objectId|stateVar) ∈ [0, 0.999]` 铸成该格**声明域**里的一个数。
+ * **全平台唯一实现**（`sim/seed-world.ts` 的 `deriveSeedBaseSnapshot` 调用它，⛔ 不许再抄一份）。
+ *
+ * 🔴 病灶（实测定稿，见 `docs/evidence/WO-3ROOT-P1-model-partition.txt`）：
+ *   本铸造器引入前，占位式对**每一格**都写 `Math.round(u × 100)` —— 一条从 0 起算的**半轴**，
+ *   且它**一个字节都不读声明域**（金丝雀：同查法在同文件 `STATE_VAR_DOMAINS` 命中 14 次，
+ *   在 `sim/seed-world.ts` 命中 **0** 次 —— 量法活着，是那条式子真的不读）。
+ *   唯一被它伤到的形状是 `restPoint` **严格内点**于 `(min, max)` 的域，本仓今天恰有一个：
+ *   `forecastBias` 声明 `[−100, 100] / restPoint 0`（域表里**唯一** `min < 0` 的一项，注原文
+ *   「唯一带方向的量纲……静息点取 0 而非下界，下界取 −max 以保持两侧对称」）。
+ *   旧式铸出的值恒 ∈ `[0, 100]`，是该域的**真子集** ⇒ **负半轴整段不可达** ⇒
+ *   `Model.forecastBias --×(k=−0.222)--> Order.demandPressure` 边注释写着的
+ *   「低估(−) ⇒ 需求压力**上冲**」那一支，在默认播种世界里一次都讲不出来。
+ *   而平台对「生成真值 vs 声明域」唯一的对账是运行期**区间**夹值（`saturateToDomain`）——
+ *   值落在域内 ⇒ 无夹值、无 saturations、无告警：**缺口完全静默**。
+ *   （完整七层根因链见 `docs/PRD-WO-3ROOT-P1-negative-edge.md` §2.2。）
+ *
+ * ✅ 修法 = 参数化于**域的形状**（不参数化于量纲的名字）：
+ *   · `restPoint` 严格落在 `(min, max)` 内部 ⇒ 以 restPoint 为中心、按域**对称展开**：
+ *     `span = max(restPoint − min, max − restPoint)`（两侧取大者 ⇒ 没有哪一侧先被削掉）；
+ *   · 其余形状（`restPoint` 就是某一侧端点，如压力族 `restPoint = min = 0`）**逐字节不变**。
+ *
+ * ⛔ 三条不许：
+ *   ① **不许按量纲名特判**（`if (stateVar === "forecastBias")`）—— 判据是**形状谓词**，
+ *      将来任何新增的带符号量纲自动被同一条规则覆盖；
+ *   ② **不许内联业务常数**（R14）—— 入参只取域表的 `min` / `max` / `restPoint` 三数；
+ *   ③ **不许在调用侧再抄一份式子** —— 第二套真相源，本仓已因同族错误炸过两次
+ *      （`sim/spec-base-synthesis.ts` 头注「坑 2」）。
+ *
+ * ⚠ **取整口径**：内点支用 `Math.round` 而不是 `round12`。这不是随手选的 ——
+ *   PRD §4.3 的预言表（`−98 / 77 / 1 / 75 / −85 / 58`，A4 的 `y* = −0.6·fb′` 全链）就是用
+ *   `Math.round((2u−1)×span)` 离线复算的（`docs/evidence/WO-3ROOT-P1-model-partition.mjs` 的
+ *   `FBP` 常量即该表）。同一个 `u` 上 `round12` 给出 `−97.6 / 76.8 / 0.8 / 75.4 / −85 / 58.2`
+ *   ⇒ 会让 A2 与 A4（容差 0.01）同时红。附带好处：旧式支本来就产整数，两支口径一致。
+ *   `−0` 会从 `Math.round(−0.4)` 冒出来（`Object.is(−0, 0)` 为假 ⇒ `toEqual` 会红）⇒ 就地规整。
+ *
+ * ⚠ `max === null`（无界声明）**没有上界可派生** ⇒ 退回旧占位跨度（逐字节同 X）。
+ *   这不是给它们补上界，是**拒绝发明一个域表明令不拍的上界**。
+ */
+export function castSeedBaseValue(domain: StateVarDomain | undefined, u: number): number {
+  const hi = domain?.max ?? null;
+  // 未登记域（回执点名那一档）与无界声明域：都**没有可派生的上界** ⇒ 旧占位跨度，逐字节同 X。
+  if (domain === undefined || hi === null) return Math.round(u * PLACEHOLDER_SPAN);
+  const rest = domain.restPoint;
+  // 形状谓词：restPoint **严格**内点 ⇒ 两侧对称展开，负半轴回来。
+  if (rest > domain.min && rest < hi) {
+    const span = Math.max(rest - domain.min, hi - rest);
+    const cast = Math.round(rest + (2 * u - 1) * span);
+    return cast === 0 ? 0 : cast; // 规整 −0（同 `propagation.ts` 的 `round12` 边角处置）
+  }
+  // 静息点就是某一侧端点（压力族 restPoint = min = 0）：旧式，逐字节不变。
+  return Math.round(rest + u * (hi - rest));
+}
+
 /**
  * 状态量声明取值域查表（**全平台唯一入口**；未登记 → `undefined` = 不夹不衰减 + 回执点名）。
  */
