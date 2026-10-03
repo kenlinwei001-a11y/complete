@@ -8,7 +8,7 @@
  * 于是「这份基值取自哪一版源、现在还等不等于源」**机器不可判**，会话数据模型里也无处可查。
  *
  * ── 本模块做两件事（都不补值边）────────────────────────────────────────────────
- * ① **归属**：这格归哪条规格所有、式子是什么 —— 由 ACTIVE `DerivationSpec` 派生（**不是**登记表）。
+ * ① **归属**：这格归哪条规格所有、式子是什么 —— 由 ACTIVE `DerivationSpecRecord` 派生（**不是**登记表）。
  * ② **时效**：`baseValue` vs 今天从对象 props 重算的 `today(c)` 逐格比对（`round(...,6)`，
  *    与 `ontology.ts` 的 `runDerivations` 写回**同一算路、同一舍入口径**）。
  *
@@ -29,7 +29,8 @@
  * ⇒ 索引 =「ACTIVE 规格」∩「世界量纲空间」，两侧都是既有单源，**不新增登记表**。
  * 实测（2026-10-03，活规则集 55 条）：这个交集与 `STATE_VAR_VALUE_REFS` **双向差集为空、25/25 逐键相等**。
  */
-import type { DerivationSpec, PropagationRule, TickState } from "@platform/contracts";
+import type { PropagationRule, TickState } from "@platform/contracts";
+import type { DerivationSpecRecord } from "../domain.js";
 import { STATE_VAR_VALUE_REFS } from "../synthetic/battery.js";
 import { evalArithmetic, translateSpecFormula } from "../ontology.js";
 import { round } from "../prng.js";
@@ -68,7 +69,7 @@ export function worldCellKeys(rules: readonly PropagationRule[]): Set<string> {
  * 世界路一律传 `worldCellKeys(rules)`，理由见头注）。
  */
 export function specCellIndex(
-  specs: readonly DerivationSpec[],
+  specs: readonly DerivationSpecRecord[],
   universe?: ReadonlySet<string>,
 ): SpecCellIndex {
   const out = new Map<string, SpecCell>();
@@ -84,12 +85,12 @@ export function specCellIndex(
 }
 
 /**
- * 读侧装配入口（仓里 `DerivationSpec` 单源）。
+ * 读侧装配入口（仓里 `DerivationSpecRecord` 单源）。
  * ⚠ 只读 `ACTIVE`：**不是**「顺手把 RETIRED 也读进来」—— 规格退役 ⇒ 该格离开锚定集，
  * 这正是 D1 要的活体行为（E3）。
  */
 export async function specCellIndexFor(
-  repos: { derivationSpecs: { list(tenantId: string, pred: (s: DerivationSpec) => boolean): Promise<DerivationSpec[]> } },
+  repos: { derivationSpecs: { list(tenantId: string, pred: (s: DerivationSpecRecord) => boolean): Promise<DerivationSpecRecord[]> } },
   tenantId: string,
   universe?: ReadonlySet<string>,
 ): Promise<SpecCellIndex> {
