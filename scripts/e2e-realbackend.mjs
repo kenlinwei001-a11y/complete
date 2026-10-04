@@ -79,8 +79,11 @@ try {
   await page.click('a[href="/v/risk"]').catch(() => {});
   await page.waitForSelector("[data-testid^=risk-card-]", { timeout: 10000 }).catch(() => {});
   await page.locator("[data-testid^=risk-card-]").first().click().catch(() => {});
-  await page.waitForSelector("[data-testid=mitigation-panel]", { timeout: 8000 }).catch(() => {});
-  const mitPanel = await page.locator("[data-testid=mitigation-panel]").count();
+  // ⚠ 2026-10-05 修：原选择器 `mitigation-panel` **全仓 0 处**（对照：同文件的 `mitigation-plan-` /
+  //   `mitigation-adopt-` 都在，`risk-tab-risk` 也在）⇒ 这条断言**永远不可能通过**，与产品无关。
+  //   真容器是下方的跨方案比对矩阵（RiskBoardView.tsx，`plans.length > 0` 才渲染）。
+  await page.waitForSelector("[data-testid=mitigation-matrix]", { timeout: 8000 }).catch(() => {});
+  const mitPanel = await page.locator("[data-testid=mitigation-matrix]").count();
   const mitPlans = await page.locator("[data-testid^=mitigation-plan-]").count();
   const mitAdopt = await page.locator("[data-testid^=mitigation-adopt-]").count();
   mitPanel > 0 && mitPlans > 0 && mitAdopt > 0
@@ -116,7 +119,17 @@ try {
   await page.click("[data-testid=sop-create]").catch(() => {});
   await page.waitForSelector("[data-testid=sop-run-1]", { timeout: 8000 }).catch(() => {});
   await page.click("[data-testid=sop-run-1]").catch(() => {});
+  // ⚠ 2026-10-05 修：原剧本 create→run-1→chip3→run3 **跳过了第 2 步**，而后端 step3 的第一行就是
+  //   `if (!v.steps.s2) throw invalidState("run step 2 first")`（409 INVALID_STATE）—— 拒绝得完全正确。
+  //   实测那条路径：MRP 求解器跑了（mrp_netting 200）但 advance 409，第 3 步从未落库，MRP 表自然不在屏上。
+  //   补跑第 2 步后实测：三次 advance 全 200，`sop-mrp-table` 真渲染 **9 行**。
+  await page.waitForTimeout(2500);
+  await page.click("[data-testid=sop-step-chip-2]").catch(() => {});
+  await page.waitForSelector("[data-testid=sop-run-2]", { timeout: 8000 }).catch(() => {});
+  await page.click("[data-testid=sop-run-2]").catch(() => {});
+  await page.waitForTimeout(2500);
   await page.click("[data-testid=sop-step-chip-3]").catch(() => {});
+  await page.waitForSelector("[data-testid=sop-run-3]", { timeout: 8000 }).catch(() => {});
   await page.click("[data-testid=sop-run-3]").catch(() => {});
   await page.waitForSelector("[data-testid=sop-mrp-table]", { timeout: 8000 }).catch(() => {});
   const sopMrp = await page.locator("[data-testid^=sop-mrp-row-]").count();
@@ -126,7 +139,9 @@ try {
 
   // A4 对象/类型浏览器：真后端真物化计数
   await page.click('a[href="/admin/object-types"]').catch(() => {});
-  await page.waitForSelector("[data-testid=object-types-page]", { timeout: 10000 });
+  // ⚠ 2026-10-05 修：裸 await 一超时就抛到最外层 catch，**后面 7 条断言全不跑**（上一版正是死在这儿）。
+  //   补 .catch 后失败会如实落进下面那条 bad(...)，而不是把整轮带走。
+  await page.waitForSelector("[data-testid=object-types-page]", { timeout: 10000 }).catch(() => {});
   await page.waitForSelector("[data-testid^=ot-count-]", { timeout: 8000 }).catch(() => {}); // 等物化计数 stats 异步加载
   const rows = await page.$$eval("[data-testid^=ot-row-]", (els) => els.length);
   const counts = await page.$$eval("[data-testid^=ot-count-]", (els) => els.map((e) => e.textContent));
@@ -140,8 +155,16 @@ try {
 
   // 工作流时间线 + 比对现状（真后端 run：真 comprehend floor + planSlice + provisioners）
   await page.click('a[href="/admin/data-builder"]').catch(() => {});
-  await page.waitForSelector("[data-testid=wf-timeline]", { timeout: 10000 });
-  await page.click("[data-testid=wf-start]");
+  // ⚠ 2026-10-05 修：工作流运行时挂在**默认收起**的 `<details data-testid=db-advanced>` 里
+  //   （summary 文案：「进阶：逐条跑构建 / 工作流运行时 / 快速合成」）。关闭的 <details> 子元素
+  //   **保留版面盒子但不绘制、不参与命中测试** —— 实测 `elementFromPoint` 在按钮中心恒不命中
+  //   按钮本身（返回 data-builder-page / db-growth-console），`page.click` 超时，**两端日志零工作流
+  //   POST**（不是报错，是请求从未发出）。不展开这一步，`wf-start` 永远点不到，连带
+  //   A5 / A7 / A10 / A18.4 四条下游断言一起红。展开后实测：点击成功且
+  //   `POST /a/v1/databuilder/workflow-runs` 真发出。
+  await page.click("[data-testid=db-advanced]").catch(() => {});
+  await page.waitForSelector("[data-testid=wf-timeline]", { timeout: 20000 }).catch(() => {});
+  await page.click("[data-testid=wf-start]").catch(() => {});
   await page.waitForTimeout(4000);
   const steps = await page.$$eval("[data-testid^=wf-step-]", (els) => new Set(els.map((e) => e.getAttribute("data-testid")).filter((x) => x && !x.includes("error"))).size);
   const gap = await page.locator("[data-testid=wf-gap-analysis]").count();
