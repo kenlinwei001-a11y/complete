@@ -1,0 +1,48 @@
+WO-3ROOT-P2 缺口A/B · **没跑到的，逐条列成 NOT-MEASURED**（⛔ 一律不写成绿）
+树：/Users/apple/deploy/complete/.claude/worktrees/agent-a2370c3515ec2edb6
+分支：claude/handoff-3root-P2-gapfix
+判据：本单只跑**改动半径**（改到的文件 + 直接咬改动行的既有接缝），不跑全量四包。
+⚠ 本文件是**声明清单**（手写，非命令捕获），故不配同名 `.rc`；本单全部**命令捕获**类证据
+（含未通过项）都另有 `.txt` + 同名 `.rc`，见下「已跑到的」四行。
+
+【已跑到的（4 个文件，全部有 .txt + 同名 .rc）】
+  ✅ spec-cells-freshness.seam.test.ts   8/8 绿 · 56.51s · CAPTURED_RC=0  → P2-GAPFIX-gapB-e3-seam
+  ✅ sim-seed-world.seam.test.ts         4/4 绿 · 82.18s · CAPTURED_RC=0  → P2-GAPFIX-seedworld-{before,after}
+  ✅ sim-real-cells.seam.test.ts        20/20 绿 · 46.10s · CAPTURED_RC=1（同 run 另一文件有红）
+  ❌ sim-order-real-fields.seam.test.ts  5/6（1 红，**先存红、非本单引入**，见下「已知红」）
+     ↑ 同 run：110.27s，pnpm 聚合 rc=1 → P2-GAPFIX-radius-seedworld-importers.{txt,rc}
+
+【NOT-MEASURED —— 逐条】
+ ① 四包全量门 `pnpm -r build && pnpm -r --workspace-concurrency=1 test`
+    未跑。理由：本仓 368 个 datacore 测试文件 + 四包，4 核机、负载两位数；
+    本单判据是 diff 半径（既有台账条目已记「本机跑不动全量」）。
+ ② 其余 8 个引用 `src/sim/seed-world` 的 datacore 测试文件 —— 未跑：
+      adversary-reaction.seam.test.ts · option-pricing-reach.seam.test.ts ·
+      seed-demo-propagation.test.ts · sim-root-procurement.seam.test.ts ·
+      sim-root-triad.seam.test.ts · sim-sessions-projection.seam.test.ts ·
+      sim-trial-scope-reconcile.seam.test.ts · statevar-display-name.seam.test.ts
+    （查法：`grep -rln "sim/seed-world" apps/datacore/test`；金丝雀 = 同目录含 `describe(` 的文件 366 个，
+     工具活着。共 11 个，其中 3 个已跑，剩 8 个未跑。）
+ ③ datacore 其余测试文件（368 − 4 = **364 个**）—— 未跑。
+ ④ agentcore / frontend-shell / llm-adapters 三包的测试 —— 未跑（本单未触碰这三包源码）。
+ ⑤ `pnpm -r lint` 与 `pnpm -r typecheck`（全仓） —— 未跑。
+    仅跑了 datacore 单包的 `tsc -p tsconfig.typecheck.json --noEmit`（红→绿，见
+    P2-GAPFIX-typecheck-test-{before,after}）与 `tsc -p tsconfig.json --noEmit`。
+ ⑥ 真起自有 41xx datacore 实例 + 浏览器（127.0.0.1:5173）的 E3/A4/A8 端到端 —— 未跑。
+    理由：4001/4002/5173 是**别人的在跑部署**（⛔ 不许重启/不许杀）；本单缺口B 的判据门改由
+    vitest 内的**真 Fastify 实例 + 真仓储写入**驱动（app.inject，见 P2-GAPFIX-gapB-e3-seam.txt），
+    不另起常驻进程。
+ ⑦ pg 模式仓储（DATABASE_URL 触发）—— 未跑。全部读数取自 memory 仓储（仓内测试默认）。
+ ⑧ 前端接缝（沙盘建会话走真后端那条）—— 未跑；且 `views/sim/` 的 UX 改动属仓主禁令 2 范围，本单不碰。
+
+【已知红（跑了，红着，⛔ 不当作 NOT-MEASURED 吞掉）】
+ · sim-order-real-fields.seam.test.ts ⑤
+   `obj_model_4680-NCM.backlogHorizonDays @tick1: expected undefined to be 110`
+   定性：**先存红**，两道证据 ——
+   (a) 该文件在本单开工时的基线 tip `71b13d751` 上就是红的（红在 `spec-base-synthesis.ts` 的
+       `Cannot read properties of undefined (reading 'has')`，即 P2 给 `MetricSeriesEngine` 加必填
+       `specCells` 时漏改的调用点，本单 4d5c95273 已补；补后该 TypeError 消失，露出下面这道断言红）；
+   (b) 断言期望**过期**：`seed.ts` 的规则 `demo_order_leaddays_to_model_horizon` 的 `targetStateVar`
+       已由 `b8461379e`（2026-10-01，HEAD 的祖先）从 `backlogHorizonDays` 改到 `Model.costPressure`，
+       而测试第 33 行 `TOPS` 仍写 `leadDays: "backlogHorizonDays"` ⇒ 那个格在世界上压根不再产出。
+   未修：属另一张单的范围；且⛔ 不许为转绿而改判据（本单禁「加特例让它绿」）。

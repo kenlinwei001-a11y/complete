@@ -1,0 +1,65 @@
+WO-3ROOT-P2 缺口A/B · 改动半径内回归（真 vitest，非全量四包）
+树：/Users/apple/deploy/complete/.claude/worktrees/agent-a2370c3515ec2edb6
+分支：claude/handoff-3root-P2-gapfix @ 4d5c95273（本次运行时的 HEAD；其后 b6d290f28 只追加取证文件，未动源码/测试）
+命令：pnpm --filter datacore exec vitest run sim-real-cells sim-order-real-fields --maxWorkers=2 --testTimeout=180000
+（超时沿用仓内 vitest.config.ts 的 180000，未下调 —— 本机 4 核、负载两位数，收紧会制造假红）
+为什么是这两个文件：
+  · sim-real-cells —— 含 §3 绑定判据臂（valueRef 断裂必须抛错）与 ⓐ 归属臂（derivationSpecs 清 0），
+    正是缺口A 改动行（seed-world.ts 的 brokenRefs=specRefDiffs(...)）的既有覆盖；
+  · sim-order-real-fields —— 本次被改的调用点之一（4d5c95273 补 specCells）。
+测定：2026-10-04 18:28:21 起 110.27s
+跑前竞者探针：父进程非 vitest 的 vitest 进程数 = 0（本机空闲，量法双向金丝雀见 P2-GAPFIX-gapA-callers.txt）
+----------------------------------------
+
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/agent-a2370c3515ec2edb6/apps/datacore
+
+ ✓ test/sim-real-cells.seam.test.ts (20 tests) 46099ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂2 量纲：全扫 STATE_VAR_DOMAINS 已声明域的变量逐个不越域；无域族归档「刻意无上界」  1082ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > ⓐ 引擎归属：derivationSpecs 清成 0 条 ⇒ 25 个 targetProp 全部消失（证明是引擎②算的）  11030ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂3 敏感性：Customer.receivables ×2 ⇒ receivablePressure 精确 ×2（线性式）  868ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂3 敏感性：Equipment.health_score ↓10 ⇒ equipmentFailure 精确 ↑10（反向线性）  927ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂4 反向：拿掉 Line.max_capacity_day ⇒ blockedPressure 退回（COALESCE 兜 0，非写死常数）  1086ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂5 变异反证：把 equipmentFailure 的『100 −』改成『100 +』⇒ 臂1 锚定断言当场红  13500ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > R6 确定性：同 (seed=42) 重铺世界 ⇒ measuredCells / totalCells 逐字节一致  1164ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > §3 绑定判据：valueRef 指向不存在的 specKey ⇒ 播种当场抛错变红（⛔ 不静默回落哈希）  606ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > §退役 · `model_forecast_bias` 与它的 valueRef 登记必须同时不存在（残留任一处即红）  614ms
+ ❯ test/sim-order-real-fields.seam.test.ts (6 tests | 1 failed) 98329ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ①正向 measuredCells = 在手订单数 × 3，且两边**各自独立**算一遍再比  12906ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ①反向 把某张单的 qty 删掉 ⇒ 该格退回哈希、measuredCells 减 1（只测正向不算）  12185ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ② 改真值 ⇒ 下游读数必须跟着变：把一张单的价格 ×1.5，重跑同一套推演  14808ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ③ 两张金额差一个量级的真订单，同一个扰动 ⇒ 下游读数必须拉开  15193ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ④ R6：同 (industry, scale, seed) 重跑，世界态逐字节一致  29576ms
+   × WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ⑤ 接缝：真值必须**出现在传导结果里**，且 max 语义不随拍数漂（不是纯积分器） 13657ms
+     → obj_model_4680-NCM.backlogHorizonDays @tick1: expected undefined to be 110 // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/sim-order-real-fields.seam.test.ts > WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ⑤ 接缝：真值必须**出现在传导结果里**，且 max 语义不随拍数漂（不是纯积分器）
+AssertionError: obj_model_4680-NCM.backlogHorizonDays @tick1: expected undefined to be 110 // Object.is equality
+
+- Expected: 
+110
+
++ Received: 
+undefined
+
+ ❯ test/sim-order-real-fields.seam.test.ts:277:70
+    275|         const target = TOPS[v];
+    276|         // 落点读数 === 该型号在手订单里那个字段的真实最大值（系数 1.0 原样透传）
+    277|         expect(w1[modelId]?.[target], `${modelId}.${target} @tick1`).t…
+       |                                                                      ^
+    278|         /**
+    279|          * ⚠ 这一条是本门最要紧的一格：`combine:"max"` 每拍重算、不吃上一拍的值。
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 25 passed (26)
+   Start at  18:28:21
+   Duration  110.27s (transform 4.56s, setup 0ms, collect 22.10s, tests 144.43s, environment 0ms, prepare 387ms)
+
+undefined
+/Users/apple/deploy/complete/.claude/worktrees/agent-a2370c3515ec2edb6/apps/datacore:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run sim-real-cells sim-order-real-fields --maxWorkers=2 --testTimeout=180000
