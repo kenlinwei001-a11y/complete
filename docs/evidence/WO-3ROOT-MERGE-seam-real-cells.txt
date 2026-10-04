@@ -1,0 +1,22 @@
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/agent-aec9f01a5f2cae411/apps/datacore
+
+ ✓ test/sim-real-cells.seam.test.ts (21 tests) 205778ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > ⓑ 指认粒度：26 条规格逐条物化数 = 该类型进世界对象数（逐条点名，不一锅断言）  741ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂2 量纲：全扫 STATE_VAR_DOMAINS 已声明域的变量逐个不越域；无域族归档「刻意无上界」  3544ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > §3.1(a) 铸造可达：restPoint 严格内点的域，铸造层两侧都必须取到  1898ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > ⓐ 引擎归属：derivationSpecs 清成 0 条 ⇒ 25 个 targetProp 全部消失（证明是引擎②算的）  31246ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂3 敏感性：Customer.receivables ×2 ⇒ receivablePressure 精确 ×2（线性式）  4135ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂3 敏感性：Equipment.health_score ↓10 ⇒ equipmentFailure 精确 ↑10（反向线性）  3123ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂4 反向：拿掉 Line.max_capacity_day ⇒ blockedPressure 退回（COALESCE 兜 0，非写死常数）  4190ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂5 变异反证：把 equipmentFailure 的『100 −』改成『100 +』⇒ 臂1 锚定断言当场红  101495ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > R6 确定性：同 (seed=42) 重铺世界 ⇒ measuredCells / totalCells 逐字节一致  4184ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > §3 绑定判据：valueRef 指向不存在的 specKey ⇒ 播种当场抛错变红（⛔ 不静默回落哈希）  2296ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > §退役 · `model_forecast_bias` 与它的 valueRef 登记必须同时不存在（残留任一处即红）  2642ms
+
+ Test Files  1 passed (1)
+      Tests  21 passed (21)
+   Start at  23:57:45
+   Duration  240.65s (transform 15.45s, setup 0ms, collect 29.95s, tests 205.78s, environment 0ms, prepare 670ms)
+
+CAPTURED_RC=0
