@@ -1,0 +1,129 @@
+ACC-DUEDATE · 验收树构建失败取证 —— P2-gapfix 与 3root-integration 语义冲突
+================================================================
+取证时刻: 2026-10-04
+本树 HEAD: 9b9cfe7f3  (claude/handoff-acceptance-duedate, 从 origin/claude/handoff-3root-integration 2b384f30c 切出)
+
+派单要求的命令
+  git merge --no-edit claude/handoff-3root-P2-gapfix claude/handoff-tick-n-validation
+
+实测结果: 章鱼合并失败 —— "致命错误：merge program failed / 不应该执行章鱼式合并"
+         逐个合并 P2-gapfix 同样冲突, 2 个文件 UU:
+           apps/datacore/src/app.ts
+           apps/datacore/src/sim/seed-world.ts
+派单明令: "冲突即停手、把两边原文顶回来, ⛔ 不许自己裁"
+=> 本单按令停手, 未做任何冲突裁并。以下为两边原文。
+
+────────────────────────────────────────────────────────────────
+拓扑（这是冲突的真因, 不是文件级文本冲突）
+────────────────────────────────────────────────────────────────
+  origin/claude/handoff-3root-integration       tip 2b384f30c  = P1 + P3 线, 【不含 P2】
+  origin/claude/handoff-3root-P2-runtime-rederive 71b13d751  = P2 主线, 是 P2-gapfix 的祖先,
+                                                                 且【不是】integration 的祖先
+  origin/claude/handoff-3root-P2-gapfix         tip ec8e6065e  = P2 主线 + gapfix
+    merge-base(integration, P2-gapfix) = d7718eda4 (2026-10-02 23:37:18 +0800)
+    分支独有提交 17 / 主干独有提交 14
+    diff --stat: 232 files changed, 10336 insertions(+), 86 deletions(-)
+
+  origin/claude/handoff-tick-n-validation       tip f5eed4464  = 从 2b384f30c 切出, 4 提交,
+    只动 apps/datacore/src/app.ts + test/edge-active-counterfactual.test.ts
+
+=> P2 从未并进集成分支。这不是「并一条已验证的线」, 是「把一整条独立演进 17 提交、
+   跨 232 文件的支线并进来」, 其中两支各自独立改造了同一个函数与同一个回包。
+
+────────────────────────────────────────────────────────────────
+冲突 1/2 · apps/datacore/src/sim/seed-world.ts · deriveSeedBaseSnapshot
+────────────────────────────────────────────────────────────────
+两侧独立改造了同一个函数的【签名与返回类型】, 结构不可共存:
+
+<<<<<<< HEAD (3root-integration · P3 线)
+export async function deriveSeedBaseSnapshot(
+  repos: Repos,
+  tenantId: string,
+  /**
+   * 取值域册子 —— 与 `propagateTick` 第 10 位**同一份**（唯一访问器 `stateVarDomains()`，
+   * 喂给核的那一处见 `propagation-inputs.ts`）。默认值不是"第二张表"：它调的是**同一个**
+   * 模块级共享常量，只是让测试不必每处都写一遍。
+   */
+  domains: StateVarDomainLookup = stateVarDomains(),
+): Promise<{
+  state: TickState;
+  origin: SeedWorldSnapshotOrigin;
+  provenance: CellProvenance;
+  /** tick0 那一批的**单源账**（声明/未声明点名/饱和）—— 随会话首次读面下发。 */
+  stateVarReport: StateVarDisclosure;
+}> {
+=======
+export async function deriveSeedBaseSnapshot(
+  repos: Repos,
+  tenantId: string,
+): Promise<{ state: TickState; origin: SeedWorldSnapshotOrigin; provenance: CellProvenance; specCells: SpecCellSourceEntry[] }> {
+>>>>>>> claude/handoff-3root-P2-gapfix
+
+差异: 多一个 `domains` 形参 · 返回体多 `stateVarReport` (P3) vs 多 `specCells` (P2)
+      两条线都要在函数体里投影 tick0 世界, 但用的是两套不同的投影/记账机制。
+
+同文件另两处冲突同源:
+  · import 段 —— HEAD 引 `stateVarDomains`/`stateVarValueRef`; P2 引 `stateVarDisplayName`
+    + `./spec-cells.js` 的 `specCellIndex/specCellKey/specRefDiffs/worldCellKeys`
+  · 返回语句 —— HEAD `stateVarReport,` vs P2 `specCells: refSpecCells,`
+
+同文件非冲突区还并列着两套投影机制, 各自都自称「唯一入口」:
+  HEAD: import { mergeStateVarDisclosure, projectWorldCells } from "./world-projection.js";
+  P2  : sim/spec-cells.ts (新文件, 本单新增)
+
+────────────────────────────────────────────────────────────────
+冲突 2/2 · apps/datacore/src/app.ts (5 处)
+────────────────────────────────────────────────────────────────
+全部集中在 sim 会话建会话 / 读面回包。两侧各自新增【不同】字段:
+
+(a) import 段 (app.ts:70)
+  HEAD: import { mergeStateVarDisclosure, projectWorldCells } from "./sim/world-projection.js";
+  P2  : import { computeBaseFreshness, digestSpecCells, specCellIndexFor, worldCellKeys,
+                  type BaseFreshness, type BaseSnapshotSource, type SpecCellIndex }
+                  from "./sim/spec-cells.js";
+
+(b) 建会话 · deriveSeedBaseSnapshot 调用 (app.ts:2108)
+  HEAD: const derived = input.baseSnapshot === undefined
+          ? await deriveSeedBaseSnapshot(repos, c.tenantId, stateVarDomains())     // 3 实参
+          : null;
+  P2  : const derived = input.baseSnapshot === undefined
+          ? await deriveSeedBaseSnapshot(repos, c.tenantId)                        // 2 实参
+          : null;
+        + baseSource 块 (revision/asOf/specCells/digest) —— P2 新增
+
+(c) 会话 scope 回包 (app.ts:2154)
+  HEAD: baseSnapshotStateVarReport: derived.stateVarReport,          // P3 新增
+  P2  : baseSnapshotSourceSummary: { revision, asOf, specCellCount, specKeyCount },  // P2 新增
+
+(d) /world 读面 (app.ts:2345)
+  HEAD: baseStateVarReport: simBaseStateVarReport(s),
+  P2  : baseFreshness: await simBaseFreshnessOf(c, s),
+
+(e) /tick 读面 (app.ts:2959)
+  HEAD: baseStateVarReport: simBaseVarReport(s),   (tick n=0 那一批的单源账)
+  P2  : baseFreshness: await simBaseFreshnessOf(c, s),
+
+⚠ (c)(d)(e) 三处严格说是「两侧各自加分字段」, 表面上可并集;
+  但 (a)(b) 两处是签名/实参冲突 —— 要接哪一套投影机制必须先裁决,
+  而该裁决决定 (c)(d)(e) 能不能各自成立。**这不是文本合并, 是设计裁决。**
+
+────────────────────────────────────────────────────────────────
+自动合并成功但需要人核的 §8 文档
+────────────────────────────────────────────────────────────────
+docs/SYSTEM-ONTOLOGY.md 自动合并成功 (+17 行, 无冲突标记)。
+P2 侧带进: §3「规格基值时效 (BaseFreshness)」新条目 ·
+§4 事件表新增 `sim.session_reanchored` 行 · §8 新增 `G-SPECBASE-ASOF` 断点条目。
+这些条目本身与本树 P3 侧无同位置冲突, 故 git 未报冲突。**未裁决, 未提交。**
+
+────────────────────────────────────────────────────────────────
+本单处置
+────────────────────────────────────────────────────────────────
+1. 未做任何冲突裁并; 未取并集; 未提交任何一侧的冲突片段。
+2. 派单指定的「三线合一」验收树【无法构建】。
+3. 验收改在【已声明降级】的树上做:
+     claude/handoff-acceptance-duedate = origin/claude/handoff-3root-integration
+                                      + claude/handoff-tick-n-validation (该线可干净合并)
+   偏差 = 【不含 P2-gapfix】。影响面: P2 是「规格基值时效 BaseFreshness」诚实位
+   (tick0 基值 vs 对象库 props 的三态时效), 不在扰动传导路径上;
+   但两支都改了 seed-world.ts 的 tick0 世界派生, 故 tick0 世界字节可能与本单理想树不同。
+   => 本单所有结论须按「无 P2」档读; 已在 NOT-MEASURED 逐条登记。
