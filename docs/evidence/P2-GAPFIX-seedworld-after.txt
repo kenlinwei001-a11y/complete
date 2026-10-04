@@ -1,0 +1,26 @@
+WO-3ROOT-P2 缺口B · 补齐两处调用点之后：sim-seed-world **4/4 全绿**（PRD §七 A1③ 点名的既有回归）
+树：/Users/apple/deploy/complete/.claude/worktrees/agent-a2370c3515ec2edb6
+分支：claude/handoff-3root-P2-gapfix @ 4d5c95273
+命令：pnpm --filter datacore exec vitest run sim-seed-world --maxWorkers=2 --testTimeout=180000
+测定：2026-10-04 18:26:36
+----------------------------------------
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/agent-a2370c3515ec2edb6/apps/datacore
+
+stdout | test/sim-seed-world.seam.test.ts > WO-SIM-SEED-WORLD · 种子世界接缝 > ⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身
+[SIM-SEED-WORLD ⑤b] 白名单对象=223 每对象最多7格 ⇒ 批大小=71 批数=4（上限=500）
+
+stdout | test/sim-seed-world.seam.test.ts > WO-SIM-SEED-WORLD · 种子世界接缝 > ⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身
+[SIM-SEED-WORLD ⑤b] 合并后 1167 格（一次发完会是 1167>500 ⇒ truncated:true，这就是本条曾经的红）
+
+ ✓ test/sim-seed-world.seam.test.ts (4 tests) 70655ms
+   ✓ WO-SIM-SEED-WORLD · 种子世界接缝 > ① 播种 → GET /a/v1/sim/sessions 里有一条 RUNNING(curTick≥1)、baseSnapshot 非空；② tick 态落盘且真动过；③ 幂等  15567ms
+   ✓ WO-SIM-SEED-WORLD · 种子世界接缝 > ⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身  25529ms
+   ✓ WO-SIM-SEED-WORLD · 种子世界接缝 > ⑥ 确定性（R6）：同一份世界重播一遍，选出来的落点与幅度**逐字节一致**  29130ms
+   ✓ WO-SIM-SEED-WORLD · 种子世界接缝 > ④ 诚实缺席：零传导规则/零物化对象的租户**不建空世界**（空 baseSnapshot 的 RUNNING = 另一种占位）  426ms
+
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+   Start at  18:26:36
+   Duration  82.18s (transform 6.01s, setup 0ms, collect 10.30s, tests 70.65s, environment 0ms, prepare 363ms)
+

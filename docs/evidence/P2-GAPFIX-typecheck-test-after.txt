@@ -1,0 +1,6 @@
+WO-3ROOT-P2 缺口B · 补齐之后：tsc -p tsconfig.typecheck.json **RC=0、0 行输出**
+树：/Users/apple/deploy/complete/.claude/worktrees/agent-a2370c3515ec2edb6
+分支：claude/handoff-3root-P2-gapfix @ 4d5c95273
+命令：pnpm --filter datacore exec vitest run sim-seed-world --maxWorkers=2 --testTimeout=180000
+测定：2026-10-04 18:25
+----------------------------------------
