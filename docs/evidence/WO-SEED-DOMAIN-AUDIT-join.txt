@@ -1,0 +1,52 @@
+[金丝雀A·工具活着] PUBLISHED 规则 = 55；已知负边 demo_forecast_bias_to_order_demand coeff=-0.222
+
+目标格(类型·量) 总数 = 39；已声明域的 = 36；未声明 = 3
+净入流符号单一 = 36
+  ↑ 其中指向**吸收边界**（该侧 band=0 硬夹）= 1  ← 这一项就是 P1 形态的一般化量
+
+  🔴 Order|demandPressure  域=[0,100]rest0  净方向=-1  入流贡献并集=[-19.5360, -0.2220]  只能被压向硬地板 min=rest
+      ← demo_forecast_bias_to_order_demand  (Model|forecastBias) coeff=-0.222  源播种区间=[1.0000, 88.0000]
+
+── 反向金丝雀：符号单一但边界**不**吸收的格，不许被上面那条判据误报 ──
+   Base|loadIndex: oneSided=true 方向=1 上界带=25 ⇒ intoCeil=false（须为 false）
+   Customer|receivablePressure: oneSided=true 方向=1 上界带=25 ⇒ intoCeil=false（须为 false）
+   WorkOrder|releasePressure: oneSided=true 方向=1 上界带=25 ⇒ intoCeil=false（须为 false）
+
+── 已声明目标格全表（* = 符号单一）──
+*  ARInvoice|overduePressure              域=[0,100]rest0 入边=1 入流并集=[0.9466, 13.5763]
+*  Base|loadIndex                         域=[0,100]rest0 入边=1 入流并集=[5.2319, 20.6233]
+*  Certification|qualificationQueue       域=[0,∞]rest0 入边=1 入流并集=[1.5554, 6.1312]
+*  ChangeoverMatrix|changeoverPressure    域=[0,100]rest0 入边=1 入流并集=[3.4879, 13.7489]
+*  CustomerLocation|deliveryHoldRisk      域=[0,100]rest0 入边=1 入流并集=[1.1832, 16.9704]
+*  Customer|receivablePressure            域=[0,100]rest0 入边=1 入流并集=[1.2580, 2.8426]
+*  DefectRecord|defectPressure            域=[0,100]rest0 入边=1 入流并集=[9.9648, 9.9662]
+*  ExceptionEvent|handlingBacklog         域=[0,∞]rest0 入边=1 入流并集=[0.0124, 0.2171]
+*  FinishedGoodsInventory|drawdownPressure 域=[0,100]rest0 入边=1 入流并集=[5.2319, 20.6233]
+*  IncomingInspection|queueDays           域=[0,∞]rest0 入边=1 入流并集=[0.0000, 22.2000]
+*  InterBaseTransfer|transferPressure     域=[0,100]rest0 入边=1 入流并集=[8.2336, 10.9618]
+*  Line|blockedPressure                   域=[0,100]rest0 入边=1 入流并集=[17.9080, 20.3500]
+*  Line|utilPressure                      域=[0,100]rest0 入边=1 入流并集=[13.7227, 18.2697]
+*  MaintPlan|windowSqueeze                域=[0,100]rest0 入边=1 入流并集=[10.9781, 14.6157]
+*  MaintenanceOrder|repairBacklog         域=[0,∞]rest0 入边=1 入流并集=[5.6250, 10.0800]
+*  MaterialAlternative|switchPressure     域=[0,100]rest0 入边=1 入流并集=[0.0000, 11.3225]
+*  MaterialBalance|gapPressure            域=[0,100]rest0 入边=1 入流并集=[0.0000, 13.2096]
+*  MaterialBatch|turnoverPressure         域=[0,100]rest0 入边=1 入流并集=[0.0000, 9.4354]
+   Material|shortageRisk                  域=[0,100]rest0 入边=6 入流并集=[-10.5450, 9.1575]
+   Model|costPressure                     域=[0,100]rest0 入边=3 入流并集=[-14.9682, 1.2636]
+   Model|demandLoad                       域=[0,100]rest0 入边=4 入流并集=[-0.8220, 0.4194]
+*  Model|supplyRisk                       域=[0,100]rest0 入边=2 入流并集=[0.0000, 8.2560]
+*  OrderLine|splitPressure                域=[0,100]rest0 入边=2 入流并集=[0.0000, 12.1406]
+*  OrderPromise|promiseRisk               域=[0,100]rest0 入边=1 入流并集=[0.0000, 9.7125]
+*  Order|costPressure                     域=[0,100]rest0 入边=1 入流并集=[0.6841, 1.0783]
+🔴 Order|demandPressure                   域=[0,100]rest0 入边=1 入流并集=[-19.5360, -0.2220]
+*  Order|orderChurn                       域=[0,100]rest0 入边=1 入流并集=[0.8283, 11.8793]
+*  Order|shortageRisk                     域=[0,100]rest0 入边=1 入流并集=[0.0000, 0.0000]
+*  OverdueRecord|collectionPressure       域=[0,100]rest0 入边=1 入流并集=[1.4199, 20.3645]
+*  Process|queuePressure                  域=[0,100]rest0 入边=3 入流并集=[0.2562, 14.3284]
+*  PurchaseOrder|expeditePressure         域=[0,100]rest0 入边=2 入流并集=[0.0000, 9.4354]
+*  QualityLot|inspectBacklog              域=[0,∞]rest0 入边=1 入流并集=[0.1853, 2.7800]
+*  Shipment|inboundExpeditePressure       域=[0,100]rest0 入边=1 入流并集=[9.6059, 12.7888]
+*  Supplier|reviewPressure                域=[0,100]rest0 入边=1 入流并集=[0.0000, 14.8000]
+*  WIPLot|feedPressure                    域=[0,100]rest0 入边=1 入流并集=[0.2594, 3.8920]
+*  WorkOrder|releasePressure              域=[0,100]rest0 入边=2 入流并集=[3.8457, 13.8667]
+CAPTURED_RC=0

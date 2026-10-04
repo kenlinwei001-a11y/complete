@@ -1,0 +1,38 @@
+① 派生支（hash 占位）全域：n=2192  实测 min=0 max=100  负值格=0
+   结构判据：seedHash01(s)=((FNV1a(s)>>>0)%1000)/1000 ∈ [0,0.999] ⇒ round(×100) ∈ [0,100] ⇒ 恒 ≥ 0
+
+② forecastBias（声明 [-100,100] rest 0）：6 格；出处 {"derived":6}；实测值 [1,8,50,79,88,88]；负值格数 = 0
+   ⇒ 声明域的一半 [-100, 0) 上**一格都没有**
+
+③ P1 后果（**零扰动臂** = 没播任何扰动，6 拍）：订单 150 张，越基值格次 = 0/900  逐拍 [t1=0 t2=0 t3=0 t4=0 t5=0 t6=0]
+   终拍相对各自基值：Δmax=0.000000  Δmin=-49.498759  越基值张数=0/150
+
+④ tick0 入口投影 min 侧被收回的格 = 17（原值为负 ⇒ 被声明下界 0 硬夹）：
+   obj_material_al_foil.shortageRisk: raw=-78.1686 → 0
+   obj_material_cu_foil.shortageRisk: raw=-52.6997 → 0
+   obj_material_elyte.shortageRisk: raw=-161.418 → 0
+   obj_material_sep_film.shortageRisk: raw=-24.0963 → 0
+   obj_model_2170-NCM.supplyRisk: raw=-29.4419 → 0
+   obj_model_4680-LFP.supplyRisk: raw=-28.8571 → 0
+   obj_model_4680-NCM.supplyRisk: raw=-29.4419 → 0
+   obj_model_方形-LFP.supplyRisk: raw=-28.8571 → 0
+   obj_model_方形-NCM.supplyRisk: raw=-29.4419 → 0
+   obj_model_圆柱-LFP.supplyRisk: raw=-28.8571 → 0
+   obj_purchaseorder_po_1.expeditePressure: raw=-14.2857 → 0
+   obj_purchaseorder_po_12.expeditePressure: raw=-32.4324 → 0
+   obj_purchaseorder_po_18.expeditePressure: raw=-20 → 0
+   obj_purchaseorder_po_24.expeditePressure: raw=-27.2727 → 0
+   obj_purchaseorder_po_29.expeditePressure: raw=-25 → 0
+   obj_purchaseorder_po_6.expeditePressure: raw=-30 → 0
+   obj_purchaseorder_po_7.expeditePressure: raw=-18.1818 → 0
+   涉及量：{"shortageRisk":4,"supplyRisk":6,"expeditePressure":7}
+
+⑤ Model.supplyRisk 逐拍区间（judge ⑥「首拍哑火」是否永久）：
+   tick0 = [0,0]
+   tick1 = [1.7866, 2.3428]
+   tick2 = [4.4393, 5.4894]
+   tick3 = [9.0213, 10.3464]
+   tick4 = [14.0812, 15.5500]
+   tick5 = [18.7939, 20.3092]
+   tick6 = [22.8291, 24.3284]
+CAPTURED_RC=0

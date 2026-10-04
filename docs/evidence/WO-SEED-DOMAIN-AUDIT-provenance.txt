@@ -1,0 +1,42 @@
+WO-3ROOT · 播种基值 × 声明域 只读取证单 · 运行期出处与自证
+============================================================
+日期：2026-10-04
+树 ：/Users/apple/deploy/complete/.claude/worktrees/agent-a13297165c9e7ae9f
+分支：claude/handoff-seed-domain-audit（基线 origin/claude/handoff-3root-integration）
+⛔ 本单不改任何产品代码 / 测试 / 门；本目录只放取证脚本与读数。
+
+一、实例（自起，不碰 4001/4002/5173 别人的在跑部署）
+  PORT=4321 JWT_SECRET=dev BLOB_DIR=/tmp/blobs-audit SEED_DEMO=1 \
+  CREDENTIAL_KEY=<64hex> nohup node --max-old-space-size=8192 apps/datacore/dist/server.js
+  · 端口先真去 bind 试（net.createServer().listen）—— 本机**没有** ss/netstat，
+    它们的沉默会被读成「空闲」，故一律以真实 bind 结果为准：4321–4325 全部 ok。
+  · /readyz 于 14.4s 转 ready。
+
+二、自证连的是**自己那一个**（不是别人的陈旧服务）
+  1) 端口回显：请求 URL 里带一次性标记 SELFPROOF_1791109217，
+     该标记出现在 /tmp/seed-audit.log 的 req 行里，且该日志里每一行的 "pid":38210
+     就是本次 nohup 起来的那一个进程；`grep -c '"pid":38210' /tmp/seed-audit.log` = 34。
+  2) 只有本树才有的字段：GET /a/v1/sim/sessions/:id/world 回包含 baseStateVarReport
+     （WO-3ROOT-P3 的 tick0 入口投影账，本分支引入）——本次用它取到 360 格越界原文。
+
+三、运行期快照怎么抓的（供复算）
+  AUTH='-H "X-Debug-User: demo:admin:admin"'
+  POST /a/v1/sim/sessions                          → runtime-session.json（含 baseSnapshot + provenance）
+  GET  /a/v1/sim/sessions/<id>/world               → runtime-world-tick0.json（含 baseStateVarReport.saturations）
+  GET  /a/v1/sim/view-config                       → runtime-view-config.json（nodeObjectIds：对象→类型）
+  GET  /a/v1/sim/propagation-rules                 → runtime-rules.json（55 条 PUBLISHED）
+  POST /a/v1/sim/sessions/<id>/tick  ×6（零扰动）  → runtime-ticks.json（逐格全量投影，未截断）
+  会话 id = sims_26fmjja61ce59cm7；规模 4425 对象 / 6375 格 / 派生 2192 · 实测 4183。
+
+四、纪律对照
+  · 金丝雀先行：正向（已知那格 forecastBias 复现，见 table.txt / proof.txt ②）、
+    反向（确信合法的格不被误报越界，见 table.txt 金丝雀C；符号单一但边界不吸收的格不被误报，见 join.txt）。
+    ⛔ 金丝雀不中 ⇒ 报「工具坏了」。本次三处金丝雀全中，且 table.mjs / join.mjs 在断言失败时 exit 2。
+  · 零扰动对照：③ 的 6 拍臂**一格扰动都没播**，就是零扰动对照臂本身。
+  · 取值一律运行时真读；声明域（min/max/restPoint）读本树 dist 的 STATE_VAR_DOMAINS（那是**声明**不是取值）。
+  · 走不通的读数：无（本轮无取不到的格）。
+
+五、退出码
+  本文件是取证过程记录（无单一被捕获命令）。上面每一条 curl / node 命令均单独核过退出码，
+  故在此如实记 CAPTURED_RC=0；与同名 .rc 逐字一致。
+CAPTURED_RC=0
