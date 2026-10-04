@@ -22,6 +22,21 @@ export const DelayedContributionSchema = z.object({
   targetStateVar: z.string(),
   amount: z.number(),
   ruleKey: z.string(),
+  /**
+   * 这笔延迟贡献里**有多少来自哪条扰动**（扰动 id → 金额）。WO-PERT-ATTRIBUTION。
+   *
+   * ⚠ 它是**透传件，不是事实源**：排这笔 pending 时把当时的归因拆解抄进来，到达那一拍照抄回去。
+   *   拆解的真身只在本拍出口 `propagateTick(...).perturbationAttribution` 里。
+   *   之所以必须随 pending 走：本类型**刻意不记 `fromObjectId`**（见 `causal-graph.ts:271`），
+   *   到达时无从回溯来源 ⇒ 不抄这一份，归因会在每一次带 delay 的跳上丢掉，
+   *   而设备链恰好有一跳 `WorkOrder→Model` 带 `delayTicks=1`（本单的样例就是它）。
+   *
+   * `.optional()` 而**不是** `.default(null)`：本字段引入前落库/落盘的快照读回来没有这一项，
+   *   强制必填会让全部老 pending 直接解析失败；且 `.optional()` 不会把既有构造点一次性打红。
+   * `undefined` 与「有值」在语义上不同：前者 = **这笔没在归因**（老快照 / 无扰动），
+   *   后者 = 归因拆解，允许为空对象（= 这条贡献全部来自自然轨迹，不归任何扰动）。
+   */
+  attribution: z.record(z.string(), z.number()).optional(),
 });
 export type DelayedContribution = z.infer<typeof DelayedContributionSchema>;
 

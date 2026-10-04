@@ -182,7 +182,10 @@ export class SkillProbeRunner {
       version: 1,
       name: `Probe: ${skill.name}`,
       description: `Skill probe for ${skill.key}`,
-      model: "claude-opus-4-8",
+      // 空串 = 继承租户「用途绑定矩阵」的 agent 模型（契约 `AgentDefinitionSchema.model` 原文：
+      // 「写死具体模型会盖过用户在 LLM Provider 里配的绑定」）。归因链：`engine.ts` 的
+      // `agent.model || undefined` → `roleModel(tenant, "agent", …)` → 租户绑定 → env `QOS_AGENT_MODEL`。
+      model: "",
       systemPrompt,
       tools: this.buildProbeTools(skill),
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "PRE_CHECK" },
@@ -224,7 +227,9 @@ export class SkillProbeRunner {
       version: 1,
       name: `Twin: ${skill.name}`,
       description: `Skill twin for ${skill.key}`,
-      model: "claude-opus-4-8",
+      // 同 probe：空串 = 继承系统 LLM 配置（配对对照的 twin 必须与 probe 同一解析口径，
+      // 否则 behaviorGain 量的就不是「有没有 skill」而是「两个模型差多少」）。
+      model: "",
       systemPrompt,
       tools: this.buildProbeTools(skill),
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "PRE_CHECK" },
