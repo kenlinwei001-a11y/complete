@@ -1,0 +1,48 @@
+═══ D · 铁律 0.5：这四个量「谁消费」——追到数据键而非注释 ═══
+
+① 先说工具：硬编码名 grep 在本问题上**结构性无效**（金丝雀当场证伪）
+   金丝雀命令：grep -rnE 'props\[["'\''](a-zA-Z)+["'\'']\]|props\?\.[a-zA-Z]+' apps/frontend-shell/src
+   期望：至少命中 WhatIfView.tsx 那类已知的属性取值 ⇒ 实得 0 命中 ⇒ **判工具坏了，不判「没有消费者」**（铁律 0.6 判据 5）。
+   真因：前端取对象属性一律走**动态键**，从不写死名字 ——
+     · apps/frontend-shell/src/views/WhatIfView.tsx:253  currentObject.props[prop]  （prop 是用户选的列）
+     · apps/frontend-shell/src/mocks/handlers.ts:3531   r.props[prop]（列筛选）
+     · apps/frontend-shell/src/mocks/handlers.ts:3526   JSON.stringify(r.props)（全文检索）
+   ⇒ 「按名 grep」在这一族上量不到任何东西。
+
+② 能追到的消费方（按**数据键 / 数组元素**形态取，剔除注释）
+   · apps/frontend-shell/src/views/sim/unified/console0828/eventCatalog.ts:221,263
+       preferStateVars: ["leadDays","promiseRisk","shortageRisk"] / ["shortageRisk"]
+       ⇒ 消费的是**推演世界态**的那个值（已夹到 0），不是对象 props 里的负值。
+   · packages/contracts/src/sim-drill.ts:316,317  drill 表：MATERIAL_DELAY / MATERIAL_SHORTAGE → Material.shortageRisk（扇出 5）
+       ⇒ 同样读推演世界态。
+   · apps/datacore 规则表 5 条出边（见 WO-NEG-PRESSURE-analyze.txt ▸ 出边 Material.shortageRisk）
+       ⇒ **实际传导金额实测全 ≥ 0**：tick1/tick2 两拍，5 条边 Σamount=+109.53 / +133.89 等，amount<0 的行数 **0**。
+         真因：tick0 出口投影已把该格压到 0，核在下一拍读到的是 0。
+
+③ 负值**实际可被读到的位置**（穷举）
+   (a) 对象层 props：GET /a/v1/objects/{Material,Model,PurchaseOrder}/<id> 直接读到 −161.418 等（本单证据 jsonl 实测）
+   (b) 建会话回执 baseStateVarReport.saturations[].raw（本单 17 条实测）
+   (c) 逐拍回执 stateVarReport.saturations[].raw（批② 84 条实测）
+   ⛔ 而 (a) 是否上屏 —— **未量**：前端走动态键，须真浏览器开 Material 台账选 shortageRisk 列实测。
+      **NOT-MEASURED**，见 verdict 的未决清单。
+
+④ 下游 edge 全量符号（取自回执 trace，不是源码推断）
+   [WO-NEG-PRESSURE-ticks-1.json] demo_material_shortage_to_alt_switch: 行=3 amount<0=0 Σ=22.675790
+   [WO-NEG-PRESSURE-ticks-1.json] demo_material_shortage_to_balance_gap: 行=4 amount<0=0 Σ=39.664659
+   [WO-NEG-PRESSURE-ticks-1.json] demo_material_shortage_to_batch_turnover: 行=12 amount<0=0 Σ=84.995697
+   [WO-NEG-PRESSURE-ticks-1.json] demo_material_shortage_to_model_supply_risk: 行=18 amount<0=0 Σ=12.387994
+   [WO-NEG-PRESSURE-ticks-1.json] demo_material_shortage_to_po_expedite: 行=15 amount<0=0 Σ=109.530545
+   [WO-NEG-PRESSURE-ticks-1.json] demo_order_demand_pressure: 行=148 amount<0=0 Σ=27.419539
+   [WO-NEG-PRESSURE-ticks-1.json] demo_order_demand_to_line_split: 行=249 amount<0=0 Σ=1079.388281
+   [WO-NEG-PRESSURE-ticks-1.json] demo_order_shortage_to_promise_risk: 行=46 amount<0=0 Σ=157.342500
+   [WO-NEG-PRESSURE-ticks-2.json] demo_material_shortage_to_alt_switch: 行=5 amount<0=0 Σ=27.602131
+   [WO-NEG-PRESSURE-ticks-2.json] demo_material_shortage_to_balance_gap: 行=8 amount<0=0 Σ=48.743907
+   [WO-NEG-PRESSURE-ticks-2.json] demo_material_shortage_to_batch_turnover: 行=24 amount<0=0 Σ=104.451228
+   [WO-NEG-PRESSURE-ticks-2.json] demo_material_shortage_to_model_supply_risk: 行=42 amount<0=0 Σ=16.568685
+   [WO-NEG-PRESSURE-ticks-2.json] demo_material_shortage_to_po_expedite: 行=30 amount<0=0 Σ=133.892587
+   [WO-NEG-PRESSURE-ticks-2.json] demo_model_supply_risk_to_order_shortage: 行=150 amount<0=0 Σ=85.170008
+   [WO-NEG-PRESSURE-ticks-2.json] demo_order_demand_pressure: 行=118 amount<0=0 Σ=17.331787
+   [WO-NEG-PRESSURE-ticks-2.json] demo_order_demand_to_line_split: 行=202 amount<0=0 Σ=670.260943
+   [WO-NEG-PRESSURE-ticks-2.json] demo_order_shortage_to_promise_risk: 行=46 amount<0=0 Σ=157.342500
+   [WO-NEG-PRESSURE-ticks-2.json] demo_po_expedite_to_inspection_queue: 行=19 amount<0=0 Σ=261.153953
+   [WO-NEG-PRESSURE-ticks-2.json] demo_po_expedite_to_supplier_review: 行=19 amount<0=0 Σ=51.991890

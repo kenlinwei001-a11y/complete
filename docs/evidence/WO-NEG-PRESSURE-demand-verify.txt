@@ -1,0 +1,35 @@
+
+═══ WO-NEG-PRESSURE-ticks-1.json · demandPressure 夹值格 32 条 ═══
+  λ(demandPressure) = 0.37   rest = 0（压力族 min=restPoint=0）
+  ✅ obj_order_SO-3420: 实测 raw=-10.1 = (1−0.37)×1 + (-11.1) + 0.37×(1)  [取1位=-10.1]
+        源: demo_forecast_bias_to_order_demand  coeff=-0.222  from=obj_model_4680-NCM  amount=-11.1
+  ✅ obj_order_SO-3445: 实测 raw=-11.538 = (1−0.37)×6 + (-17.538) + 0.37×(6)  [取3位=-11.538]
+        源: demo_forecast_bias_to_order_demand  coeff=-0.222  from=obj_model_方形-NCM  amount=-17.538
+  ✅ obj_order_SO-3470: 实测 raw=-9.536 = (1−0.37)×10 + (-19.536) + 0.37×(10)  [取3位=-9.536]
+        源: demo_forecast_bias_to_order_demand  coeff=-0.222  from=obj_model_圆柱-LFP  amount=-19.536
+  落盘 world: demandPressure 共 150 格，为负 0 格；min=0
+
+═══ WO-NEG-PRESSURE-ticks-2.json · demandPressure 夹值格 52 条 ═══
+  λ(demandPressure) = 0.37   rest = 0（压力族 min=restPoint=0）
+  落盘 world: demandPressure 共 150 格，为负 0 格；min=0
+
+═══ 全量复算小结：MATCH=84 MISMATCH=0 SKIP=0 ═══
+
+═══ 源量 Model.forecastBias 的取值与出处章 ═══
+  obj_model_2170-NCM: forecastBias=1  出处="derived"
+  obj_model_4680-LFP: forecastBias=88  出处="derived"
+  obj_model_4680-NCM: forecastBias=50  出处="derived"
+  obj_model_方形-LFP: forecastBias=8  出处="derived"
+  obj_model_方形-NCM: forecastBias=79  出处="derived"
+  obj_model_圆柱-LFP: forecastBias=88  出处="derived"
+  ⇒ 源值全非负：min=1 max=88；× coeff(−0.222) ⇒ 每条边 amount ≤ 0
+
+═══ 下游：谁消费 Order.demandPressure ═══
+  demo_order_demand_pressure: Order.demandPressure --order_for_model--> Model.demandLoad  coeff=0.00698967 combine=sum status=PUBLISHED
+     desc=订单接得多 ⇒ 该型号要生产的量跟着涨（订单需求压力 × 0.018891 = 型号需求负载）
+     [WO-NEG-PRESSURE-ticks-1.json] trace 行数=148 其中 amount<0=0 Σamount=27.419539
+     [WO-NEG-PRESSURE-ticks-2.json] trace 行数=118 其中 amount<0=0 Σamount=17.331787
+  demo_order_demand_to_line_split: Order.demandPressure --order_has_line--> OrderLine.splitPressure  coeff=0.15609375 combine=sum status=PUBLISHED
+     desc=订单需求压力大 ⇒ 行项被拆分/改期（需求压力 = 订单行拆分压力）
+     [WO-NEG-PRESSURE-ticks-1.json] trace 行数=249 其中 amount<0=0 Σamount=1079.388281
+     [WO-NEG-PRESSURE-ticks-2.json] trace 行数=202 其中 amount<0=0 Σamount=670.260943

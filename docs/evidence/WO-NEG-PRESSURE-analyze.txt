@@ -1,0 +1,147 @@
+═══ A · tick0 入口投影的 17 个负格：逐格手算 vs 实测 ═══
+（raw = 落进对象 props 的**派生式输出**；world 态里它已被压到 0 —— 两者**同时**存在，别混）
+
+  · obj_material_al_foil  props: dailyUse=461 leadTime=14 onHand=9558 inTransit=1941
+  ✅     shortageRisk  实测=-78.1686  手算全精度=-78.16857762627828  手算取 4 位=-78.1686  
+  · obj_material_cu_foil  props: dailyUse=275.1 leadTime=13 onHand=2596 inTransit=2865
+  ✅     shortageRisk  实测=-52.6997  手算全精度=-52.699717585213754  手算取 4 位=-52.6997  
+  · obj_material_elyte  props: dailyUse=242.6 leadTime=10 onHand=5173 inTransit=1169
+  ✅     shortageRisk  实测=-161.418  手算全精度=-161.4179719703215  手算取 3 位=-161.418  
+  · obj_material_sep_film  props: dailyUse=519.9 leadTime=17 onHand=9734 inTransit=1234
+  ✅     shortageRisk  实测=-24.0963  手算全精度=-24.0962628559791  手算取 4 位=-24.0963  
+
+  · obj_model_2170-NCM  n(出边)=7  各项=obj_material_pos_ncm=38.7623, obj_material_neg_graphite=51.0022, obj_material_sep_film=-24.0963, obj_material_elyte=-161.418, obj_material_cu_foil=-52.6997, obj_material_al_foil=-78.1686, obj_material_cell_case=20.5246
+  ✅     supplyRisk(AVG)  实测=-29.4419  手算全精度=-29.441928571428573  手算取 4 位=-29.4419  
+  · obj_model_4680-LFP  n(出边)=7  各项=obj_material_pos_lfp=42.8563, obj_material_neg_graphite=51.0022, obj_material_sep_film=-24.0963, obj_material_elyte=-161.418, obj_material_cu_foil=-52.6997, obj_material_al_foil=-78.1686, obj_material_cell_case=20.5246
+  ✅     supplyRisk(AVG)  实测=-28.8571  手算全精度=-28.85707142857143  手算取 4 位=-28.8571  
+  · obj_model_4680-NCM  n(出边)=7  各项=obj_material_pos_ncm=38.7623, obj_material_neg_graphite=51.0022, obj_material_sep_film=-24.0963, obj_material_elyte=-161.418, obj_material_cu_foil=-52.6997, obj_material_al_foil=-78.1686, obj_material_cell_case=20.5246
+  ✅     supplyRisk(AVG)  实测=-29.4419  手算全精度=-29.441928571428573  手算取 4 位=-29.4419  
+  · obj_model_方形-LFP  n(出边)=7  各项=obj_material_pos_lfp=42.8563, obj_material_neg_graphite=51.0022, obj_material_sep_film=-24.0963, obj_material_elyte=-161.418, obj_material_cu_foil=-52.6997, obj_material_al_foil=-78.1686, obj_material_cell_case=20.5246
+  ✅     supplyRisk(AVG)  实测=-28.8571  手算全精度=-28.85707142857143  手算取 4 位=-28.8571  
+  · obj_model_方形-NCM  n(出边)=7  各项=obj_material_pos_ncm=38.7623, obj_material_neg_graphite=51.0022, obj_material_sep_film=-24.0963, obj_material_elyte=-161.418, obj_material_cu_foil=-52.6997, obj_material_al_foil=-78.1686, obj_material_cell_case=20.5246
+  ✅     supplyRisk(AVG)  实测=-29.4419  手算全精度=-29.441928571428573  手算取 4 位=-29.4419  
+  · obj_model_圆柱-LFP  n(出边)=7  各项=obj_material_pos_lfp=42.8563, obj_material_neg_graphite=51.0022, obj_material_sep_film=-24.0963, obj_material_elyte=-161.418, obj_material_cu_foil=-52.6997, obj_material_al_foil=-78.1686, obj_material_cell_case=20.5246
+  ✅     supplyRisk(AVG)  实测=-28.8571  手算全精度=-28.85707142857143  手算取 4 位=-28.8571  
+
+  · obj_purchaseorder_po_1  props: shipDay=-2 etaDay=4 orderDay=-10 (窗口=14)
+  ✅     expeditePressure  实测=-14.2857  手算全精度=-14.285714285714286  手算取 4 位=-14.2857  
+  · obj_purchaseorder_po_12  props: shipDay=-12 etaDay=13 orderDay=-24 (窗口=37)
+  ✅     expeditePressure  实测=-32.4324  手算全精度=-32.432432432432435  手算取 4 位=-32.4324  
+  · obj_purchaseorder_po_18  props: shipDay=-2 etaDay=4 orderDay=-6 (窗口=10)
+  ✅     expeditePressure  实测=-20  手算全精度=-20  手算取 0 位=-20  
+  · obj_purchaseorder_po_24  props: shipDay=-3 etaDay=3 orderDay=-8 (窗口=11)
+  ✅     expeditePressure  实测=-27.2727  手算全精度=-27.272727272727273  手算取 4 位=-27.2727  
+  · obj_purchaseorder_po_29  props: shipDay=-2 etaDay=1 orderDay=-7 (窗口=8)
+  ✅     expeditePressure  实测=-25  手算全精度=-25  手算取 0 位=-25  
+  · obj_purchaseorder_po_6  props: shipDay=-3 etaDay=1 orderDay=-9 (窗口=10)
+  ✅     expeditePressure  实测=-30  手算全精度=-30  手算取 0 位=-30  
+  · obj_purchaseorder_po_7  props: shipDay=-2 etaDay=4 orderDay=-7 (窗口=11)
+  ✅     expeditePressure  实测=-18.1818  手算全精度=-18.181818181818183  手算取 4 位=-18.1818  
+
+═══ A 小节：手算逐位比对 MATCH=17 MISMATCH=0 ═══
+
+═══ B · 运行时规则表：入边（谁往这 4 个量里写） ═══
+规则总数=55；PUBLISHED=55
+
+  ▸ target=shortageRisk  入边 7 条
+     key=demo_alt_switch_to_material_shortage  MaterialAlternative.switchPressure --alt_for_material--> Material.shortageRisk
+        coefficient=-0.111 combine=sum clamp=null decay=null weightRef={"basis":"equal_share"} coefRef={"ruleKey":"C36","paramKey":"demo_alt_switch_to_material_shortage"} status=PUBLISHED
+        desc=替代料切换压力高 ⇒ Plan B 在启用，主料的短缺风险被缓解（替代料负反馈）
+     key=demo_batch_procurement_delay_to_material_shortage  MaterialBatch.procurementDelay --batch_replenishes_material--> Material.shortageRisk
+        coefficient=0.05946418 combine=sum clamp=null decay=null weightRef={"basis":"source_field_share","field":"qty"} coefRef={"ruleKey":"C36","paramKey":"demo_batch_procurement_delay_to_material_shortage"} status=PUBLISHED
+        desc=批次采购拖慢 ⇒ 物料开始缺
+     key=demo_inspection_queue_to_material_shortage  IncomingInspection.queueDays --inspection_for_material--> Material.shortageRisk
+        coefficient=0.074 combine=sum clamp=null decay=null weightRef={"basis":"equal_share"} coefRef={"ruleKey":"C36","paramKey":"demo_inspection_queue_to_material_shortage"} status=PUBLISHED
+        desc=来料检验排队 ⇒ 物料到了也不可用，短缺风险上抬（检验放行）
+     key=demo_model_supply_risk_to_order_shortage  Model.supplyRisk --model_demanded_by_order--> Order.shortageRisk
+        coefficient=0.2775 combine=sum clamp=null decay=null weightRef=null coefRef={"ruleKey":"C36","paramKey":"demo_model_supply_risk_to_order_shortage"} status=PUBLISHED
+        desc=型号缺料 ⇒ 订这个型号的单子交不齐（型号缺料 × 0.75 = 订单缺口风险）
+     key=demo_po_procurement_delay_to_material_shortage  PurchaseOrder.procurementDelay --po_replenishes_material--> Material.shortageRisk
+        coefficient=0.07928545 combine=sum clamp=null decay=null weightRef={"basis":"source_field_share","field":"qty"} coefRef={"ruleKey":"C36","paramKey":"demo_po_procurement_delay_to_material_shortage"} status=PUBLISHED
+        desc=采购流程本身拖慢 ⇒ 物料开始缺（采购延迟 = 物料短缺风险）
+     key=demo_supplier_delay_to_material_shortage  Supplier.deliveryDelay --supplier_supplies_material--> Material.shortageRisk
+        coefficient=0.08919627 combine=sum clamp=null decay=null weightRef={"basis":"source_field_share","field":"contractedSupplyTon"} coefRef={"ruleKey":"C36","paramKey":"demo_supplier_delay_to_material_shortage"} status=PUBLISHED
+        desc=供应商交期拖长 ⇒ 它供的物料开始缺（交付延迟 × 0.241071 = 物料短缺风险）
+     key=demo_supplier_procurement_delay_to_material_shortage  Supplier.procurementDelay --supplier_supplies_material--> Material.shortageRisk
+        coefficient=0.04955336 combine=sum clamp=null decay=null weightRef={"basis":"source_field_share","field":"contractedSupplyTon"} coefRef={"ruleKey":"C36","paramKey":"demo_supplier_procurement_delay_to_material_shortage"} status=PUBLISHED
+        desc=供应商侧采购流程拖慢 ⇒ 物料开始缺
+
+  ▸ target=supplyRisk  入边 2 条
+     key=demo_material_shortage_to_model_supply_risk  Material.shortageRisk --material_used_by_model--> Model.supplyRisk
+        coefficient=0.161875 combine=sum clamp=null decay=null weightRef={"basis":"bom_cost_share"} coefRef={"ruleKey":"C36","paramKey":"demo_material_shortage_to_model_supply_risk"} status=PUBLISHED
+        desc=物料缺 ⇒ 用到它的型号供应告急（物料短缺 × 0.4375 = 型号缺料风险）
+     key=demo_wo_release_to_model_supply_risk  WorkOrder.releasePressure --wo_for_model--> Model.supplyRisk
+        coefficient=0.115625 combine=sum clamp=null decay=null weightRef={"basis":"source_field_share","field":"qtyPlanned"} coefRef={"ruleKey":"C36","paramKey":"demo_wo_release_to_model_supply_risk"} status=PUBLISHED
+        desc=工单下达受阻 ⇒ 该型号供给风险上升。接上这一跳，设备故障就自动继承既有的「型号→订单→交付承诺」两跳
+
+  ▸ target=expeditePressure  入边 2 条
+     key=demo_balance_gap_to_po_expedite  MaterialBalance.gapPressure --balance_drives_po--> PurchaseOrder.expeditePressure
+        coefficient=0.185 combine=sum clamp=null decay=null weightRef={"basis":"equal_share"} coefRef={"ruleKey":"C36","paramKey":"demo_balance_gap_to_po_expedite"} status=PUBLISHED
+        desc=MRP 平衡表算出缺口 ⇒ 驱动同料采购单催货（缺口驱动加急）
+     key=demo_material_shortage_to_po_expedite  Material.shortageRisk --material_supplied_by_po--> PurchaseOrder.expeditePressure
+        coefficient=0.185 combine=sum clamp=null decay=null weightRef=null coefRef={"ruleKey":"C36","paramKey":"demo_material_shortage_to_po_expedite"} status=PUBLISHED
+        desc=物料缺 ⇒ 对应采购单被催（物料短缺 × 0.5 = 采购加急压力）
+
+  ▸ target=demandPressure  入边 1 条
+     key=demo_forecast_bias_to_order_demand  Model.forecastBias --model_demanded_by_order--> Order.demandPressure
+        coefficient=-0.222 combine=sum clamp=null decay=null weightRef=null coefRef={"ruleKey":"C36","paramKey":"demo_forecast_bias_to_order_demand"} status=PUBLISHED
+        desc=预测偏差大 ⇒ 订单侧需求压力被放大（预测失真传到执行层）
+
+═══ C · 逐拍回执（tick1 / tick2 零扰动对照臂） ═══
+  ▸ WO-NEG-PRESSURE-ticks-1.json: tick=undefined  饱和总数=1128
+     loadIndex: n=13 min侧=0 max侧=13 Σraw=1359.449512 raw∈[79.4083518, 112.924971225763]
+     receivablePressure: n=3 min侧=0 max侧=3 Σraw=328.380873 raw∈[81.150911091742, 151.014935931049]
+     deliveryHoldRisk: n=1 min侧=0 max侧=1 Σraw=76.190387 raw∈[76.190386686246, 76.190386686246]
+     blockedPressure: n=105 min侧=0 max侧=105 Σraw=10781.661671 raw∈[76.34262, 119.32591]
+     demandLoad: n=1 min侧=0 max侧=1 Σraw=92.352224 raw∈[92.35222379076, 92.35222379076]
+     costPressure: n=55 min侧=0 max侧=55 Σraw=4706.26935 raw∈[75.07722725, 91.462924884615]
+     demandPressure: n=32 min侧=0 max侧=32 Σraw=-256.702 raw∈[-19.536, -0.536]
+     splitPressure: n=3 min侧=0 max侧=3 Σraw=233.390625 raw∈[77.743125, 77.904375]
+     queuePressure: n=650 min侧=0 max侧=650 Σraw=72667.719844 raw∈[105.449200559936, 115.436482304446]
+     expeditePressure: n=5 min侧=0 max侧=5 Σraw=495.588112 raw∈[91.253607, 103.797051]
+     feedPressure: n=260 min侧=0 max侧=260 Σraw=23864.176482 raw∈[90.034101420948, 93.668432354656]
+     ── demandPressure 逐格（32 条）──
+        obj_order_SO-3420 raw=-10.1 -> value=0 bound=min
+        obj_order_SO-3445 raw=-11.538 -> value=0 bound=min
+        obj_order_SO-3470 raw=-9.536 -> value=0 bound=min
+        obj_order_SO-3481 raw=-7.1 -> value=0 bound=min
+        obj_order_SO-3486 raw=-6.538 -> value=0 bound=min
+        obj_order_SO-3529 raw=-16.536 -> value=0 bound=min
+        obj_order_SO-900056 raw=-15.536 -> value=0 bound=min
+        obj_order_SO-900077 raw=-0.776 -> value=0 bound=min
+        obj_order_SO-900090 raw=-5.536 -> value=0 bound=min
+        obj_order_SO-900134 raw=-2.536 -> value=0 bound=min
+        obj_order_SO-900151 raw=-9.536 -> value=0 bound=min
+        obj_order_SO-900174 raw=-14.536 -> value=0 bound=min
+        …（余 20 条）
+     ── 该拍落盘 world 里 demandPressure 共 150 格，取值分布（前 8）: obj_order_SO-3391=48.9, obj_order_SO-3402=5.9, obj_order_SO-3415=29.9, obj_order_SO-3420=0, obj_order_SO-3431=18.778, obj_order_SO-3437=4.778, obj_order_SO-3445=0, obj_order_SO-3452=46.224
+     落盘 world 里 demandPressure 为负的格数 = 0 ⇒ 与回执自洽（都是 0）
+     ── 该拍 forecastBias（−0.6 边的源）共 6 格: obj_model_2170-NCM=1, obj_model_4680-LFP=88, obj_model_4680-NCM=50, obj_model_方形-LFP=8, obj_model_方形-NCM=79, obj_model_圆柱-LFP=88
+  ▸ WO-NEG-PRESSURE-ticks-2.json: tick=undefined  饱和总数=1299
+     loadIndex: n=13 min侧=0 max侧=13 Σraw=1314.251311 raw∈[82.397161060947, 109.818070671399]
+     receivablePressure: n=5 min侧=0 max侧=5 Σraw=547.363082 raw∈[75.819832481983, 181.68561684139]
+     blockedPressure: n=121 min侧=0 max侧=121 Σraw=12235.349003 raw∈[75.56831623862, 112.587137007763]
+     utilPressure: n=130 min侧=0 max侧=130 Σraw=14199.112351 raw∈[103.083632, 114.093211554091]
+     costPressure: n=58 min侧=0 max侧=58 Σraw=4577.984641 raw∈[-0.698388678287, 87.401800954686]
+     demandLoad: n=1 min侧=0 max侧=1 Σraw=87.223875 raw∈[87.223875088523, 87.223875088523]
+     demandPressure: n=52 min侧=0 max侧=52 Σraw=-527.21638 raw∈[-19.536, -0.58694]
+     queuePressure: n=650 min侧=0 max侧=650 Σraw=70483.774378 raw∈[105.585307699183, 112.065196745481]
+     expeditePressure: n=9 min侧=0 max侧=9 Σraw=865.69077 raw∈[85.355864965314, 100.352128098736]
+     feedPressure: n=260 min侧=0 max侧=260 Σraw=24658.422822 raw∈[90.976810883491, 97.818238243336]
+     ── demandPressure 逐格（52 条）──
+        obj_order_SO-3402 raw=-1.093 -> value=0 bound=min
+        obj_order_SO-3420 raw=-10.73 -> value=0 bound=min
+        obj_order_SO-3445 raw=-15.318 -> value=0 bound=min
+        obj_order_SO-3470 raw=-15.836 -> value=0 bound=min
+        obj_order_SO-3481 raw=-9.62 -> value=0 bound=min
+        obj_order_SO-3486 raw=-13.468 -> value=0 bound=min
+        obj_order_SO-3490 raw=-4.093 -> value=0 bound=min
+        obj_order_SO-3512 raw=-3.58694 -> value=0 bound=min
+        obj_order_SO-3529 raw=-18.426 -> value=0 bound=min
+        obj_order_SO-900056 raw=-18.056 -> value=0 bound=min
+        obj_order_SO-900070 raw=-10.58694 -> value=0 bound=min
+        obj_order_SO-900077 raw=-1.406 -> value=0 bound=min
+        …（余 40 条）
+     ── 该拍落盘 world 里 demandPressure 共 150 格，取值分布（前 8）: obj_order_SO-3391=41.907, obj_order_SO-3402=0, obj_order_SO-3415=22.907, obj_order_SO-3420=0, obj_order_SO-3431=18.63814, obj_order_SO-3437=4.63814, obj_order_SO-3445=0, obj_order_SO-3452=45.10512
+     落盘 world 里 demandPressure 为负的格数 = 0 ⇒ 与回执自洽（都是 0）
+     ── 该拍 forecastBias（−0.6 边的源）共 6 格: obj_model_2170-NCM=1, obj_model_4680-LFP=88, obj_model_4680-NCM=50, obj_model_方形-LFP=8, obj_model_方形-NCM=79, obj_model_圆柱-LFP=88

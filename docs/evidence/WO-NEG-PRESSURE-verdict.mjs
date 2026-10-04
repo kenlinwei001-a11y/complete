@@ -1,0 +1,236 @@
+/**
+ * WO-NEG-PRESSURE-ROOTCAUSE · ★ 裁决书生成器（只读证据，不做任何写请求）
+ *
+ * 本脚本**自带断言**：任何一条断言不成立 ⇒ RC=1，裁决书作废（不许拿一份数与证据对不上的裁决去定案）。
+ * 跑法：node docs/evidence/WO-NEG-PRESSURE-verdict.mjs <evidenceDir>
+ */
+import fs from "node:fs";
+
+const EV = process.argv[2];
+const rd = (p) => JSON.parse(fs.readFileSync(`${EV}/${p}`, "utf8"));
+const r6 = (x) => Math.round(x * 1e6) / 1e6;
+
+const w0 = rd("WO-NEG-PRESSURE-world-tick0.json");
+const rules = rd("WO-NEG-PRESSURE-rules.json").items;
+const t1 = rd("WO-NEG-PRESSURE-ticks-1.json");
+const t2 = rd("WO-NEG-PRESSURE-ticks-2.json");
+
+const A = [];
+const assert = (cond, msg) => { A.push({ ok: !!cond, msg }); };
+
+// ── 断言（每条都对着本单自己的证据文件） ─────────────────────────────────────
+const minSats = w0.baseStateVarReport.saturations.filter((e) => e.bound === "min");
+const b1 = { shortageRisk: 4, supplyRisk: 6, expeditePressure: 7 };
+const got1 = {};
+for (const e of minSats) got1[e.stateVar] = (got1[e.stateVar] ?? 0) + 1;
+assert(got1.shortageRisk === 4, `批① Material.shortageRisk 负格=4（实得 ${got1.shortageRisk}）`);
+assert(got1.supplyRisk === 6, `批① Model.supplyRisk 负格=6（实得 ${got1.supplyRisk}）`);
+assert(got1.expeditePressure === 7, `批① PurchaseOrder.expeditePressure 负格=7（实得 ${got1.expeditePressure}）`);
+assert(minSats.length === 17, `批① 负格合计=17（实得 ${minSats.length}）`);
+
+const an = fs.readFileSync(`${EV}/WO-NEG-PRESSURE-analyze.txt`, "utf8");
+assert(/A 小节：手算逐位比对 MATCH=17 MISMATCH=0/.test(an), "批① 手算逐位比对 17/17（analyse.txt 里有相反读数）");
+const dv = fs.readFileSync(`${EV}/WO-NEG-PRESSURE-demand-verify.txt`, "utf8");
+assert(/全量复算小结：MATCH=84 MISMATCH=0 SKIP=0/.test(dv), "批② 全量复算 84/84（demand-verify.txt 里有相反读数）");
+
+const dp1 = t1.stateVarReport.saturations.filter((e) => e.stateVar === "demandPressure");
+const dp2 = t2.stateVarReport.saturations.filter((e) => e.stateVar === "demandPressure");
+assert(dp1.length === 32 && dp2.length === 52, `批② 逐拍负格 32/52（实得 ${dp1.length}/${dp2.length}）`);
+assert(dp1.every((e) => e.bound === "min") && dp2.every((e) => e.bound === "min"), "批② 全部 bound=min");
+assert(dp1.concat(dp2).every((e) => e.value === 0), "批② 全部写成 value=0");
+
+const edgeKey = "demo_forecast_bias_to_order_demand";
+const edge = rules.find((r) => r.key === edgeKey);
+assert(edge && edge.coefficient < 0, `唯一条入边的系数为负（实得 ${edge?.coefficient}）`);
+const inEdges = rules.filter((r) => r.targetTypeKey === "Order" && r.targetStateVar === "demandPressure");
+assert(inEdges.length === 1, `Order.demandPressure 入边恰好 1 条（实得 ${inEdges.length}）`);
+
+const fbTrace = t2.trace.filter((r) => r.ruleKey === edgeKey);
+assert(fbTrace.length === 150 && fbTrace.every((r) => r.amount < 0), `该边 trace 150 行全为负 amount（实得 ${fbTrace.length}）`);
+
+const fbOut = Object.entries(w0.baseProvenance ?? {}).filter(([, p]) => typeof p?.forecastBias === "string");
+assert(fbOut.length === 6 && fbOut.every(([, p]) => p.forecastBias === "derived"), `forecastBias 6 格出处全为 derived（实得 ${JSON.stringify(fbOut.map(([i, p]) => [i, p.forecastBias]))}）`);
+const fbVals = Object.entries(w0.state).filter(([, b]) => typeof b?.forecastBias === "number").map(([, b]) => b.forecastBias);
+assert(fbVals.length === 6 && fbVals.every((v) => v >= 0), `forecastBias 6 格全非负（实得 ${fbVals.join(",")}）`);
+
+let negInWorld = 0;
+for (const t of [t1, t2]) for (const [, b] of Object.entries(t.state)) if (typeof b?.demandPressure === "number" && b.demandPressure < 0) negInWorld++;
+assert(negInWorld === 0, `落盘 world 里 demandPressure 为负的格数=0（实得 ${negInWorld}）`);
+
+const outKeys = rules.filter((r) => ["shortageRisk", "supplyRisk", "expeditePressure", "demandPressure"].includes(r.sourceStateVar)).map((r) => r.key);
+let negAmt = 0;
+for (const t of [t1, t2]) for (const k of outKeys) for (const r of t.trace.filter((x) => x.ruleKey === k)) if (r.amount < 0) negAmt++;
+assert(negAmt === 0, `下游 4 族的出边 amount<0 的行数=0（实得 ${negAmt}）`);
+
+// 反向金丝雀：同族里**合法**的格不许被误报
+const dpAll1 = Object.entries(t1.state).filter(([, b]) => typeof b?.demandPressure === "number");
+const pos1 = dpAll1.filter(([, b]) => b.demandPressure > 0);
+assert(pos1.length > 50, `反向金丝雀：tick1 同族里正常正价格 ≥50（实得 ${pos1.length}）⇒ 判据有鉴别力`);
+const maxSats = w0.baseStateVarReport.saturations.filter((e) => e.bound === "max");
+assert(maxSats.length === 343, `tick0 max 侧 343 格（实得 ${maxSats.length}）⇒ 越上界与越下界被分开记`);
+
+const BAD = A.filter((x) => !x.ok);
+
+// ── 裁决书 ───────────────────────────────────────────────────────────────────
+const L = [];
+const s = (x = "") => L.push(x);
+s("════════════════════════════════════════════════════════════════════════");
+s("  WO-NEG-PRESSURE-ROOTCAUSE · ★ 裁决：这些负值是公式假象，还是真实业务状态？");
+s("  证据全部来自 4931 端口的**本树自起实例**（pid 55164 · cwd=本 worktree · 已自证）");
+s("════════════════════════════════════════════════════════════════════════");
+s();
+s("【0】先钉死一件事：这是**两批、两阶段、两机制**，不许合并");
+s("  批① 17 格 —— tick0 **入口投影**（建会话一次性）。raw 是**播种派生式**的输出，");
+s("       world 态里已被压到 0，而**对象 props 里仍留着负值**（两层同时存在）。");
+s("  批② 84 格（tick1 32 + tick2 52）—— **逐拍核内**。raw = 三个写入者叠加的中间量，");
+s("       只在回执 saturations[] 里露面，落盘 world 实测 0 格为负。");
+s();
+s("【1】批① 逐格表（对象 id · 实测 raw · 规则/公式 · 手算逐位）");
+s("  ⚠ 批① 的 raw **不是**传导出边算的，是**播种派生式**（seed-derivation-specs.ts）算的 ——");
+s("     拿规则表去解释批① 会找错地方。逐格手算见 WO-NEG-PRESSURE-analyze.txt §A（MATCH=17 MISMATCH=0）。");
+s();
+s("  ── (a) Material.shortageRisk · 派生式 material_shortage_risk ──");
+s("     COALESCE((dailyUse*leadTime − onHand − inTransit)*100 / (dailyUse*leadTime), 0)");
+for (const e of minSats.filter((x) => x.stateVar === "shortageRisk")) {
+  s(`     · ${e.objectId}  raw=${e.raw} → world=${e.value}`);
+}
+s("     手算样例 obj_material_elyte: (242.6×10 − 5173 − 1169)×100/(242.6×10) = −391600/2426 = −161.4179719… → 取 3 位 = −161.418 ✅");
+s();
+s("  ── (b) Model.supplyRisk · 派生式 model_supply_risk ──");
+s("     COALESCE(AVG(out(model_uses_material).shortageRisk), 0)");
+for (const e of minSats.filter((x) => x.stateVar === "supplyRisk")) s(`     · ${e.objectId}  raw=${e.raw} → world=${e.value}`);
+s("     手算样例 obj_model_4680-NCM: 7 条出边 shortageRisk = 38.7623, 51.0022, −24.0963, −161.418, −52.6997, −78.1686, 20.5246");
+s("       Σ/7 = −206.0935/7 = −29.4419285… → 取 4 位 = −29.4419 ✅");
+s();
+s("  ── (c) PurchaseOrder.expeditePressure · 派生式 purchaseorder_expedite_pressure ──");
+s("     COALESCE(this.shipDay * 100 / (this.etaDay − this.orderDay), 0)");
+for (const e of minSats.filter((x) => x.stateVar === "expeditePressure")) s(`     · ${e.objectId}  raw=${e.raw} → world=${e.value}`);
+s("     手算样例 obj_purchaseorder_po_12: (−12)×100/(13−(−24)) = −1200/37 = −32.432432… → 取 4 位 = −32.4324 ✅");
+s();
+s("【2】批② 逐格表（Order.demandPressure · 逐拍核内）");
+s(`  唯一条入边：key=${edge.key}`);
+s(`    ${edge.sourceTypeKey}.${edge.sourceStateVar} --${edge.viaLinkKey}--> ${edge.targetTypeKey}.${edge.targetStateVar}`);
+s(`    coefficient=${edge.coefficient}  combine=${edge.combine}  weightRef=${JSON.stringify(edge.weightRef)}  status=${edge.status}`);
+s(`    运行期 desc="${edge.description}"`);
+s("  源量实测（tick0 world，出处章来自 baseProvenance）：");
+for (const [id, b] of Object.entries(w0.state)) if (typeof b?.forecastBias === "number") s(`    · ${id}  forecastBias=${b.forecastBias}  出处=${w0.baseProvenance?.[id]?.forecastBias}`);
+s("    ⇒ 源值域 [1, 88] 全非负；× coeff(−0.222) ⇒ **每一条边 amount ≤ 0，恒成立**（tick2 实测 150/150 行 amount<0，Σ=−1705.848）");
+s();
+s("  三个写入者叠加（全部取自运行时，不是源码推断）：");
+s("    ① 传导核（含衰减）：x1 = (1−λ)·x_prev + Σ_edges(amount)");
+s("    ② C2 合成层 spec-base-synthesis.ts:98：raw = x1 + λ·(base − rest)，base = 该格 tick0 值，rest = 0");
+s("    ③ 出口投影 world-projection.ts：raw < min ⇒ value = min = 0（压力族 rest=min=0 ⇒ 硬地板）");
+s(`    λ 取自**回执** stateVarReport.decayApplied["demandPressure"] = ${t1.stateVarReport.decayApplied.demandPressure}（两拍同值）`);
+s("  逐格复算（84 格全量，见 WO-NEG-PRESSURE-demand-verify.txt）：");
+s("    · obj_order_SO-3420  tick1 raw=−10.1   = (1−0.37)×1   + (−11.1) + 0.37×1   ✅");
+s("    · obj_order_SO-3529  tick2 raw=−18.426 = (1−0.37)×0   + (−19.536) + 0.37×3  ✅");
+s("    · obj_order_SO-3402  tick2 raw=−1.093  = (1−0.37)×5.9 + (−11.1) + 0.37×17  ✅ ← 未夹值格也逐位对上");
+s("    MATCH=84 MISMATCH=0 SKIP=0");
+s();
+s("【3】★ 裁决（逐族给两侧判据）");
+s();
+s("  ── 批①(a) Material.shortageRisk / PurchaseOrder.expeditePressure ⇒ **真实业务状态** ──");
+s("     假象侧三条判据逐条不成立：");
+s("       ① 量纲错？—— 不是。式子是 (需求−可用)/需求×100，量纲是「提前期需求覆盖率 %」，自洽；");
+s("       ② 减了两个不同量？—— 不是。dailyUse×leadTime / onHand / inTransit 三者同为物料数量单位，");
+s("          分母把它化成比率；expeditePressure 的 shipDay / (etaDay−orderDay) 同为天数。");
+s("       ③ 取反了一个恒 ≥0 的量？—— 不是。分子 (需求−可用) 本身就可正可负。");
+s("     真实业务状态侧：");
+s("       · 语义有出处：seed-derivation-specs.ts:124-126 原文「（缺货率，**负=超储**）」、");
+s("         :106-107 原文「实测 −32~212（**负=未到船期**、>100=已超窗，如实）」；");
+s("       · 为何为负（业务事实）：obj_material_elyte 提前期需求 2426 kg，而在手 5173 + 在途 1169 = 6342 kg");
+s("         ⇒ 备料是提前期需求的 2.61 倍 ⇒ **超储 161%**，负号就是这个「超」；");
+s("         obj_purchaseorder_po_12 shipDay=−12（还没到船期）而计划窗口 37 天 ⇒ 提前 12 天，负号是「提前」。");
+s("       · 出处章 = 派生式输出、非哈希占位（baseProvenance 实测 4 格全 \"measured\"）；");
+s("         哈希占位 seedHash01 ∈ [0,0.999] 结构上不可能为负 ⇒ **负值只可能来自真公式真输入**。");
+s("     ⇒ 结论：**负值本身是真实的，算式无错**。与域声明 [0,100] 的冲突是**声明与公式值域不匹配**");
+s("       （公式的值域是 (−∞,100]，不是 [0,100]）—— 冲突点在**域声明**，不在这一步算术。");
+s();
+s("  ── 批①(b) Model.supplyRisk ⇒ **数值为真、但「该不该为负」判不出来** ──");
+s("     假象侧（这次**成立**，且能指到具体一步）：");
+s("       · 派生式自己的注释原话是「供应风险 = 各物料缺料风险的均值（**0–100 压力族，天然入域**）」；");
+s("         **这句话是假的** —— 具体一步就是那个 `AVG`：入参 shortageRisk 是**带符号的比率**");
+s("         （同表另一条注释明写「负=超储」），`AVG` 原样继承符号，结构上不可能「天然入域」。");
+s("       · 期望值与理由：若结果真是 [0,100] 压力，则聚合步必须保号（如 MAX、或对入参先取非负），");
+s("         而今天用的是裸 AVG ⇒ 期望 [−161.418, 100]，实测落在这个区间的负半支。");
+s("       · 旁证：同表注释自述「DSL 聚合内不许算术（会抛 expected \")\" got \"+\"）⇒ 用 AVG 而非");
+s("         SUM/(SUM+100) 那种归一」—— 即 **AVG 是 DSL 限制下的替代品，不是建模选择**。");
+s("     真实业务状态侧：");
+s("       · AVG 的算术是真的：7 个入参全来自真实物料，手算逐位对上 −29.4419；");
+s("        「平均缺料风险 −29.44」如实读作「这 7 种料平均超储 29.44%」是**有业务含义**的。");
+s("     ⇒ **判不出来（不许二选一硬凑）**：两种读法与全部证据相容 ——");
+s("       (i) 本意是「平均备料覆盖」⇒ 该改的是**域声明**；(ii) 本意是「供应风险压力」⇒ 该改的是**聚合步**。");
+s("       还缺的证据：**没有任何东西声明 supplyRisk 的建模意图**（注释声称入域，已被数据证伪，不能当意图）。");
+s("       要定案需要：设计意图的一手出处（PRD/本体条目），或一个「谁按 [0,100] 压力消费 supplyRisk、");
+s("       负数会让什么算错」的实测消费方 —— 本单**没追到**（见 §4）。");
+s();
+s("  ── 批② Order.demandPressure 逐拍负 raw ⇒ **假象（但今天无害）** ──");
+s("     假象侧（成立，指到具体一步：**系数的符号**）：");
+s("       · 唯一入边的 coefficient = −0.222（运行期规则表实测）。其源量 forecastBias 退役后出处章为");
+s("         \"derived\"（哈希占位 [0,100]，实测 1/88/50/8/79/88 全 ≥0）⇒ **该边永远只减不增**；");
+s("       · 规则 desc 写的是「预测偏差大 ⇒ 订单侧需求压力被**放大**」，而负系数 + 非负源的实际行为是");
+s("         **压低** —— 描述与系数互相矛盾（**期望：若「放大」是本意，系数应为正，或源量应带负区间**）；");
+s("       · 树自己已登记这个缺口（seed-derivation-specs.ts:166-171 原文：「该式恒非负 ⇒ 唯一入流");
+s("         −0.6×forecastBias 恒 ≤ 0 … 『低估(−) ⇒ 需求压力上冲』那一支仍然进不去」「边只单向传导」）；");
+s("       · 负 raw 不是任何测量：世界态从不持有它（两拍各 150 格，落盘为负 **0 格**），");
+s("         下游 9 条出边实测 amount<0 的行数 **0** ⇒ **没有任何消费者看见过这个负号**。");
+s("       · 迁移说明：注释写 0.6、运行期是 0.222（版本漂移，两边都取自同一棵树）；");
+s("         两者同为负 ⇒ **漂移不改变本裁决的定性**，本单一切以运行期读数 −0.222 为准。");
+s("     真实业务状态侧：负 raw 不对应任何可指的业务事实 —— 它是三个写入者叠加出的中间量");
+s("       （(1−λ)x_prev + 恒≤0 的边 + λ·base），语义上「比 0 还小多少」按本树自己写的取舍");
+s("       （propagation.ts 压力族下带=0 的注释：「一个压力量纲『比 0 还小多少』不产生决策」）。");
+s("     ⇒ 结论：**是假象**（一个不度量任何东西的中间数），**但今天不产生坏结果** —— 出口投影当场夹回 0，");
+s("       下游一处都没看见。⚠ 按铁律「不许因字段名叫 risk 就说不能为负」：本条的判据不是名字，");
+s("       是**上游系数符号 × 源量退役后值域**这一步可指认的算术，加上**下游 0 命中的实测**。");
+s();
+s("【4】铁律 0.5 消费者追踪（三态分类，不许合并）");
+s("  · Material.shortageRisk 出边 5 条（替代料/物料平衡/批次周转/型号供应风险/采购催货，coeff 0.185–0.259 全正），");
+s("    **实测两条拍里 amount<0 的行数 = 0** ⇒ 接了线、有数据、且**从没收到过负值**（因为 tick0 已夹回 0）。");
+s("  · Model.supplyRisk 出边 1 条（→ Order.shortageRisk，coeff 0.2775）：tick1 行数 0、tick2 行数 150，amount<0 = 0。");
+s("  · PurchaseOrder.expeditePressure 出边 3 条：tick2 实测 19 行 in，amount<0 = 0。");
+s("  · Order.demandPressure 出边 2 条（→Model.demandLoad / →OrderLine.splitPressure）：amount<0 = 0。");
+s("  · 前端**按名 grep 结构性无效**（金丝雀当场证伪：`props[...]`/`props.?xxx` 在 frontend-shell/src 命中 **0**，");
+s("    而我确信该写法存在）⇒ 真因是前端走**动态键**（WhatIfView.tsx:253 `currentObject.props[prop]`、");
+s("    handlers.ts:3531 `r.props[prop]`）⇒ **「按名 grep」量不到这一族**，不许拿它下「没消费者」的结论。");
+s("    能按数据键形态追到的只有：eventCatalog.ts:221/263 的 preferStateVars、contracts/src/sim-drill.ts:316/317 ——");
+s("    两者读的都是**推演世界态**（已夹回 0），不是对象 props 里的负值。");
+s();
+s("【5】双向金丝雀");
+s("  正向（复现台账读数）：批① 17 格逐位复现（4/6/7 分类一致，raw 全部逐位相同）；");
+s("    批② 两拍 32/52 格、全部 bound=min、全部 value=0 —— 与上一轮台账的数量级特征一致。");
+s("  反向（我确信合法的格不许被误报）：");
+s(`    · tick1 同族 Order.demandPressure 共 ${dpAll1.length} 格，其中正值 ${pos1.length} 格**未被标异常**`);
+s("      （SO-3391=48.9 / SO-3452=46.224 … 原样留在世界态）；");
+s("    · tick0 饱和 360 格中 max 侧 343 格与 min 侧 17 格被分开记，越上界（blockedPressure 182.73、");
+s("      loadIndex 129.98、expeditePressure 212.5）**一个都没被算成负值**；");
+s("    · 域内合法值原样不动：costPressure 115→90.384615384615、demandLoad 138→92.897727272727。");
+s("  ⇒ 判据有鉴别力：它只咬「raw 越硬界」的格，同族同拍的合法格一格不碰。");
+s();
+s("【6】⛔ 判不出来 / NOT-MEASURED（逐条列，不凑数）");
+s("  ⛔ 判不出来 ①：Model.supplyRisk 该改域声明还是改聚合步（见 §3 批①(b)）——");
+s("     缺：supplyRisk 建模意图的一手出处，或一个按 [0,100] 消费它的实测消费方。");
+s("  ⛔ 判不出来 ②：Material.shortageRisk / PurchaseOrder.expeditePressure 的域声明是否该改 ——");
+s("     值是真值这一点已定；「声明该不该跟着公式走」是建模决策，证据只能证到「声明与值域不匹配」。");
+s("  NOT-MEASURED ①：对象 props 里的负值**是否上屏**。前端走动态键，须真浏览器开 Material 台账选 shortageRisk 列");
+s("     —— 本单未开浏览器，故「对象层负值无人可见」**不成立也不否定**，未量。");
+s("  NOT-MEASURED ②：对象层 props 与推演层世界态不一致（同 id 同量，−161.418 vs 0）对下游业务的后果 —— 未量。");
+s("  NOT-MEASURED ③：tick3 及以后两批的走向（本单按票据要求只取 tick0 + 两拍，且第二拍即零扰动对照臂）。");
+s("  NOT-MEASURED ④：其它租户/其它 seed 是否复现同样的 17 格（本单只跑 demo + 默认 seed）。");
+s("  NOT-MEASURED ⑤：`POST /a/v1/objects/query` 路与 `GET /a/v1/objects` 是否给出同一批负值（只跑了后者）。");
+s();
+s("【7】本单纪律自查");
+s("  · 未改任何产品代码 / 测试 / 域声明 / 公式 / 种子（本单新增物只有 docs/evidence/ 下的脚本与读数）。");
+s("  · 写请求只有两类：POST /a/v1/sim/sessions（断言 201）、POST …/tick?disclose=1（断言 200）；");
+s("    全部 2xx，脚本末 BAD_STATUS=0，否则 RC=1 作废。");
+s("  · 零扰动对照臂 = §6 第二拍（同样 n=1、无任何扰动注入）：两拍 λ 同为 0.37，");
+s("    forecastBias 两拍取值逐格相同（1/88/50/8/79/88）⇒ 负值不是扰动带来的。");
+s("  · 未发 POST /tick {n:0}；未 kill / 未重启别人的 4001/4002/5173；自起实例在 4931 且带 --max-old-space-size=8192。");
+s("  · ⚠ 本文件的 RC **是断言总账**：任何一条 §断言不成立 ⇒ RC=1，本裁决书作废。");
+
+s();
+s("════════ 断言总账 ════════");
+for (const x of A) s(`  ${x.ok ? "✅" : "🔴"} ${x.msg}`);
+s(`  合计 ${A.length} 条，失败 ${BAD.length} 条 ⇒ ${BAD.length ? "🔴 裁决书作废" : "✅ 裁决书与证据逐条相符"}`);
+
+process.stdout.write(L.join("\n") + "\n");
+process.exit(BAD.length ? 1 : 0);

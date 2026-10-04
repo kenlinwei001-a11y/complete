@@ -82,10 +82,12 @@ done < /tmp/wo-neg/neg-ids.txt
 
 say ""
 say "════ §4c Model 的出边结构（AVG(out(model_uses_material).shortageRisk) 的输入集）════"
-for M in obj_model_4680-NCM obj_model_4680-LFP; do
-  C=$(curl -s "${H[@]}" "$BASE/a/v1/objects/$M/neighbors" -o "$EV/WO-NEG-PRESSURE-nb-$M.json" -w "%{http_code}")
+# 同上：要哪几个型号**从现算的负格清单里取**，不硬编码。
+awk -F'\t' '$2=="supplyRisk"{sub(/^Model\//,"",$1); print $1}' /tmp/wo-neg/neg-cells.tsv | sort -u > /tmp/wo-neg/nb-models.txt
+while read -r M; do
+  C=$(curl -s </dev/null "${H[@]}" "$BASE/a/v1/objects/$M/neighbors" -o "$EV/WO-NEG-PRESSURE-nb-$M.json" -w "%{http_code}")
   chk 200 "$C" "GET /a/v1/objects/$M/neighbors"
-done
+done < /tmp/wo-neg/nb-models.txt
 
 say ""
 say "════ §5 一拍 tick（disclose=1 → stateVarReport.saturations）════"

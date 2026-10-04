@@ -1,11 +1,11 @@
 ════ §0 自证：连的是本树自己起的那一个 ════
   LISTEN pid=55164 cwd=/Users/apple/deploy/complete/.claude/worktrees/agent-ad88142479d1650e0
-  MARK=SELFPROOF_56597_1791129783 hits_in_log=1 (expect pid=55164)
+  MARK=SELFPROOF_57166_1791129956 hits_in_log=2 (expect pid=55164)
   [金丝雀·日志自证] "pid":55164
 
 ════ §1 建会话（写请求 → 断言 201）════
   ✅ HTTP=201 POST /a/v1/sim/sessions
-  sessionId=sims_nbby6wjnfjxfj9qk
+  sessionId=sims_ssbr3ywm6nhewgf3
 
 ════ §2 tick0 世界态（一次 tick 都不发）════
   ✅ HTTP=200 GET …/world
@@ -40,8 +40,12 @@
   ✅ HTTP=200 GET /a/v1/objects/PurchaseOrder/obj_purchaseorder_po_7
 
 ════ §4c Model 的出边结构（AVG(out(model_uses_material).shortageRisk) 的输入集）════
-  ✅ HTTP=200 GET /a/v1/objects/obj_model_4680-NCM/neighbors
+  ✅ HTTP=200 GET /a/v1/objects/obj_model_2170-NCM/neighbors
   ✅ HTTP=200 GET /a/v1/objects/obj_model_4680-LFP/neighbors
+  ✅ HTTP=200 GET /a/v1/objects/obj_model_4680-NCM/neighbors
+  ✅ HTTP=200 GET /a/v1/objects/obj_model_圆柱-LFP/neighbors
+  ✅ HTTP=200 GET /a/v1/objects/obj_model_方形-LFP/neighbors
+  ✅ HTTP=200 GET /a/v1/objects/obj_model_方形-NCM/neighbors
 
 ════ §5 一拍 tick（disclose=1 → stateVarReport.saturations）════
   ✅ HTTP=200 POST …/tick n=1 disclose=1
