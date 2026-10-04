@@ -1,0 +1,86 @@
+================================================================
+WO 提前交付 3 天 · 财务指标 PREDICTION TABLE
+【本文写于取数之前 · 2026-10-04 · 一旦写下不许事后改】
+本树: claude/handoff-acceptance-duedate @ 46cda9d43
+服务: 127.0.0.1:4701 (自起 · SEED_DEMO=1 · PID 45285 · --max-old-space-size=8192)
+自证: POST /tick {n:0} → 400 "n: Too small" · {n:1e9} → 400 "n: Too big"
+      (两条同时成立 = 本树独有, 只有 claude/handoff-tick-n-validation 带这个修复)
+================================================================
+
+────────────────────────────────────────────────────────────────
+第一步 · 「财务指标」是什么 —— 靠实测的披露层 + 规则图, 不靠名字猜
+────────────────────────────────────────────────────────────────
+实测来源（四条独立证据, 互相不依赖）:
+ E1 世界态披露层 `GET /world` → `baseStateVarReport.declaredStateVars` = 38 格
+     （含 costPressure / receivablePressure / overduePressure / collectionPressure）
+ E2 规则目录 `GET /sim/propagation-rules` → 55 条, 全 PUBLISHED
+ E3 仓自带的**分轴声明**（`synthetic/battery.ts` 状态量显示名表, 原文分轴成组）:
+       ── 交付向（时长）：Material.shortageRisk → PurchaseOrder.expeditePressure → IncomingInspection.queueDays ──
+       ── 成本向（消耗）：Material.priceShock → Model.costPressure → Order.costPressure ──
+       ── 现金向（消耗）：Order.costPressure → Customer.receivablePressure → ARInvoice.overduePressure ──
+ E4 域册子 `STATE_VAR_DOMAINS`: 压力族统一 {min:0, max:100, restPoint:0, decayRef:...}
+     ⇒ 这四个量是**有界衰减型积分器**, 不是比率
+
+【财务指标表】 指标 X = 对象 O 的字段 F, 由规则 R 从 S 推来, 系数 k
+┌──┬────────────────┬──────────────┬──────────────────┬────────────────────────────────────┬───────┬──────────┐
+│# │ 指标 X         │ 对象 O       │ 字段 F           │ 由规则 R 从 S 推来                 │ 系数k │ 口径     │
+├──┼────────────────┼──────────────┼──────────────────┼────────────────────────────────────┼───────┼──────────┤
+│F1│ 成本压力       │ Model        │ costPressure     │ demo_order_leaddays_to_model_horizon│-0.084090909│equal_share│
+│  │                │ 4680-NCM     │                  │  源 Order.leadDays · via order_for_model│   │          │
+│F2│ 成本压力       │ Order        │ costPressure     │ demo_model_cost_to_order_cost      │ 0.2775│ null     │
+│  │                │ SO-3391      │                  │  源 Model.costPressure              │       │          │
+│F3│ 应收压力       │ Customer     │ receivablePressure│ demo_order_cost_to_customer_receivable│0.03144963│source_value_relative│
+│  │                │ cust_14      │                  │  源 Order.costPressure              │       │          │
+│F4│ 逾期压力       │ ARInvoice    │ overduePressure  │ demo_customer_receivable_to_invoice_overdue│0.148│ null   │
+│  │                │ (cust_14 的) │                  │  源 Customer.receivablePressure     │       │          │
+│F5│ 逾期催收压力   │ OverdueRecord│ collectionPressure│ demo_customer_receivable_to_collection│0.222│ null   │
+│  │                │ (cust_14 的) │                  │  源 Customer.receivablePressure     │       │          │
+└──┴────────────────┴──────────────┴──────────────────┴────────────────────────────────────┴───────┴──────────┘
+全部 5 条 R 的 coefficientRef 均 = {ruleKey:"C36", paramKey:"<规则key>"}（配置来源, 非内联）。
+全部 5 条 delayTicks=0（H1 为 0, H2 0, H3 0, H4 1, H5 1 —— H4/H5 各带 1 拍行程）。
+全部 combine="sum" · decay=null · clamp=null · 全 status=PUBLISHED（55/55）。
+
+交付向的「交期」真实字段（E1 之外的实测, 真读 Order 对象 props）:
+  Order.leadDays = 14 (SO-3391) · 22 (SO-3402) · 38 (SO-3415) —— 整数天, 5 个抽样订单全有
+  另有 Order.due ("2026-06-24") / Order.early (false) —— 但【规则图里被消费的是 leadDays】
+  （55 条规则中唯一以交期为源的 = demo_order_leaddays_to_model_horizon, 源字段即 Order.leadDays）
+⚠ 反向对照: leadDays 与 deliveryDelay 都落在 `undeclaredStateVars`（9 个无声明域之一）
+  —— 「交期」这一格本身没有声明域, 这是本单要单独记的一件事（见裁决段）。
+
+────────────────────────────────────────────────────────────────
+第二步 · 三臂设计 + 预言
+────────────────────────────────────────────────────────────────
+扰动表达（用本仓真实 API）:
+  POST /a/v1/sim/sessions/:id/perturbations
+  body { kind, targetObjectId:"obj_order_SO-3391", targetStateVar:"leadDays",
+         magnitude:±3, mode:"delta", startTick:0, durationTicks:null, label:"..." }
+
+臂 0  完全不扰动
+臂 A  提前交付 3 天 ⇒ leadDays 14 → 11  (mode delta, magnitude −3)
+臂 B  交期推迟 3 天 ⇒ leadDays 14 → 17  (mode delta, magnitude +3)
+
+【预言】—— 符号与依据
+ H1 的规则描述原文（仓自己写的预期方向, 直接引）:
+   「订单交期压缩 ⇒ 该型号赶工/加班/加急 ⇒ 成本压力上升（交期越远 ⇒ 当前成本压力越低，故系数为负）」
+ ⇒ P1: 臂 A (交期压缩 3 天) ⇒ F1 Model.costPressure **上升** (A−0 > 0)
+ ⇒ P2: 臂 B (交期推迟 3 天) ⇒ F1 **下降** (B−0 < 0)
+ ⇒ P3: 同一方向上 F2/F3/F4/F5 全部**同号**(A−0>0, B−0<0) —— 因为 H2..H5 系数全为正
+        (0.2775 / 0.03144963 / 0.148 / 0.222), 故链条不改符号。
+ ⇒ P4: |A−0| 与 |B−0| **量级相当**(引擎线性, 两端都不触界时)。ΔleadDays 同幅 3 天。
+ ⇒ P5(量级): 因 H1 走 equal_share(该目标入边等份 1/N) 且 H3 走 source_value_relative,
+        绝对量预计**很小** —— 预言个位数量级以内, 但**符号必须清楚**。
+ ⇒ P6(触界风险, 事先点名): F2 Order.costPressure tick0 = 90.384615…, 域 max=100
+        ⇒ 臂 A 若把它推过 100 会被 `saturateToDomain` **收回 100** ⇒ |A−0| 可能被削平
+        而 |B−0| 不受影响 ⇒ **允许 A/B 量级不对称, 但符号仍必须相反**。
+        这是事先写下的可解释例外, 不是事后圆场。
+
+【反向金丝雀（预言它不动）】
+ N1: Order.qty (7259) · Order.unitPrice (22198) —— 外生输入, 无入边, 不在本链条上
+ N2: 未被扰动的其它 Order 的 leadDays（如 SO-3402=22）—— 只动一张单
+ N3: Material.priceShock / Equipment.utilPressure —— 不在这条链下游
+ ⇒ 预言: 这四个量 A/B/0 三臂**逐字节相同**。若它们动了 ⇒ 我的量法坏了, 不是链在动。
+
+【方法】
+ · 三臂各起**独立会话**（互不污染）, 每臂同一 tick 数
+ · 读数面 `GET /world`（含 baseStateVarReport 披露层）+ `GET /tick` 回包
+ · 探针串行执行
