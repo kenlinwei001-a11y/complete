@@ -281,6 +281,62 @@ describe("WO-ACTIVE-EDGE-UX · 会话级反事实（关掉一条传导边 → �
     expect(s!.disabledRuleKeys).toEqual([RULE_KEY]);
   });
 
+  // ── ⑥ `n` 的口径**只有一份**（病灶 A/B 的回归钉）──────────────────────────────────
+  //
+  // 2026-10-04 真后端实测（`probe-n.txt`：自起实例、`n:1` 对照臂 + 零扰动对照）：
+  // `…/tick` 原先走 `Math.max(1, Math.floor(Number(x)))` ⇒
+  //   · `n:0` / `n:-5` **静默改成 1 拍并落盘**（用户写 0 与写 1 得到同一个世界，回包不报）；
+  //   · `n:"abc"` ⇒ `Math.max(1,NaN)`=NaN ⇒ **循环 0 次却回 200**，还照发 `sim.tick_completed`；
+  //   · `n:1e9` **没有上界**，真推 10 亿拍（实测 637ms/拍 ⇒ 约 20 年，等于挂死服务）；
+  // 而隔壁 `…/counterfactual` 同样五个输入一律 400 —— **同一套 API 两套口径**。
+  //
+  // 本用例咬的是**两侧口径相同**，不是"某一侧有这个校验"：所以每个非法输入**两条路由各打一遍**，
+  // 再断言世界**一个字节没动** —— 静默改写的危害正在于它是个**写操作**（`persist:true` + 落盘 + 改 status）。
+  it("🔴 n 口径单源：tick 与 counterfactual 对 0/-5/1.5/\"abc\"/1e9 一律 400，且世界不动", async () => {
+    const t = await seededApp();
+    const sid = await sessionWithBaseLoad(t, 20);
+    await tick(t, sid); // 先真跑一格 ⇒ curTick=1，世界里有东西可被写坏
+    const before = await worldFingerprint(t, sid);
+
+    for (const bad of [0, -5, 1.5, "abc", 1e9]) {
+      for (const route of ["tick", "counterfactual"]) {
+        const r = await t.app.inject({
+          method: "POST", url: `/a/v1/sim/sessions/${sid}/${route}`, headers: ADMIN, payload: { n: bad },
+        });
+        const label = `${route} n=${JSON.stringify(bad)}`;
+        expect(r.statusCode, `${label} 应 400，实为 ${r.statusCode}`).toBe(400);
+        // 必须是 VALIDATION_ERROR：路由/功能没开时是 404 FEATURE_NOT_FOUND，两者都是 4xx，
+        // 只断言"非 200"会把"路由压根没接"读成"校验生效"。
+        expect(r.json().error.code, label).toBe("VALIDATION_ERROR");
+      }
+    }
+
+    // 🔴 核心判据：非法输入**一拍都没推**（不是"报了错但已经落盘"）。
+    expect(await worldFingerprint(t, sid)).toBe(before);
+    expect((await t.repos.sim.getSession("demo", sid))!.curTick).toBe(1);
+
+    // 金丝雀（正向对照）：同一坐标喂合法 `n` ⇒ 两条路由都必须成功。
+    // 没有这一条，上面那一片 400 在"路由改名/前缀写错/功能被关"时照样全绿。
+    const okTick = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 1 } });
+    expect(okTick.statusCode).toBe(200);
+    expect(okTick.json().curTick).toBe(2);
+    const okCf = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/counterfactual`, headers: ADMIN, payload: { n: 3 } });
+    expect(okCf.statusCode).toBe(200);
+    // 上界**不是 1**：n=2 必须仍可跑（若有人把上界收成 1，上面那批 400 与 n=1 的 200 全都还是绿的）。
+    const ok2 = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 2 } });
+    expect(ok2.statusCode, "n=2 应合法（上界必须 > 1）").toBe(200);
+    expect(ok2.json().curTick).toBe(4);
+    // 上界**存在**且两侧同界：65 一律 400。
+    for (const route of ["tick", "counterfactual"]) {
+      const r = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/${route}`, headers: ADMIN, payload: { n: 65 } });
+      expect(r.statusCode, `${route} n=65 应 400（上界）`).toBe(400);
+    }
+    // 缺省仍是 1（RL9：与本单引入前逐字节同）—— 不给 `n` 时推一拍。
+    const dflt = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: {} });
+    expect(dflt.statusCode).toBe(200);
+    expect(dflt.json().curTick).toBe(5);
+  });
+
   // ── ⑤ R9 仓储双实现：memory 与 pg 跑**同一组断言** ────────────────────────────────
   //
   // 为什么必须有这一条：`sim_session` 是**逐列**表不是 doc-jsonb 表。契约上加一个字段，
