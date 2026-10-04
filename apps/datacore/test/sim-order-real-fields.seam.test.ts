@@ -19,17 +19,34 @@ import type { ObjectInstance } from "../src/domain.js";
  *     → `deriveSeedBaseSnapshot` 同名探测（真读数档，`measuredCells += 1`）
  *     → `buildPropagationInputs` 装图/权重/取值域（与 `POST …/tick` 同一处装配）
  *     → `replayWorldLine` 真跑 N 拍
- *     → 下游 `Model.backlogQtyTop` / `backlogPriceTop` / `backlogHorizonDays` 的读数
+ *     → 下游 `Model.backlogQtyTop` / `backlogPriceTop` / `costPressure` 的读数
  *
  * ⛔ 判据一律是**对照实验**（CLAUDE.md 铁律 1.5 判据一），不是"跑得起来吗"：
  *   改一个真值 ⇒ 下游读数必须按可预言的方式变。两个数逐字节相同 = 这条线没通，
  *   报「没通」不许报「差异很小」。
+ *
+ * ⚠ **第三条腿的落点已于 2026-10-01 换过（`b8461379e` · WO-CONSOLE-DUE-CHANGE）**：
+ *   `Order.leadDays` 的靶格从**死端** `Model.demandLoad` 改到**活端** `Model.costPressure`
+ *   （旧靶实测恒被域下界钳在 0 ⇒ 零传导；改靶带三份证据档 `docs/evidence/WO-CONSOLE-DUE-CHANGE-*`）。
+ *   ⇒ 本门原来断言的那个靶 `Model.backlogHorizonDays` **今天已无生产方**（全库 55 条规则里
+ *   0 条以它为 `targetStateVar`，且它的格子在世界里压根不再创建）——**那不是回归，别把种子改回去**。
+ *   本门跟着靶格走：`qty`/`unitPrice` 两条 `max` 腿留在 ⑤，`leadDays` 那条**迁到 ⑥**并按新靶语义
+ *   （`combine:"sum"` + 负系数 + 走衰减域）重写判据 —— 等价于"等于最大值"的那种断言在新靶上不成立，
+ *   硬套就是让判据说假话。原意不变：**订单真实字段真能流到下游 Model 的靶格**，判据仍是对照实验。
  */
 
 /** 三个真实业务字段 ＝ 状态变量名（同名直取）。改这里就是改被测对象，不是改期望值。 */
 const REAL_VARS = ["leadDays", "qty", "unitPrice"] as const;
-/** 它们各自的下游落点（`seed.ts` 三条规则的 targetStateVar）。 */
-const TOPS = { qty: "backlogQtyTop", unitPrice: "backlogPriceTop", leadDays: "backlogHorizonDays" } as const;
+/** 它们各自的下游落点（`seed.ts` 三条规则的 `targetStateVar`，逐条对过真表，不按名字猜）。 */
+const TOPS = { qty: "backlogQtyTop", unitPrice: "backlogPriceTop", leadDays: "costPressure" } as const;
+/**
+ * ⑤ 的两条 `max` 族腿 —— 只有这两条**同族**：`combine:"max"` + 系数 1.0 原样透传
+ * ⇒ 读数 === 该型号在手单里那个字段的真实最大值，且每拍重算、不吃上一拍。
+ * ⚠ `leadDays` **不在此列**：它的新靶 `Model.costPressure` 是 `combine:"sum"` + 负系数 + 走衰减域
+ *   ⇒ "等于最大值"与"不随拍数漂"两条判据在它身上都不成立（不是它坏了，是判据换族了）。
+ *   它由 ⑥ 按自己的语义咬。⛔ 不许把这两条判据套到它身上来"凑齐三条腿"。
+ */
+const MAX_LEGS = ["qty", "unitPrice"] as const;
 
 async function seededApp(): Promise<TestApp> {
   const t = await makeApp();
@@ -261,20 +278,88 @@ describe("WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM�
     const w5 = await runWorld(t, 5);
 
     for (const [modelId, rows] of byModel) {
-      for (const v of REAL_VARS) {
+      // ⚠ 只跑 `max` 族两条腿：第三条腿（`leadDays`）的靶格 2026-10-01 起换到 `Model.costPressure`，
+      //   与本族的判据不同族 ⇒ 迁到 ⑥，见那里的头注。⛔ 别为了凑回三条把它加回本循环。
+      for (const v of MAX_LEGS) {
         const expected = Math.max(...rows.map((o) => o.props[v] as number));
         const target = TOPS[v];
         // 落点读数 === 该型号在手订单里那个字段的真实最大值（系数 1.0 原样透传）
         expect(w1[modelId]?.[target], `${modelId}.${target} @tick1`).toBe(expected);
         /**
          * ⚠ 这一条是本门最要紧的一格：`combine:"max"` 每拍重算、不吃上一拍的值。
-         * 若哪天有人把这三条改成 `combine:"sum"`，读数会一拍比一拍大（纯积分器），
+         * 若哪天有人把这两条改成 `combine:"sum"`，读数会一拍比一拍大（纯积分器），
          * 到 tick5 就是个没有业务含义的数 —— 而且**不会有别的东西报错**，
-         * 因为这三个量刻意不在 `STATE_VAR_DOMAINS` 里，引擎不夹不衰减。
+         * 因为这两个量刻意不在 `STATE_VAR_DOMAINS` 里，引擎不夹不衰减。
          */
         expect(w5[modelId]?.[target], `${modelId}.${target} @tick5 必须与 @tick1 相同（max 不累加）`)
           .toBe(expected);
       }
     }
+  }, 180000);
+
+  /**
+   * ⑥ 第三条腿（2026-10-01 改靶后）—— `Order.leadDays` ⇒ `Model.costPressure`。
+   *
+   * ── 为什么不是"把 ⑤ 里的 `backlogHorizonDays` 换成 `costPressure`"──────────────
+   * ⑤ 的判据是「读数 === 该型号在手单里那个字段的最大值」+「tick5 === tick1」，
+   * 它成立的前提是那条边 `combine:"max"` **且**系数 1.0 原样透传。新靶这两条都不成立：
+   *   · `combine:"sum"`（该型号**所有**在手单一起加，不是取最大那张）；
+   *   · 系数为**负**（`C36.demo_order_leaddays_to_model_horizon` = −0.084090909）；
+   *   · `Model.costPressure` **在 `STATE_VAR_DOMAINS` 里**、每拍按 λ 衰减，还另有一条入流
+   *     （`demo_material_price_to_model_cost`）⇒ 读数每拍都在动，"不随拍数漂"在它身上是**错的**。
+   * ⇒ 硬把 ⑤ 的判据套过来，只会得到一条要么恒假、要么被打松的断言。本臂按**新靶自己的语义**写判据。
+   *
+   * ── 判据（仍是铁律 1.5 判据一的对照实验，方向由**种子字段**给出，不是本测试猜的）──
+   * 该边 `description` 原文：「订单交期压缩 ⇒ 该型号赶工/加班/加急 ⇒ 成本压力上升
+   * （**交期越远 ⇒ 当前成本压力越低，故系数为负**）」⇒ 可预言：
+   *   臂 A 交期拉远 ⇒ 读数**下降**；臂 B 交期压缩 ⇒ 读数**上升**；
+   *   臂 C |Δ| 大 10 倍 ⇒ 位移**不更小**（排除"方向对但幅度是常数"的假象）；
+   *   还原 ⇒ 逐字节回到基线（定点变异 + 确定性，两件事一起证）。
+   * ⛔ 只看臂 A 是不够的：系数符号写反时，"变了"照样成立而方向整条反了。
+   */
+  it("⑥ 改靶后的第三条腿：`Order.leadDays` 真值 ⇒ `Model.costPressure` 必须按可预言的方向变", async () => {
+    const t = await seededApp();
+    const live = await liveOrders(t);
+    const byModel = new Map<string, ObjectInstance[]>();
+    for (const o of live) {
+      const m = await modelOf(t, o.id);
+      (byModel.get(m) ?? byModel.set(m, []).get(m)!).push(o);
+    }
+    // 取单最多的那个型号 —— 与 ⑤ 同一条取法（不挑好数；`sum` 语义下每张单都能推动它）。
+    const [modelId, rows] = [...byModel.entries()].sort((a, b) => b[1].length - a[1].length)[0]!;
+    const victim = rows[0]!;
+    const orig = victim.props.leadDays as number;
+    expect(Number.isFinite(orig), `${victim.id}.leadDays 应为有限数`).toBe(true);
+
+    const target = TOPS.leadDays;
+    const read = async (): Promise<number | undefined> => (await runWorld(t, 3))[modelId]?.[target];
+
+    const base = await read();
+    // 🐤 这一行就是本臂存在的理由：旧靶 `Model.backlogHorizonDays` 自 2026-10-01 起**无生产方**
+    //    （55 条规则 0 条写它、世界里不铺它的格）⇒ 读数是 `undefined`。新靶必须真的有读数。
+    expect(typeof base, `${modelId}.${target} 必须真的有读数（undefined = 这条边没接上/靶格没铺）`).toBe("number");
+
+    // 臂 A：交期拉远 ⇒ 成本压力下降
+    await setProp(t, victim, { leadDays: orig + 100 });
+    const far = await read();
+    expect(far, `leadDays ${orig}→${orig + 100}（交期拉远）必须改变下游读数；逐字节相同 = 这条线没通`)
+      .not.toBe(base);
+    expect(far, "该边系数为负 ⇒ 交期越远，成本压力必须**更低**（方向反了 = 系数符号写反）")
+      .toBeLessThan(base as number);
+
+    // 臂 B：交期压缩 ⇒ 成本压力上升（反向臂不是装饰，见本臂头注）
+    await setProp(t, victim, { leadDays: orig - 100 });
+    const near = await read();
+    expect(near, "交期压缩 ⇒ 成本压力必须**更高**").toBeGreaterThan(base as number);
+
+    // 臂 C：位移随 |Δ| 走（Δ 大 10 倍 ⇒ 位移不更小）
+    await setProp(t, victim, { leadDays: orig + 1000 });
+    const far10 = await read();
+    expect(Math.abs((far10 as number) - (base as number)), "Δ 大 10 倍 ⇒ 位移不许反而更小（幅度恒定的假象）")
+      .toBeGreaterThan(Math.abs((far as number) - (base as number)));
+
+    // 还原：逐字节回到基线
+    await setProp(t, victim, { leadDays: orig });
+    expect(await read(), "还原后必须逐字节回到基线（不许有残留状态）").toBe(base);
   }, 180000);
 });
