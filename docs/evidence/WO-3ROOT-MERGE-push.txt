@@ -1,0 +1,20 @@
+## WO-3ROOT · 第8阶段 · 推送 + 远端核对
+> push 走一次性 SSH URL(不改 remote, 不 -f); 核对=远端 tip 与本地 HEAD 的 SHA 逐字节比对(内容判据)
+CAPTURED_RC=0
+
+--- push 原文 ---
+remote: 
+remote: Create a pull request for 'claude/handoff-3root-integration' on GitHub by visiting:        
+remote:      https://github.com/kenlinwei001-a11y/complete/pull/new/claude/handoff-3root-integration        
+remote: 
+To github.com:kenlinwei001-a11y/complete.git
+ * [new branch]          HEAD -> claude/handoff-3root-integration
+
+--- git ls-remote 原文(git@github.com:kenlinwei001-a11y/complete.git refs/heads/claude/handoff-3root-integration) ---
+82292c9359f1f041b06c97ba777b0f016c210b85	refs/heads/claude/handoff-3root-integration
+
+LOCAL =82292c9359f1f041b06c97ba777b0f016c210b85
+REMOTE=82292c9359f1f041b06c97ba777b0f016c210b85
+TIP_MATCH=OK
+
+> 注意: 本档记录的 push/核对对象是集成本体 82292c935; 证据提交(其后的 commit)把 tip 前移一位, 该次推送的最终核对见交付报告(同一 SHA 判据).

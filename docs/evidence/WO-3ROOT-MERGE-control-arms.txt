@@ -1,0 +1,73 @@
+## WO-3ROOT · 第8阶段 · 零扰动对照臂(归因两红)
+> 方法: 把 P3 改过的 6 个源文件回落 d7718eda4(cp 备份 + git checkout, 变异自证=git diff --stat 非空), 跑完即 git checkout HEAD -- 还原并验字节恒等(RESTORE_BYTE_IDENTICAL).
+> 臂①: sim-perturbation.test.ts  对照 rc=0 全绿 ⇒ 该红由 P3 引入(measured, 非推断)
+> 臂②: sim-order-real-fields.seam.test.ts  对照 rc=1 同一条红 ⇒ 既有红(与台账 #54 吻合)
+CAPTURED_RC=0
+
+===== 臂① sim-perturbation 对照(base 源) =====
+
+ RUN  v3.2.6 /Users/apple/deploy/wo-edge-wire/apps/datacore
+
+ ✓ test/sim-perturbation.test.ts (19 tests) 5157ms
+   ✓ WO-P0 · 扰动一等公民 > 暗发 entitlement（R3 先于 authz）：未播种租户 → 扰动三路由全 404 FEATURE_NOT_FOUND  609ms
+   ✓ WO-P0 · 扰动一等公民 > 断言①：durationTicks=null 的扰动与今天 /act **逐字节同结果**（additive 可回退的证明）  418ms
+   ✓ WO-P0 · 扰动一等公民 > 断言②（#151）：tick → act → tick 后在途延迟传导**未丢** —— /act 不再清空 pending  396ms
+   ✓ WO-P0 · 扰动一等公民 > 断言②补 · 同一条 #151 从**扰动路由**进来也不丢（新入口不许把老坑重挖一遍）  346ms
+   ✓ WO-P0 · 扰动一等公民 > 既有传导不受影响：无扰动时 tick→tick 的世界态与本单引入前逐字节同结果（可回退）  321ms
+   ✓ WO-P0 · 扰动一等公民 > 断言③（R6）：同扰动序列同基态重跑 → 世界态与扰动清单**字节级一致**  346ms
+   ✓ WO-P0 · 扰动一等公民 > 断言④：扰动可列举 / 可溯源 / 可删（此前扰动不是实体，只是一次副作用）  339ms
+   ✓ WO-P0 · 扰动一等公民 > R2 隔离：他租户读不到 / 删不掉本租户的扰动  305ms
+   ✓ WO-P0 · 扰动一等公民 > 契约校验落到路由：kind 非法 / durationTicks=0 → 400，不落库  341ms
+   ✓ WO-P2 · propagateTick 接扰动（到期回退 + 溯源） > 断言1（到期回退）：durationTicks=72 的停机在 tick 72 **回退**，tick 75 世界已恢复；durationTicks=null 则永久  345ms
+   ✓ WO-P2 · propagateTick 接扰动（到期回退 + 溯源） > 断言4（R6）：含到期回退 / 未来起效 / delta / scale 的一整套扰动，重跑**世界线字节级一致**  501ms
+   ✓ WO-P2 · propagateTick 接扰动（到期回退 + 溯源） > 没有 PUBLISHED 传导规则的世界，扰动一样会到期回退（不许悄悄变永久）  311ms
+
+ Test Files  1 passed (1)
+      Tests  19 passed (19)
+   Start at  17:36:28
+   Duration  12.11s (transform 3.80s, setup 0ms, collect 6.49s, tests 5.16s, environment 0ms, prepare 196ms)
+
+
+===== 臂② sim-order-real-fields 对照(base 源) =====
+
+ RUN  v3.2.6 /Users/apple/deploy/wo-edge-wire/apps/datacore
+
+ ❯ test/sim-order-real-fields.seam.test.ts (6 tests | 1 failed) 27046ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ①正向 measuredCells = 在手订单数 × 3，且两边**各自独立**算一遍再比  3530ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ①反向 把某张单的 qty 删掉 ⇒ 该格退回哈希、measuredCells 减 1（只测正向不算）  3451ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ② 改真值 ⇒ 下游读数必须跟着变：把一张单的价格 ×1.5，重跑同一套推演  4539ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ③ 两张金额差一个量级的真订单，同一个扰动 ⇒ 下游读数必须拉开  4607ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ④ R6：同 (industry, scale, seed) 重跑，世界态逐字节一致  7094ms
+   × WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ⑤ 接缝：真值必须**出现在传导结果里**，且 max 语义不随拍数漂（不是纯积分器） 3823ms
+     → obj_model_4680-NCM.backlogHorizonDays @tick1: expected undefined to be 110 // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/sim-order-real-fields.seam.test.ts > WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ⑤ 接缝：真值必须**出现在传导结果里**，且 max 语义不随拍数漂（不是纯积分器）
+AssertionError: obj_model_4680-NCM.backlogHorizonDays @tick1: expected undefined to be 110 // Object.is equality
+
+[32m- Expected:[39m 
+110
+
+[31m+ Received:[39m 
+undefined
+
+ ❯ test/sim-order-real-fields.seam.test.ts:268:70
+    266|         const target = TOPS[v];
+    267|         // 落点读数 === 该型号在手订单里那个字段的真实最大值（系数 1.0 原样透传）
+    268|         expect(w1[modelId]?.[target], `${modelId}.${target} @tick1`).t…
+       |                                                                      ^
+    269|         /**
+    270|          * ⚠ 这一条是本门最要紧的一格：`combine:"max"` 每拍重算、不吃上一拍的值。
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 5 passed (6)
+   Start at  17:36:53
+   Duration  33.42s (transform 3.39s, setup 0ms, collect 5.96s, tests 27.05s, environment 0ms, prepare 82ms)
+
+undefined
+/Users/apple/deploy/wo-edge-wire/apps/datacore:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run --maxWorkers=1 --testTimeout=180000 test/sim-order-real-fields.seam.test.ts

@@ -1,0 +1,337 @@
+## WO-3ROOT · 第8阶段 · diff 半径内测试证据(35 文件)
+> 命令 `pnpm --filter datacore exec vitest run --maxWorkers=1 --testTimeout=180000 <35 files>`
+> 半径=直接 import 被改 sim 模块(propagation/metric-series/seed-world/spec-base-synthesis/world-projection)的测试
+> 结果: Test Files 2 failed | 33 passed (35); Tests 2 failed | 343 passed (345)
+> 红① sim-perturbation 断言①(回包多第4键 baseStateVarReport, P3 引入, 该测试注释自证是穷尽钉子)
+> 红② sim-order-real-fields ⑤(backlogHorizonDays, 既有红=台账 #54, 对照臂证实 base 上同红)
+CAPTURED_RC=1
+
+--- vitest 原文 ---
+
+ RUN  v3.2.6 /Users/apple/deploy/wo-edge-wire/apps/datacore
+
+ ✓ test/sandbox-g1-seam.test.ts (14 tests) 25757ms
+   ✓ G1-2 · SEAM 命门：改种出来的 Cadence ⇒ propagateTick 的放行形状真的因它而变 > 闸门相位来自**对象库那一行**：第一次放行的 tick == nextGateTick(0, gate(该行))，之前恒 0  898ms
+   ✓ G1-2 · SEAM 命门：改种出来的 Cadence ⇒ propagateTick 的放行形状真的因它而变 > **只改数据**（everyDays 6→3、规则一字不动）⇒ 放行次数真的变多，且公倍数点上总量守恒  2376ms
+   ✓ G1-2 · SEAM 命门：改种出来的 Cadence ⇒ propagateTick 的放行形状真的因它而变 > 把该行改成诚实缺席（dataMode≠SYNTHETIC）⇒ 声明它的规则**不传导**且响应显式报缺，绝不按'随到随办'跑  742ms
+   ✓ G1-3 · 跨消费方口径自洽：E1 摊成的环节天数 == 契约唯一公式 expectedCadenceWaitDays(库里那一行) > 改落库的 everyDays ⇒ E1 摊的天数**跟着变**（证明 E1 是运行时读对象，不是种子期烤死的常数）  410ms
+   ✓ G1-4 · LossAttribution 守恒（分母排除增值段 · S0 冻结口径） > Σ 非增值段 pct == 100 ±容差；增值段一条都不在归因表里；逐行 pct == 天数/分母  469ms
+   ✓ G1-5 · 作用域真收窄：给 businessTypes / baseIds ⇒ 结果真变小且是子集 > affected_orders：给 businessTypes ⇒ 严格变小 + 是全量子集 + 零跨细分泄漏 + 回带 scope  331ms
+   ✓ G1-5 · 作用域真收窄：给 businessTypes / baseIds ⇒ 结果真变小且是子集 > chain_impediments：给 baseIds ⇒ 真收窄；给 businessTypes ⇒ **显式拒绝**而不是静默返全域  3395ms
+   ✓ G1-6 · 卡点/堵点/断点三类互斥可判，裁决线来自规则而非代码常数 > 三类都判得出来；每条 evidence 指得出 ruleKey + 阈值出处；同一 locus 不出两类  1314ms
+   ✓ G1-6 · 卡点/堵点/断点三类互斥可判，裁决线来自规则而非代码常数 > 裁决线是**规则里的红线**：改 C05 的红线 ⇒ 卡点条数真的跟着翻（改规则即改推演）  5174ms
+   ✓ G1-7 · R6 确定性（合并态） > chain_loss_attribution / chain_impediments / affected_orders 连跑两次逐字节一致  3620ms
+   ✓ G1-8 · 合并态下「诚实缺席」的理由仍为真（双向棘轮 · 本门首跑即抓出两条真实存量） > E1 声称无承载的结构性缺口，其承载物在对象库里的实况必须与清单逐条对上  344ms
+ ✓ test/seed-demo-propagation.test.ts (27 tests) 105821ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 种子后 view-config：propagationCount≥2 + stateVars 非空（消空世界）  6995ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 种的规则沿真链路（Order/Model/Base）：发布且 viaLinkKey 是 demo 真链路  611ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 🔴 方向可达门：每条种子规则的 source─via→target 在**真链路表**上真的走得通（#158 复发闸）  7853ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 🔴 方向可达门的变异反证：喂一条方向写反的规则（#158 原文），门必须判它死  7066ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 确定性 R6：同 SEED_DEMO 重跑规则字节一致（固定 id/系数）  1085ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 幂等：重复播种不增项（固定 id 覆盖）  501ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > live-fire：种子规则 + 真 Order→Model 链路 → tick 真跨对象传导  7494ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 🔴 效果层 SEAM：供应侧扰动（Supplier.deliveryDelay）跨 3 跳真的传导到 Order.shortageRisk  6409ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 🔴 逐条真触发：54 条规则在真 tick 的 trace 里一条不缺（REQ143 + 档 1/2/3 + 采购根源 3 + 三根源 4 + 设备侧出口 4 + 订单真实字段 3 + 库存环 2 + 物料环 3）  4818ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🐤 金丝雀：端点/链路全合法的边**必须建得出来**（证明这组门不是一律拒绝）  4403ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 端点不存在的边必须 400（link-types 那次 81/133 全放行的复发闸）  4255ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 链路类型不存在的边必须 400  3594ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 方向写反的边必须 400 —— 引擎只沿 from→to 单向走，反向边语法全对但恒贡献 0  3359ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 coefficientRef 解析不到必须 400 —— 否则静默回落内联系数，用户以为改规则生效其实无效  3834ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 PATCH 也走同一道体检：塞非法 coefficientRef 必须 400，而合法系数照常放行  3717ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 体检在 upsert **之前**跑：非法边不许先把同 key 的合法边覆盖掉再报错  3498ms
+   ✓ §5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子） > 🔴 对照实验：同一型号上，BOM 占比不同的两种物料各涨 15 ⇒ 读数必须按占比拉开（修前同为 9.75）  4179ms
+   ✓ §5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子） > 🔴 对照实验：缺料→供应风险 —— BOM 占比不同的物料各涨 15 ⇒ 读数按占比拉开，且 Σ权重≡1 总量不跳  4229ms
+   ✓ §7 WO-WEIGHT-BASIS-FIELD · 按声明字段分摊（真种子） > 种子把 9 条边接到 source_field_share 上了，且各自声明了字段（裁定不改的那条仍是 equal_share）  3790ms
+   ✓ §7 WO-WEIGHT-BASIS-FIELD · 按声明字段分摊（真种子） > 🔴 Σw 逐目标恒 = 1（归一方向被改成 Σ=N 即红 —— §6 判据③b 那次 1.249998→1.571426 的复发闸）  3535ms
+   ✓ §7 WO-WEIGHT-BASIS-FIELD · 按声明字段分摊（真种子） > 🔴 对照实验：同一供应商名下 qty 差 4.09× 的两张采购单各加急 15 ⇒ 读数按 qty 拉开（修前同为 0.555）  4812ms
+   ✓ §7 WO-WEIGHT-BASIS-FIELD · 按声明字段分摊（真种子） > 🔴 field 读不到必须报缺 + 引擎不传导（双向金丝雀；⛔ 不许静默归零或回落等份）  5633ms
+   ✓ §6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算 > 🔴 超预算格子集合 + `Model.demandLoad` 读数必须与在册一致（加边/抬系数即红）  5949ms
+   ✓ M0-A11 解释切片（≤20 节点只读投影 + 覆盖账本） > 真推演 trace ⇒ 截断账本与手算一致；maxNodes 放大 ⇒ 完整（T1+T3）  4165ms
+ ✓ test/finance-worldstate.seam.test.ts (12 tests) 50848ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 金丝雀：链路/种子/求解器三样都在（任一不在 ⇒ 后面的『没变化』读不出是坏了还是真没变）  4602ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 头号判据 · SEAM：真扰动 → 真 tick → 金额**真的变了**，且方向与压力一致  5240ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 现金半同样真的动：应收压力 → 应收投影↑ / 逾期压力 → 逾期敞口↑（逐张发票用真 amount）  4310ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 反向判据 · R6 确定性：不施加任何扰动 ⇒ 两次调用**逐字节相同**  3596ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 R6 跨 tick 也确定：同一个 tick 上重复跑字节一致，且 tick 推进后金额单调不回头  3734ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 口径常驻：basis / chain / provenance 三样一起下发（缺一样这个金额就不可复核）  3749ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 诚实缺席：世界态为空 ⇒ available:false + 原因（**不给一个不动的 0**）  4490ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 回落分支真被驱动：tick 态行缺失 ⇒ 读 baseSnapshot 并据实标 BASE_SNAPSHOT（不是默默当空世界）  3687ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > R2 隔离 + 入参纪律：别人的世界 404；不给 worldId 显式 400（不静默回落到本体真值口径）  3608ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 本体签名实跑比对：真读到的类型/属性都在 SOLVER_ONTOLOGY_SIGNATURES 声明内（漏声明即红）  4413ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 分层不重复：`finance_pnl` 保持「本体真值口径」（施加扰动它照样不动，这是它的正确行为）  5170ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 SEAM：贵料 vs 边角料涨同样的价 —— 下游压力之比 == 两者在该型号 BOM 里的成本之比  4246ms
+ ✓ test/metric-series.seam.test.ts (12 tests) 39984ms
+   ✓ WO-SIM-BE-SERIES · 指标时序（基线线 + 扰动后线 + 环节分段） > 🔴 SEAM：扰动 startTick=3 ⇒ 全部指标在 tick<3 逐点相等，loadIndex 在 tick3 才由衰减线跳到扰动线  5943ms
+   ✓ WO-SIM-BE-SERIES · 指标时序（基线线 + 扰动后线 + 环节分段） > 🔴 SEAM：DELETE 掉扰动 ⇒ 每个指标的 baseline 与 actual 逐点重合，excludedPerturbationIds 清空  4912ms
+   ✓ WO-SIM-BE-SERIES · 指标时序（基线线 + 扰动后线 + 环节分段） > 🔴 缺格 ⇒ null（不是 0、不是插值）；to 超出 curTick ⇒ 收敛并亮 clamped，不补未来格  4900ms
+   ✓ WO-SIM-BE-SERIES · 指标时序（基线线 + 扰动后线 + 环节分段） > 🔴 R6：同 (session, from, to) 连跑三次，响应体逐字节相同（回包零 wall-clock 字段）  5187ms
+   ✓ WO-SIM-BE-SERIES · 指标时序（基线线 + 扰动后线 + 环节分段） > 🔴 变异反证的常驻替身：基线必须来自**本会话自己的 tick0 行**，另起会话/换种子即红  4681ms
+   ✓ WO-SIM-BE-SERIES · 指标时序（基线线 + 扰动后线 + 环节分段） > 🔴 R3：sim.propagation 关掉 ⇒ 本路由 404 FEATURE_NOT_FOUND；R2：别租户 404  3998ms
+   ✓ WO-SIM-SERIES-SCALE · 指标时序规模闸（生产量级世界·11,348 对象是真实测得的量级） > 🔴 SEAM：生产量级世界（10,000 对象 × 2 变量 = 20,000 条目录）下**不传 limit** ⇒ 回包 ≤ 硬上限，且 totalMetrics 如实等于全量  1603ms
+   ✓ WO-SIM-SERIES-SCALE · 指标时序规模闸（生产量级世界·11,348 对象是真实测得的量级） > 🔴 limit 要多少都压到硬上限（appliedLimit 亮出来，不是静默给全量）；limit 小于默认值时如实生效  1547ms
+   ✓ WO-SIM-SERIES-SCALE · 指标时序规模闸（生产量级世界·11,348 对象是真实测得的量级） > 🔴 order=magnitude ⇒ 回的正是被扰动打过的那三条，且按 |actual末 − baseline首| 降序（20/15/10）  1657ms
+   ✓ WO-SIM-SERIES-SCALE · 指标时序规模闸（生产量级世界·11,348 对象是真实测得的量级） > 🔴 objectIds / stateVars 是白名单不是排除表：totalMetrics 反映筛后的全量；名单落空 ⇒ 0 条且 truncated=false  1672ms
+   ✓ WO-SIM-SERIES-SCALE · 指标时序规模闸（生产量级世界·11,348 对象是真实测得的量级） > 🔴 R6：同 (session, limit, order) 连跑三次逐字节一致；幅度并列的那一大批按 key 升序（tiebreaker 稳定）  2184ms
+   ✓ WO-SIM-SERIES-SCALE · 指标时序规模闸（生产量级世界·11,348 对象是真实测得的量级） > 🔴 零扰动世界（全体幅度并列为 0，= 种子世界的实际形态）⇒ magnitude 档必须逐条等于 key 档，且两次重跑不跳序  1697ms
+ ✓ test/decision-causal-graph.test.ts (16 tests) 26195ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · A 沙盘源（Cause/Impact 真值抽取） > A0 暗发 entitlement（R3 先于 authz）：未开的租户 → 两条路由全 404 FEATURE_NOT_FOUND  686ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · A 沙盘源（Cause/Impact 真值抽取） > A1+A2 判据①【改因真的改果】：扰动 100→200，c1@t3 由 20→40，对照链 e1 逐字节不变  717ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · A 沙盘源（Cause/Impact 真值抽取） > A3 判据②【每条边可溯】：每条传导边指回具体 PropagationRule.key，扰动边指回 perturbation:<id>  534ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · A 沙盘源（Cause/Impact 真值抽取） > A4 判据④【诚实降级】：沙盘上没有的三段带出 missing+needs，不是安静的空数组  471ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · A 沙盘源（Cause/Impact 真值抽取） > A5 R2 跨租户 404 + R6 确定性（同一 session 两次取图逐字节一致·无时钟无随机）  526ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · A 沙盘源（Cause/Impact 真值抽取） > A6 边级诚实缺口：路由施加的扰动（startTick=当前 tick）在 trace 上无痕 → 出 CAUSE 节点、不出边、caveats 说明为什么  525ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · A 沙盘源（Cause/Impact 真值抽取） > A7 持续扰动跨多 tick：值延续边把链接上 —— 末端节点仍在可达集内（真跑撞出来的断链回归）  652ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · A 沙盘源（Cause/Impact 真值抽取） > A8 连通性自检写进返回体：延迟规则造成的断点被机器数出来（不靠人读图去发现）  549ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · M 变异反证（判据必须能红） > M1 恒返回空图 → 判据①【改因改果】变红（正例同一支断言，绿的那支必须在这里抛）  443ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · M 变异反证（判据必须能红） > M2 节点数值恒定 → 判据①变红（幅度翻倍但末端节点纹丝不动 ⇒ 因果被掐断）  400ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · M 变异反证（判据必须能红） > M3 抹掉边的 producedBy → 判据②【每条边可溯】变红  429ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · M 变异反证（判据必须能红） > M4 契约门变异：空段不给 missing/needs → schema 当场抛（诚实缺席不是靠自觉）  408ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · B 台账源（Decision → 五段全覆盖） > B1 五段接线：根因 → 指标缺口 → 决策 → 方案；★「为什么这个决策被触发」那条边带得出触发量  5425ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · B 台账源（Decision → 五段全覆盖） > B2 ★预言不许冒充实测：closesGap 挂在 ACTION 节点上，RESULT 段仍是 NOT_YET_REALIZED  4724ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · B 台账源（Decision → 五段全覆盖） > B3 实测回填后 RESULT 段真的长出来（同一条决策，改的只是 outcome）  4505ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · B 台账源（Decision → 五段全覆盖） > B4 R2 跨租户 404 + R6 确定性（同一决策两次取图逐字节一致）  5195ms
+ ✓ test/assembly-memo.seam.test.ts (12 tests) 20804ms
+   ✓ §1 金丝雀：计数器挂在装配那条路上，且读数有鉴别力 > 第一跑冷装一次；世界没动的第二跑命中一次；内存模式下 skipped 不动  4652ms
+   ✓ §2 头号判据：命中那一跑的产物，与冷装那一跑逐字节相同 > 世界没动时，两拍的 scopeReport 逐字节相同；且命中的是同一个冻结实例  3895ms
+   ✓ §3 反向金丝雀：判据必须真的看着世界与规则 > 对象写之后不命中，且图**真的跟着变**（不是只动了个计数器）  4203ms
+   ✓ §3 反向金丝雀：判据必须真的看着世界与规则 > 规则集变了之后不命中（规则不是对象 ⇒ 必须靠规则指纹那一半判据）  4333ms
+   ✓ §6 准确不降级：改规则 params（指纹看不见它）⇒ 必须不命中，且推出来的数跟着变 > 只改 C36.params ⇒ 装配产物里的 ruleParams 必须是**新的那一份**（命中则给旧系数 = 红）  3684ms
+ ✓ test/sim-propagation-direction.seam.test.ts (3 tests) 12072ms
+   ✓ WO-SANDBOX-PROP-DIRECTION · 出厂传导规则的方向（#158 复发闸） > 🔴 效果层 SEAM：Base.loadIndex 扰动 → 沿 line_belongs_to_base 真传导到 Line.utilPressure（数值断言）  4635ms
+   ✓ WO-SANDBOX-PROP-DIRECTION · 出厂传导规则的方向（#158 复发闸） > 🔴 方向性反证：把 line_belongs_to_base 全部反向（Line→Base）⇒ 该规则必须不触发（金丝雀同跑）  4087ms
+   ✓ WO-SANDBOX-PROP-DIRECTION · 出厂传导规则的方向（#158 复发闸） > 🔴 种子方向 = 本体单源：demo_base_load_to_line_util 的三元组与 ontology linkType 声明一字不差  3347ms
+ ❯ test/sim-order-real-fields.seam.test.ts (6 tests | 1 failed) 30143ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ①正向 measuredCells = 在手订单数 × 3，且两边**各自独立**算一遍再比  4120ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ①反向 把某张单的 qty 删掉 ⇒ 该格退回哈希、measuredCells 减 1（只测正向不算）  3830ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ② 改真值 ⇒ 下游读数必须跟着变：把一张单的价格 ×1.5，重跑同一套推演  5077ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ③ 两张金额差一个量级的真订单，同一个扰动 ⇒ 下游读数必须拉开  4319ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ④ R6：同 (industry, scale, seed) 重跑，世界态逐字节一致  8360ms
+   × WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ⑤ 接缝：真值必须**出现在传导结果里**，且 max 语义不随拍数漂（不是纯积分器） 4434ms
+     → obj_model_4680-NCM.backlogHorizonDays @tick1: expected undefined to be 110 // Object.is equality
+stdout | test/sim-seed-world.seam.test.ts > WO-SIM-SEED-WORLD · 种子世界接缝 > ⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身
+[SIM-SEED-WORLD ⑤b] 白名单对象=223 每对象最多7格 ⇒ 批大小=71 批数=4（上限=500）
+
+stdout | test/sim-seed-world.seam.test.ts > WO-SIM-SEED-WORLD · 种子世界接缝 > ⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身
+[SIM-SEED-WORLD ⑤b] 合并后 1167 格（一次发完会是 1167>500 ⇒ truncated:true，这就是本条曾经的红）
+
+ ✓ test/sim-seed-world.seam.test.ts (4 tests) 26569ms
+   ✓ WO-SIM-SEED-WORLD · 种子世界接缝 > ① 播种 → GET /a/v1/sim/sessions 里有一条 RUNNING(curTick≥1)、baseSnapshot 非空；② tick 态落盘且真动过；③ 幂等  6729ms
+   ✓ WO-SIM-SEED-WORLD · 种子世界接缝 > ⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身  9501ms
+   ✓ WO-SIM-SEED-WORLD · 种子世界接缝 > ⑥ 确定性（R6）：同一份世界重播一遍，选出来的落点与幅度**逐字节一致**  9901ms
+   ✓ WO-SIM-SEED-WORLD · 种子世界接缝 > ④ 诚实缺席：零传导规则/零物化对象的租户**不建空世界**（空 baseSnapshot 的 RUNNING = 另一种占位）  437ms
+ ✓ test/sim-root-triad.seam.test.ts (5 tests) 30197ms
+   ✓ WO-SIM-ROOT-TRIAD · 三个根源扰动因素（SEAM：种子数据 × 传导引擎） > §0 🐤 恒等式金丝雀：源码抽取器 === grep 口径 === 路由下发条数（三者不等即『工具坏了』）  4142ms
+   ✓ WO-SIM-ROOT-TRIAD · 三个根源扰动因素（SEAM：种子数据 × 传导引擎） > §1 🔴 入度臂：三个新量纲入度 = 0（现算·非硬编码名单），且 demandPressure 由 0 → ≥1（降级）  3938ms
+   ✓ WO-SIM-ROOT-TRIAD · 三个根源扰动因素（SEAM：种子数据 × 传导引擎） > §1b 🔴 中文名：三个根源在**真接口**里都拿得到人话名（下拉里没名字 = 用户挑不出来）  3834ms
+   ✓ WO-SIM-ROOT-TRIAD · 三个根源扰动因素（SEAM：种子数据 × 传导引擎） > §2 🔴 落点臂：三个根源在真种子世界态里**真带上**，且全距 > 0（不是 0 占位）  4099ms
+   ✓ WO-SIM-ROOT-TRIAD · 三个根源扰动因素（SEAM：种子数据 × 传导引擎） > §3 🔴 传导臂：每个根源抬高 D ⇒ 1 跳目标 Δ 同号·非零·不超过 N×系数×D，远端下游按预期方向动  14182ms
+ ✓ test/sim-root-procurement.seam.test.ts (6 tests) 27641ms
+   ✓ WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SEAM） > ① 入度臂：procurementDelay 入度=0（根源）· 出度>0（真能推动东西）· shortageRisk 入度>0（是果不是源）  4062ms
+   ✓ WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SEAM） > ② 落点臂：三类采购台账在 world.state 里真带 procurementDelay 且值非空（不是只在对象属性上有）  3475ms
+   ✓ WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SEAM） > ③ 传导臂：给采购单打一条扰动 → propagateTick → 该物料 shortageRisk 按系数真的抬起来（方向+量级）  3901ms
+   ✓ WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SEAM） > ③b 传导臂 · 另两类台账（批次 / 供应商）延一拍到达，同样把 shortageRisk 抬起来  3331ms
+   ✓ WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SEAM） > ④ 全链臂（真 HTTP · 从真种子世界态出发）：采购到货延迟 → 物料短缺 → 型号缺料 → 订单缺口，四跳全程真的分叉  4875ms
+   ✓ WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SEAM） > ⑤ 确定性 R6：同 seed 重种，procurementDelay 的落点与一拍传导结果字节级一致  7978ms
+ ✓ test/sim-session.test.ts (8 tests) 7241ms
+   ✓ 推演沙盘增量1 · 会话状态机 > 暗发 entitlement（R3）：未播种租户 sim.* defaultOn:false → /a/v1/sim/* 返 404 FEATURE_NOT_FOUND（先于 authz）  612ms
+   ✓ 推演沙盘增量1 · 会话状态机 > init→tick×2→act→checkpoint→tick→rollback→branch→compare 全跑通（CLI 同序）  525ms
+   ✓ 推演沙盘增量1 · 会话状态机 > 确定性 R6：同 base+操作序列两个会话 → tick 态字节一致  440ms
+   ✓ 推演沙盘增量1 · 会话状态机 > R2 隔离：他租户读不到本租户会话（404）  373ms
+   ✓ 推演沙盘增量1 · 会话状态机 > 传导规则 CRUD（系数可编辑·一等类型）：发布即列出  598ms
+   ✓ 推演沙盘增量1 · 会话状态机 > 增量4 view-config 由本体派生（配置驱动·零业务常数）：节点类型来自租户本体、状态变量来自传导规则  3886ms
+   ✓ 推演沙盘增量1 · 会话状态机 > 传导 live-fire 端到端（增量3 评审遗留）：规则 + 真对象实例 + link → tick 端点真跨对象传导  443ms
+   ✓ 推演沙盘增量1 · 会话状态机 > 两行业端到端（R14 零行业锁死）：非电池租户(物流 Warehouse/Route/Shipment)同一套 sim 代码跑通 view-config→init→tick  361ms
+stdout | test/adversary-reaction.seam.test.ts > WO-ADVERSARY-REACTION · 客户会还手（五格对照实验） > §1 开/关对照：同一应对下两组世界态 md5 必须不同（相同 ⇒ 对抗方没接上）
+ADVERSARY_EXP1 on=7e846e505b0cf0b8a754c9bfc0c212b7 off=a2b52c0861239f68a756088c1b4618d9
+
+stdout | test/adversary-reaction.seam.test.ts > WO-ADVERSARY-REACTION · 客户会还手（五格对照实验） > §3 同条数不同金额的两个客户，受同一冲击 ⇒ 还手力度按金额比拉开（不是只看条数）
+ADVERSARY_EXP3 单数=12 | 大户 小鹏汽车(obj_customer_cust_1) 敞口=1186016018 churn=14.002756557767 | 小户 宇通客车(obj_customer_cust_16) 敞口=913442094 churn=10.784599092909 | 敞口比=1.2984030687773407 还手比=1.298403068777399
+
+ ✓ test/adversary-reaction.seam.test.ts (7 tests) 30724ms
+   ✓ WO-ADVERSARY-REACTION · 客户会还手（五格对照实验） > §5 金丝雀：还手边与其逆边真的在数据里，且我的读数取法抓得住变化  4903ms
+   ✓ WO-ADVERSARY-REACTION · 客户会还手（五格对照实验） > §2 反向对照：对抗方**关闭**时 orderChurn 仍是纯外生根（入度 0），世界态不含任何还手写入  4032ms
+   ✓ WO-ADVERSARY-REACTION · 客户会还手（五格对照实验） > §1 开/关对照：同一应对下两组世界态 md5 必须不同（相同 ⇒ 对抗方没接上）  7935ms
+   ✓ WO-ADVERSARY-REACTION · 客户会还手（五格对照实验） > §3 同条数不同金额的两个客户，受同一冲击 ⇒ 还手力度按金额比拉开（不是只看条数）  4137ms
+   ✓ WO-ADVERSARY-REACTION · 客户会还手（五格对照实验） > §4 确定性：同 seed 同应对重跑两次 ⇒ 世界态逐字节相同  6585ms
+   ✓ WO-ADVERSARY-REACTION · 客户会还手（五格对照实验） > 可披露：命中的规则 key · 系数 · 容忍线 · 还手动作 · 承载条数 · 越线对手数 · **谁选的**，一项不缺  3129ms
+ ✓ test/sim-rule-domain.seam.test.ts (6 tests) 18204ms
+   ✓ WO-DISRUPTION-CARDS · 传导边的业务域归属（分片卡片的唯一分组依据） > 金丝雀：两条独立路径都真的出东西（规则非空 · 流程登记册非空 · 已知必中样例命中）  3843ms
+   ✓ WO-DISRUPTION-CARDS · 传导边的业务域归属（分片卡片的唯一分组依据） > 🔴 接缝：每条传导边下发的 domainKey/domainName 与流程登记册现算的完全一致（逐条对账·两边都不写死）  3887ms
+   ✓ WO-DISRUPTION-CARDS · 传导边的业务域归属（分片卡片的唯一分组依据） > 🔴 诚实缺席：domainKey 为 null 的边，恰好是那些 target 不被任何流程承载的边（集合相等，不是数量相等）  3903ms
+   ✓ WO-DISRUPTION-CARDS · 传导边的业务域归属（分片卡片的唯一分组依据） > 🔴 分片可用：分出的组数 ≥3、最大一组不超过总数一半（35 条一次全倒 → 可浏览的几片）  3274ms
+   ✓ WO-DISRUPTION-CARDS · 传导边的业务域归属（分片卡片的唯一分组依据） > 变异反证：抹掉 domainKey 后，对账当场不成立（证明 ① 咬的是归属本身，不是「字段存在」）  3294ms
+ ✓ test/process-tick-coverage.seam.test.ts (7 tests) 17347ms
+   ✓ WO-PROCESS-TICK-COVERAGE · 第五档流程画布的节拍覆盖面（SEAM·守 G-PROCESS-TICK-COVERAGE） > §B1 🔴 覆盖率现算：29/65 随节拍变 · 0 无承载对象 · 36 本层不随节拍变（三档合计 = 65）  4194ms
+   ✓ WO-PROCESS-TICK-COVERAGE · 第五档流程画布的节拍覆盖面（SEAM·守 G-PROCESS-TICK-COVERAGE） > §B2 🔴 反面判据（红线 1）：D01 经营规划 与 D02 外部信号**整域**必须是「本层不随节拍变」  3878ms
+   ✓ WO-PROCESS-TICK-COVERAGE · 第五档流程画布的节拍覆盖面（SEAM·守 G-PROCESS-TICK-COVERAGE） > §C 🔴 接缝：真 tick ⇒ 29 个点亮承载物读数**全部**真变 · 36 条黑档读数**真的一动不动**  4717ms
+   ✓ WO-PROCESS-TICK-COVERAGE · 第五档流程画布的节拍覆盖面（SEAM·守 G-PROCESS-TICK-COVERAGE） > §D 🔴 变异反证：抽掉执行链头一条边的**实例**（Line→WorkOrder），D07 那一串必须整条塌掉  4537ms
+ ✓ test/ontology-query-engine.test.ts (7 tests) 28625ms
+   ✓ WO-Phase3-B · ontology_query 本体查询引擎（SEAM ≥4 + 红咬 + R6） > ① 前向跨类型遍历（Base→Order 自动最短路）→ rows + 逐行 provenance{typeKey,objId,linkPath}  4559ms
+   ✓ WO-Phase3-B · ontology_query 本体查询引擎（SEAM ≥4 + 红咬 + R6） > ② 反向遍历（Order→Base）方向真反转（linkPath = model_demanded_by_order:in → model_producible_at:out）  4257ms
+   ✓ WO-Phase3-B · ontology_query 本体查询引擎（SEAM ≥4 + 红咬 + R6） > ③ 带 filter（eq 下推 + 非 eq 引擎内后置）：过滤后严格子集且每行满足条件  3704ms
+   ✓ WO-Phase3-B · ontology_query 本体查询引擎（SEAM ≥4 + 红咬 + R6） > ④ 带聚合 sum/count/avg/max（引擎内算·与手工核对一致·入库零聚合）  4062ms
+   ✓ WO-Phase3-B · ontology_query 本体查询引擎（SEAM ≥4 + 红咬 + R6） > ⑤ 红咬 KILL-MOCK：改 Order.qty / Order.due / Line.max_capacity_day → 查询结果真变（证非写死·真读对象）  4580ms
+   ✓ WO-Phase3-B · ontology_query 本体查询引擎（SEAM ≥4 + 红咬 + R6） > ⑥ R6 确定性：同输入双跑字节一致（无时钟/随机·稳定排序）  3578ms
+   ✓ WO-Phase3-B · ontology_query 本体查询引擎（SEAM ≥4 + 红咬 + R6） > ⑦ NO_QUERY_PLAN：不可达目标类型诚实报错（不编造）  3882ms
+ ✓ test/option-pricing-reach.seam.test.ts (3 tests) 14934ms
+   ✓ WO-PRICING-REACH · 落点→订单格跳数 × 推演拍数（真引擎接缝） > h < 跳数 ⇒ 诚实缺格；h ≥ 跳数 ⇒ 真读数且非零（同一次推演的两个拍数，缺一不算交付）  5333ms
+   ✓ WO-PRICING-REACH · 落点→订单格跳数 × 推演拍数（真引擎接缝） > 缺省 horizon（不传）⇒ 后端现算够用的拍数，直接给 priced，⛔ 不再默认 1（注定读不出东西的值）  4623ms
+   ✓ WO-PRICING-REACH · 落点→订单格跳数 × 推演拍数（真引擎接缝） > 指纹含推演拍数：换个时长再问，是**另一次提问**而不是命中上一条缓存  4976ms
+ ✓ test/edge-active-counterfactual.test.ts (7 tests) 23431ms
+   ✓ WO-ACTIVE-EDGE-UX · 会话级反事实（关掉一条传导边 → 结果真的变） > 🔴 SEAM：屏蔽 demo_base_load_to_line_util ⇒ Line.utilPressure 由 10 变 0（方向↓·量级 20×0.5）  5660ms
+   ✓ WO-ACTIVE-EDGE-UX · 会话级反事实（关掉一条传导边 → 结果真的变） > 🔴 SEAM：POST …/counterfactual 同时给出基线与反事实，diff 方向 down、量级 10  5774ms
+   ✓ WO-ACTIVE-EDGE-UX · 会话级反事实（关掉一条传导边 → 结果真的变） > 🔴 SEAM：对照跑前后，会话行 + 全部 tick 行逐字节相同（putTickState/putSession 一次都不调）  5037ms
+   ✓ WO-ACTIVE-EDGE-UX · 会话级反事实（关掉一条传导边 → 结果真的变） > 🔴 未知 ruleKey ⇒ 400 UNKNOWN_PROPAGATION_RULE_KEY（两条路由都咬）  3292ms
+   ✓ WO-ACTIVE-EDGE-UX · 会话级反事实（关掉一条传导边 → 结果真的变） > 🔴 R3：sim.propagation 关掉 ⇒ 两条新路由都 404 FEATURE_NOT_FOUND  3661ms
+ ✓ test/sim-sessions-projection.seam.test.ts (7 tests) 19164ms
+   ✓ WO-SIM-SESSIONS-PROJECTION 件一 · 列表投影 > ① 列表回包不含世界内容、带规模摘要；② 回包体积不随世界规模长；③ 建会话 201 与 GET :id 照旧含 baseSnapshot  655ms
+   ✓ WO-SIM-SESSIONS-PROJECTION 件一 · 列表投影 > ④ GET /a/v1/sim/sessions/:id 的 R2/R3：别租户 404、功能关闭 404  406ms
+   ✓ WO-SIM-SESSIONS-PROJECTION 件一 · 列表投影 > ⑥ R9 的反方向：memory 侧也不许读时现算（pg 走预存列，memory 却每次列表重算 = 漂移）  392ms
+   ✓ WO-SIM-SESSIONS-PROJECTION 件二 · 播种原子性（判据落在「播完了」不是「有东西」） > ① 播完 → 有完成标记；② 打断到一半 → 重启检测到「不完整」并补齐（不是静默走开）；③ 补齐后世界真能用  6167ms
+   ✓ WO-SIM-SESSIONS-PROJECTION 件二 · 播种原子性（判据落在「播完了」不是「有东西」） > ④ 存量兼容：完成标记引入之前播下的世界（RUNNING@tick≥N 但无标记）只回填标记，**不重播**  5682ms
+   ✓ WO-SIM-SESSIONS-PROJECTION 件二 · 播种原子性（判据落在「播完了」不是「有东西」） > ⑤ 用户在种子世界上多推了几拍 ⇒ 仍判已播完（判据用 `>=` 不是 `===`，否则会把「用过」读成「没播完」）  5858ms
+ ✓ test/sim-real-cells.seam.test.ts (20 tests) 15198ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > ⓐ 引擎归属：derivationSpecs 清成 0 条 ⇒ 25 个 targetProp 全部消失（证明是引擎②算的）  3803ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂3 敏感性：Customer.receivables ×2 ⇒ receivablePressure 精确 ×2（线性式）  373ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂3 敏感性：Equipment.health_score ↓10 ⇒ equipmentFailure 精确 ↑10（反向线性）  385ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂4 反向：拿掉 Line.max_capacity_day ⇒ blockedPressure 退回（COALESCE 兜 0，非写死常数）  911ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂5 变异反证：把 equipmentFailure 的『100 −』改成『100 +』⇒ 臂1 锚定断言当场红  3987ms
+ ✓ test/sandbox-e4-cadence-propagation.seam.test.ts (8 tests) 7820ms
+   ✓ WO-SANDBOX-E4 · 节拍进推演（D1 Cadence × propagateTick 接缝） > E4-1 SEAM 真种子链路：合成落的 Cadence(demand.consensus) 真的把一条流拦到闸点，到点一次性齐放  5318ms
+   ✓ WO-SANDBOX-E4 · 节拍进推演（D1 Cadence × propagateTick 接缝） > E4-2 SEAM 判据（工单原文）：S&OP 节拍 14d→7d ⇒ 全链前置期缩短量逐值 == Δ(everyDays)/2  447ms
+   ✓ WO-SANDBOX-E4 · 节拍进推演（D1 Cadence × propagateTick 接缝） > E4-3 诚实缺席：规则声明了 D1 标 EMPTY 的节拍 ⇒ 该流不传导 + 响应显式报缺（不静默兜底）  436ms
+   ✓ WO-SANDBOX-E4 · 节拍进推演（D1 Cadence × propagateTick 接缝） > E4-4 单源纪律：cadenceNodeId 写自由串 ⇒ REST 拒收（CHAIN_NODE_REGISTRY 单源，D1×E1 那次事故的门）  420ms
+   ✓ WO-SANDBOX-E4 · 节拍进推演（D1 Cadence × propagateTick 接缝） > E4-5 R6：同 (seed, 场景, 参数版本) 重跑 → 逐 tick 快照字节一致  831ms
+   ✓ WO-SANDBOX-E4 · 节拍进推演（D1 Cadence × propagateTick 接缝） > E4-8 向后兼容：E4 之前落库的老规则（doc 里根本没有 cadenceNodeId 键）必须照旧传导，不许被当成'声明了闸门'  364ms
+ ❯ test/sim-perturbation.test.ts (19 tests | 1 failed) 6729ms
+   ✓ WO-P0 · 扰动一等公民 > 暗发 entitlement（R3 先于 authz）：未播种租户 → 扰动三路由全 404 FEATURE_NOT_FOUND  642ms
+   × WO-P0 · 扰动一等公民 > 断言①：durationTicks=null 的扰动与今天 /act **逐字节同结果**（additive 可回退的证明） 517ms
+     → expected { tick: 2, state: { …(2) }, …(2) } to deeply equal { tick: 2, state: { …(2) }, …(1) }
+   ✓ WO-P0 · 扰动一等公民 > 断言②（#151）：tick → act → tick 后在途延迟传导**未丢** —— /act 不再清空 pending  450ms
+   ✓ WO-P0 · 扰动一等公民 > 断言②补 · 同一条 #151 从**扰动路由**进来也不丢（新入口不许把老坑重挖一遍）  546ms
+   ✓ WO-P0 · 扰动一等公民 > 既有传导不受影响：无扰动时 tick→tick 的世界态与本单引入前逐字节同结果（可回退）  424ms
+   ✓ WO-P0 · 扰动一等公民 > 断言③（R6）：同扰动序列同基态重跑 → 世界态与扰动清单**字节级一致**  413ms
+   ✓ WO-P0 · 扰动一等公民 > 断言④：扰动可列举 / 可溯源 / 可删（此前扰动不是实体，只是一次副作用）  445ms
+   ✓ WO-P0 · 扰动一等公民 > R2 隔离：他租户读不到 / 删不掉本租户的扰动  430ms
+   ✓ WO-P0 · 扰动一等公民 > 契约校验落到路由：kind 非法 / durationTicks=0 → 400，不落库  414ms
+   ✓ WO-P2 · propagateTick 接扰动（到期回退 + 溯源） > 断言1（到期回退）：durationTicks=72 的停机在 tick 72 **回退**，tick 75 世界已恢复；durationTicks=null 则永久  552ms
+   ✓ WO-P2 · propagateTick 接扰动（到期回退 + 溯源） > 断言2（可回退）：durationTicks=null 的扰动世界线与 `/act`（不产生扰动实体 ⇒ 引擎走老路）**逐字节相同**  563ms
+   ✓ WO-P2 · propagateTick 接扰动（到期回退 + 溯源） > 断言3（不重复施加）：建单当 tick 已由路由施加的 delta，tick 后是 +2 **不是 +4**，且之后不逐 tick 复利  472ms
+   ✓ WO-P2 · propagateTick 接扰动（到期回退 + 溯源） > 断言4（R6）：含到期回退 / 未来起效 / delta / scale 的一整套扰动，重跑**世界线字节级一致**  462ms
+   ✓ WO-P2 · propagateTick 接扰动（到期回退 + 溯源） > 引擎 · delta/scale 的回退是**解析求逆**（减/除），不靠记忆，也不抹掉中间演化 1ms
+   ✓ WO-P2 · propagateTick 接扰动（到期回退 + 溯源） > 引擎 · set 的回退必须拿到 preValue；拿不到就**诚实报缺**（不静默留成永久生效） 0ms
+   ✓ WO-P2 · propagateTick 接扰动（到期回退 + 溯源） > 引擎 · 同 tick 多条扰动：落地按清单序（不可交换），到期按逆序解开 0ms
+   ✓ WO-P2 · propagateTick 接扰动（到期回退 + 溯源） > 引擎 · 落地当 tick 就往下游传（不白等一个 tick），且传导规则照常吃到扰动后的源态 1ms
+   ✓ WO-P2 · propagateTick 接扰动（到期回退 + 溯源） > 引擎 · 入参 state **不被改**（R6 纯函数）：扰动相位只作用在副本上 0ms
+   ✓ WO-P2 · propagateTick 接扰动（到期回退 + 溯源） > 没有 PUBLISHED 传导规则的世界，扰动一样会到期回退（不许悄悄变永久）  390ms
+ ✓ test/sim-act-close.seam.test.ts (6 tests) 4627ms
+   ✓ WO-SIM-ACT-CLOSE · 扰动闭环接缝（前端入口 → 传导 → KPI 真的变） > ① 用**前端源码里真实的那个请求**打后端 → 下游 KPI 真的变；不施加扰动的对照组不变  2022ms
+   ✓ WO-SIM-ACT-CLOSE · 扰动闭环接缝（前端入口 → 传导 → KPI 真的变） > ② durationTicks 到期 → 上游自动回退，下游 KPI 跟着回到对照值（不是永久生效）  550ms
+   ✓ WO-SIM-ACT-CLOSE · 扰动闭环接缝（前端入口 → 传导 → KPI 真的变） > ③（#151）前端走的 /perturbations 路同样不清空 pending：tick → 施加 → tick，在途贡献如期到达  418ms
+   ✓ WO-SIM-ACT-CLOSE · 扰动闭环接缝（前端入口 → 传导 → KPI 真的变） > ④（#152）就绪认证的 Trial Tick 真跑传导相：驱动得动的世界 fired>0，且 rulesFired = 两相之和  407ms
+   ✓ WO-SIM-ACT-CLOSE · 扰动闭环接缝（前端入口 → 传导 → KPI 真的变） > ④补（诚实位）：世界态驱动不动传导时 declared>0 而 fired===0 —— 不许拿「声明了几条」冒充「跑通了几条」  434ms
+   ✓ WO-SIM-ACT-CLOSE · 扰动闭环接缝（前端入口 → 传导 → KPI 真的变） > ⑤ 反证：抽取器喂假源码 → 抽不到任何字段（证明①的绿来自前端真源码，不是恒真兜底）  794ms
+ ✓ test/sim-scope-trial.seam.test.ts (8 tests) 3436ms
+   ✓ WO-SIM-SCOPE-TRIAL · P3 `SimSession.scope` 接读端（效果层：LOCAL≠GLOBAL） > ① 同 base 同规则同 tick：scope=LOCAL(TypeA) 与 scope=GLOBAL **结果不同**——被裁掉的那条边的下游没被算  634ms
+   ✓ WO-SIM-SCOPE-TRIAL · P3 `SimSession.scope` 接读端（效果层：LOCAL≠GLOBAL） > ② 换根 ⇒ 换子图：scope=LOCAL(TypeC) 保住 B→C、裁掉 A→B（不是「局部=少算最后一跳」这种一厢情愿）  588ms
+   ✓ WO-SIM-SCOPE-TRIAL · P3 `SimSession.scope` 接读端（效果层：LOCAL≠GLOBAL） > ③ 诚实缺席：自称 LOCAL 却没有根（或根类型无已物化对象）⇒ 报缺 + 不传导，**绝不退回 GLOBAL**  510ms
+   ✓ WO-SIM-SCOPE-TRIAL · P3 `SimSession.scope` 接读端（效果层：LOCAL≠GLOBAL） > ④ 可回退（RL9）：不写 scope / 写活方案快照 bag 的老会话 —— 与 GLOBAL 逐字节相同  432ms
+   ✓ WO-SIM-SCOPE-TRIAL · L3-a 认证 Trial Tick 真跑传导栈（效果层：传导计数 > 0） > ④ Trial Tick 之后**传导计数 > 0**（此前恒 0：跑的是 recompute 栈 B，不是传导栈 A）  454ms
+   ✓ WO-SIM-SCOPE-TRIAL · L3-a 认证 Trial Tick 真跑传导栈（效果层：传导计数 > 0） > ⑤ 接缝合流：认证的 LOCAL 范围**同样作用于 Trial Tick** ⇒ 传导计数随范围变（2 → 1）  389ms
+   ✓ WO-SIM-SCOPE-TRIAL · L3-a 认证 Trial Tick 真跑传导栈（效果层：传导计数 > 0） > ⑥ 零传导规则的租户：传导计数诚实为 0（不虚报，也不因此判 FAIL）  425ms
+ ✓ test/sim-cert-contract-reconcile.seam.test.ts (10 tests) 5121ms
+   ✓ WO-CERT-CONTRACT-RECONCILE ① 切 LOCAL ⇒ 引擎真的只算局部 > ① 认证 Trial Tick 的传导计数随范围变（GLOBAL 2 → LOCAL(TypeA) 1）——不是「局部=全局」  1005ms
+   ✓ WO-CERT-CONTRACT-RECONCILE ① 切 LOCAL ⇒ 引擎真的只算局部 > ① 诚实缺席：自称 LOCAL 却没有根 ⇒ 传导计数为 0，**绝不静默退回 GLOBAL 的 2**  667ms
+   ✓ WO-CERT-CONTRACT-RECONCILE ② 传导相真的跑 + declared vs fired 的差看得见 > ②a 传导相真跑：covered=true 且 fired>0（此前恒 0——跑的是派生重算，不是传导核）  562ms
+   ✓ WO-CERT-CONTRACT-RECONCILE ② 传导相真的跑 + declared vs fired 的差看得见 > ②b 分母的意义：`declared` 与 `fired` 是两个数——同一批规则，只改源态就能让 fired 掉到 0 而 declared 不变  507ms
+   ✓ WO-CERT-CONTRACT-RECONCILE ② 传导相真的跑 + declared vs fired 的差看得见 > ②c 病样必须看得见：declared>0 且 fired===0 ⇒ gaps 里有 PROPAGATION_ALL_SILENT（不是一个静默的 0）  508ms
+   ✓ WO-CERT-CONTRACT-RECONCILE ③ 派生那个数名副其实（规模 ≠ 触发） > ③ 过渡字段可回退：deprecated 的 rulesFired 仍下发，且恒等于「规模 + 触发」（老消费方不破）  541ms
+   ✓ WO-CERT-CONTRACT-RECONCILE ④ 传导相入参只有唯一装配处（tick 路与认证路同源） > ④ 认证路与 tick 路同源：走 coefficientRef 的规则 与 挂节拍闸门的规则，在**认证 Trial Tick 里同样触发**  482ms
+   ✓ WO-CERT-CONTRACT-RECONCILE ④ 传导相入参只有唯一装配处（tick 路与认证路同源） > ④ 结构判据：全仓只有一处装配传导相入参（新增第二处 = 两条路会静默分家）  634ms
+ ✓ test/sim-trial-scope-reconcile.seam.test.ts (9 tests) 1656ms
+   ✓ WO-SIM-TRIAL-SCOPE-RECONCILE · 合并后两侧功能同时在场 > ① 切 LOCAL 引擎真的只算局部：同一个世界里 tick 路与认证路的数**都**随范围变（A 侧没被合掉）  824ms
+   ✓ WO-SIM-TRIAL-SCOPE-RECONCILE · 合并后两侧功能同时在场 > ② Trial Tick 的传导相真的跑，且 propagationRulesDeclared 仍在下发（B 侧没被合掉）  399ms
+   ✓ WO-SIM-TRIAL-SCOPE-RECONCILE · 合并后两侧功能同时在场 > ②补 诚实位真的有信息量：世界态驱动不动传导时 declared>0 而 fired===0  403ms
+ ✓ test/sim-domain-entry.seam.test.ts (6 tests) 6603ms
+ ✓ test/statevar-display-name.seam.test.ts (6 tests) 21654ms
+   ✓ WO-STATEVAR-DISPLAYNAME · 状态变量中文名经接口真下发（SEAM） > ① GET /sim/view-config 的 stateVarNames 带中文名（真种子真链路，不是读源码常量）  4138ms
+   ✓ WO-STATEVAR-DISPLAYNAME · 状态变量中文名经接口真下发（SEAM） > ② 两条路同源：propagation-rules 与 view-config 的字典逐字节相同（不许各写一份映射）  3888ms
+   ✓ WO-STATEVAR-DISPLAYNAME · 状态变量中文名经接口真下发（SEAM） > ③ 诚实缺席：未登记的变量**不出现在字典里**（不是 null/空串/回填裸键）  3371ms
+   ✓ WO-STATEVAR-DISPLAYNAME · 状态变量中文名经接口真下发（SEAM） > ④ 覆盖金丝雀：种子声明的**每一个**状态变量都已登记中文名（加边忘了配名 ⇒ 这里当场红）  3344ms
+   ✓ WO-STATEVAR-DISPLAYNAME · 状态变量中文名经接口真下发（SEAM） > ⑤ 变异反证：响应值逐条 === 单源表的值 ⇒ 改表里一个词，接口跟着变  3539ms
+   ✓ WO-STATEVAR-DISPLAYNAME · 状态变量中文名经接口真下发（SEAM） > ⑥ 状态变量与本体属性同名时：必须真有值 + 量纲唯一 + 中文名带单位（原「一律不许同名」已按本段理由收窄）  3372ms
+ ✓ test/ontology-invariants.seam.test.ts (14 tests) 3587ms
+   ✓ ① 实测量来自真种子本体，且与独立端点的读数对得上 > 传导系数最大值 == 真传导规则表里算出来的最大值（跨端点交叉验证，非自洽）  628ms
+   ✓ ① 实测量来自真种子本体，且与独立端点的读数对得上 > 守卫清单非空，且每条都真求了值（没有一条挂着「读不出来」）  375ms
+   ✓ ① 实测量来自真种子本体，且与独立端点的读数对得上 > 守卫条件是**业务话**，且由表达式渲染而来（屏上不出现机器表达式）  407ms
+   ✓ ② 接缝：把容差挪到实测值以下 ⇒ 该守卫由成立翻成不成立 > 系数上限从目录原值降到实测值之下 ⇒ holds 翻转 + 翻转清单点名 + 违反者是真边  478ms
+   ✓ ② 接缝：把容差挪到实测值以下 ⇒ 该守卫由成立翻成不成立 > 试算**不落库**：改完容差再读只读体检口，仍是目录原值那一版  417ms
+   ✓ ② 接缝：把容差挪到实测值以下 ⇒ 该守卫由成立翻成不成立 > 停用一条 ⇒ 退出成立/不成立计数，但实测量照算（停用不让问题消失）  450ms
+   ✓ ② 接缝：把容差挪到实测值以下 ⇒ 该守卫由成立翻成不成立 > 同一份本体连算两次，结果逐字节一致（R6 确定性）  390ms
+   ✓ ④ 阻断开关：两个取值都测（只测一个必留暗坑） > 端到端：本体里确有不成立的守卫时，发起发布会签仍然 201（今天一条都不拦）  436ms
+ ✓ test/error-envelope-parse-body.test.ts (4 tests) 1526ms
+   ✓ 统一错误信封 · 入参不合法一律 400 VALIDATION_ERROR（不回显 zod 内部结构） > 15 条路由逐条：http=400 · code=VALIDATION_ERROR · 信封完整 · 无 zod 内部结构  623ms
+   ✓ 统一错误信封 · 入参不合法一律 400 VALIDATION_ERROR（不回显 zod 内部结构） > 对照 · 已修好的邻居 optimize-pareto 口径不变（本单不许动它）  436ms
+   ✓ 统一错误信封 · 入参不合法一律 400 VALIDATION_ERROR（不回显 zod 内部结构） > 合法入参照常放行 —— 本单只改『校验失败怎么回』，没有收紧任何 schema  463ms
+ ✓ test/sandbox-d1-cadence.test.ts (13 tests) 1087ms
+ ✓ test/sim-disclosure.seam.test.ts (15 tests) 54ms
+ ✓ test/edge-money-weight.seam.test.ts (12 tests) 19ms
+ ✓ test/sim-propagation.test.ts (15 tests) 30ms
+ ✓ test/prop-clamp-decay.seam.test.ts (11 tests) 27ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/sim-order-real-fields.seam.test.ts > WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ⑤ 接缝：真值必须**出现在传导结果里**，且 max 语义不随拍数漂（不是纯积分器）
+AssertionError: obj_model_4680-NCM.backlogHorizonDays @tick1: expected undefined to be 110 // Object.is equality
+
+[32m- Expected:[39m 
+110
+
+[31m+ Received:[39m 
+undefined
+
+ ❯ test/sim-order-real-fields.seam.test.ts:268:70
+    266|         const target = TOPS[v];
+    267|         // 落点读数 === 该型号在手订单里那个字段的真实最大值（系数 1.0 原样透传）
+    268|         expect(w1[modelId]?.[target], `${modelId}.${target} @tick1`).t…
+       |                                                                      ^
+    269|         /**
+    270|          * ⚠ 这一条是本门最要紧的一格：`combine:"max"` 每拍重算、不吃上一拍的值。
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  test/sim-perturbation.test.ts > WO-P0 · 扰动一等公民 > 断言①：durationTicks=null 的扰动与今天 /act **逐字节同结果**（additive 可回退的证明）
+AssertionError: expected { tick: 2, state: { …(2) }, …(2) } to deeply equal { tick: 2, state: { …(2) }, …(1) }
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[33m@@ -1,7 +1,8 @@[39m
+[2m  {[22m
+[2m    "baseProvenance": {},[22m
+[31m+   "baseStateVarReport": null,[39m
+[2m    "state": {[22m
+[2m      "o1": {[22m
+[2m        "risk": 0.9,[22m
+[2m      },[22m
+[2m      "o2": {[22m
+
+ ❯ test/sim-perturbation.test.ts:100:22
+     98|     //   施加器算错（set 写成 delta）照样红；将来谁再加第四个字段，这条也会再红一次，
+     99|     //   **那正是这颗钉子存在的理由**（逼一次有意识的裁决，而不是让回包悄悄长胖）。
+    100|     expect(worldAct).toEqual({ tick: 2, state: { o1: { risk: 0.9 }, o2…
+       |                      ^
+    101|     // …而扰动这条路**多留下了一个实体**（这正是升格的全部意义：/act 做完什么都不剩）。
+    102|     expect(created.json().perturbation).toMatchObject({ kind: "capacit…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed | 33 passed (35)
+      Tests  2 failed | 343 passed (345)
+   Start at  17:23:24
+   Duration  724.31s (transform 6.30s, setup 0ms, collect 73.74s, tests 634.88s, environment 8ms, prepare 3.96s)
+
+undefined
+/Users/apple/deploy/wo-edge-wire/apps/datacore:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run --maxWorkers=1 --testTimeout=180000 test/adversary-reaction.seam.test.ts test/assembly-memo.seam.test.ts test/decision-causal-graph.test.ts test/edge-active-counterfactual.test.ts test/edge-money-weight.seam.test.ts test/error-envelope-parse-body.test.ts test/finance-worldstate.seam.test.ts test/metric-series.seam.test.ts test/ontology-invariants.seam.test.ts test/ontology-query-engine.test.ts test/option-pricing-reach.seam.test.ts test/process-tick-coverage.seam.test.ts test/prop-clamp-decay.seam.test.ts test/sandbox-d1-cadence.test.ts test/sandbox-e4-cadence-propagation.seam.test.ts test/sandbox-g1-seam.test.ts test/seed-demo-propagation.test.ts test/sim-act-close.seam.test.ts test/sim-cert-contract-reconcile.seam.test.ts test/sim-disclosure.seam.test.ts test/sim-domain-entry.seam.test.ts test/sim-order-real-fields.seam.test.ts test/sim-perturbation.test.ts test/sim-propagation-direction.seam.test.ts test/sim-propagation.test.ts test/sim-real-cells.seam.test.ts test/sim-root-procurement.seam.test.ts test/sim-root-triad.seam.test.ts test/sim-rule-domain.seam.test.ts test/sim-scope-trial.seam.test.ts test/sim-seed-world.seam.test.ts test/sim-session.test.ts test/sim-sessions-projection.seam.test.ts test/sim-trial-scope-reconcile.seam.test.ts test/statevar-display-name.seam.test.ts

@@ -1,0 +1,11 @@
+## WO-3ROOT · 第8阶段(合并+推送) · build 证据
+> 命令 `pnpm --filter @platform/contracts build`(先, 因 dist 系 P2 味, 见控制档) 然后 `pnpm --filter datacore build` · 取数 2026-10-04
+> 判据: 0 个 error TS 才算过. 本档为最终树 82292c935 上的重跑.
+CAPTURED_RC=0
+
+--- contracts build (rc 见同名 .rc 前一档; 本档只存 datacore 最终树) ---
+--- datacore build 原文 ---
+
+> datacore@0.1.0 build /Users/apple/deploy/wo-edge-wire/apps/datacore
+> tsc -p tsconfig.json && node -e "require('fs').copyFileSync('src/solvers/sandbox-runner.mjs','dist/solvers/sandbox-runner.mjs')"
+
