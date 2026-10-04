@@ -51,8 +51,8 @@
 
 | 件 | 内容 |
 |---|---|
-| **a · 观察指标** | ① `llmBudget.stats.recorded` / `recordFailures`（`llm-budget.ts:82` / `:79,:84`，进程内计数——记账静默失效也是「看起来没事」的一种，该端口注释原话）；② 分租户 token 日账（DataCore `/a/v1/llm-budgets` 读回侧）；③ **同 task 双臂账差**：灰度期对每个新晋 EXTERNAL agent 抽样同 task 双跑（kernel 来回切），比 `answer.stats.tokenUsage` 折出和（pi-ai 口径：cacheRead/uncachedInput/output 分桶，RECONCILIATION §2-A4）对 native `run.total*` 账 |
-| **b · 账差合理区间** | 初值：`|dsh臂折出和 − native臂账| / native臂账 ≤ 50%`。方差主源已登记：cache 命中分桶口径差（dsh 侧 prompt_cache_hit_tokens→cacheReadTokens，native 无此概念）+ 提示组装差。出区间不自动等于缺陷，但**必须先解释再放行** |
+| **a · 观察指标** | ① `llmBudget.stats.recorded` / `recordFailures`（`llm-budget.ts:82` / `:79,:84`，进程内计数——记账静默失效也是「看起来没事」的一种，该端口注释原话）；② 分租户 token 日账（DataCore `/a/v1/llm-budgets` 读回侧）；③ **同 task 双臂账差**：灰度期对每个新晋 EXTERNAL agent 抽样同 task 双跑（kernel 来回切），比 `answer.stats.tokenUsage` 折出和（pi-ai 口径：cacheRead/uncachedInput/output 分桶，RECONCILIATION §2-A4）对 native `run.total*` 账。⚠️ **2026-10-03 口径统一后，输入侧必须取 `uncachedInputTokens + cacheReadTokens` 两桶之和**（不是单取 uncached）——两臂同名字段自此同量，直接可比 |
+| **b · 账差合理区间** | 初值：`|dsh臂折出和 − native臂账| / native臂账 ≤ 50%`（输入侧按上行「两桶之和」取数）。方差主源已登记：提示组装差。⚠️ **2026-10-03 订正**：原列的主源「cache 命中分桶口径差」**已随口径统一而消除**——live 双跑实测同一句问话，旧口径账差 **79.9%**（native 116,591 vs dsh 23,382，差 5.86×）**是单位差不是用量差**，同口径实为 **19.2%**（区间内）。形态：「我用『两个字段都叫 totalInputTokens』当作『它们是同一个量』的证据」。出区间不自动等于缺陷，但**必须先解释再放行**，且解释前先核对两侧是否同口径 |
 | **c · 回退开关** | per-agent `kernel` 置回 `"NATIVE"`（或删字段回落 env=0 缺省）——`PUT /b/v1/agents/:id`，下一 run 生效，秒级，零数据迁移（配置真相源从未动，PRD §8 同口径）。**回退不碰 env、不碰部署面**（D1 兼容） |
 | **d · 量化门槛** | 记账通路：`recordFailures / (recorded + recordFailures) > 1%`（窗 1h）⇒ 立案查账本通路，**不回退内核**（账本 fail-open 是设计，`llm-budget.ts:14-15` 原话「账本不可用绝不阻断业务」）；账差：出 §1-b 区间且样本 ≥ 20 个双跑 task ⇒ **回退该租户全部 EXTERNAL agent 并立案** |
 
@@ -184,7 +184,7 @@ reassemble.ts:412-420：expectsSchema 分支校验通过后**提前 return**—�
 
 | 载体 | 生产 | 消费方（本单 grep 实证） |
 |---|---|---|
-| **A · `run.totalInputTokens` / `totalOutputTokens`** | native：`loop.ts:577-578`（finishRun 累计）；EXTERNAL：现恒 0/0（engine.ts:194-195），W9-lite 后转真值 | ① `llmBudget.record`（orchestrator.ts:2125，账本唯一真实写入方）· ② `skill-probe.ts:290`（probeTokenCost）· ③ `evals.ts:238`（tokenCost） |
+| **A · `run.totalInputTokens` / `totalOutputTokens`** | native：`loop.ts:577-578`（finishRun 累计，输入取 `usage.prompt_tokens`·**含** cache 命中）；EXTERNAL：W9-lite 后为真值 —— 输入 = `stats.tokenUsage` 的 **`uncachedInputTokens + cacheReadTokens` 两桶之和**（2026-10-03 口径统一，此前为 uncached 单桶 ⇒ 两臂同名字段不同量） | ① `llmBudget.record`（`orchestrator.persistRootRun`，账本唯一真实写入方）· ② `skill-probe.ts:290`（probeTokenCost）· ③ `evals.ts:238`（tokenCost） |
 | **B · `answer.stats`（additive 回声键）** | reassemble.ts:394 `foldDshRunStats` 纯 fold → :419/:475 挂载 → engine.ts:687 并入 answer（交叉类型 additive 键；orchestrator:2187 answer.final 整对象直发自动带上） | 前端 `components/QueryDock/Timeline.tsx:54`（`selectTurnStats(state.answer.stats)` 轮次统计条） |
 
 **禁令（灰度期有效）**：**禁新增「两处都读再相加」的消费方。** 载体 A 对 EXTERNAL 恒零期间，
@@ -197,6 +197,15 @@ W9 验收判据应含「两载体同源等值」断言，但**等值也不许相
 > 消费方本单 grep 复核与上表逐条相符：载体 A = orchestrator:2125 / skill-probe:290 / evals:238
 > / AgentsPage 展示（:428/:557 只读）；载体 B = Timeline.tsx:54 唯一。**无「两处都读再相加」**。
 > 同源等值断言已入 dualrun50 A4 dsh 臂锚（run.total* === stats 对应桶，逐任务机器核）。
+>
+> **口径改写注记（2026-10-03/04 · WO-LEDGER-SINGLE-TAP）**：仓主裁决「统一到含 cache 口径」——
+> 载体 A 的输入桶由 `uncachedInputTokens` 单桶改为**两桶之和**（配额是成本治理，cache 命中在
+> 供应商侧照样打折计费，漏计等于给出 5.86× 的配额逃逸面）。**等值关系随之改写为
+> 「载体 A ≡ 载体 B 的 uncached + cacheRead 两桶之和」**，禁令原文不变：仍各读各的、**不许相加**。
+> ⚠️ **双跑语料挡不住这一改动**：其 `cacheReadTokens` 锚值**恒为 0** ⇒ dualrun50 那条等值断言
+> 退化成 `toBe(uncached + 0)`，与旧断言逐字等价、**没有鉴别力**（已在该处标注诚实位）。
+> 有牙的机器是 `dsh-token-bucket-carrying.seam.test.ts`：stub 造真缓存命中（未命中 90／命中 60／
+> 正确总量 150 三数两两不等），实测定变——把出口改回单桶当场红，读数 `expected 90 to be 150`。
 
 ---
 

@@ -541,8 +541,24 @@ function checkArmAnchors(task: DualRunTask, flag: "off" | "on", arm: ArmProducts
     });
     // W9-lite 骨架锚②：B11 同源等值（ROLLOUT §6.5 验收判据）——run.total* === answer.stats
     // 对应桶（同一份帧流 fold 的两个载体）；两臂 token 账不互比维持。
-    const buckets = stats!.tokenUsage as { uncachedInputTokens: number; outputTokens: number };
-    expect(arm.run.totalInputTokens, `${task.id} run.totalInputTokens === stats.uncachedInputTokens（同源等值）`).toBe(buckets.uncachedInputTokens);
+    //
+    // ⚠️ 2026-10-03 口径改写（WO-LEDGER-SINGLE-TAP · 仓主裁决「统一到含 cache 口径」）：
+    // 输入桶由 **uncached 单桶**改为 **uncached + cacheRead 两桶之和** —— 理由是 `run.totalInputTokens`
+    // 是租户配额账本的唯一写入源，而 native 臂取的是 `usage.prompt_tokens`（**含** cache 命中）。
+    // 旧口径下两臂同名字段不同量，live 双跑实测账差 79.9%（同口径实为 19.2%），
+    // 等于同一份工作切内核账本少记 5.86× 输入 token。断言随之改写为「和」。
+    //
+    // ⚠️ **诚实位（2026-10-04 实测）：本条在本语料里没有鉴别力。** 语料的 `cacheReadTokens`
+    // 锚值恒为 0（全表只有一处字面量 `0`）⇒ 断言退化成 `toBe(uncached + 0)`，与旧断言逐字等价，
+    // 把 engine 出口改回单桶它**照样绿**。这里留着它是为了「断言与口径定义同形」，
+    // **不是**它守住了口径。真有牙的那条在 `dsh-token-bucket-carrying.seam.test.ts`
+    // （stub 造真缓存命中 ⇒ 未命中 90 / 命中 60 / 正确总量 150 三数两两不等，
+    //  实测定变：改回单桶当场红，读数 `expected 90 to be 150`）。
+    const buckets = stats!.tokenUsage as { uncachedInputTokens: number; cacheReadTokens: number; outputTokens: number };
+    expect(
+      arm.run.totalInputTokens,
+      `${task.id} run.totalInputTokens === stats.uncachedInputTokens + cacheReadTokens（含 cache 口径·同源等值）`,
+    ).toBe(buckets.uncachedInputTokens + buckets.cacheReadTokens);
     expect(arm.run.totalOutputTokens, `${task.id} run.totalOutputTokens === stats.outputTokens（同源等值）`).toBe(buckets.outputTokens);
   }
 }

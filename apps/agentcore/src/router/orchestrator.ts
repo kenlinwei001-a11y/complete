@@ -1,5 +1,6 @@
 import type {
   AgentBudget,
+  AgentRunRecord,
   Answer,
   AnswerBlock,
   CeoAgentProfile,
@@ -1813,6 +1814,39 @@ export class Orchestrator {
     }
   }
 
+  /**
+   * ⛔ ROOT run 落库 + 租户账本记账的**唯一收口点**（WO-LEDGER-SINGLE-TAP）。
+   *
+   * ══ 病灶（2026-10-03 live 实测，不是推理）═══════════════════════════════════════════
+   * 记账只有**一处**调用点（原 `runPathB` 出口），而 ROOT run 的落库出口有**三处**
+   * （`runPathB` / `runRolePathB` / `runSceneAgent`）。后两处从来没记过账。
+   * 更要命的是 `runPathB` 在 `coordinatorEnabled` 且单域角色命中时**转投 `runRolePathB` 后直接
+   * return** —— 于是**本租户的实际主路径**（classification.model = `agent:role:*`）一次都没记过账：
+   * 连跑两次 path-B 任务后 `GET /a/v1/llm-budgets` 的 `usedTokens` **仍为 0**；
+   * 而用服务令牌直接投 `POST /a/v1/llm-budgets/record` 返 200 且读回立刻 +1
+   * ⇒ **路由本身健康，是调用方漏挂**（不是账本坏了，也不是 dsh 退化 —— 两臂等受害）。
+   *
+   * ══ 形态（照铁律 0.6 句式）════════════════════════════════════════════════════════
+   * > **「我用『记账有唯一真实写入方』当作『每一次跑都记了账』的证据，而前者并不度量后者
+   * >   —— 那个『唯一』说的是写入方只有一个，不是出口只有一个。」**
+   *
+   * ══ 为什么收口而不是给另外两处各补一行 ════════════════════════════════════════════
+   * 补三行只堵今天这两个漏点，下次新增第四条出口照旧漏 —— 这与本仓已登记的
+   * `arm-indexed-disposition`（同一规则写在 N 个出口 ⇒ 谁漏写谁分裂）**同源**。
+   * 故收敛成一个函数：**新增 ROOT run 出口时必须经本函数落库**，绕过它 = 账本静默少记。
+   *
+   * ⚠️ 只收 ROOT。扇出子 run（`engine.ts` 的 FANOUT 出口）**不走这里** —— 它是否该独立记账
+   * 是另一个问题（ROOT 的 total* 不含子 run），**本单不改、登记在案**，不许读成「已全覆盖」。
+   *
+   * ⚠️ `classify()` / `compose()` 的签名不外透 usage，故账本记的仍只是 agent 工具循环那部分，
+   * **不是全量成本**（既有诚实边界，本单未变）。
+   */
+  private async persistRootRun(task: QueryTask, run: AgentRunRecord): Promise<void> {
+    await this.deps.repos.agentRuns.insert(run);
+    // 无条件 · best-effort · 失败只计数不抛（账本不可用绝不阻断业务 —— `ops/llm-budget.ts` 首条铁律）。
+    void this.deps.llmBudget.record(task.tenantId, (run.totalInputTokens ?? 0) + (run.totalOutputTokens ?? 0));
+  }
+
   // -------------------------------------------------------------------------
   // Path B: restricted agent fallback (§5.4)
   // -------------------------------------------------------------------------
@@ -2122,11 +2156,7 @@ export class Orchestrator {
         : {}),
     });
 
-    await this.deps.repos.agentRuns.insert(result.run);
-    // OC7 / #92 · 记账（无条件·best-effort·失败只计数不抛）。这是账本的**唯一真实写入方**：
-    // 只有 AgentCore 知道一次 path-B 跑烧了多少 token（result.run 已累计 totalInput/OutputTokens）。
-    // 诚实边界：classify()/compose() 的签名不外透 usage，故此处只记 agent 工具循环那部分，**不是全量成本**。
-    void this.deps.llmBudget.record(task.tenantId, (result.run.totalInputTokens ?? 0) + (result.run.totalOutputTokens ?? 0));
+    await this.persistRootRun(task, result.run); // 落库 + 记账（WO-LEDGER-SINGLE-TAP 唯一收口点）
     await this.deps.repos.fallbackTraces.insert({
       id: newId("fbt"),
       taskId,
@@ -2430,7 +2460,7 @@ export class Orchestrator {
         // WO-AGENTRUN-FANOUT-PERSIST：角色 path-B 是**这个任务本身**那次循环 ⇒ ROOT（`getByTask` 返的就是它）。
         placement: { origin: "ROOT" },
       });
-      await this.deps.repos.agentRuns.insert(result.run);
+      await this.persistRootRun(task, result.run); // 落库 + 记账（此前只落库不记账 ⇒ 主路径账本恒空）
       await this.deps.repos.tasks.patch(taskId, {
         status: "COMPLETED",
         answer: result.answer,
@@ -2702,7 +2732,7 @@ export class Orchestrator {
         // WO-AGENTRUN-FANOUT-PERSIST：场景入口 agent 是**这个任务本身**那次循环 ⇒ ROOT。
         placement: { origin: "ROOT" },
       });
-      await this.deps.repos.agentRuns.insert(result.run);
+      await this.persistRootRun(task, result.run); // 落库 + 记账（此前只落库不记账 ⇒ 场景入口账本恒空）
       await this.deps.repos.tasks.patch(task.id, {
         status: "COMPLETED",
         answer: result.answer,

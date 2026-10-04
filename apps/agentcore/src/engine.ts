@@ -849,17 +849,38 @@ export class ExecutionEngine {
       const dshRun = emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget, attribution, opts.placement, "EXTERNAL");
       if (dsh.result.outcome === "BUDGET_EXHAUSTED") dshRun.budgetExhausted = true;
       // WO-DSH-PROD-READY W9-lite：审计记录骨架回填（PRD :366 宣言违例 + 计费逃单修复，
-      // ROLLOUT §1 落地即翻转——orchestrator.ts:2125 无条件记账自此对 EXTERNAL 真扣减）。
+      // ROLLOUT §1 落地即翻转——`orchestrator.persistRootRun` 的无条件记账自此对 EXTERNAL 真扣减）。
+      // ⚠️ 引用用**符号名**不用行号：本仓已登记「行号会漂，写死行号的引用天生带保质期」。
       // 形态照 W1 stats 正交先例选**后置补丁**：run 记录穿 applyPostChecks 不被替换（后验只换
       // answer），iterations/tokens 是运行观测不是答案内容，与治理替换正交。
       //   · iterations = 帧流骨架透传（step 分组每 LLM 轮一迭代含空轮——team-lead 2026-08-21
       //     裁决②，native 迭代粒度对位；两态 + 推导 durationMs；四态+tc_ 合流待 W9-full，REC §3 #10）；
-      //   · tokens 挂 run.total*（B11 载体 A 回填）——取 fold 的 tokenUsage 同源两桶
-      //     （uncachedInputTokens/outputTokens，与载体 B answer.stats 同源等值，消费方各读各的
-      //     不相加，ROLLOUT §6.5 账）；零 usage 帧 ⇒ stats 不出 ⇒ tokens 维持 0/0（诚实缺省）。
+      //   · tokens 挂 run.total*（B11 载体 A 回填）——取 fold 的 tokenUsage 同源两桶；零 usage 帧
+      //     ⇒ stats 不出 ⇒ tokens 维持 0/0（诚实缺省）。
+      //
+      // ⚠️ 输入桶口径已于 2026-10-03 由**未命中缓存**改为**含缓存命中**（仓主裁决 · 见下）。
+      //
+      // ══ 为什么必须是含 cache 口径（WO-LEDGER-SINGLE-TAP 同批 · 2026-10-03 实测）══════════
+      // `run.totalInputTokens` 这个名字在两臂上曾**同名不同量**：
+      //   · native 取 `usage.prompt_tokens`（`llm-adapters/openai.ts`）——**含** cache 命中；
+      //   · dsh    取 `uncachedInputTokens`——**不含**。
+      // 而 `run.total*` 是租户 LLM 配额账本的**唯一写入源**（`orchestrator.persistRootRun` →
+      // `LlmBudgetPort.record`）。同一句问话双跑实测（2026-10-03 live）：
+      //   · 现口径账差 **79.9%**（native 116,591 vs dsh 23,382）—— 出 ROLLOUT §1-b 的 50% 区间；
+      //   · **同口径**（dsh uncached 18,550 + cacheRead 115,584）账差 **19.2%** —— 区间内。
+      // ⇒ 79.9% 是**单位差**不是用量差：同一份工作切内核，账本对 dsh 少记 5.86× 的输入 token，
+      //   配额治理在 EXTERNAL 上形同放宽。形态：
+      //   > 「我用『两个字段都叫 totalInputTokens』当作『它们是同一个量』的证据，而前者并不度量后者。」
+      //
+      // 裁决（仓主 2026-10-03）：**统一到含 cache 口径**——配额是成本治理，cache 命中在供应商侧
+      // 照样计费（打折计费，不是免费），漏计等于给出配额逃逸面。
+      //
+      // ⚠️ 与载体 B 的关系随之改写（ROLLOUT §6.5）：`run.totalInputTokens` = `answer.stats.tokenUsage`
+      //    的 **uncachedInputTokens + cacheReadTokens 两桶之和**，仍**同源**、仍**各读各的不许相加**
+      //    （相加 = 把载体 A 与载体 B 加一遍 = 双计；该禁令原文未变）。
       dshRun.iterations = dsh.result.iterations;
       if (dsh.result.stats) {
-        dshRun.totalInputTokens = dsh.result.stats.tokenUsage.uncachedInputTokens;
+        dshRun.totalInputTokens = dsh.result.stats.tokenUsage.uncachedInputTokens + dsh.result.stats.tokenUsage.cacheReadTokens;
         dshRun.totalOutputTokens = dsh.result.stats.tokenUsage.outputTokens;
       }
       // WO-DSH-REDLINE-PARITY（仓主 2026-10-03 裁决）· dsh 路数字红线改为**只报不断**，对齐原生路：

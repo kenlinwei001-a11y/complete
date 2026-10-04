@@ -359,10 +359,20 @@ describe("WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发", () => {
         // 骨架锚②：run.total* == 剧本 usage 折出和（3×50 / 3×10）
         expect(result.run.totalInputTokens).toBe(150);
         expect(result.run.totalOutputTokens).toBe(30);
-        // 骨架锚③：B11 同源等值（ROLLOUT §6.5 验收判据）——run.total* 与 answer.stats 对应桶互等，各读各的不相加
-        const stats = (result.answer as { stats?: { tokenUsage: { uncachedInputTokens: number; outputTokens: number } } }).stats;
+        // 骨架锚③：B11 同源等值（ROLLOUT §6.5 验收判据）——run.total* 与 answer.stats 对应桶互等，各读各的不相加。
+        // ⚠️ 2026-10-03 口径改写（WO-LEDGER-SINGLE-TAP）：输入桶定义由 `uncachedInputTokens` 单桶改为
+        // 「未命中 + 命中」两桶之和（`run.totalInputTokens` 是配额账本唯一写入源，native 取
+        // `usage.prompt_tokens` **含** cache 命中 ⇒ 旧口径同名字段不同量）。本处断言随定义改写。
+        // ⚠️ 诚实位：**本剧本的 stub 不带 `prompt_cache_hit_tokens` ⇒ 本文件 cacheRead 恒 0**，
+        // 故这条改动在这里**数值上等价**、咬不出「漏了哪个桶」——真有牙的那条在
+        // `dsh-token-bucket-carrying.seam.test.ts`（造真命中）。别把本条的绿读成口径已被守。
+        const stats = (
+          result.answer as { stats?: { tokenUsage: { uncachedInputTokens: number; cacheReadTokens: number; outputTokens: number } } }
+        ).stats;
         expect(stats).toBeDefined();
-        expect(result.run.totalInputTokens).toBe(stats?.tokenUsage.uncachedInputTokens);
+        expect(result.run.totalInputTokens).toBe(
+          (stats?.tokenUsage.uncachedInputTokens ?? 0) + (stats?.tokenUsage.cacheReadTokens ?? 0),
+        );
         expect(result.run.totalOutputTokens).toBe(stats?.tokenUsage.outputTokens);
       } finally {
         restore();

@@ -240,6 +240,26 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     return deps.metrics.render();
   });
 
+  /**
+   * OC7 账本**记账通路健康度**的读出口（WO-LEDGER-SINGLE-TAP）。
+   *
+   * ══ 为什么必须开这个口 ═══════════════════════════════════════════════════════════
+   * `LlmBudgetPort.stats`（recorded / recordFailures / statusFailures）自落地起
+   * **只有测试读**（`llm-budget-seam.test.ts`），生产零读取方、无 metrics 计数、无路由。
+   * ⇒ ROLLOUT §1-d 那条量化门槛（`recordFailures/(recorded+recordFailures) > 1%` ⇒ 立案查账本通路）
+   * 在**活服务上根本量不出来**；而「记账静默失效也是『看起来没事』的一种」正是该端口自己的注释原话。
+   * 这直接卡住 DSH 灰度 G1 的进入前提「§1 观察面就位」—— 判据不是建议，所以这个口是前置不是装饰。
+   *
+   * ⚠️ 只报**计数器原值**，不报算好的比值：§1-d 的阈值会随裁决变，接口里算死会把判据钉在代码里
+   * （本仓「规则写在出口 ⇒ 谁漏写谁分裂」的老病同源）。运维按当时生效的 §1-d 现算。
+   *
+   * 服务令牌守（与 `/metrics` 同门）：读数是**进程级**的、不含租户数据，但也不是给普通用户的。
+   */
+  app.get("/api/v1/ops/llm-budget-stats", async (req) => {
+    requireServiceToken(req);
+    return deps.llmBudget.stats;
+  });
+
   // 网关前缀别名（gateway 只反代 /b/v1/* → 经代理探活用）
   app.get("/b/v1/healthz", async () => ({ status: "ok" }));
   app.get("/b/v1/readyz", async () => ({ status: "ok" }));
