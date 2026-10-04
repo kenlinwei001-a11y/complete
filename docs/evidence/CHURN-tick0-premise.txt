@@ -1,0 +1,12 @@
+POST /sessions {} -> HTTP 201
+  sid=sims_647cg7ht1zw2v1mq curTick=0
+POST /tick {n:0} -> HTTP 200  {"curTick":1,"state":{"obj_arinvoice_arinvoice_0_0":{"overduePressure":9.45},"obj_arinvoice_arinvoice_0_1":{"overduePressure":43.47},"obj_arinvoice_arinvoice_0_
+POST /tick {n:1} -> HTTP 200  {"curTick":2,"state":{"obj_arinvoice_arinvoice_0_0":{"overduePressure":12.3075692},"obj_arinvoice_arinvoice_0_1":{"overduePressure":33.7401692},"obj_arinvoice_a
+
+[NOT-MEASURED] POST /tick {n:1e9}：请求已送达（日志有 incoming request，无 request completed）
+[NOT-MEASURED] 该请求在本树**未被拒绝**，实例陷入长跑；探针 2 分钟超时，rc 未产出。
+[处置] 已 kill -9 53846（本单自起实例，5051）。此读数缺口按 NOT-MEASURED 记，不当 0 用。
+[本树实测结论] 派单书两条前提在本树均不成立：
+  · 「建会话必须带 specCells」—— POST /sessions {} 返回 201（另有独立 grep 零命中 + 金丝雀）
+  · 「POST /tick {n:0} 会 400」—— 返回 200 且 curTick 0->1（n 被夹到 >=1）
+  两条都与验收单自证的「本树独有 / 只有 claude/handoff-tick-n-validation 带这个修复」一致。
