@@ -1,0 +1,17 @@
+## XVERIFY · 还原 + 字节恒等核验（P3 6 文件由 cp 备份还原，battery.ts 回落 d7718eda4）
+> 时间 2026-10-04 18:35:11
+-- ① cp 还原 P3 六文件并比 sha256（对备份清单）--
+IDENTICAL  apps/datacore/src/app.ts
+IDENTICAL  apps/datacore/src/sim/metric-series.ts
+IDENTICAL  apps/datacore/src/sim/propagation.ts
+IDENTICAL  apps/datacore/src/sim/seed-world.ts
+IDENTICAL  apps/datacore/src/sim/spec-base-synthesis.ts
+IDENTICAL  apps/datacore/src/sim/world-projection.ts
+-- ② battery.ts 回落 d7718eda4（参照臂唯一改的第四个文件）--
+battery.ts sha256=97f2d20afde8ca9aa49358c8d51e8afce250575303882d3005ff9a78780d711d
+-- ③ 全树字节恒等核验：git status 必须**空**（= 工作树 == HEAD）--
+$ git status --short
+(上面为空 = 字节恒等)
+-- ④ 金丝雀：P3 字段/base 回归 --
+app.ts baseStateVarReport 命中 = 2
+battery.ts castSeedBaseValue 命中 = 0

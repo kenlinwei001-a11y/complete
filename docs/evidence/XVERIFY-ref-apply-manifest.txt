@@ -1,0 +1,24 @@
+## XVERIFY · 参照臂 REF = P1 分支源码态（复现 15.96 基准）
+> 当前树这 4 个文件处于 d7718eda4 态 ⇒ 写入 origin/claude/handoff-3root-P1-rejectfix 的版本 = 重建 P1 分支的 src
+> 时间 2026-10-04 18:33:50
+-- ① 写前 sha256（= d7718eda4 态，cp 备份）--
+2e3e1abca66b8e9d57f6dac8fa80853654d57fefd31ae1941924f5e63fa98d47  apps/datacore/src/app.ts
+7de34574dfbf12db475a94e7ca56a6a070188f30a6ca4ced853df4abb49f7553  apps/datacore/src/sim/seed-world.ts
+2aa92b856046a51765177c2836f60ea8b9bf2517ead5d10e7a55ced82c1f5b6d  apps/datacore/src/sim/spec-base-synthesis.ts
+97f2d20afde8ca9aa49358c8d51e8afce250575303882d3005ff9a78780d711d  apps/datacore/src/synthetic/battery.ts
+-- ② 写入 P1 分支版本 --
+APPLIED apps/datacore/src/app.ts  sha256=993d5da7f63e03a65d22d6ce00910ff61396a64c9dcbf59426ff71dffa24ee38
+APPLIED apps/datacore/src/sim/seed-world.ts  sha256=09d9f56e3a85dd21dced5fa196995f338e58419f6e6d20d16f5bf53ff98f4e75
+APPLIED apps/datacore/src/sim/spec-base-synthesis.ts  sha256=83dcc30354a42de4188f074a806f5000d2aef743d924683c47fd730c4b6d6f5a
+APPLIED apps/datacore/src/synthetic/battery.ts  sha256=2273144b997562c9e0c906c8192b3e35da35fb933b451eb4cd0537e4b907c6b1
+-- ③ 变异自证：git diff --stat 非空 --
+ apps/datacore/src/app.ts                     | 130 ++++++++-------------------
+ apps/datacore/src/sim/metric-series.ts       |  11 ---
+ apps/datacore/src/sim/propagation.ts         |  97 +++++++++++++-------
+ apps/datacore/src/sim/seed-world.ts          |  60 +++----------
+ apps/datacore/src/sim/spec-base-synthesis.ts |  45 +++++++---
+ apps/datacore/src/sim/world-projection.ts    | 117 ------------------------
+ apps/datacore/src/synthetic/battery.ts       |  69 ++++++++++++++
+ 7 files changed, 221 insertions(+), 308 deletions(-)
+-- ④ 金丝雀：铸造器必须出现 --
+battery.ts castSeedBaseValue 命中 = 1

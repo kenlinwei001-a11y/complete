@@ -1,0 +1,33 @@
+## XVERIFY · P3 源文件回退（反向对照臂）
+> 方法：cp 备份 → `git show d7718eda4:<path> > <path>`（⛔ 未用 git checkout）→ 变异自证 → 重建 → 测 → cp 还原 + 字节恒等核验
+> 时间 2026-10-04 18:31:57
+
+-- ① 备份前 sha256（cp 保存态）--
+8a20b7660129ef27556a258b24a66b676cb0a93b00f7a85e75eeb147bc6eabd0  apps/datacore/src/app.ts
+f8d1b5150d6b2c3bc1e1e34884d927e31630d750b0cffb93af336deba29660ab  apps/datacore/src/sim/metric-series.ts
+12fa3d29bb6234053d046b66d0d876680ccedb23f2b776898a913df577a2ee4e  apps/datacore/src/sim/propagation.ts
+fa20f4a9c70c07d60cce34f4610971bc75a95cb0f6459acea76e27f0ff1a5b3a  apps/datacore/src/sim/seed-world.ts
+f0d1c2c6e824b45aac685c1eec267aa1cf0956836bc4f2e22586782e32d2812f  apps/datacore/src/sim/spec-base-synthesis.ts
+14eedb0c1508ad86393f6836ae0ca017ccc1dc0f448da1bebaf64461cd6133ee  apps/datacore/src/sim/world-projection.ts
+
+-- ② 回落 d7718eda4（world-projection.ts 在 d7718eda4 不存在 ⇒ 删除，P3 新建）--
+REVERTED(内容回落) apps/datacore/src/app.ts  sha256=2e3e1abca66b8e9d57f6dac8fa80853654d57fefd31ae1941924f5e63fa98d47
+REVERTED(内容回落) apps/datacore/src/sim/metric-series.ts  sha256=d07444eaf7d4dad5233ef07f27255148198af73ad74eb7873565f8ab0ba69144
+REVERTED(内容回落) apps/datacore/src/sim/propagation.ts  sha256=1667be6b57e058a208be13ee4dfc980135980c004cede369aff1b0d922ec5636
+REVERTED(内容回落) apps/datacore/src/sim/seed-world.ts  sha256=7de34574dfbf12db475a94e7ca56a6a070188f30a6ca4ced853df4abb49f7553
+REVERTED(内容回落) apps/datacore/src/sim/spec-base-synthesis.ts  sha256=2aa92b856046a51765177c2836f60ea8b9bf2517ead5d10e7a55ced82c1f5b6d
+DELETED(基线无此文件·P3 新建) apps/datacore/src/sim/world-projection.ts
+
+-- ③ 变异自证：git diff --stat 必须非空（否则「拿没变的文件验证」= 反向结论）--
+$ git diff --stat -- apps/datacore/src/
+ apps/datacore/src/app.ts                     |  94 ++-------------------
+ apps/datacore/src/sim/metric-series.ts       |  11 ---
+ apps/datacore/src/sim/propagation.ts         |  97 ++++++++++++++--------
+ apps/datacore/src/sim/seed-world.ts          |  48 +----------
+ apps/datacore/src/sim/spec-base-synthesis.ts |   8 --
+ apps/datacore/src/sim/world-projection.ts    | 117 ---------------------------
+ 6 files changed, 74 insertions(+), 301 deletions(-)
+
+-- ④ 金丝雀：改动后的 app.ts 必须**不再**含 P3 的 projectWorldCells 调用 --
+app.ts projectWorldCells 命中 = 0
+app.ts baseStateVarReport 命中 = 0

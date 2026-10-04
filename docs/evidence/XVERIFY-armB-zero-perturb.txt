@@ -1,0 +1,19 @@
+BASE=http://127.0.0.1:4401/a/v1 TICK=20
+会话 sims_ysfcggw1tf0wramv · Order 150
+
+── ① 零扰动自证：HTTP 总请求 6 条 · 写请求 3 条（应 = 2：建会话 + 两次 tick 中的…）--
+   POST /sim/sessions
+   GET /sim/sessions/sims_ysfcggw1tf0wramv
+   POST /sim/sessions/sims_ysfcggw1tf0wramv/tick
+   GET /sim/sessions/sims_ysfcggw1tf0wramv/world
+   POST /sim/sessions/sims_ysfcggw1tf0wramv/tick
+   GET /sim/sessions/sims_ysfcggw1tf0wramv/world
+
+── ② λ(Order.demandPressure) = 0.37 · 病灶签名 |x − λ·base| < 1e-9 的格数 --
+   签名格 = 100/150（P3 在场应 ≈ 0）
+   样例：[{"o":"obj_order_SO-3402","base":17,"x":6.29,"lamBase":6.29},{"o":"obj_order_SO-3415","base":41,"x":15.17,"lamBase":15.17},{"o":"obj_order_SO-3420","base":1,"x":0.37,"lamBase":0.37},{"o":"obj_order_SO-3445","base":6,"x":2.22,"lamBase":2.22},{"o":"obj_order_SO-3470","base":10,"x":3.7,"lamBase":3.7}]
+   末拍「一个字节没动」(x === base) = 2 · 动过 = 148
+
+── ③ A4 独立重算（零扰动）：域内 58 单 · max|dev| = 15 · 最差 = {"o":"obj_order_SO-900325","base":60,"fb":88,"T":7.200000000000003,"x":22.2} --
+
+零扰动对照完成
