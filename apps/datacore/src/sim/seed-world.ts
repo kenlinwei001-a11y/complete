@@ -33,13 +33,15 @@ import {
   type Perturbation,
   type PropagationRule,
   type SimSession,
+  type StateVarDomainLookup,
   type TickState,
 } from "@platform/contracts";
 import type { AuthCtx } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
-import { stateVarDisplayName, stateVarValueRef } from "../synthetic/battery.js";
+import { stateVarDisplayName, stateVarDomains, stateVarValueRef } from "../synthetic/battery.js";
 import { buildPropagationInputs } from "./propagation-inputs.js";
-import type { PropagationGraph } from "./propagation.js";
+import type { PropagationGraph, StateVarDisclosure } from "./propagation.js";
+import { mergeStateVarDisclosure, projectWorldCells } from "./world-projection.js";
 
 /**
  * 推演世界的两条**生产写路径**（`app.ts` 的路由与本播种模块共用同一份实现）。
@@ -393,7 +395,19 @@ function varsByType(rules: readonly PropagationRule[]): Map<string, Set<string>>
 export async function deriveSeedBaseSnapshot(
   repos: Repos,
   tenantId: string,
-): Promise<{ state: TickState; origin: SeedWorldSnapshotOrigin; provenance: CellProvenance }> {
+  /**
+   * 取值域册子 —— 与 `propagateTick` 第 10 位**同一份**（唯一访问器 `stateVarDomains()`，
+   * 喂给核的那一处见 `propagation-inputs.ts`）。默认值不是"第二张表"：它调的是**同一个**
+   * 模块级共享常量，只是让测试不必每处都写一遍。
+   */
+  domains: StateVarDomainLookup = stateVarDomains(),
+): Promise<{
+  state: TickState;
+  origin: SeedWorldSnapshotOrigin;
+  provenance: CellProvenance;
+  /** tick0 那一批的**单源账**（声明/未声明点名/饱和）—— 随会话首次读面下发。 */
+  stateVarReport: StateVarDisclosure;
+}> {
   const rules = await repos.sim.listPropagationRules(tenantId, true);
   const byType = varsByType(rules);
   // WO-SIM-REAL-DATA §3：登记的 (类型,变量) 走**显式 valueRef**（`STATE_VAR_VALUE_REFS`），
@@ -494,9 +508,37 @@ export async function deriveSeedBaseSnapshot(
       }
     }
   }
+  /**
+   * ── 🔴 入口投影（WO-3ROOT-P3）· tick0 也是写世界态的**一条路**，同样过唯一投影入口 ──────────
+   *
+   * 病灶：域（`STATE_VAR_DOMAINS`）今天只在传导**核内**执行，而写世界态的路有**三条**
+   * （播种 / 核 / C2 合成）⇒ 本函数铺的格子**入口侧全程无投影**：实测 360 格越出声明域
+   * （`Material.shortageRisk` 基值 **−161.418** 直接落进 tick0 世界，零条记账）。
+   * 本段把播种这条写路收敛到与另两条**同一个**入口（`sim/world-projection.ts`），
+   * 于是「回执说的」与「落盘的」在定义上是同一个数。
+   *
+   * ⚠ **`tickStart` 取投影前的这份种子世界本身，不是"没有上一拍"** —— 判据 ① 因此对同值格成立：
+   *    种子基值是**这一拍入口前的原值**（世界的初始条件），不是本拍哪个相位算出来的新读数。
+   *    ⇒ **域内格一个字节都不动**，只有**真的越出硬边界**的格被收回域内并逐条记账。
+   *    这不是保守，是必需：`saturateToDomain` 在合法域内**不是恒等**（`propagation.ts:1101` 自述），
+   *    无差别"投影一次"会把域内读数顺手改掉（如 80 → 79.1667），而 E2 反向护栏要求
+   *    「不该动的格逐位不许动」，其**唯一例外**就是「该格自己越出声明域」（PRD §四 E2 原文）。
+   *    实测对齐：越域格 = **360** = Y4 的读数；`forecastBias`（min −100 / max 100）这类
+   *    两侧都有空间的域同样只动越界格。
+   *
+   * ⛔ 不许改播种取值优先级 / `seedHash01` / `baseSnapshot` 冻结语义 —— 本段**只动域外那一档**，
+   *    取真读数与派生占位两条支路一个字节未改（改的是落进 `state` 之后的越界收回）。
+   */
+  const tick0Start: TickState = {};
+  for (const [objId, row] of Object.entries(state)) tick0Start[objId] = { ...row };
+  const tick0Ledger = projectWorldCells(state, tick0Start, domains);
+  // 播种这一拍没有衰减相（衰减发生在推演拍里）⇒ 核那一半的账如实为空，不编。
+  const stateVarReport = mergeStateVarDisclosure({ decayUnresolved: [], decayApplied: {} }, tick0Ledger);
+
   return {
     state,
     provenance,
+    stateVarReport,
     origin: {
       kind: "DERIVED",
       /**

@@ -24,6 +24,9 @@ import {
   type PropagationGraph,
   type RuleParamLookup,
 } from "./propagation.js";
+// 唯一投影入口（WO-3ROOT-P3）：本模块是**第二个环**（`app.ts` 的手工镜像副本），
+// ⛔ 不许在这里另写一份投影 —— 分叉了曲线就与落盘世界不是同一个数（这正是 A9 的判据）。
+import { projectWorldCells } from "./world-projection.js";
 
 /**
  * 指标时序（WO-SIM-BE-SERIES）—— `GET /a/v1/sim/sessions/:id/metric-series` 的**模型层**。
@@ -154,6 +157,9 @@ export function replayWorldLine(args: {
   let pending: DelayedContribution[] = []; // tick0 行的 pending 恒 `[]`（`POST /sessions` 建的就是空的）
   for (let tick = 0; tick < toTick; tick++) {
     if (engineTick) {
+      // 本拍**入口前**那一份（扰动相之前的入参，核全程不就地改它）—— 投影判据 ① 的基线。
+      // ⚠ 与 `app.ts` 主线同一形状：基线抓在 `state = out.next` 之前，否则拿到的就是本拍的产物。
+      const tickStart = state;
       const out = propagateTick(
         engine.graph, state, rules, pending, tick, engine.ruleParams, engine.cadenceGates,
         perturbationsForTick(tick + 1, states),
@@ -163,6 +169,11 @@ export function replayWorldLine(args: {
       state = out.next;
       // C2 合成：必须在核**之后**（拿得到本拍实际生效的 λ）、入 `states` **之前**。
       restoreSpecBase(state, out.stateVarReport.decayApplied);
+      // 唯一投影入口（WO-3ROOT-P3 · 五处调用点之五）——**次序与 `app.ts` 主线逐字对齐**：
+      // 核 → C2 合成 → 投影，三步全写完才进 `states`。A9 判「曲线 vs 落盘 `/world` 逐格 0 差」，
+      // 靠的就是这一行与主线那一行是**同一个函数、同一条判据、同一份域册子**（`engine.stateVarDomains`
+      // 即装配处喂给第 10 位的那一份）。本环的账不进任何回包（回包讲的是"哪条线怎么动"），只取副作用。
+      projectWorldCells(state, tickStart, engine.stateVarDomains);
       pending = out.pending;
       // 无传导规则的世界：本格若没有任何扰动动作，轨迹保持 `null`（与 tick 路逐字节相同）。
       traces.push(propagate || out.trace.length > 0 ? out.trace : null);

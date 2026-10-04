@@ -10,9 +10,20 @@
  *
  * ⚠ 断言全部用**对照实验**式（铁律 1.5 判据一）：不是"跑得起来吗"，
  *    是"把 X 改成 X'，Y 必须按可预言的方式变"。
+ *
+ * ── WO-3ROOT-P3 迁移（本文件唯一改动，判据一条没删）───────────────────────────────
+ * 「域」的执行点从**核内第 4 步**搬到了**唯一投影入口**（`sim/world-projection.ts`）：
+ * 核现在只回「衰减相」那两样（`KernelStateVarReport`），声明/未声明/饱和三样由入口产出。
+ * 故本文件里凡读 `stateVarReport.declaredStateVars / undeclaredStateVars / saturations` 的断言，
+ * 一律改读 `mergeStateVarDisclosure(核, 入口)` 的那一份 —— 它**就是回包下发的那一份**。
+ * 🔴 这不是"换个地方读同一个数"：迁移前读的是核自报的**承诺**，迁移后读的是入口对
+ *    真实世界态做完投影后的**账**（PRD §一 事实 7：两处记账 = 回执 vs 回执的矛盾）。
+ * ⛔ 判据本身（§0 金丝雀 / §1 收敛 / §4 保序 / §7 只压新读数）**一条都没动**，
+ *    驱动器只是按生产次序（核 → C2 合成 → 入口）把入口那一步补上。
  */
 import { describe, expect, it } from "vitest";
-import { propagateTick, saturateToDomain } from "../src/sim/propagation.js";
+import { propagateTick, saturateToDomain, type StateVarDisclosure } from "../src/sim/propagation.js";
+import { mergeStateVarDisclosure, projectWorldCells } from "../src/sim/world-projection.js";
 import { stateVarDomains, STATE_DECAY_RULE_KEY, STATE_DECAY_PARAM_KEY, PRESSURE_DECAY_PER_TICK } from "../src/synthetic/battery.js";
 import type { PropagationRule, TickState } from "@platform/contracts";
 
@@ -45,13 +56,18 @@ function run(n: number, domains: Record<string, never> | ReturnType<typeof state
   let st = state0;
   let pend: Parameters<typeof propagateTick>[3] = [];
   const out: number[] = [];
-  let last: ReturnType<typeof propagateTick> | null = null;
+  let last: (ReturnType<typeof propagateTick> & { disclosure: StateVarDisclosure }) | null = null;
   for (let t = 0; t < n; t++) {
     // 第 9 位是 pairWeights（WO-COEF-FROM-BOM），第 10 位才是 domains —— 收编两单时定的次序。
     // ⚠ 这里**不许再写 `domains as never`**：`never` 对任何形参都可赋值，那个断言会把
     // 「参数传错位置」这类错整类吞掉，正是本仓「假绿」的形态。
+    const tickStart = st; // 入口前那一份 —— 投影判据 ① 的基线（核全程不就地改入参）
     const r = propagateTick(graph, st, [rule()], pend, t, params, {}, [], {}, domains);
-    st = r.next; pend = r.pending; last = r;
+    // 生产次序（WO-3ROOT-P3）：核 → C2 合成 → **唯一投影入口**。本夹具的量纲没有
+    // `stateVarValueRef` 登记 ⇒ C2 合成是恒等，与生产相比只差入口这一步（补上）。
+    const ledger = projectWorldCells(r.next, tickStart, domains);
+    st = r.next; pend = r.pending;
+    last = { ...r, disclosure: mergeStateVarDisclosure(r.stateVarReport, ledger) };
     out.push(st.b1!.demandLoad!);
   }
   return { series: out, last: last! };
@@ -124,9 +140,10 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
     // 声明了域**还不够**——没有 decayRef 它仍是（带夹值的）纯积分器，会稳稳顶在上界附近。
     expect(d.blockedPressure!.decayRef?.ruleKey).toBe(STATE_DECAY_RULE_KEY);
     const { last } = run(1, d);
-    expect(last.stateVarReport.declaredStateVars).toContain("demandLoad");
+    // ⚠ 读的是**入口那一份账**（回包下发的就是它），不是核自报的承诺 —— WO-3ROOT-P3 迁移点。
+    expect(last.disclosure.declaredStateVars).toContain("demandLoad");
     // 本图上只有 demandPressure/demandLoad 两个量纲，都已声明 ⇒ 未声明表为空但字段必须在
-    expect(Array.isArray(last.stateVarReport.undeclaredStateVars)).toBe(true);
+    expect(Array.isArray(last.disclosure.undeclaredStateVars)).toBe(true);
   });
 
   // ── §4 保序饱和：**变异反证**就在这里（判据 ⑤）──────────────────────────────────
@@ -157,18 +174,19 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
   // ── §5 扰动仍然推得动读数（判据 ④ 金丝雀：夹值不能把引擎夹死）──────────────────
   it("§5 金丝雀 · 深度饱和的格子上，扰动依然按可预言方向改变读数", () => {
     const d = stateVarDomains();
-    // 先把 b1 顶到深度饱和（原始值远超 100）
-    const hot: TickState = { a1: { demandPressure: 50 }, b1: { demandLoad: 5000 } };
-    const base = propagateTick(graph, hot, [rule()], [], 0, RULE_PARAMS, {}, [], {}, d);
-    const bumped = propagateTick(
-      graph, { a1: { demandPressure: 500 }, b1: { demandLoad: 5000 } }, [rule()], [], 0, RULE_PARAMS, {}, [], {}, d,
-    );
+    // 先把 b1 顶到深度饱和（原始值远超 100）。两条线走**同一入口**（生产次序：核 → 投影）。
+    const hotIn: TickState = { a1: { demandPressure: 50 }, b1: { demandLoad: 5000 } };
+    const bumpedIn: TickState = { a1: { demandPressure: 500 }, b1: { demandLoad: 5000 } };
+    const baseR = propagateTick(graph, hotIn, [rule()], [], 0, RULE_PARAMS, {}, [], {}, d);
+    const baseLedger = projectWorldCells(baseR.next, hotIn, d);
+    const bumpedR = propagateTick(graph, bumpedIn, [rule()], [], 0, RULE_PARAMS, {}, [], {}, d);
+    projectWorldCells(bumpedR.next, bumpedIn, d);
     // 源 ×10 ⇒ 目标读数必须**更大**（而不是两者都钉在 100）
-    expect(bumped.next.b1!.demandLoad!).toBeGreaterThan(base.next.b1!.demandLoad!);
-    expect(bumped.next.b1!.demandLoad!).toBeLessThan(100);
-    // 且这次饱和必须被披露，不许静默夹住
-    expect(base.stateVarReport.saturations.some((s) => s.objectId === "b1" && s.stateVar === "demandLoad")).toBe(true);
-    const ev = base.stateVarReport.saturations.find((s) => s.stateVar === "demandLoad")!;
+    expect(bumpedR.next.b1!.demandLoad!).toBeGreaterThan(baseR.next.b1!.demandLoad!);
+    expect(bumpedR.next.b1!.demandLoad!).toBeLessThan(100);
+    // 且这次饱和必须被披露，不许静默夹住（账读入口那一份）
+    expect(baseLedger.saturations.some((s) => s.objectId === "b1" && s.stateVar === "demandLoad")).toBe(true);
+    const ev = baseLedger.saturations.find((s) => s.stateVar === "demandLoad")!;
     expect(ev.raw).toBeGreaterThan(100); // 原始值原样留在回执里，一个字节都不丢
     expect(ev.value).toBeLessThan(100);
     expect(ev.bound).toBe("max");
@@ -179,7 +197,8 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
     const withArg = propagateTick(graph, state0, [rule()], [], 0, {}, {}, [], {}, {});
     const withoutArg = propagateTick(graph, state0, [rule()], [], 0, {}, {});
     expect(withArg.next).toEqual(withoutArg.next);
-    expect(withArg.stateVarReport.saturations).toEqual([]);
+    // 核已不自报饱和（WO-3ROOT-P3）⇒ 改问**入口**：不声明任何域 ⇒ 一格都没有被投影过。
+    expect(projectWorldCells(withArg.next, state0, {}).saturations).toEqual([]);
     expect(withArg.stateVarReport.decayApplied).toEqual({});
   });
 
@@ -214,10 +233,13 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
       let pend: Parameters<typeof propagateTick>[3] = [];
       const src: number[] = []; const tgt: number[] = []; const satCount: number[] = [];
       for (let t = 0; t < n; t++) {
+        const tickStart = st; // 入口前那一份 —— 判据 ① 的基线（§7 咬的就是这条判据的落点）
         const r = propagateTick(graph, st, [rule()], pend, t, params, {}, [], {}, d);
+        // 生产次序同 `run()`：核 → 入口投影；`satCount` 取**入口**账（核已不自报）。
+        const ledger = projectWorldCells(r.next, tickStart, d);
         st = r.next; pend = r.pending;
         src.push(st.a1!.demandPressure!); tgt.push(st.b1!.demandLoad!);
-        satCount.push(r.stateVarReport.saturations.length);
+        satCount.push(ledger.saturations.length);
       }
       return { src, tgt, satCount };
     }

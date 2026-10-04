@@ -3584,6 +3584,44 @@ fetchOntologyInvariants()                 evaluateOntologyInvariants(overrides)
 **本链路不发任何事件**（§4 无新增）：体检是**只读投影 + 不落库的试算**，没有状态变更可供订阅。
 真值一变（建/停/下线边、会签发布）时体检结果自然随之变 —— 它读的就是那份真值，不需要额外的失效通道。
 
+### 写路收敛链路 · 三条写路 → **唯一投影入口** → 单源记账（WO-3ROOT-P3-negative-seed-base · 2026-10-03）
+
+**一句话**：域表（`STATE_VAR_DOMAINS`）的多处注释共同断言「越界由本表声明的取值域夹住」，而实测**只在传导核之内**成立 ——
+写世界态的路有**三条**（播种 `sim/seed-world.ts` / 核 `sim/propagation.ts` / C2 合成 `sim/spec-base-synthesis.ts`），
+C2 合成排在核之后、对命中格无条件覆写 `bucket[stateVar] = round12(cur + λ·(base − rest))` ⇒ 核里刚夹好的值**被丢弃**：
+同一拍回执报「已夹到 0」、落盘 `/world` 读 **−59.724650**（= λ·base 逐位；真 `SEED_DEMO=1` 实测，
+`obj_material_elyte.shortageRisk` base=−161.417972 · λ=0.37）。⇒ 回执与世界态**逐位矛盾**。
+
+```
+播种相 seed-world.ts（tick0 逐格过入口，基线 = 投影前的种子世界）
+  ⊕ 传导核 propagation.ts（原第 4 步「夹值」整段移出，核不再碰域）
+  ⊕ 合成相 spec-base-synthesis.ts（只做代数 cur + λ·(base − rest)，不碰域）
+        ↓ 三条写路全部写完之后，统一投影一次
+  projectWorldCells(world, tickStart, domains)   sim/world-projection.ts · 复用 saturateToDomain（零复制）
+        ↓ 返回单源账
+  WorldProjectionLedger { declaredStateVars, undeclaredStateVars, saturations[] }
+        ↓ 与核账装配 —— 唯一装配点 mergeStateVarDisclosure（⛔ 不许在第二处再记一次）
+  回执 stateVarReport（/tick 与 /world 两个读面同源）
+        ↑ 调用点 6 处，全部在 putTickState 之前：
+          app.ts 主线 · 两条影子环（漂移影子 / 漂移回放）· trialPropagate
+          metric-series.ts 回放环 · seed-world.ts tick0
+```
+
+**不变量（替代「域是某个消费者的实现细节」）**：
+① **点名格 `world === 回执.value`**（回执与世界态定义上同一个数，逐位）；
+② **未点名格一个字节不动** —— `saturateToDomain` 在合法域内**不是恒等、也不幂等**（§2.I ② 已记），
+故判据只能是「**没产生新读数就跳过**」（`unchanged && !outsideHardBound ⇒ continue`），⛔ 不许无差别重投影；
+③ 存量在硬边界之外 ⇒ **当场收回**（种子里本就有超界真值：tick0 实收 **360** 格，未修基线 **0** 条）。
+三者合起来 ⇒ **记账只能有一处**，且必须在三条写路**全部写完**之后、`putTickState` **之前**。
+
+**实测**（真后端双实例 4399=本单构建 / 4019=未修构建 · 2026-10-03 · 证据 `docs/evidence/WO-3ROOT-P3-*.txt/.rc`）：
+点名点位 `world ≠ 回执.value` = **0**（未修对照 **11562/11797**）· 越域格 = **0**（对照 **9485**）·
+tick0 账 **360** 条且逐位对得上（对照侧 `/world` 里根本没有这份账）·
+`elyte.shortageRisk` **3.103 → 12.974 ∈ [0,100]**（不再 = λ·base）· R6 两会话 0 差 ·
+回放环（`/metric-series` actual 线 vs 落盘 `/world`）**2000 点位 0 差** · 4 条接缝门 **41** 测试绿。
+对照臂（外生 3 格 + 无 valueRef 3 格，36 点位）：外生 **18/18 逐位不变**；`world == λ·base` = **0/36**（基线 0，仍为 0）。
+⚠ 唯一仍在两实例间分叉的对照格是**共享入流反馈**（三格同常数，且上游分叉格全部**被点名**）—— 不是入口碰了它们自己。
+
 ## 4. 数据流与事件失效图（模块间数据关系的单一来源）
 
 > 来源：`apps/agentcore/src/event-subscriptions.ts`（经 `GET /b/v1/event-subscriptions` 下发前端缓存失效路由）。**D-29 铁律**：任何产出型操作（上传/发布/生成/审批/tick）完成**必须**发对应领域事件，下游消费页**必须**订阅并在 SLO（事件 60s / 配置 TTL 5min）内反映。
@@ -4191,6 +4229,7 @@ fetchOntologyInvariants()                 evaluateOntologyInvariants(overrides)
 | G-FACT-USAGE-UNREGISTERED | **没有「事实 → 读取它的页面集合」注册表 ⇒ B-3（U5 跨屏面）连该比哪两个数都列不出来**（WO-GATE-B-SPLITACCOUNT 2026-08-16 把 B-3 判为「不能机检，且缺的前置比 B-1 更靠前」时点名的前置缺口；`G-SPLITACCOUNT-PROMISE-ONLY` 缩小后缺口③）。**断的不是判据是对象**：「同一事实在两屏上的值是否相等」这条断言，第一步是枚举「哪个事实出现在哪两屏」——本仓 226 个前端源文件 / 80 页，读取位散在各页组件与共享面板的 import 闭包里，**没有任何可枚举的注册表**，于是 B-3 只能停在「承诺要比」这一层（`G-SPLITACCOUNT-PROMISE-ONLY` 的同族形态：账挂着，受理方缺一块地基）。**形态**（铁律 0.6 句式）：**「我用『B-3 在明账上挂着』当作『B-3 有人能验』的证据，而前者并不度量后者。」** | `apps/frontend-shell/src/**`（页组件 + 共享面板的读取位）⊗ `api/endpoints.ts`（端点真值源）⊗ `views/registry.ts` + `App.tsx`（页名册真值源）→ 注册表 `scripts/lib/fact-usage.mjs`（现算）→ B-3 跨屏比对（`WO-GATE-B-BROWSER-HARNESS` 待派） | ✅ **已闭（WO-FACT-USAGE-REGISTRY · 2026-08-17 建门 · 2026-08-18 收口接线）**：注册表现算器 + 门 `fact-usage:check`（§7）已并入 `pnpm gates` 并入账。2026-08-18 现算：页 80 · 事实 462 条（solver 151 · object 49 · rest 262）· 跨 ≥2 屏 72 条 ⇒ B-3 该比的跨屏对 **824 组全部列得出**（同口径应相等 818 · 口径分家 6），每条带 file:line 依据链；全量落账 `docs/AUDIT-fact-usage-registry.md`。⚠️ **闭的是「清单列得出」这一半，不是 B-3 本身**：两屏的值相不相等要真渲染读 DOM，归 `WO-GATE-B-BROWSER-HARNESS`——注册表收口后它已可派（6 组口径分家对是它的真候选输入）。 |
 | G-OBJECTS-QUERY-1000-CAP | **对象查询 ≤1000 截断 vs 5460 行事实表 ⇒ 逐行路只能拿到 18%**（WO-OEE-SSOT-C 2026-08-19 复核登记；债本身由 WO-OEE-UNIFY 期间在 `views/sim/physicalTopology.ts` 头注实测记档：/5460 行只拿 1000/）。**实测链**：`GET /a/v1/objects?type=EquipmentOEE` 内部写死 `queryObjects(ctx, type, {}, 1000)`；`POST /a/v1/objects/query` 的 `limit` 被契约夹在 ≤1000（传 6000 → 400 VALIDATION_ERROR）；而 `EquipmentOEE` 事实表实测 **5460 行**（13 基地 × 60 台 × 7 天）⇒ 逐行枚举路天然只能覆盖 18%。**现状不是「屏上错数」**：物理拓扑屏已改走 `POST /a/v1/objects/aggregate`（服务端全量读，`ontology-governance.ts` 明写不受 ≤1000 截断影响）⇒ 该屏的 OEE 格是真值；伤口留在「任何想逐行消费大表的调用方」这一层。**修法归属**：截断在 `app.ts`/`ontology.ts` 的查询层（分页参数或流式枚举），**不在** `views/sim/**`——该屏已是绕过方而非病灶；属后续单（数据层分页通道），与 `G-YIELD-SERIES-SOURCE-MISMATCH` 的「SolverContext 无时序通道」同类（都是缺一条数据通道，不是改两行加载清单）。 | `apps/datacore/src/app.ts`（`/a/v1/objects` 写死 1000）· 契约 `objects/query` limit≤1000 → 逐行消费方（现仅 `views/sim/physicalTopology.ts`，已绕走 `/objects/aggregate`） | 🔴 未修（已绕过·不误导屏上数；2026-08-19 WO-OEE-SSOT-C 复核：绕过路径在、截断伤口在） |
 | G-RISKBOARD-SILENT-TRUNCATION | **风险榜 `slice(0, maxCards=8)` 静默截断 ⇒ 屏上「风险基地 8」而真值是 13**（WO-RISKBOARD-TRUNCATION 2026-09-08 真后端 + 真浏览器实测）。**同 `G-WHATIF-HARDCODED-LEVERS` 的排序后 `slice` 家族**，但这一条直接落在用户读数上。**实测链**（seed 42·H30·阈值 85·**零采纳**）：13 个基地**全部**越线，`risk.ts` 按「越线日↑ → 当前张力↓ → 峰值↓」排序后只取前 8，**被截掉的 5 个连同『它已越线』这个事实一起从回包消失**；契约 `cards: z.array(RiskCardSchema).max(8)` 又把上限钉死 ⇒ 屏上那 8 张究竟是「全网只有 8 个越线」还是「越线 13 个里的前 8」**无法区分**。⚠ **截断是这块看板的默认状态，不是边角情形**。采纳「常州·瓶颈工序·工艺路线调整」(eff=9/T+3) 后更难看：常州峰值 98.0000 → **97.9531**，比成都 97.9935 低 **0.047 个张力点** ⇒ 掉出前 8 ⇒ 整张卡消失，**而它的 `crossDay` 仍是 1**（第 1 天就越线、一次都没被消解）⇒「常州不在榜上」被读成「常州没事了」。**补闭**（加性·不改 `cards[]` 既有内容与排序·不新增对象类型/链路/事件/求解器 → 金值不变）：回包加 `unlistedCrossings`（条数 / 越线总数 / 榜上越线数 / 容量 / 被截名单含各自 `crossDay` / 口径原文），**仅在真被截断时置键**，未截断时整块缺席、回包与上线前逐字节一致；前端 KPI 改显 `8/13` + 第一层记号「另有 N 个基地已越线未上榜」+ 可展开名单。**计数口径**取「`cards` 与 `shown` 的集合差 ∩ 越线」，**不是**「越线总数 − 榜上卡数」——后者在 `forced` 非越线卡在榜时算出**负数**（实测 `{base:常州, factor:设备OEE}` → `0 − 1 = -1`）。守恒 `crossingTotal === shownCrossing + count`。⚠ 变异反证诚实交代：去掉诚实位 ⇒ 7 条里 5 条转红；**把口径换成上述错的那个 ⇒ 全绿不红**（结构性重合：诚实位只在截断时下发，而截断只发生在全网路，那里榜上每张都越线）——放开「榜上可混进不越线的卡」时需另加断言。 | `apps/datacore/src/solvers/risk.ts`（`shown`/`unlistedBases`）· `packages/contracts/src/solvers.ts`（`unlistedCrossings`）· `apps/frontend-shell/src/views/RiskBoardView.tsx`（`risk-unlisted*`）· 测 `datacore/test/riskboard-truncation.seam.test.ts` | ✅ 已闭（2026-09-08·真浏览器 10/10 从登录走起） |
+| G-SIM-DOMAIN-ENTRY-SPLIT | **「越界由域夹住」只是一句承诺：域只在传导核之内执行，而写世界态的路有三条、C2 合成排在核之后无条件覆写 ⇒ 同一拍回执报「已夹到 0」、落盘世界态读 −59.724650（= λ·base 逐位）**（WO-3ROOT-P3-negative-seed-base 2026-10-03 真后端双实例 A/B 实测）。形态（铁律 0.6 句式）：**「我用『域表里有这一条声明』当作『这个量被夹住了』的证据，而前者并不度量后者。」** 病灶（真 `SEED_DEMO=1`）：`obj_material_elyte.shortageRisk` base=**−161.417972** · λ=**0.37** ⇒ 世界态 **−59.724650** 连读 6 拍逐位不变，而同拍回执的 `raw` 逐拍在变（−98.590/−32.059/…）⇒ 核活着、是夹值被合成抵消；tick0 越界格实测 **360**（未修侧 `/world` 里根本没有这份账）。**为什么三分法抓不到**：链路完整、规则已发布、读数会动 —— 属铁律 1.5 的第四态「接对了、跑通了、但被下游覆写」，不是「没接线」。**✅ 已闭**：三条写路（播种 `sim/seed-world.ts` / 核 `sim/propagation.ts` / C2 合成 `sim/spec-base-synthesis.ts`）收敛到**唯一投影入口** `sim/world-projection.ts projectWorldCells`（复用 `saturateToDomain` 零复制，核内原第 4 步整段移出），记账后置到三条路**全写完之后**、`putTickState` **之前**，装配点唯一（`mergeStateVarDisclosure`）。**实测**（4399=本单 / 4019=未修）：点名 **10673** 点位 `world ≠ 回执.value` = **0**（对照 **11562/11797**）· 越域格 **0**（对照 **9485**）· tick0 账 **360** 条逐位对得上 · `elyte.shortageRisk` **3.103→12.974 ∈ [0,100]** · R6 两会话 0 差 · 回放环 2000 点位 0 差 · 4 条接缝门 **41** 测试绿 · 对照臂 36 点位外生 **18/18 逐位不变**、`world == λ·base` = **0/36**。⚠ 入口只碰「点名格」：未点名格一个字节不动（`saturateToDomain` 在合法域内既不恒等也不幂等 ⇒ 判据是「没产生新读数就跳过」，⛔ 不许无差别重投影）。证据 `docs/evidence/WO-3ROOT-P3-*.txt/.rc`。 | `apps/datacore/src/sim/world-projection.ts`（新·唯一入口+台账）· `sim/propagation.ts`（夹值段移出）· `sim/seed-world.ts`（tick0 入口）· `sim/spec-base-synthesis.ts`（只留指针）· `src/app.ts`（6 处调用点 + 回执装配）· `sim/metric-series.ts`（回放环）· 台账类型 `WorldProjectionLedger` 定义在入口文件内（本单未动 `packages/contracts`；回执新增字段 `baseStateVarReport` 由 `src/app.ts` 直接下发，实测出现在 `/world` 回包里）· 测 `test/sim-domain-entry.seam.test.ts` / `test/prop-clamp-decay.seam.test.ts`（原判据迁到入口） | ✅ 已闭（2026-10-03·真后端双实例 4399/4019 A/B） |
 
 
 > **WO-CAPACITY-PAGE-100PCT 残口补闭（2026-07-30 · 「产能推演」页 100% 实证 LOOP · 台账 `docs/capacity-page-audit-ledger.md`）**

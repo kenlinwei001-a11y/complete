@@ -1,0 +1,35 @@
+## WO-3ROOT-P3 · A6 对照臂**同刻双实例 A/B**（外生 3 格 + 无 valueRef 3 格，36 点位）
+> 命令 `node docs/evidence/WO-3ROOT-P3-A6-control-ab.mjs`（原跑于 /tmp/p3probe/A6-control-ab.mjs，副本逐字节相同） · 取数 2026-10-03 21:14:22 · FIX=4399 / OLD=4019
+> ⚠ 上游基线档 `docs/evidence/WO-NEGSEED-P3-verify-control.txt`（17:12 前录制）**不是同刻参照**：
+>   其 4019 实例已于 17:51:30 重启（`ps -p <pid> -o lstart=` 实测），且当前 OLD 侧自己都不再复现该档数值（t2 差 1.2e-6）
+>   ⇒ 本档改用**同刻双实例 A/B**，与 A2/A3/A5 同一装置、同一取样时刻。
+> 断言：外生 18 点位逐位相同且恒=基值；非规格格分叉**只能是共享常数**（三格差同一值 ⇒ 共享入流=上游反馈，不是入口碰了它们）；
+>   `world == λ·base` 点位数=0（基线 0，须仍为 0）。
+CAPTURED_RC=0
+
+金丝雀：FIX /world keys=[tick,state,baseProvenance,baseStateVarReport]; OLD keys=[tick,state,baseProvenance]
+t1 外生Δ=[0,0,0] 非规格Δ=[0,0,0] 唯一Δ=(0) 本拍 FIX 点名=1128 拍内 FIX 未点名分叉格（反馈上界）=322
+t2 外生Δ=[0,0,0] 非规格Δ=[0,0,0] 唯一Δ=(0) 本拍 FIX 点名=1299 拍内 FIX 未点名分叉格（反馈上界）=819
+t3 外生Δ=[0,0,0] 非规格Δ=[-2.253834001123,-2.253834001123,-2.253834001123] 唯一Δ=(-2.253834001123) 本拍 FIX 点名=1322 拍内 FIX 未点名分叉格（反馈上界）=1243
+t4 外生Δ=[0,0,0] 非规格Δ=[-3.784037977521,-3.784037977521,-3.784037977521] 唯一Δ=(-3.784037977521) 本拍 FIX 点名=1339 拍内 FIX 未点名分叉格（反馈上界）=1415
+t5 外生Δ=[0,0,0] 非规格Δ=[-4.754826565093,-4.754826565093,-4.754826565093] 唯一Δ=(-4.754826565093) 本拍 FIX 点名=1350 拍内 FIX 未点名分叉格（反馈上界）=1466
+t6 外生Δ=[0,0,0] 非规格Δ=[-5.368927782877,-5.368927782877,-5.368927782877] 唯一Δ=(-5.368927782877) 本拍 FIX 点名=1382 拍内 FIX 未点名分叉格（反馈上界）=1447
+
+点位明细（t1–t2）：
+  [外生] obj_purchaseorder_po_0.procurementDelay base=-4 λb=-1.48 FIX=-4 OLD=-4 逐位=基值
+  [外生] obj_supplier_SUP-015.procurementDelay base=-6 λb=-2.22 FIX=-6 OLD=-6 逐位=基值
+  [外生] obj_purchaseorder_po_12.procurementDelay base=-7 λb=-2.59 FIX=-7 OLD=-7 逐位=基值
+  [非规格] obj_arinvoice_arinvoice_0_0.overduePressure base=15 λb=5.55 FIX=9.45 OLD=9.45
+  [非规格] obj_arinvoice_arinvoice_0_1.overduePressure base=69 λb=25.53 FIX=43.47 OLD=43.47
+  [非规格] obj_arinvoice_arinvoice_0_2.overduePressure base=16 λb=5.92 FIX=10.08 OLD=10.08
+  [外生] obj_purchaseorder_po_0.procurementDelay base=-4 λb=-1.48 FIX=-4 OLD=-4 逐位=基值
+  [外生] obj_supplier_SUP-015.procurementDelay base=-6 λb=-2.22 FIX=-6 OLD=-6 逐位=基值
+  [外生] obj_purchaseorder_po_12.procurementDelay base=-7 λb=-2.59 FIX=-7 OLD=-7 逐位=基值
+  [非规格] obj_arinvoice_arinvoice_0_0.overduePressure base=15 λb=5.55 FIX=12.3075692 OLD=12.3075692
+  [非规格] obj_arinvoice_arinvoice_0_1.overduePressure base=69 λb=25.53 FIX=33.7401692 OLD=33.7401692
+  [非规格] obj_arinvoice_arinvoice_0_2.overduePressure base=16 λb=5.92 FIX=12.7044692 OLD=12.7044692
+
+外生 18 点位：逐位相同 18 / 不同 0（须 18/0）；且须恒 = 基值 −4/−6/−7
+非规格 18 点位：逐位相同 6；共享常数式分叉（=反馈）12；其它形态 0
+λ·base 命中点位数 = 0 / 36（基线 0，须仍为 0）
+判定：✅ A6 成立（外生逐位不变；非规格分叉全为共享常数反馈；λ·base 仍为 0）

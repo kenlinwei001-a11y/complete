@@ -1,0 +1,9 @@
+## WO-3ROOT-P3 · A9 回放环一致性（`/metric-series` actual 线 vs 落盘 `/world`，逐格逐拍 0 差）
+> 命令 `node docs/evidence/WO-3ROOT-P3-A9-replay-ring.mjs`（原跑于 /tmp/p3probe/A9-replay-ring.mjs，副本逐字节相同） · 取数 2026-10-03 21:14:22 · 4399（本分支构建，零扰动会话）
+> 金丝雀：对比点位 >100；错位对照臂 act(t) vs 落盘(t−1) 须**基本不等**（否则是恒等比较）；零扰动 ⇒ baseline 线须 === actual 线。
+CAPTURED_RC=0
+
+回包：ticks=[0,1,2,3] appliedLimit=500 totalMetrics=6375 metrics=500 clamped=false baselineOrigin.sessionId===本会话：true
+对比点位 = 2000（金丝雀：须 >100）；actual ≠ 落盘 = 0（须 0）；null = 0；baseline ≠ actual（零扰动下应为 0）= 0
+错位对照臂：act(t) vs 落盘(t−1) 可比 1500 点位，其中恰好相同 = 24（须**远小于**总数 ⇒ 比较有鉴别力）
+判定：✅ A9 成立（回放环与落盘世界逐格同源）

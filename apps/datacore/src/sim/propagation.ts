@@ -497,6 +497,18 @@ export interface StateVarDisclosure {
   decayApplied: Record<string, number>;
 }
 
+/**
+ * 传导核**自己**能报的那部分（= `StateVarDisclosure` 减去「值进入世界态的入口」那一半）。
+ *
+ * 三条写路（播种 / 核 / C2 合成）里核只占一条，故声明清单、未声明点名、饱和**都不该由它自报** ——
+ * 那三样只有站在**全部写完之后**才数得准。它们由 `sim/world-projection.ts` 的
+ * `projectWorldCells` 单源产出，`mergeStateVarDisclosure` 合成回执。
+ */
+export interface KernelStateVarReport {
+  decayUnresolved: StateVarDisclosure["decayUnresolved"];
+  decayApplied: StateVarDisclosure["decayApplied"];
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 // § 扰动相位（WO-P2 · PRD-UPGRADE-decision-sandbox-v2 §3.1.3）
 // ══════════════════════════════════════════════════════════════════════════
@@ -756,7 +768,7 @@ export function propagateTick(
   appliedPerturbations: string[];
   /** 本拍越过容忍线的还手方（WO-ADVERSARY-REACTION·按 (ruleKey, actorObjectId) 升序）。 */
   reactionActors: { ruleKey: string; actorObjectId: string }[];
-  stateVarReport: StateVarDisclosure;
+  stateVarReport: KernelStateVarReport;
 } {
   // ── 0') 扰动相位（WO-P2）：先把本 tick 的「到期回退 / 首次落地」作用到世界，再传导 ──
   //
@@ -1087,67 +1099,23 @@ export function propagateTick(
     }
   }
 
-  // ── 4) 量纲边界（WO-PROP-CLAMP）：越界读数**保序压回**声明取值域，并逐格记账 ──────────
+  // ── 4) 量纲边界（WO-PROP-CLAMP）：**已迁出本核** —— 域不再是某个消费者的实现细节 ────────────
   //
-  // ⚠ 与上面第 3 步的 `rule.clamp` 是**两件事，不许合并**：
-  //    · `rule.clamp` 挂在**边**上，只夹"这条规则的目标"，是建模者对某条流的局部约束；
-  //    · 本步挂在**状态量**上，夹的是"这个量纲本身能取什么值"，与哪条边写了它无关。
-  //    合并会漏掉一整类格子：被 A 边写、而只有 B 边声明了 clamp 的那些（实测 42 条边 clamp 全为 null，
-  //    所以第 3 步今天一格都没夹到 —— 这正是发散能一路跑到 408,305 的原因之一）。
+  // 🔴 为什么这里**必须什么都不做**（2026-10 根治，PRD-WO-3ROOT-P3-negative-seed-base）：
+  //    写世界态的路有**三条**（播种 / 本核 / C2 合成 `spec-base-synthesis.ts`），而本核只占第二条。
+  //    核之后的 C2 每拍把规格格覆写为 `cur + λ·(base − rest)` ⇒ 在这里夹到 0 的值当场被换成 `λ·base`
+  //    落盘，而回执仍写着"已夹到 0" —— **回执与世界态逐位矛盾（实测 2468/2468）**。
+  //    在核内重夹不解决问题（C2 还在后面），把夹点搬进 C2 也不解决（播种那条路仍然裸奔）。
+  //    唯一的形态是**入口不变量**：三条路写完之后、落盘之前，由**唯一投影入口** `projectWorldCells`
+  //    （`sim/world-projection.ts`）统一投影并**单源记账**。
   //
-  // ⚠ **不许静默夹住**：每一次压缩都进 `saturations[]` 随 tick 回执下发。
-  //    夹了不说 = 屏上看着正常、信息其实已经丢了，那是把一个病换成另一个更难查的病。
+  // ⚠ 判据 ①（防暗流护栏）与 `saturateToDomain` 的非幂等性**原样迁到了那个入口**，一条都没丢 ——
+  //    在别处（含此处）重新夹一遍会同时犯两个错：多一处记账（矛盾从"回执 vs 世界态"变成"回执 vs 回执"），
+  //    以及把 `next` 变成"自己上一拍输出"的第二遍投影（实测 SET 80 零驱动 12 拍自己缩到 76.4706）。
   //
-  // 🔴 **只压缩「这一拍真的产生了的新读数」** —— `saturateToDomain` 在合法域内**不是恒等、且不幂等**
-  //    （WO-SATURATE-EXOGENOUS）。它是一次「原始读数 → 披露值」的投影，投影一次是压缩，
-  //    投影 N 次就变成了一条**与动力学无关**的暗流：本函数把输出写回 `next`，而 `next` 就是下一拍的输入，
-  //    于是每拍都在压缩**自己上一拍的输出**。
-  //
-  //    实测（`priceShock` 域 [0,100] rest=0 ⇒ bandHi=25 / kneeHi=75，`mode:"set"` 推 12 拍）：
-  //      · SET  74（拐点下）⇒ 74 … 74        —— 带内恒等，本来就不动
-  //      · SET  80（**合法值**）⇒ 80 → 79.1667 … 76.4706  —— 零驱动，自己缩水
-  //      · SET 200（超界）    ⇒ 200 → 95.8333 … 77.0492   —— 不动点 75
-  //    递推正是 `u ← u/(1+u)`（`u=(x−kneeHi)/bandHi`）⇒ `u_n = u_0/(1+n·u_0) → 0` ⇒ 全体收敛到 `kneeHi`。
-  //    后果不只是"数变小"：**它把第一次压缩好不容易保住的序抹平** —— 12 拍后 SET 150 与 SET 200
-  //    只差 **0.0222**（一次性压缩本该差 2.0833，94 倍），正是软拐点当初要根治的
-  //    「+30 与 +300 在屏上一模一样」那个病从后门走回来。
-  //
-  //    ⚠ 为什么**不是**照抄衰减相那份 `writtenVars` 豁免（那只治一半，实测过）：
-  //    豁免只保护**入度 0** 的外生量纲（本租户实测 4 个：`equipmentFailure` / `forecastBias` /
-  //    `loadPressure` / `priceShock`），而**入度>0 的 29 个累加器**同样中招 ——
-  //    实测一个显式配 `λ=0`（= 明确要纯积分器）、本拍 inflow=0 的 `costPressure` 格子：
-  //    起点 80 推 12 拍 ⇒ **76.4706**，每拍都记一次饱和事件，而这一拍**没有任何相位动过它**。
-  //    判据因此落在「**这一格这一拍变没变**」，不在「它有没有入边」—— 后者不度量前者。
-  //
-  // 判据两条（缺一条都会错）：
-  //  ① **本拍没有任何相位改动过这一格** ⇒ 它存的是上一拍**已压缩过的披露值**，不是新读数 ⇒ 不碰。
-  //     基线取 `state`（扰动相**之前**的入参，`cloneState`/`applyPerturbationToState` 都是深拷贝，
-  //     全程没人改过它）—— 故"改动"含扰动落地/回退、衰减、延迟到货、传导贡献**全部四类**。
-  //  ② **例外：存量真的在硬边界之外**（种子里就有超界真值 —— `Line.blockedPressure` 实测 27.72–182.73）
-  //     ⇒ 必须收回域内，否则"声明了 [0,100]"就成了一句假话。
-  //     这一条**不会**退化成 ①' 的无限循环：压缩输出恒在开区间内 ⇒ 下一拍 ② 不再成立 ⇒ **最多夹一次**。
-  const saturations: SaturationEvent[] = [];
-  const declaredSeen = new Set<string>();
-  const undeclaredSeen = new Set<string>();
-  for (const objId of Object.keys(next).sort((a, b) => a.localeCompare(b))) {
-    const bucket = next[objId]!;
-    const tickStart = state[objId]; // 本 tick 开始时的那一份（扰动相之前）
-    for (const stateVar of Object.keys(bucket).sort((a, b) => a.localeCompare(b))) {
-      const d = domains[stateVar];
-      if (d === undefined) { undeclaredSeen.add(stateVar); continue; }
-      declaredSeen.add(stateVar);
-      const raw = bucket[stateVar];
-      if (typeof raw !== "number") continue;
-      const before = tickStart?.[stateVar];
-      const unchanged = typeof before === "number" && before === raw;
-      const outsideHardBound = raw < d.min || (d.max !== null && raw > d.max);
-      if (unchanged && !outsideHardBound) continue; // 判据 ①：没产生新读数 ⇒ 一个字节不动
-      const sat = round12(saturateToDomain(raw, d.min, d.max, d.restPoint));
-      if (sat === raw) continue; // 带内 ⇒ 一个字节不动
-      bucket[stateVar] = sat;
-      saturations.push({ objectId: objId, stateVar, raw, value: sat, bound: sat > raw ? "min" : "max" });
-    }
-  }
+  // ⚠ 与上面第 3 步的 `rule.clamp` 仍是**两件事，不许合并**：
+  //    · `rule.clamp` 挂在**边**上，只夹"这条规则的目标"，是建模者对某条流的局部约束（第 3 步，未动）；
+  //    · 域挂在**状态量**上，夹的是"这个量纲本身能取什么值"，与哪条边写了它无关（已迁出，见上）。
 
   // pending：未到的 carry + 新延迟，稳定排序（resume 字节一致）。
   const outPending = [...carry, ...nextPending].sort(
@@ -1181,14 +1149,13 @@ export function propagateTick(
     reactionActors: reactionActors.sort(
       (a, b) => a.ruleKey.localeCompare(b.ruleKey) || a.actorObjectId.localeCompare(b.actorObjectId),
     ),
+    // 🔴 本核**只报它自己确实管得住的那两样**（衰减解析情况）。声明清单 / 未声明点名 / 饱和
+    //    一律由**唯一投影入口**在三条写路全部写完之后产出（`sim/world-projection.ts`），
+    //    再由 `mergeStateVarDisclosure` 合成回执那一份 `StateVarDisclosure` —— 单源记账。
+    //    ⛔ 不许在这里补回 declaredStateVars / undeclaredStateVars / saturations：
+    //       两处记账只会把「回执 vs 世界态」的矛盾挪成「回执 vs 回执」，更难查。
     stateVarReport: {
-      declaredStateVars: [...declaredSeen].sort((a, b) => a.localeCompare(b)),
-      undeclaredStateVars: [...undeclaredSeen].sort((a, b) => a.localeCompare(b)),
       decayUnresolved: decayUnresolved.sort((a, b) => a.stateVar.localeCompare(b.stateVar)),
-      // 饱和按 (objectId, stateVar) 稳定排序（R6：同输入同字节，含"谁顶到了"这份清单）。
-      saturations: saturations.sort(
-        (a, b) => a.objectId.localeCompare(b.objectId) || a.stateVar.localeCompare(b.stateVar),
-      ),
       decayApplied: Object.fromEntries(
         Object.keys(decayApplied).sort((a, b) => a.localeCompare(b)).map((k) => [k, decayApplied[k]!]),
       ),
