@@ -97,7 +97,17 @@ describe("WO-P0 · 扰动一等公民", () => {
     // ⇒ 字段是真的、该在，**钉子照旧保留**：`toEqual` 仍是穷尽比对，
     //   施加器算错（set 写成 delta）照样红；将来谁再加第四个字段，这条也会再红一次，
     //   **那正是这颗钉子存在的理由**（逼一次有意识的裁决，而不是让回包悄悄长胖）。
-    expect(worldAct).toEqual({ tick: 2, state: { o1: { risk: 0.9 }, o2: { risk: 0.2 } }, baseProvenance: {} });
+    //
+    // ✅ 第 4 键已裁决（2026-10-04）：`baseStateVarReport` = `WO-3ROOT-P3` 给 `/world` 加的
+    //   tick0 单源账，**钉子按设计响了，这次裁决就是它要的那一次**。三处 PRD 出处：
+    //   §三 D3「回包三处读面（/world · /tick 回执 · metric-series）**同一份**」、
+    //   「/world / /tick **必须能看到 tick0 这一批的 saturations**」、§七 A4「新会话不推拍，
+    //   直接读 /world … tick0 saturations ≥ 1」⇒ 不是 dev 顺手加字段，是 A4 唯一的可见面。
+    //   ⚠ 值是 **`null` 不是 `{}`**：本用例两条路都显式传了 `baseSnapshot`，属「调用方自带世界」
+    //   那一档 ⇒ `app.ts` 的 `simBaseStateVarReport` 取 `scope["baseSnapshotStateVarReport"]`
+    //   得 `undefined` ⇒ **`null`**。那条注释写死了「**不许默认成空账** —— 回一份空账等于替它
+    //   声明『已对账』」。写 `{}` 这条会红，**而且红得对**：默认成空账正是本单要防的第三态坍缩。
+    expect(worldAct).toEqual({ tick: 2, state: { o1: { risk: 0.9 }, o2: { risk: 0.2 } }, baseProvenance: {}, baseStateVarReport: null });
     // …而扰动这条路**多留下了一个实体**（这正是升格的全部意义：/act 做完什么都不剩）。
     expect(created.json().perturbation).toMatchObject({ kind: "capacity_loss", startTick: 2, durationTicks: null, mode: "set", label: "常州 A 线停机" });
   });

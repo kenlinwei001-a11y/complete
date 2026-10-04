@@ -1,0 +1,11 @@
+
+ RUN  v3.2.6 /Users/apple/deploy/wo-edge-wire/apps/datacore
+
+ ✓ test/sim-perturbation.test.ts (19 tests | 18 skipped) 716ms
+   ✓ WO-P0 · 扰动一等公民 > 断言①：durationTicks=null 的扰动与今天 /act **逐字节同结果**（additive 可回退的证明）  714ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 18 skipped (19)
+   Start at  17:42:51
+   Duration  6.45s (transform 3.17s, setup 0ms, collect 5.32s, tests 716ms, environment 0ms, prepare 87ms)
+
