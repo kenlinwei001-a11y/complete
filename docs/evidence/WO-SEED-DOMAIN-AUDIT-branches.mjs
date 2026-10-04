@@ -1,5 +1,10 @@
 // WO-3ROOT · 消费方分支清单 × 播种可达性（铁律 0.5：追到「真正被谁调用、在什么条件下触发」）
-// 本清单是穷举扫描的结果：引擎内 + 已知状态量消费方里，凡**以状态量的值**为条件的分支共 4 条。
+// 扫描范围（可复现）：apps/datacore/src/sim/**.ts 与 apps/datacore/src/solvers/**.ts 全量，
+//   筛 `以状态量的值作比较条件` 的分支；另加直接读 SimSession 世界态的消费方
+//   （chain-loss / causal-graph / metric-series / certification / app.ts 的 world 端点）。
+//   筛出共 4 条。⛔ 不在范围内：以**对象字段**（非推演世界态）为条件的阈值分支，
+//   如 solvers/service.ts 的 sev>=0.7/0.4/0.2 分级 —— 它读 drillVal(Supplier.contractedSupplyTon)
+//   这类真业务字段，不吃推演世界态。
 // 每条都用运行时真读的播种区间去测「它到底进不进得去」。
 import fs from "node:fs";
 const EV = new URL(".", import.meta.url).pathname;
