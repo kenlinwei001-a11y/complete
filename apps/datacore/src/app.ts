@@ -430,6 +430,48 @@ function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
   return r.data;
 }
 
+/**
+ * 推演步数 `n` 的**唯一口径** —— `POST …/tick` 与 `POST …/counterfactual` 共用这一份。
+ *
+ * ── 为什么必须是一份（2026-10-04 真后端实测）─────────────────────────────────────
+ * 两条同族路由原先各写各的：`…/tick` 走 `Math.max(1, Math.floor(Number(x)))`，
+ * `…/counterfactual` 走 zod `min(1).max(64)`。同样五个输入、两套结果：
+ *
+ * | 输入 | `…/tick`（实测） | `…/counterfactual`（实测） |
+ * |---|---|---|
+ * | `n:0` | **200 且静默推 1 拍**（与 `n:1` 逐字节同世界，回包不报） | 400 |
+ * | `n:-5` | **200 且静默推 1 拍** | 400 |
+ * | `n:1e9` | **200**，无上界 ⇒ 真推 10 亿拍 | 400 |
+ * | `n:"abc"` | **200**，`Math.max(1,NaN)`=NaN ⇒ 循环 0 次 ⇒ **静默 0 拍**，却照发 `sim.tick_completed` | 400 |
+ * | `n:1` | 200，推 1 拍 | 200 |
+ *
+ * ⚠ 这不是「缺个校验」，是**同一套 API 里两种口径**，且静默那一条**改了用户的输入**：
+ * 用户写 `n:1` 与写 `n:0` 拿到不同的世界，而回包不报 —— 正是本仓在防的静默错答。
+ *
+ * ── 上界 64 的依据（既有出处，不是拍脑袋）───────────────────────────────────────
+ * ① **一个数喂三条路由**：`Console0828` 那一个「推演时长」控件用**同一个 `horizon`** 同时打
+ *    `…/counterfactual {n:horizon}`、`…/tick {n:horizon}`、`…/pricing {horizon}`。
+ *    上界若不同，控件填 40 就会「对照跑 400 而推进照跑」—— A 的病灶原样再长一遍。
+ *    故本常数与 `…/counterfactual` 的 `n` / `…/pricing` 的 `horizon` **同为一处**。
+ * ② **实测代价**（本机 2026-10-04 · 真后端 `SEED_DEMO=1` · 服务端派生世界 4425 对象）：
+ *    首拍 1117ms（含建图冷启）、连推 8 拍 5100ms ⇒ **稳态 637ms/拍**。
+ *    界内最坏 = 64 拍 ≈ **41 秒**同步占住事件循环（单线程，期间别的请求一律排队），有界且可预期；
+ *    而修前 `n:1e9` ≈ 6.4×10⁸ 秒 ≈ **20 年**，还要逐拍 `putTickState` 落盘 —— 那不是"慢"，是挂死服务。
+ * ③ **消费方全在界内**（逐个读过调用点）：前端 `SandboxView`/`PerturbRail` 恒发 1；
+ *    `Console0828` 控件 `min=1`、缺省 30（`HORIZON_DEFAULT`）；AgentCore `sim_tick` 工具缺省 1。
+ * ⚠ 要收紧上界就改这**一个**常数 —— 它会同时收紧三条路由，这正是要的；
+ *    只改某一条 = 把两条口径换个地方重新长出来。
+ */
+const SIM_TICK_N_MAX = 64;
+/** `n` **缺省 1**（与两条路由引入前逐字节同）；给了就必须是 `[1, 64]` 的整数 —— **拒绝，不静默改**。 */
+const SimTickNSchema = z.number().int().min(1).max(SIM_TICK_N_MAX);
+const parseSimTickN = (raw: unknown): number => {
+  if (raw === undefined) return 1;
+  const r = SimTickNSchema.safeParse(raw);
+  if (!r.success) throw validationError(r.error.issues.map((i) => `n: ${i.message}`).join("; "));
+  return r.data;
+};
+
 /** OC9 净生产天数：from..to（含端点）逐日，扣周末（weekendMode）+ 节假日/检修（exceptions），加班日补回。 */
 function netProductionDays(from: string, to: string, cal: { weekendMode: string; exceptions: { date: string; kind: string }[] } | undefined): number {
   const wm = cal?.weekendMode ?? "SAT_SUN_OFF";
