@@ -1,0 +1,43 @@
+=== 正向金丝雀：复现验收单报的 ratioOnTouchedCells = 0.035 ===
+  t1 ratio=0.000011566498 ratioOnTouchedCells=1.524163185539 changedCells=2
+  t2 ratio=0.000117563981 ratioOnTouchedCells=0.307233604058 changedCells=26
+  t3 ratio=0.000224122896 ratioOnTouchedCells=0.066146858145 changedCells=33
+  t4 ratio=0.000366041843 ratioOnTouchedCells=0.051885267103 changedCells=44
+  t5 ratio=0.000535841421 ratioOnTouchedCells=0.035020557823 changedCells=65  MATCH 验收单 t5
+  t6 ratio=0.00074244659 ratioOnTouchedCells=0.041451251176 changedCells=65
+  t7 ratio=0.001014509593 ratioOnTouchedCells=0.051107894756 changedCells=65
+  t8 ratio=0.001368772168 ratioOnTouchedCells=0.065078988728 changedCells=65
+  ⇒ t5 命中验收单报值：是（工具没坏）
+
+=== 反向金丝雀：外生格（入度 0）**确信不该动**，判法不许误报 ===
+  外生格-拍 总数 = 18208
+  零扰动臂里动过的 = 0  ✓ 判法没有误报 churn
+  扰动臂里与零扰动臂不同的 = 8  **有差异需解释**
+
+=== 反向金丝雀·第二组：验收单 §5 点名的四格逐字节 ===
+  obj_order_SO-3402.leadDays: 零扰动臂 常量=22 | 扰动臂 常量=22
+  obj_order_SO-3415.leadDays: 零扰动臂 常量=38 | 扰动臂 常量=38
+  obj_order_SO-3391.qty: 零扰动臂 常量=7259 | 扰动臂 常量=7259
+  obj_order_SO-3391.unitPrice: 零扰动臂 常量=22198 | 扰动臂 常量=22198
+
+=== 交叉验证①：自起零扰动臂 Σ|Δ| == 引擎影子线 worldDrift ===
+  t1 mine=260278.544992 engine=260278.5449919984 MATCH
+  t2 mine=26179.168139 engine=26179.168139413723 MATCH
+  t3 mine=14092.893204 engine=14092.893203917887 MATCH
+  t4 mine=8830.549746 engine=8830.549745839136 MATCH
+  t5 mine=6143.836604 engine=6143.836603755458 MATCH
+  t6 mine=4492.783601 engine=4492.783601444977 MATCH
+  t7 mine=3315.906682 engine=3315.906682404494 MATCH
+  t8 mine=2470.134574 engine=2470.13457423668 MATCH
+  ⇒ 全 8 拍 MATCH：影子线就是零扰动重放
+
+=== 交叉验证②：逐格 |ArmA − ZeroArm| 复算 userContribution/changedCells ===
+  t1 uc mine=3.010511363625 engine=3.010511363625 | changed mine=2 engine=2 MATCH
+  t2 uc mine=3.077727219154 engine=3.077727219154 | changed mine=26 engine=26 MATCH
+  t3 uc mine=3.158540043842 engine=3.158540043842 | changed mine=33 engine=33 MATCH
+  t4 uc mine=3.232350704333 engine=3.232350704333 | changed mine=44 engine=44 MATCH
+  t5 uc mine=3.292122137404 engine=3.292122137404 | changed mine=65 engine=65 MATCH
+  t6 uc mine=3.335651863089 engine=3.335651863089 | changed mine=65 engine=65 MATCH
+  t7 uc mine=3.364019137519 engine=3.364019137519 | changed mine=65 engine=65 MATCH
+  t8 uc mine=3.381051457273 engine=3.381051457273 | changed mine=65 engine=65 MATCH
+  ⇒ 全 8 拍 MATCH

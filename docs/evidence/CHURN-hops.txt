@@ -1,0 +1,61 @@
+=== 金丝雀（类型映射）===
+  obj_order_SO-3391 -> Order OK
+  obj_model_4680-NCM -> Model OK
+  obj_customer_cust_14 -> Customer OK
+  obj_arinvoice_arinvoice_14_0 -> ARInvoice OK
+
+=== 静态类型级跳数（自 Order.leadDays，active 规则 54 条）===
+  可达 (type|stateVar) 对 = 7（下界，不含闸门/系数/链路存在性）
+  F1 obj_model_4680-NCM.costPressure  静态跳数=1
+  F2 obj_order_SO-3391.costPressure  静态跳数=2
+  F3 obj_customer_cust_14.receivablePressure  静态跳数=3
+  F4 obj_arinvoice_arinvoice_14_0.overduePressure  静态跳数=4
+  F5 obj_overduerecord_od-cg.collectionPressure  静态跳数=4
+  Order.costPressure 静态跳数=2
+  CustomerLocation.* 可达: CustomerLocation|deliveryHoldRisk
+
+=== 经验：逐拍新动格 + 其静态跳数分布 ===
+  t1: 新动格=2  静态跳数分布={"0":1,"1":1}  min=0 max=1
+       样例 [{"id":"obj_model_4680-NCM","tk":"Model","sv":"costPressure","d":0.010511363625,"staticHop":1},{"id":"obj_order_SO-3391","tk":"Order","sv":"leadDays","d":3,"staticHop":0}]
+  t2: 新动格=24  静态跳数分布={"2":24}  min=2 max=2
+       样例 [{"id":"obj_order_SO-3391","tk":"Order","sv":"costPressure","d":0.001320952145,"staticHop":2},{"id":"obj_order_SO-3402","tk":"Order","sv":"costPressure","d":0.002014023416,"staticHop":2},{"id":"obj_order_SO-3415","tk":"Order","sv":"costPressure","d":0.002916903406,"staticHop":2}]
+  t3: 新动格=7  静态跳数分布={"3":7}  min=3 max=3
+       样例 [{"id":"obj_customer_cust_0","tk":"Customer","sv":"receivablePressure","d":0.000031121325,"staticHop":3},{"id":"obj_customer_cust_1","tk":"Customer","sv":"receivablePressure","d":0.000420224508,"staticHop":3},{"id":"obj_customer_cust_14","tk":"Customer","sv":"receivablePressure","d":0.000569698603,"staticHop":3}]
+  t4: 新动格=11  静态跳数分布={"4":11}  min=4 max=4
+       样例 [{"id":"obj_customerlocation_LOC-cust_0-0","tk":"CustomerLocation","sv":"deliveryHoldRisk","d":0.000005757445,"staticHop":4},{"id":"obj_customerlocation_LOC-cust_1-0","tk":"CustomerLocation","sv":"deliveryHoldRisk","d":0.000077741534,"staticHop":4},{"id":"obj_customerlocation_LOC-cust_1-1","tk":"CustomerLocation","sv":"deliveryHoldRisk","d":0.000077741534,"staticHop":4}]
+  t5: 新动格=21  静态跳数分布={"4":21}  min=4 max=4
+       样例 [{"id":"obj_arinvoice_arinvoice_0_0","tk":"ARInvoice","sv":"overduePressure","d":0.000004605956,"staticHop":4},{"id":"obj_arinvoice_arinvoice_0_1","tk":"ARInvoice","sv":"overduePressure","d":0.000004605956,"staticHop":4},{"id":"obj_arinvoice_arinvoice_0_2","tk":"ARInvoice","sv":"overduePressure","d":0.000004605956,"staticHop":4}]
+  t6: 新动格=0  静态跳数分布={}  min=999 max=-1
+       样例 []
+  t7: 新动格=0  静态跳数分布={}  min=999 max=-1
+       样例 []
+  t8: 新动格=0  静态跳数分布={}  min=999 max=-1
+       样例 []
+
+=== 判据：t 拍出现「静态跳数 > t」的格 ⇒ 并行多跳证据 ===
+  违例数 = 0 ⇒ 未观测到并行多跳（严格一跳/拍）
+
+=== F1..F5 逐拍 |armA - zeroArm| 与首动拍 ===
+  F1 obj_model_4680-NCM.costPressure 首动拍=1  逐拍=[0.010511363625,0.017133522709,0.021305482931,0.023933817871,0.025589668883,0.026632855021,0.027290062288,0.027704102867]
+  F2 obj_order_SO-3391.costPressure 首动拍=2  逐拍=[0,0.001320952145,0.002699745093,0.003658804823,0.004142647283,0.004297669694,0.004286814347,0.004215775509]
+  F3 obj_customer_cust_14.receivablePressure 首动拍=3  逐拍=[0,0,0.000569698603,0.001630511494,0.002926504664,0.003489393943,0.003613413068,0.003576220171]
+  F4 obj_arinvoice_arinvoice_14_0.overduePressure 首动拍=5  逐拍=[0,0,0,0,0.000084315393,0.000294434399,0.000618616361,0.000906158612]
+  F5 obj_overduerecord_od-cg.collectionPressure 首动拍=**恒 0（8 拍未动）**  逐拍=[0,0,0,0,0,0,0,0]
+
+=== 逐跳衰减（注入 |Δ|=3 于 obj_order_SO-3391.leadDays）===
+  注入点 t1: armA=11 zeroArm=14 |Δ|=3
+  F1: 首动 t1 |Δ|=0.010511363625  相对注入点=3.5038e-3
+  F2: 首动 t2 |Δ|=0.001320952145  相对注入点=4.4032e-4
+  F3: 首动 t3 |Δ|=0.000569698603  相对注入点=1.8990e-4
+  F4: 首动 t5 |Δ|=0.000084315393  相对注入点=2.8105e-5
+  F5: 恒不动 ⇒ 无衰减可测
+
+=== F1/F2 八拍位移序列（看 λ 累积）===
+  F1: [0.010511363625,0.017133522709,0.021305482931,0.023933817871,0.025589668883,0.026632855021,0.027290062288,0.027704102867]
+  F2: [0,0.001320952145,0.002699745093,0.003658804823,0.004142647283,0.004297669694,0.004286814347,0.004215775509]
+  F4: [0,0,0,0,0.000084315393,0.000294434399,0.000618616361,0.000906158612]
+
+  decayApplied 里与 F 相关的 λ: costPressure=0.37 overduePressure=0.37 receivablePressure=0.37 collectionPressure=0.37 leadDays=undefined
+  decayApplied 全键 (33): blockedPressure,changeoverPressure,collectionPressure,costPressure,defectPressure,deliveryHoldRisk,demandLoad,demandPressure,drawdownPressure,expeditePressure,feedPressure,gapPressure,handlingBacklog,inboundExpeditePressure,inspectBacklog,loadIndex,overduePressure,promiseRisk,qualificationQueue,queueDays,queuePressure,receivablePressure,releasePressure,repairBacklog,reviewPressure,shortageRisk,splitPressure,supplyRisk,switchPressure,transferPressure,turnoverPressure,utilPressure,windowSqueeze
+
+WROTE hops-out.json

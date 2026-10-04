@@ -1,0 +1,13 @@
+差异格清单（外生格 ∧ armA≠zeroArm）：
+   t1 obj_order_SO-3391.leadDays  typeKey=Order  zero=14 armA=11 |Δ|=3
+
+注入点 = obj_order_SO-3391.leadDays, 注入 |Δ|=3
+差异格种类数 = 1
+是否恰为注入点: true
+
+Order.leadDays 外生? true
+Order.qty 外生? true
+Order.unitPrice 外生? true
+Order.costPressure 外生? false
+
+注：8 = 注入点 1 格 × 8 拍。扰动**按设计**改这一格 ⇒ 不是误报，是判法正确识别了注入点。

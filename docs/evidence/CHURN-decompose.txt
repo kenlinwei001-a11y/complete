@@ -1,0 +1,60 @@
+RULES total=55 active(adversary off)=54 reaction=1
+DOMAINS n=38
+CANARY id->type obj_order_SO-3391: Order OK
+CANARY id->type obj_model_4680-NCM: Model OK
+CANARY id->type obj_customer_cust_14: Customer OK
+CANARY id->type obj_arinvoice_arinvoice_14_0: ARInvoice OK
+CANARY domain costPressure={"min":0,"max":100,"restPoint":0,"decayRef":{"ruleKey":"C35","paramKey":"pressureDecayPerTick"},"unit":"0–100 压力指数","source":"压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② 世界态起点分两档取值 —— 对象上有同名属性的那些格取真读数（越界由本表声明的取值域夹住），其余由 tick0 生成式 `round(hash01(objectId|stateVar)×100)` 产出，天然落在 0–100"} leadDays=undefined
+
+=== 交叉验证1: engine worldDrift(shadow) vs 自起零扰动臂逐拍 Sum|delta| ===
+t1 mine=260278.544992 engine=260278.5449919984 MATCH
+t2 mine=26179.168139 engine=26179.168139413723 MATCH
+t3 mine=14092.893204 engine=14092.893203917887 MATCH
+t4 mine=8830.549746 engine=8830.549745839136 MATCH
+t5 mine=6143.836604 engine=6143.836603755458 MATCH
+t6 mine=4492.783601 engine=4492.783601444977 MATCH
+t7 mine=3315.906682 engine=3315.906682404494 MATCH
+t8 mine=2470.134574 engine=2470.13457423668 MATCH
+cells/world=6375
+
+-- t1 -- cells=6375 changed=3698 | exo 0/2276 spec 1673/2063 interior 2025/2036
+   Sum|term| over changed cells: decay=89103.050743 c2=42098.730743 inflow=227426.317820 projection=18391.059262
+   |d|>0.01 cells=3696 ; saturated among changed=1126 ; sign-inconsistent non-spec=539
+   by type: Model:n=30 dec=123.63 c2=123.63 in=201478.04 pr=7.11 | Process:n=650 dec=22896.38 c2=22896.38 in=10785.62 pr=14252.20 | WIPLot:n=260 dec=8636.45 c2=8636.45 in=522.42 pr=1755.63 | OrderLine:n=869 dec=15643.97 c2=0.00 in=2696.88 pr=0.84 | ExceptionEvent:n=368 dec=13604.25 c2=0.00 in=5.33 pr=0.00 | Order:n=298 dec=5106.06 c2=5106.06 in=1803.27 pr=422.05
+
+-- t2 -- cells=6375 changed=4042 | exo 0/2276 spec 2027/2063 interior 2015/2036
+   Sum|term| over changed cells: decay=70897.386898 c2=47232.020811 inflow=33039.794451 projection=19610.756590
+   |d|>0.01 cells=4032 ; saturated among changed=1267 ; sign-inconsistent non-spec=966
+   by type: Process:n=650 dec=21613.74 c2=22896.38 in=10785.62 pr=12438.77 | Line:n=260 dec=8424.10 c2=8088.40 in=4613.51 pr=4263.54 | WIPLot:n=260 dec=8180.16 c2=8636.45 in=2093.59 pr=2286.18 | OrderLine:n=869 dec=10853.24 c2=0.00 in=2287.76 pr=0.00 | Order:n=418 dec=5126.38 c2=5590.39 in=1308.14 pr=232.17 | WorkOrder:n=260 dec=2990.84 c2=746.31 in=6318.07 pr=0.00
+
+-- t3 -- cells=6375 changed=4022 | exo 0/2276 spec 2007/2063 interior 2015/2036
+   Sum|term| over changed cells: decay=64930.805695 c2=47058.860811 inflow=35065.822585 projection=19842.077552
+   |d|>0.01 cells=4011 ; saturated among changed=1270 ; sign-inconsistent non-spec=918
+   by type: Process:n=650 dec=21476.65 c2=22896.38 in=10534.10 pr=12044.35 | Line:n=260 dec=8429.38 c2=8088.40 in=4481.59 pr=4071.09 | WIPLot:n=260 dec=8277.73 c2=8636.45 in=3148.64 pr=3163.36 | WorkOrder:n=260 dec=4498.05 c2=746.31 in=6322.04 pr=0.00 | Order:n=398 dec=4895.99 c2=5417.23 in=1054.97 pr=173.67 | OrderLine:n=869 dec=7684.01 c2=0.00 in=2103.44 pr=0.00
+
+-- t4 -- cells=6375 changed=4002 | exo 0/2276 spec 1986/2063 interior 2016/2036
+   Sum|term| over changed cells: decay=63231.135123 c2=46825.390811 inflow=36733.919293 projection=20387.795039
+   |d|>0.01 cells=3947 ; saturated among changed=1266 ; sign-inconsistent non-spec=844
+   by type: Process:n=650 dec=21443.16 c2=22896.38 in=10489.26 pr=11961.78 | Line:n=260 dec=8455.10 c2=8088.40 in=4462.49 pr=4058.57 | WIPLot:n=260 dec=8405.01 c2=8636.45 in=3814.34 pr=3834.65 | WorkOrder:n=260 dec=5449.06 c2=746.31 in=6341.33 pr=0.00 | Order:n=377 dec=4846.75 c2=5183.76 in=966.86 pr=132.62 | OrderLine:n=869 dec=5619.20 c2=0.00 in=2024.72 pr=0.00
+
+-- t5 -- cells=6375 changed=3992 | exo 0/2276 spec 1976/2063 interior 2016/2036
+   Sum|term| over changed cells: decay=62933.593751 c2=46694.410811 inflow=38074.860313 projection=20820.006433
+   |d|>0.01 cells=3238 ; saturated among changed=1267 ; sign-inconsistent non-spec=679
+   by type: Process:n=650 dec=21436.02 c2=22896.38 in=10481.58 pr=11945.71 | WIPLot:n=260 dec=8483.13 c2=8636.45 in=4238.73 pr=4271.99 | Line:n=260 dec=8468.87 c2=8088.40 in=4457.27 pr=4060.64 | WorkOrder:n=260 dec=6055.33 c2=746.31 in=6351.65 pr=0.06 | Order:n=367 dec=4935.05 c2=5052.78 in=1107.33 pr=130.10 | OrderLine:n=869 dec=4289.24 c2=0.00 in=1996.54 pr=0.00
+
+-- t6 -- cells=6375 changed=3988 | exo 0/2276 spec 1972/2063 interior 2016/2036
+   Sum|term| over changed cells: decay=63159.158809 c2=46628.550811 inflow=39097.219995 projection=21121.041545
+   |d|>0.01 cells=3064 ; saturated among changed=1295 ; sign-inconsistent non-spec=657
+   by type: Process:n=650 dec=21434.63 c2=22896.38 in=10480.00 pr=11942.50 | WIPLot:n=260 dec=8527.55 c2=8636.45 in=4508.76 pr=4547.79 | Line:n=260 dec=8474.85 c2=8088.40 in=4454.44 pr=4061.10 | WorkOrder:n=260 dec=6441.08 c2=746.31 in=6356.14 pr=3.26 | Order:n=363 dec=5105.63 c2=4986.92 in=1321.53 pr=144.67 | OrderLine:n=869 dec=3440.94 c2=0.00 in=1984.20 pr=0.00
+
+-- t7 -- cells=6375 changed=3986 | exo 0/2276 spec 1970/2063 interior 2016/2036
+   Sum|term| over changed cells: decay=63574.520563 c2=46594.510811 inflow=39853.572424 projection=21329.048043
+   |d|>0.01 cells=2754 ; saturated among changed=1326 ; sign-inconsistent non-spec=922
+   by type: Process:n=650 dec=21434.35 c2=22896.38 in=10479.41 pr=11941.64 | WIPLot:n=260 dec=8553.40 c2=8636.45 in=4679.21 pr=4720.54 | Line:n=260 dec=8477.40 c2=8088.40 in=4452.49 pr=4060.43 | WorkOrder:n=260 dec=6684.58 c2=746.31 in=6358.05 pr=10.75 | Order:n=361 dec=5314.91 c2=4952.88 in=1532.81 pr=164.05 | QualityLot:n=260 dec=2559.95 c2=0.00 in=3220.54 pr=0.00
+
+-- t8 -- cells=6375 changed=3986 | exo 0/2276 spec 1970/2063 interior 2016/2036
+   Sum|term| over changed cells: decay=64029.795726 c2=46594.510811 inflow=40423.631341 projection=21472.219928
+   |d|>0.01 cells=2573 ; saturated among changed=1349 ; sign-inconsistent non-spec=898
+   by type: Process:n=650 dec=21434.27 c2=22896.38 in=10479.05 pr=11941.25 | WIPLot:n=260 dec=8568.84 c2=8636.45 in=4785.15 pr=4827.61 | Line:n=260 dec=8478.54 c2=8088.40 in=4451.15 pr=4059.60 | WorkOrder:n=260 dec=6835.92 c2=746.31 in=6358.90 pr=18.71 | Order:n=361 dec=5531.17 c2=4952.88 in=1732.91 pr=184.34 | QualityLot:n=260 dec=2804.37 c2=0.00 in=3342.29 pr=0.00
+
+WROTE /tmp/sv-churn-ev/decompose-out.json rows=31716

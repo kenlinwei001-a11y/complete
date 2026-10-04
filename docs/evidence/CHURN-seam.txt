@@ -1,0 +1,36 @@
+graph  obj_model_4680-NCM --model_demanded_by_order--> total = 93
+全库 Order n=500 total=500 状态分布={"OPEN":50,"COMPLETED":350,"IN_PRODUCTION":100}
+世界 Order n=150 状态分布={"OPEN":50,"IN_PRODUCTION":100}
+view-config.nodeObjectIds.Order 落点数 = 150
+世界外 Order n=350 状态分布={"COMPLETED":350}
+
+4680-NCM 下游单：全库 93 张 状态分布={"OPEN":12,"COMPLETED":69,"IN_PRODUCTION":12}
+4680-NCM 下游单：世界内 24 张 状态分布={"OPEN":12,"IN_PRODUCTION":12}
+⇒ 图上 93 − 沙盘 24 = 69 张不在沙盘里
+   被排除的 69 张状态分布={"COMPLETED":69}（全部 COMPLETED ⇒ 与 entersSimWorld 判据一致）
+
+OverdueRecord 全库 n=2
+   obj_overduerecord_od-cg customerRef=宇通客车 invoiceRef=INV-CG-001
+   obj_overduerecord_od-sd customerRef=国家电投 invoiceRef=INV-SD-001
+
+4680-NCM 下游单按客户（全库/世界内/状态）：
+   cust_0 | 38 | 10 | {"COMPLETED":28,"IN_PRODUCTION":8,"OPEN":2}
+   cust_1 | 19 | 4 | {"COMPLETED":15,"IN_PRODUCTION":3,"OPEN":1}
+   cust_12 | 1 | 0 | {"COMPLETED":1}
+   cust_14 | 3 | 3 | {"OPEN":3}
+   cust_16 | 11 | 0 | {"COMPLETED":11}
+   cust_18 | 4 | 4 | {"OPEN":3,"IN_PRODUCTION":1}
+   cust_2 | 4 | 0 | {"COMPLETED":4}
+   cust_3 | 1 | 0 | {"COMPLETED":1}
+   cust_4 | 7 | 1 | {"OPEN":1,"COMPLETED":6}
+   cust_5 | 2 | 1 | {"COMPLETED":1,"OPEN":1}
+   cust_7 | 1 | 0 | {"COMPLETED":1}
+   cust_8 | 2 | 1 | {"OPEN":1,"COMPLETED":1}
+世界里 0 张 4680-NCM 单的客户 = cust_16,cust_3,cust_2,cust_12,cust_7
+
+反向金丝雀（判法有鉴别力）：
+   obj_order_SO-3391（扰动的注入点）在世界里 = true  ← 期望 true
+   obj_model_4680-NCM 在 nodeObjectIds.Model 里 = true  ← 期望 true
+   obj_order_SO-900087（cust_16 的 COMPLETED 单）在世界里 = false  ← 期望 false
+
+WROTE seam-out.json

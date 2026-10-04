@@ -1,0 +1,38 @@
+Order cells total = 1050 objects = 150
+
+=== 交叉验证2: 逐格 |ArmA - ZeroArm| 复算 userContribution ===
+t1 uc mine=3.010511363625 engine=3.010511363625 MATCH | changed mine=2 engine=2 MATCH
+t2 uc mine=3.077727219154 engine=3.077727219154 MATCH | changed mine=26 engine=26 MATCH
+t3 uc mine=3.158540043842 engine=3.158540043842 MATCH | changed mine=33 engine=33 MATCH
+t4 uc mine=3.232350704333 engine=3.232350704333 MATCH | changed mine=44 engine=44 MATCH
+t5 uc mine=3.292122137404 engine=3.292122137404 MATCH | changed mine=65 engine=65 MATCH
+t6 uc mine=3.335651863089 engine=3.335651863089 MATCH | changed mine=65 engine=65 MATCH
+t7 uc mine=3.364019137519 engine=3.364019137519 MATCH | changed mine=65 engine=65 MATCH
+t8 uc mine=3.381051457273 engine=3.381051457273 MATCH | changed mine=65 engine=65 MATCH
+
+=== 符号分解（Σ 逐格各项，净额，恰好求和 = ΣΔ）===
+t | SumΔ(net) | SumDecay | SumC2 | SumInflow | SumProj | Sum|Δ| | |Δ|>0.01 格数 | Order格|Δ|>0.01
+t1 | 159101.35968905673 | -94371.86000800758 | 47367.540008007454 | 224013.9709508314 | -17908.29126177501 | 260278.5449919984 | 3696 | 298/450 (exo 越界=0)
+     主导项: {"decay":3192,"c2":0,"inflow":506,"proj":0}
+t2 | -12452.496953075435 | -70935.59609455868 | 47367.540008007454 | 30092.405919454402 | -18976.846785978873 | 26179.168139413723 | 4032 | 418/450 (exo 越界=0)
+     主导项: {"decay":2326,"c2":1031,"inflow":685,"proj":0}
+t3 | -4220.763429289221 | -64969.01489232044 | 47367.540008007454 | 32488.318483772313 | -19107.607028748585 | 14092.893203917887 | 4011 | 398/450 (exo 越界=0)
+     主导项: {"decay":2022,"c2":1174,"inflow":826,"proj":0}
+t4 | -1031.497050582289 | -63269.34431958532 | 47367.540008007454 | 34498.390877915146 | -19628.08361691972 | 8830.549745839136 | 3947 | 367/450 (exo 越界=0)
+     主导项: {"decay":1910,"c2":1175,"inflow":917,"proj":0}
+t5 | 341.853355097308 | -62971.80294751786 | 47367.540008007454 | 36004.78541602355 | -20058.66912141598 | 6143.836603755458 | 3238 | 367/450 (exo 越界=0)
+     主导项: {"decay":1871,"c2":1173,"inflow":948,"proj":0}
+t6 | 913.030661204773 | -63197.36800594649 | 47367.540008007454 | 37103.15791405235 | -20360.29925490874 | 4492.783601444977 | 3064 | 363/450 (exo 越界=0)
+     主导项: {"decay":1907,"c2":1172,"inflow":909,"proj":0}
+t7 | 1082.26675218722 | -63612.72976038647 | 47367.540008007454 | 37896.59854738766 | -20569.142042821757 | 3315.906682404494 | 2754 | 361/450 (exo 越界=0)
+     主导项: {"decay":1934,"c2":1166,"inflow":886,"proj":0}
+t8 | 1054.825305324598 | -64068.00492287532 | 47367.540008007454 | 38466.70918196179 | -20711.41896176938 | 2470.13457423668 | 2573 | 336/450 (exo 越界=0)
+     主导项: {"decay":1966,"c2":1165,"inflow":855,"proj":0}
+
+=== 跨臂重叠：扰动动过的格 vs 零扰动自然动的格（t5）===
+t5: 扰动差非零格=65 · 其中该拍零扰动臂本就在变的=64 (98.5%)
+   前 6 格: [{"id":"obj_order_SO-3391","k":"leadDays","uc":3,"natThisTick":false},{"id":"obj_model_4680-NCM","k":"costPressure","uc":0.025589668883,"natThisTick":true},{"id":"obj_order_SO-3415","k":"costPressure","uc":0.012982810365,"natThisTick":true},{"id":"obj_order_SO-3420","k":"costPressure","uc":0.012982810365,"natThisTick":true},{"id":"obj_order_SO-3481","k":"costPressure","uc":0.012982810365,"natThisTick":true},{"id":"obj_order_SO-3523","k":"costPressure","uc":0.012982810365,"natThisTick":true}]
+t8: 扰动差非零格=65 · 其中该拍零扰动臂本就在变的=64 (98.5%)
+   前 6 格: [{"id":"obj_order_SO-3391","k":"leadDays","uc":3,"natThisTick":false},{"id":"obj_model_4680-NCM","k":"costPressure","uc":0.027704102867,"natThisTick":true},{"id":"obj_order_SO-3415","k":"costPressure","uc":0.01829383368,"natThisTick":true},{"id":"obj_order_SO-3420","k":"costPressure","uc":0.01829383368,"natThisTick":true},{"id":"obj_order_SO-3481","k":"costPressure","uc":0.01829383368,"natThisTick":true},{"id":"obj_order_SO-3534","k":"costPressure","uc":0.01829383368,"natThisTick":true}]
+
+WROTE decompose2-out.json rows=32792
