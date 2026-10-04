@@ -1,0 +1,37 @@
+分支清单（以状态量的值为条件）共 4 条：
+
+① 引擎 propagation.ts：`if (sourceVal === 0) continue;` —— 源读数恰为 0 ⇒ 该边本拍整条不触发
+   源 MaterialBalance.gapPressure: 2/9 格恰为 0 ⇒ 边 demo_balance_gap_to_po_expedite 对这些源对象本拍不触发
+   源 Material.shortageRisk: 4/8 格恰为 0 ⇒ 边 demo_material_shortage_to_alt_switch 对这些源对象本拍不触发
+   源 Material.shortageRisk: 4/8 格恰为 0 ⇒ 边 demo_material_shortage_to_balance_gap 对这些源对象本拍不触发
+   源 Material.shortageRisk: 4/8 格恰为 0 ⇒ 边 demo_material_shortage_to_batch_turnover 对这些源对象本拍不触发
+   源 Material.shortageRisk: 4/8 格恰为 0 ⇒ 边 demo_material_shortage_to_model_supply_risk 对这些源对象本拍不触发
+   源 Material.shortageRisk: 4/8 格恰为 0 ⇒ 边 demo_material_shortage_to_po_expedite 对这些源对象本拍不触发
+   源 Model.supplyRisk: 6/6 格恰为 0 ⇒ 边 demo_model_supply_risk_to_order_shortage 对这些源对象本拍不触发
+   源 Order.orderChurn: 1/150 格恰为 0 ⇒ 边 demo_order_churn_to_line_split 对这些源对象本拍不触发
+   源 Order.orderChurn: 1/150 格恰为 0 ⇒ 边 demo_order_churn_to_model_demand_load 对这些源对象本拍不触发
+   源 Order.demandPressure: 2/150 格恰为 0 ⇒ 边 demo_order_demand_pressure 对这些源对象本拍不触发
+   源 Order.demandPressure: 2/150 格恰为 0 ⇒ 边 demo_order_demand_to_line_split 对这些源对象本拍不触发
+   源 Order.shortageRisk: 7/150 格恰为 0 ⇒ 边 demo_order_shortage_to_promise_risk 对这些源对象本拍不触发
+   源 PurchaseOrder.expeditePressure: 11/30 格恰为 0 ⇒ 边 demo_po_expedite_to_customs_queue 对这些源对象本拍不触发
+   源 PurchaseOrder.expeditePressure: 11/30 格恰为 0 ⇒ 边 demo_po_expedite_to_inspection_queue 对这些源对象本拍不触发
+   源 PurchaseOrder.expeditePressure: 11/30 格恰为 0 ⇒ 边 demo_po_expedite_to_supplier_review 对这些源对象本拍不触发
+   源 Supplier.procurementDelay: 2/15 格恰为 0 ⇒ 边 demo_supplier_procurement_delay_to_material_shortage 对这些源对象本拍不触发
+   ⚠ 逐拍可恢复（源可被自己的入边抬起），故这是「首拍哑火」不是永久死边——见 proof.txt ⑤。
+
+② 引擎 propagation.ts：`drive = max(0, sourceVal − reaction.tolerance)` —— 容忍线 hinge
+   带 reaction 的边 = 1/55（其余 40+ 条走 rule.reaction == null 支，逐字节同旧）
+   demo_customer_reaction_cut_order: tolerance=12 源 Customer.receivablePressure 播种区间=[6.396, 91.732]
+      ⇒ 越线（还手）格数 = 15/20；未越线（不还手）= 5/20
+      ⇒ 该分支**可达**（不是死支）——这是反向金丝雀：数值阈值分支不该被本单的判法误报。
+
+③ 引擎 propagation.ts saturateToDomain：band=0 的一侧是硬夹（吸收边界）
+   见 join.txt：38 域里 37 个 restPoint===min ⇒ 下界 band=0 硬夹、上界 band=25 保序；
+   forecastBias 两侧各 25 ⇒ 两侧都保序。故全表唯一「吸收侧」= 那 37 个域的下界。
+
+④ 消费方 solvers/chain-loss.ts `simDeltaDaysFor`：`deltaDays = Math.max(0, cell)`
+   Supplier.deliveryDelay: 域表登记=否 播种区间=[1.000, 10.000] 负值格=0/15 ⇒ 本拍无负值；该量**未进域表**（引擎不夹）⇒ 不可达是**数据如此**，不是域夹的
+   PurchaseOrder.procurementDelay: 域表登记=否 播种区间=[-7.000, -1.000] 负值格=30/30 ⇒ 本拍有负值 ⇒ 分支可达（该量未进 STATE_VAR_DOMAINS，引擎不夹）
+   CustomsClearance.clearanceQueueDays: 域表登记=否 播种区间=[2.000, 2.000] 负值格=0/1 ⇒ 本拍无负值；该量**未进域表**（引擎不夹）⇒ 不可达是**数据如此**，不是域夹的
+   IncomingInspection.queueDays: 域表登记=是 播种区间=[1.000, 99.000] 负值格=0/30 ⇒ 本拍无负值；该量**已进域表**（下界 0 band=0 硬夹）⇒ 负值结构上出不来，分支不可达
+CAPTURED_RC=0
