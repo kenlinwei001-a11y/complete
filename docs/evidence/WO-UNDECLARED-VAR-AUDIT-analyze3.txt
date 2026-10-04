@@ -1,0 +1,154 @@
+══ §0 · 自证 + 主线索复现（正向金丝雀）══════
+   实例：127.0.0.1:4511，对象类型 100 种
+   tick0 世界 undeclaredStateVars = ["backlogPriceTop","backlogQtyTop","clearanceQueueDays","coverDays","deliveryDelay","leadDays","procurementDelay","qty","unitPrice"]
+   [金丝雀✅] 运行期点名的未声明量 = 本单要审的 9 个
+   [金丝雀✅] 9 个未声明量在 tick0 入口投影被夹 0 条（未声明 ⇒ projectWorldCells 直接 continue）
+   主线索：PurchaseOrder.procurementDelay tick0 = n=  30 [-7, -1] 负30 正0 零0
+   [金丝雀✅] 正向金丝雀：30/30 全负、区间 ⊂ [-7,-1]（复现上一单 ca7205a36 的实数）
+
+══ §N · 负向金丝雀：已声明且带符号的量，在域内为负是合法的，不许被报成缺陷 ══════
+   STATE_VAR_DOMAINS 条数 = 38
+   已声明且域下界 < 0 的量：["forecastBias"]
+   Forecast.forecastBias（已声明，域 min=-100）tick0 = n=   6 [1, 88] 负0 正6 零0
+   [金丝雀✅] 存在已声明且**下界为负**的量 ⇒ 「负值」本身不是缺陷判据
+   ⚠ NOT-MEASURED：forecastBias 今天实测 n=   6 [1, 88] 负0 正6 零0 —— **不含负值**，故「我的判法面对一个域内合法为负的已声明量时保持沉默」这一臂**没有活样本**，如实登记为未测到，不拿它充当已通过。
+   ① Supplier.procurementDelay 边实测 n=  13 [-0.14866008, 0.14866008] 负2 正11 零0 —— 同一条边上两符号并存
+   [金丝雀✅] ① 负向金丝雀：该边两符号并存 ⇒ 我的判法**没有**把它误报成「单侧 ⇒ 分支死」（确信它合法：货早到/晚到都该有贡献）
+   ② Supplier.procurementDelay 实测 n=  15 [-6, 5] 负2 正11 零2；该边 trace n=13（= 15 − 2）
+   [金丝雀✅] ② 负向金丝雀：仪器**会**报「2 格恰为 0 ⇒ B1 部分命中」，而取值 0 = 准时 ⇒ 本就不该有贡献 —— 判法是活的，但它报的这件事**不是缺陷**
+
+══ §1 · 9 个量 × 运行期实测区间 × 承载类型 × 声明状态 ══════
+   qty                 n= 150 [708, 21777] 负0 正150 零0               承载=["Order"] 声明=无
+      出边(1)：demo_order_qty_to_model_top_qty(→backlogQtyTop,coeff=1,combine=max)
+      入边(0)：（无）
+   unitPrice           n= 150 [13594, 22660] 负0 正150 零0             承载=["Order"] 声明=无
+      出边(1)：demo_order_price_to_model_top_price(→backlogPriceTop,coeff=1,combine=max)
+      入边(0)：（无）
+   leadDays            n= 150 [-14, 178] 负23 正127 零0                承载=["Order"] 声明=无
+      出边(1)：demo_order_leaddays_to_model_horizon(→costPressure,coeff=-0.084090909,combine=sum)
+      入边(0)：（无）
+   backlogQtyTop       n=   6 [9, 54] 负0 正6 零0                      承载=["Model"] 声明=无
+      出边(0)：（无规则读它 ⇒ 出度 0）
+      入边(1)：demo_order_qty_to_model_top_qty(←Order.qty)
+   backlogPriceTop     n=   6 [1, 83] 负0 正6 零0                      承载=["Model"] 声明=无
+      出边(0)：（无规则读它 ⇒ 出度 0）
+      入边(1)：demo_order_price_to_model_top_price(←Order.unitPrice)
+   coverDays           n=  18 [1.9317, 42.3444] 负0 正18 零0           承载=["FinishedGoodsInventory"] 声明=无
+      出边(1)：demo_fg_cover_days_to_model_demand(→demandLoad,coeff=-0.00698967,combine=sum)
+      入边(0)：（无）
+   deliveryDelay       n=  15 [1, 10] 负0 正15 零0                     承载=["Supplier"] 声明=无
+      出边(1)：demo_supplier_delay_to_material_shortage(→shortageRisk,coeff=0.08919627,combine=sum)
+      入边(0)：（无）
+   procurementDelay    n=  69 [-7, 154] 负32 正35 零2                  承载=["MaterialBatch","PurchaseOrder","Supplier"] 声明=无
+      出边(3)：demo_batch_procurement_delay_to_material_shortage(→shortageRisk,coeff=0.05946418,combine=sum) demo_po_procurement_delay_to_material_shortage(→shortageRisk,coeff=0.07928545,combine=sum) demo_supplier_procurement_delay_to_material_shortage(→shortageRisk,coeff=0.04955336,combine=sum)
+      入边(0)：（无）
+   clearanceQueueDays  n=   1 [2, 2] 负0 正1 零0                       承载=["CustomsClearance"] 声明=无
+      出边(0)：（无规则读它 ⇒ 出度 0）
+      入边(1)：demo_po_expedite_to_customs_queue(←PurchaseOrder.expeditePressure)
+   [金丝雀✅] 9 个量在 STATE_VAR_DOMAINS 里逐个查不到（域表读数本身有效）
+   [金丝雀✅] 域表条数 = 38（应与上一单的 38 对齐）
+
+══ §2 · 引擎里以「状态量的值」为条件的全部分支（propagation.ts 真路径）══════
+   B1 sourceVal === 0 → continue ｜ B2 drive = reaction==null ? sourceVal : max(0,src−tol)
+   B3 drive === 0 → continue ｜ B4 baseAmount === 0 → continue ｜ B5 amount === 0 → continue ｜ B6 rule.clamp
+   实测 55 条：clamp 非空 1 条（demo_customer_reaction_cut_order→orderChurn）；reaction 非空 1 条
+   [金丝雀✅] reaction 非空 = 1 ⇒ B2 只对 1 条边生效（与上一单 ② 对齐）
+   ── B1 逐边可达性（源区间里有没有恰好 0）──
+      demo_batch_procurement_delay_to_material_shortage        源 MaterialBatch n=24 恰为0=0 ⇒ B1 不命中；trace 实测 n=24
+      demo_fg_cover_days_to_model_demand                       源 FinishedGoodsInventory n=18 恰为0=0 ⇒ B1 不命中；trace 实测 n=18
+      demo_order_leaddays_to_model_horizon                     源 Order n=150 恰为0=0 ⇒ B1 不命中；trace 实测 n=150
+      demo_order_price_to_model_top_price                      源 Order n=150 恰为0=0 ⇒ B1 不命中；trace 实测 n=150
+      demo_order_qty_to_model_top_qty                          源 Order n=150 恰为0=0 ⇒ B1 不命中；trace 实测 n=150
+      demo_po_procurement_delay_to_material_shortage           源 PurchaseOrder n=30 恰为0=0 ⇒ B1 不命中；trace 实测 n=30
+      demo_supplier_delay_to_material_shortage                 源 Supplier n=15 恰为0=0 ⇒ B1 不命中；trace 实测 n=15
+      demo_supplier_procurement_delay_to_material_shortage     源 Supplier n=15 恰为0=2 ⇒ B1 部分命中；trace 实测 n=13
+
+══ §3 · 判决实验：四臂逐边 amount（同一支对照两份：零扰动 Z3 + 无关扰动 C3/L3）══════
+   demo_po_procurement_delay_to_material_shortage
+      Z3  n=  30 [-0.168991458786, -0.012409200353] 负30 正0 零0  Σ=-1.775558
+      F3  n=  30 [0.02158061092, 0.108660534475] 负0 正30 零0  Σ=1.902851
+      C3  n=  30 [-0.168991458786, -0.012409200353] 负30 正0 零0  Σ=-1.775558
+      L3  n=  30 [-0.168991458786, -0.012409200353] 负30 正0 零0  Σ=-1.775558
+   demo_fg_cover_days_to_model_demand
+      Z3  n=  18 [-0.131845305934, -0.000573962256] 负18 正0 零0  Σ=-0.939553
+      F3  n=  18 [-0.131845305934, -0.000573962256] 负18 正0 零0  Σ=-0.939553
+      C3  n=  18 [-0.933257982294, -0.059425610177] 负18 正0 零0  Σ=-8.387604
+      L3  n=  18 [-0.131845305934, -0.000573962256] 负18 正0 零0  Σ=-0.939553
+   demo_order_leaddays_to_model_horizon
+      Z3  n= 150 [-0.9137878778, 0.052056277] 负127 正23 零0  Σ=-15.142521
+      F3  n= 150 [-0.9137878778, 0.052056277] 负127 正23 零0  Σ=-15.142521
+      C3  n= 150 [-0.9137878778, 0.052056277] 负127 正23 零0  Σ=-15.142521
+      L3  n= 150 [-0.9137878778, -0.00672727272] 负150 正0 零0  Σ=-18.044601
+   demo_supplier_procurement_delay_to_material_shortage
+      Z3  n=  13 [-0.14866008, 0.14866008] 负2 正11 零0  Σ=0.691249
+      F3  n=  13 [-0.14866008, 0.14866008] 负2 正11 零0  Σ=0.691249
+      C3  n=  13 [-0.14866008, 0.14866008] 负2 正11 零0  Σ=0.691249
+      L3  n=  13 [-0.14866008, 0.14866008] 负2 正11 零0  Σ=0.691249
+   demo_batch_procurement_delay_to_material_shortage
+      Z3  n=  24 [0.010089378034, 4.113969594142] 负0 正24 零0  Σ=31.960831
+      F3  n=  24 [0.010089378034, 4.113969594142] 负0 正24 零0  Σ=31.960831
+      C3  n=  24 [0.010089378034, 4.113969594142] 负0 正24 零0  Σ=31.960831
+      L3  n=  24 [0.010089378034, 4.113969594142] 负0 正24 零0  Σ=31.960831
+   demo_supplier_delay_to_material_shortage
+      Z3  n=  15 [0.053517762, 0.62437389] 负0 正15 零0  Σ=3.425736
+      F3  n=  15 [0.053517762, 0.62437389] 负0 正15 零0  Σ=3.425736
+      C3  n=  15 [0.053517762, 0.62437389] 负0 正15 零0  Σ=3.425736
+      L3  n=  15 [0.053517762, 0.62437389] 负0 正15 零0  Σ=3.425736
+   [金丝雀✅] P2 前半：臂 Z3 该边 30/30 条贡献全负（复现主线索）
+   [金丝雀✅] P2 后半：臂 F3 该边 30/30 条贡献翻正（P1 的 0/N → N/N 形态成立）
+   [金丝雀✅] 无关扰动臂 C3/L3 上该边逐边 amount 与 Z3 相同 ⇒ 翻转是 PO 扰动引起的，不是「任何扰动都翻转」
+   [金丝雀✅] coverDays 边在零扰动臂每拍 18/18 命中（H1「源恒 0 ⇒ 边永不通」当场判死）
+   [金丝雀✅] 臂 C3 该边 Σ 由 -0.939553 走到 -8.387604（>3×）⇒ 该边随输入变
+   [金丝雀✅] P5：leadDays 边正贡献数 Z3=23 → L3=0（恰为 23 张负 leadDays）
+
+══ §4 · 靶格终态差分（扰动真的走到下游了吗）═══
+   Material.shortageRisk 臂Z3 n=158 [1.5442, 65.8066]
+      vs F3: 差异 158（升158/降0）最大Δ=1.159953
+      vs C3: 差异 0（升0/降0）最大Δ=0.000000
+      vs L3: 差异 0（升0/降0）最大Δ=0.000000
+   Model.demandLoad 臂Z3 n=6 [22.9452, 82.5635]
+      vs F3: 差异 0（升0/降0）最大Δ=0.000000
+      vs C3: 差异 6（升0/降6）最大Δ=-2.672475
+      vs L3: 差异 0（升0/降0）最大Δ=0.000000
+   Model.costPressure 臂Z3 n=156 [1.1124, 82.7157]
+      vs F3: 差异 0（升0/降0）最大Δ=0.000000
+      vs C3: 差异 0（升0/降0）最大Δ=0.000000
+      vs L3: 差异 156（升0/降156）最大Δ=-1.223650
+   [金丝雀✅] P1：shortageRisk 差异格 F3=158/158 全升、C3=0、L3=0 ⇒ 该边确实驱动下游，且只有 PO 扰动驱动
+
+══ §5 · 链损叠加（simDeltaDaysFor 的真消费方；主线索的杀手读数）═══
+   Z3: tick=3 appliedDays=24.884984735
+      material.in_transit      procurementDelay   stateValue=-4                     deltaDays=0
+      material.iqc             queueDays          stateValue=22.884984735           deltaDays=22.884984735
+      material.supplier_leadtime deliveryDelay      stateValue=2                      deltaDays=2
+      PO 腿：stateValue=-4 deltaDays=0
+   F3: tick=3 appliedDays=27.884984735
+      material.in_transit      procurementDelay   stateValue=3                      deltaDays=3
+      material.iqc             queueDays          stateValue=22.884984735           deltaDays=22.884984735
+      material.supplier_leadtime deliveryDelay      stateValue=2                      deltaDays=2
+      PO 腿：stateValue=3 deltaDays=3
+   C3: tick=3 appliedDays=24.884984735
+      material.in_transit      procurementDelay   stateValue=-4                     deltaDays=0
+      material.iqc             queueDays          stateValue=22.884984735           deltaDays=22.884984735
+      material.supplier_leadtime deliveryDelay      stateValue=2                      deltaDays=2
+      PO 腿：stateValue=-4 deltaDays=0
+   L3: tick=3 appliedDays=24.884984735
+      material.in_transit      procurementDelay   stateValue=-4                     deltaDays=0
+      material.iqc             queueDays          stateValue=22.884984735           deltaDays=22.884984735
+      material.supplier_leadtime deliveryDelay      stateValue=2                      deltaDays=2
+      PO 腿：stateValue=-4 deltaDays=0
+   NONE: simContext 缺席（= 不传 sessionId ⇒ 与本字段引入前逐字节相同）
+   [金丝雀✅] P3 前半：臂 Z3 PO 腿 stateValue=-4 < 0、deltaDays=0（clamp 把「早到 4 天」吞成 0）
+   [金丝雀✅] P3 后半：臂 F3 同一项 stateValue=3 > 0、deltaDays=3 > 0 ⇒ Math.max(0,cell) 是活代码，随输入变
+   [金丝雀✅] appliedDays Z3=24.884984735 → F3=27.884984735，差 3.000000000（= 翻转值 3）
+   [金丝雀✅] 无关扰动臂 C3 appliedDays=24.884984735 与 Z3 逐位相同（对照臂）
+
+══ §6 · Order.leadDays 的第二消费方：readBaseContention 的 (lead > 0) 守卫 ═══
+   Order 总数 500：leadDays ≤ 0 的 373 张，其中 status 分布 = {"COMPLETED":350,"IN_PRODUCTION":23}
+   readBaseContention 只收 status=OPEN 的 50 张；其中被 (lead>0) 守卫挡下的 = 0 张
+   求解器回包 contention：verdict=CONTENDED basesScanned=13 contendedBases=["changzhou","wuhan","zaozhuang"]
+   note 含「另有 N 张订单…被排除」? false（该句只在 skipped>0 时拼接）
+   [金丝雀✅] OPEN 订单 = 50 张（金丝雀：对象读确实取到了订单；total=500）
+   [金丝雀✅] 该守卫今天 0 命中（两条独立读数：直接读 props + 求解器 note 未拼该句）⇒ 负 leadDays 全在非 OPEN 状态，被**更早**的 status 过滤挡掉
+
+✅ 全部金丝雀通过

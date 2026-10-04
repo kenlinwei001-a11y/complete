@@ -1,0 +1,115 @@
+══ §0 · 自证：读的是本树实例（不是 4001/4002 别人的部署）══════
+   view-config 对象类型数 = 100，对象数 = 12499
+   world-tick0.tick = 0（⛔ 本单一次 /tick 都没发过就读到 tick0）
+   baseStateVarReport.undeclaredStateVars = ["backlogPriceTop","backlogQtyTop","clearanceQueueDays","coverDays","deliveryDelay","leadDays","procurementDelay","qty","unitPrice"]
+   [金丝雀✅] 运行期点名的未声明量 = 本单要审的 9 个（9 个）
+   tick0 入口投影饱和事件 360 条；其中落在 9 个未声明量上的 = 0 条
+   [金丝雀✅] 9 个未声明量在 tick0 被投影夹过 0 条（未声明 ⇒ projectWorldCells 直接 continue）
+
+══ §1 · 9 个量 × tick0 运行期实测区间（按承载类型拆开）══════
+   qty                 总格= 150  Order n=150 [708, 21777] 负0 零0
+   unitPrice           总格= 150  Order n=150 [13594, 22660] 负0 零0
+   leadDays            总格= 150  Order n=150 [-14, 178] 负23 零0
+   backlogQtyTop       总格=   6  Model n=6 [9, 54] 负0 零0
+   backlogPriceTop     总格=   6  Model n=6 [1, 83] 负0 零0
+   coverDays           总格=  18  FinishedGoodsInventory n=18 [1.9317, 42.3444] 负0 零0
+   deliveryDelay       总格=  15  Supplier n=15 [1, 10] 负0 零0
+   procurementDelay    总格=  69  MaterialBatch n=24 [1, 154] 负0 零0 | PurchaseOrder n=30 [-7, -1] 负30 零0 | Supplier n=15 [-6, 5] 负2 零2
+   clearanceQueueDays  总格=   1  CustomsClearance n=1 [2, 2] 负0 零0
+
+   结构化判据（来自本树 dist 的 STATE_VAR_DOMAINS，那是**声明**不是取值）：
+   [金丝雀✅] 9 个量在 STATE_VAR_DOMAINS 里逐个查不到（金丝雀：域表读数本身有效）
+   [金丝雀✅] 域表条数 = 38（应为 38，与上一单对齐）
+
+══ §2 · 每个量的**真实消费方**（规则表 = 运行期真读的 55 条，不是源码）══════
+   qty
+      [源] demo_order_qty_to_model_top_qty  coeff=1 combine=max reaction=null(无容忍线) clamp=null weightRef=null delayTicks=0
+           Order.qty --order_for_model--> Model.backlogQtyTop
+   unitPrice
+      [源] demo_order_price_to_model_top_price  coeff=1 combine=max reaction=null(无容忍线) clamp=null weightRef=null delayTicks=0
+           Order.unitPrice --order_for_model--> Model.backlogPriceTop
+   leadDays
+      [源] demo_order_leaddays_to_model_horizon  coeff=-0.084090909 combine=sum reaction=null(无容忍线) clamp=null weightRef={"basis":"equal_share"} delayTicks=0
+           Order.leadDays --order_for_model--> Model.costPressure
+   backlogQtyTop
+      [靶] demo_order_qty_to_model_top_qty ← Order.qty (combine=max)
+      ⇒ 出度 0（无规则读它）⇒ 它自己是**叶子**，不存在下游消费分支
+   backlogPriceTop
+      [靶] demo_order_price_to_model_top_price ← Order.unitPrice (combine=max)
+      ⇒ 出度 0（无规则读它）⇒ 它自己是**叶子**，不存在下游消费分支
+   coverDays
+      [源] demo_fg_cover_days_to_model_demand  coeff=-0.00698967 combine=sum reaction=null(无容忍线) clamp=null weightRef={"basis":"source_field_share","field":"qtyAvailable"} delayTicks=0
+           FinishedGoodsInventory.coverDays --fg_of_model--> Model.demandLoad
+   deliveryDelay
+      [源] demo_supplier_delay_to_material_shortage  coeff=0.08919627 combine=sum reaction=null(无容忍线) clamp=null weightRef={"basis":"source_field_share","field":"contractedSupplyTon"} delayTicks=0
+           Supplier.deliveryDelay --supplier_supplies_material--> Material.shortageRisk
+   procurementDelay
+      [源] demo_batch_procurement_delay_to_material_shortage  coeff=0.05946418 combine=sum reaction=null(无容忍线) clamp=null weightRef={"basis":"source_field_share","field":"qty"} delayTicks=1
+           MaterialBatch.procurementDelay --batch_replenishes_material--> Material.shortageRisk
+      [源] demo_po_procurement_delay_to_material_shortage  coeff=0.07928545 combine=sum reaction=null(无容忍线) clamp=null weightRef={"basis":"source_field_share","field":"qty"} delayTicks=0
+           PurchaseOrder.procurementDelay --po_replenishes_material--> Material.shortageRisk
+      [源] demo_supplier_procurement_delay_to_material_shortage  coeff=0.04955336 combine=sum reaction=null(无容忍线) clamp=null weightRef={"basis":"source_field_share","field":"contractedSupplyTon"} delayTicks=1
+           Supplier.procurementDelay --supplier_supplies_material--> Material.shortageRisk
+   clearanceQueueDays
+      [靶] demo_po_expedite_to_customs_queue ← PurchaseOrder.expeditePressure (combine=sum)
+      ⇒ 出度 0（无规则读它）⇒ 它自己是**叶子**，不存在下游消费分支
+
+══ §3 · 引擎里以「状态量的值」为条件的**全部**分支（propagation.ts 运行期路径）══════
+   B1  sourceVal === 0                → continue（该边本拍整条不触发）
+   B2  drive = reaction==null ? sourceVal : max(0, sourceVal − tol)
+   B3  drive === 0                    → continue
+   B4  baseAmount === 0               → continue
+   B5  amount === 0（权份额为 0）      → continue
+   B6  rule.clamp 非空 → min/max 夹值  （本表全部 clamp=null ⇒ 不适用）
+   B7  chain-loss.ts simDeltaDaysFor: deltaDays = Math.max(0, cell)
+   实测：55 条里 clamp 非空 = 1 条；reaction 非空 = 1 条（B2 只对还手边生效）
+      ⚠ clamp 非空的是 demo_customer_reaction_cut_order：clamp={"min":0,"max":40} ⇒ Customer.receivablePressure → Order.orderChurn
+   [金丝雀✅] clamp 非空 = 1 条，且它的靶**不是** Material.shortageRisk ⇒ B6 与本单 9 个量的落点无关
+   [金丝雀✅] reaction 非空 = 1 ⇒ B2 只影响 1 条边（与上一单 ② 逐条对齐）
+
+   ── B1（`sourceVal === 0 ⇒ 该边本拍不触发`）逐边可达性 ──
+      demo_order_qty_to_model_top_qty: 源 Order.qty n=150 恰为 0 的格 = 0/150 ⇒ B1 不命中
+      demo_order_price_to_model_top_price: 源 Order.unitPrice n=150 恰为 0 的格 = 0/150 ⇒ B1 不命中
+      demo_order_leaddays_to_model_horizon: 源 Order.leadDays n=150 恰为 0 的格 = 0/150 ⇒ B1 不命中
+      demo_fg_cover_days_to_model_demand: 源 FinishedGoodsInventory.coverDays n=18 恰为 0 的格 = 0/18 ⇒ B1 不命中
+      demo_supplier_delay_to_material_shortage: 源 Supplier.deliveryDelay n=15 恰为 0 的格 = 0/15 ⇒ B1 不命中
+      demo_batch_procurement_delay_to_material_shortage: 源 MaterialBatch.procurementDelay n=24 恰为 0 的格 = 0/24 ⇒ B1 不命中
+      demo_po_procurement_delay_to_material_shortage: 源 PurchaseOrder.procurementDelay n=30 恰为 0 的格 = 0/30 ⇒ B1 不命中
+      demo_supplier_procurement_delay_to_material_shortage: 源 Supplier.procurementDelay n=15 恰为 0 的格 = 2/15 ⇒ B1 部分命中
+
+══ §4 · 零扰动臂 Z（3 拍，disclose=1）—— 每条边的真实命中与贡献数 ══════
+   最后一拍贡献条数 contributions = 7205；declared=54 fired=54
+   未 fired 的规则（0 条）：（无）
+
+══ §5 · 判决实验 · 臂 Z（零扰动）vs 臂 F（procurementDelay 负→正翻转）vs 臂 C（coverDays 0→10）══
+   规则                                                     臂Z(零扰动)  臂F(PO翻正)  臂C(coverDays→10)
+   demo_po_procurement_delay_to_material_shortage          true        true         true
+   demo_batch_procurement_delay_to_material_shortage       true        true         true
+   demo_supplier_procurement_delay_to_material_shortage    true        true         true
+   demo_fg_cover_days_to_model_demand                      true        true         true
+   demo_order_leaddays_to_model_horizon                    true        true         true
+   demo_supplier_delay_to_material_shortage                true        true         true
+   demo_order_qty_to_model_top_qty                         true        true         true
+   demo_order_price_to_model_top_price                     true        true         true
+
+══ §6 · 世界态差分：扰动**真的落地了吗**（零扰动对照的判据）══
+   臂F vs 臂Z：procurementDelay 差异格 = 0（最大 |Δ|=0）；coverDays 差异格 = 0（最大 |Δ|=0）
+   臂C vs 臂Z：procurementDelay 差异格 = 0（最大 |Δ|=0）；coverDays 差异格 = 0（最大 |Δ|=0）
+   [金丝雀❌] 臂 F 真的把 30 张 PO 的 procurementDelay 改了（扰动落地自证）
+   [金丝雀❌] 臂 C 真的把 18 个 FGI 的 coverDays 改了（扰动落地自证）
+   ⛔ 注意：这只是「扰动落地」的自证，**不度量传导** —— 传导看 §7。
+
+══ §7 · 链损叠加（simDeltaDaysFor 的真消费方读数：chain-loss-matrix.simContext）══
+   臂Z: sessionId=sims_50mjwrmds50gkfsp tick=3 appliedDays=24.884984735 appliedSteps=3
+      material.in_transit    procurementDelay     stateValue=-4  deltaDays=0
+      material.iqc           queueDays            stateValue=22.884984735  deltaDays=22.884984735
+      material.supplier_leadtime deliveryDelay        stateValue=2  deltaDays=2
+      excluded: [{"key":"Customer.receivablePressure","reason":"NOT_DAY_UNIT"},{"key":"Process.queuePressure","reason":"NOT_DAY_UNIT"},{"key":"PurchaseOrder.expeditePressure","reason":"NOT_DAY_UNIT"},{"key":"Supplier.procurementDelay","reason":"OTHER_CARRIER"},{"key":"Supplier.reviewPressure","reason":"NOT_DAY_UNIT"}]
+   臂F: sessionId=sims_r3mzbccmhzy5y2p6 tick=3 appliedDays=24.884984735 appliedSteps=3
+      material.in_transit    procurementDelay     stateValue=-4  deltaDays=0
+      material.iqc           queueDays            stateValue=22.884984735  deltaDays=22.884984735
+      material.supplier_leadtime deliveryDelay        stateValue=2  deltaDays=2
+      excluded: [{"key":"Customer.receivablePressure","reason":"NOT_DAY_UNIT"},{"key":"Process.queuePressure","reason":"NOT_DAY_UNIT"},{"key":"PurchaseOrder.expeditePressure","reason":"NOT_DAY_UNIT"},{"key":"Supplier.procurementDelay","reason":"OTHER_CARRIER"},{"key":"Supplier.reviewPressure","reason":"NOT_DAY_UNIT"}]
+   无会话(对照): simContext 缺席（= 不传 sessionId ⇒ 与本字段引入前逐字节相同）
+
+❌ 2 处金丝雀不中 —— 按纪律报「工具坏了」，本文件读数作废

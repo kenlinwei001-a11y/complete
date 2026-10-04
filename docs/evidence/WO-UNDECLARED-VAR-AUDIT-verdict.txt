@@ -1,0 +1,219 @@
+WO-UNDECLARED-VAR-AUDIT · 裁决书
+════════════════════════════════════════════════════════════════════════════════
+树        claude/handoff-undeclared-var-audit @ 951ddc4a8（本文件写于该 tip）
+实例      127.0.0.1:4511 pid 41096 `node --max-old-space-size=8192 apps/datacore/dist/server.js`
+          SEED_DEMO=1 · X-Debug-User: demo:admin:admin · 与 4001/4002/5173 零接触（未重启、未 kill）
+预言提交  951ddc4a8 / 2026-10-04T10:33:59Z（`WO-UNDECLARED-VAR-AUDIT-capture.sh` 头注 H1–H7 + 判决实验臂）
+读数      全部为运行期真读（HTTP 原样回包 / 真对象读 / 求解器回包），**无一条来自 grep 源码**
+⛔ 本单未改任何产品代码 / 测试 / 门
+════════════════════════════════════════════════════════════════════════════════
+
+§0 · 先说两次工具故障（不先说这个，下面的数会被当成读数用）
+────────────────────────────────────────────────────────────────────────────────
+前两版抓取（capture.sh / capture2.sh）里 **71 次扰动 POST 全部 HTTP 400**：
+  `VALIDATION_ERROR: kind: Invalid option …  targetObjectId: Invalid input: expected string, received undefined`
+我把 body 包成了 `{"perturbation":{…}}`，而路由是
+`createPerturbationWorld(c, s, req.body)` 直接 `{...body, id, tenantId, sessionId, startTick, createdAt}`
+过 `PerturbationSchema.safeParse`（`apps/datacore/src/app.ts`）—— **扁平 body + 必填 `kind`**。
+⇒ **前两版全部「臂」读数 = 同一个零扰动臂，按纪律作废，不当 0 用。**
+
+形态（铁律 0.6 句式，两次同族）：
+  第一版：「我用『两臂 tick0 世界逐格相同』当作『扰动已写入、只是比错了拍』的证据。」
+  第二版：「我用『两臂 tick3 世界逐格相同』当作『扰动打进去了但传导没动』的证据。」
+  真因两次都不是差分口径，是**写入请求根本没成功**。两次的抓取脚本都只把回包 body 追加进
+  `.jsonl`、**从不检查 HTTP 状态码** ⇒ 半份日志被读成「零红」。
+  修法（已落进 capture3.sh）：每条写请求**断言 201**，非 201 计数并在末尾硬失败；
+  本文件全部读数取自 capture3.sh / capture3b.sh，`BAD_STATUS=0`。
+  201 的落盘证据（两条互为独立的读数）：
+    · `WO-UNDECLARED-VAR-AUDIT-perturb{F3,C3,L3}.jsonl.code` = 30/18/23 行，**逐行皆 `201`，非 201 = 0**
+    · 同批 `.jsonl` 里 30/18/23 条回包**每条都含 `perturbation.id` 与 `state`**
+      —— 这两个字段只在该路由的 201 分支上（`return reply.status(201).send({perturbation, curTick, state})`）
+
+§1 · 9 个量 × 判据表（逐条）
+────────────────────────────────────────────────────────────────────────────────
+「声明域」= 运行期 `undeclaredStateVars` 是否点名 + 本树 dist 的 `STATE_VAR_DOMAINS` 查表结果。
+「消费分支」= 运行期规则表（`/a/v1/sim/propagation-rules` 的 55 条 PUBLISHED）+ trace 逐边实测
+            + chain-loss / chain-impediment 两处真 src 消费方。
+
+ # 量                声明域        实测区间（tick0，承载类型）                        消费分支（运行期实测）                                                                         裁决
+ 1 qty               未声明        Order n=150 [708, 21777] 负0 正150 零0             出边 demo_order_qty_to_model_top_qty（coeff=1, combine=max）→ Model.backlogQtyTop；trace 150/150 每拍命中   无缺陷
+ 2 unitPrice         未声明        Order n=150 [13594, 22660] 负0 正150 零0           出边 demo_order_price_to_model_top_price（coeff=1, combine=max）→ Model.backlogPriceTop；trace 150/150     无缺陷
+ 3 leadDays          未声明        Order n=150 [-14, 178] 负23 正127 零0              ① demo_order_leaddays_to_model_horizon（coeff=−0.084090909, sum）→ Model.costPressure；trace 150（负127/正23）
+                                                                                    ② solvers/chain-impediment.ts `readBaseContention` 的 `!(lead > 0)` 守卫（读 props）                      无缺陷（见 §3）
+ 4 backlogQtyTop     未声明        Model n=6 [9, 54] 负0 正6 零0                      **出度 0**：55 条规则无一条以它为 sourceStateVar（入边 1 条）                                    无缺陷（叶子）
+ 5 backlogPriceTop   未声明        Model n=6 [1, 83] 负0 正6 零0                      **出度 0**（入边 1 条）                                                                         无缺陷（叶子）
+ 6 coverDays         未声明        FGI n=18 [1.9317, 42.3444] 负0 正18 零0            出边 demo_fg_cover_days_to_model_demand（coeff=−0.00698967, sum）→ Model.demandLoad；trace 18/18          无缺陷（H1 证伪，见 §4）
+ 7 deliveryDelay     未声明        Supplier n=15 [1, 10] 负0 正15 零0                 出边 demo_supplier_delay_to_material_shortage（coeff=0.08919627, sum）→ shortageRisk；trace 15/15
+                                                                                    兼 chain-loss 承载量：stateValue=2 → deltaDays=2（clamp 不咬）                                  无缺陷
+ 8 procurementDelay  未声明        MaterialBatch 24 全正 / PurchaseOrder 30 格 [-7,-1] **负30** / Supplier 15 格 负2 正11 零2
+                                   tick3 全量 69 格 [-7, 154] 负32 正35 零2          ① 三条规则 → Material.shortageRisk（PO 边 trace 30/30，Σ=−1.775558）
+                                                                                    ② solvers/chain-loss.ts `simDeltaDaysFor()` 的 Math.max(0, cell)                                 **主线索，见 §2**
+ 9 clearanceQueueDays 未声明       CustomsClearance n=1 [2, 2] 负0 正1 零0            **出度 0**（无规则读它）；唯一消费方 = chain-loss 的 SIM_DAY_STATE_VAR_BY_CARRIER.CustomsClearance
+                                                                                    实测 stateValue=2 → deltaDays=2（clamp 不咬）                                                    无缺陷
+
+引擎侧以「值」为条件的全部分支（运行期规则表实测）：B1 `sourceVal===0` · B2 reaction（**全表仅 1 条非空**）
+· B3 `drive===0` · B4 `baseAmount===0` · B5 `amount===0` · B6 `rule.clamp`（**全表仅 1 条非空**，
+`demo_customer_reaction_cut_order → orderChurn`，**不在这 9 个量的任何一条落边上**）。
+逐边 B1 可达性（源区间里有没有「恰好 0」）：
+  · 8 条边源区间 0 格恰为 0 ⇒ B1 不命中，且 trace 条数 = 源格数，逐条对上
+    （qty 150/150、unitPrice 150/150、leadDays 150/150、coverDays 18/18、deliveryDelay 15/15、
+      batch_procurement_delay 24/24、po_procurement_delay 30/30）
+  · `demo_supplier_procurement_delay_to_material_shortage` 源 15 格里 **2 格恰为 0** ⇒ B1 部分命中，
+    trace 实测 **13 = 15 − 2**，两条独立读数对上。
+    ⚠ 这**不是缺陷**：取值 0 = 准时交付 ⇒ 本就该无贡献（负向金丝雀 ②，见 §5）。
+
+§2 · 主线索裁决：`PurchaseOrder.procurementDelay` 全负，打死了哪条分支？
+────────────────────────────────────────────────────────────────────────────────
+【结论 A】打死的**控制流分支 = 0 条**。逐条排除，全部有运行期读数：
+  · B1 `sourceVal === 0`：tick0 30 格无一为 0 ⇒ 不命中（trace 实测该边每拍 **30/30** 条贡献）
+  · B2：该规则 reaction=null ⇒ `drive = sourceVal ≠ 0`
+  · B3/B4/B5：均不命中；B6：该规则 clamp=null
+  · 该边的贡献**非零且真的在驱动下游**：Σ=−1.775558/拍，靶格 Material.shortageRisk 158 格
+  ⇒ 不是「边哑火」，是「边在按反方向推」。**「值恒负」打死的控制流分支：零条。**
+
+【结论 B】它打死的是**一条数值上的半轴**，位置点名（行号为本次树内坐标，会漂）：
+  文件/符号  apps/datacore/src/solvers/chain-loss.ts 的 `simDeltaDaysFor()`
+  行        `return { stateVar, stateValue: cell, deltaDays: Math.max(0, cell) };`   ← 本次读为 **:400**
+  消费点     `const days = baseDays + (simAdd?.deltaDays ?? 0);`                     ← 本次读为 **:931**
+  条件       `cell < 0` ⇒ `deltaDays ≡ 0` ⇒ **「提前到货 N 天 ⇒ 这条腿少 N 天」这个方向
+             结构性不可达**，与数据无关（clamp 把所有负值映到 0，一行代码删掉一个半轴）。
+  今天的种子数据让这条被 clamp 掉的半轴**对 PurchaseOrder 腿完全生效**：
+    零扰动臂 Z3 · chain-loss-matrix.simContext.appliedSteps：
+      material.in_transit         procurementDelay   stateValue=-4              deltaDays=0
+      material.iqc                queueDays          stateValue=22.884984735    deltaDays=22.884984735
+      material.supplier_leadtime  deliveryDelay      stateValue=2               deltaDays=2
+      appliedDays = 24.884984735（= 22.884984735 + 2，**PO 腿贡献恰好 0**）
+    ⚠ 这里的 24.884984735 不是「猜」：它是 22.884984735 + 2.000000000 的精确和，PO 腿那一项是 0。
+
+【结论 C】但这**不是「值恒负」造成的，是设计造成的**。判决实验把两者分开了：
+  臂 F3（30 张 PO 的 procurementDelay 全体 `set 3`，负→正翻转）：
+      material.in_transit         procurementDelay   stateValue=3               deltaDays=3
+      appliedDays = 27.884984735   （差 **+3.000000000**，恰为翻转值）
+  ⇒ `Math.max(0, cell)` 是**活代码**（随输入变），今天 Z3 的 `deltaDays=0` 是**数据态**
+    （种子世界里 PO 全部早到），**不是结构态**。
+  对照臂（同一支实验的两份对照，缺一份都不构成结论）：
+      · 零扰动臂 Z3：appliedDays = 24.884984735，PO 腿 stateValue=−4 / deltaDays=0
+      · 无关扰动臂 C3（18 个 FGI coverDays set 200）：appliedDays = 24.884984735，**与 Z3 逐位相同**
+      · 无关扰动臂 L3（23 张负 leadDays 的 Order set 30）：appliedDays = 24.884984735，**与 Z3 逐位相同**
+  ⇒ 「+3」是 PO 翻转引起的，**不是「任何扰动都让链损动一动」**。
+
+【结论 D】三态定性（铁律 0.5 的三分法，逐条对着运行期读数说）：
+  · **不是「没接线」**：`chainLossMatrix` 回包里有 `simContext.appliedSteps[]` 具名字段，
+    承载映射 `SIM_DAY_STATE_VAR_BY_CARRIER.PurchaseOrder = "procurementDelay"` 与派生式
+    `purchaseorder_procurement_delay = arriveDay − etaDay` 对得上；`excluded[]` 里
+    `Supplier.procurementDelay: OTHER_CARRIER` 也说明映射是有意设计的。
+  · **不是「接了线接错地方」**：两条腿（PurchaseOrder / Supplier）都在 `appliedSteps` 里，
+    `Supplier.procurementDelay` 被显式排除在 OTHER_CARRIER 之外并给了理由 —— 不是挂错挂载点。
+  · **是第四态：接了线、跑得动、被 clamp 吃掉了一整个半轴，而今天的输入恰好整批落在那个半轴。**
+    即本仓 mutation-dud 条目的**第二形态：被加项恒 0 ⇒ 加号是装饰品** ——
+    加号在源码里、控制流可达、mutation 掉它会红（F3 就是那个反证），
+    但**今天的每一次真实调用拿到的都是 0**。
+
+【结论 E】关于「负数是否合理」——⛔ 不按名推断。运行期能说的是：
+  符号约定出自派生式 `purchaseorder_procurement_delay = arriveDay − etaDay`（负 = 早于预计到货），
+  而该边系数 **+0.07928545** 让「早到 ⇒ 缺料风险下降」，两处**内部自洽**、方向一致。
+  是否有业务缺陷属口径问题，**本单不下判**（本单只回答「有没有分支被值打死」）。
+
+§3 · Order.leadDays 的第二消费方（额外发现，逐条定性）
+────────────────────────────────────────────────────────────────────────────────
+`apps/datacore/src/solvers/chain-impediment.ts` 的 `readBaseContention()`：
+    if (!Number.isFinite(qty) || !Number.isFinite(lead) || !(qty > 0) || !(lead > 0)) { skippedOrders++; continue; }
+    const prev = byType.get(bt);  byType.set(bt, prev === undefined ? qty / lead : prev + qty / lead);
+  ⇒ 这是**读 props、不读世界态**的第二个消费方（`qty/leadDays` 当日产率）。
+运行期真读（两条互为独立的读数）：
+  · 直接读对象库：`Order` 共 **500** 张，`props.leadDays ≤ 0` 的 **373** 张，值域 [−180, 178]；
+    这 373 张的 status 分布 = `{COMPLETED: 350, IN_PRODUCTION: 23}` —— **没有一张是 OPEN**。
+  · `readBaseContention` 只收 `status === "OPEN"` 的 **50** 张；其中被 `!(lead > 0)` 挡下的 = **0** 张。
+  · 求解器回包 `chain_impediments.data.contention`：`verdict=CONTENDED`、`basesScanned=13`，
+    note **未拼接**「另有 N 张订单…被排除」一句 —— 而该句**只在 `skipped > 0` 时**拼接。
+  ⇒ **守卫今天 0 命中**：负 leadDays 全部被**更早**的 `status !== OPEN` 过滤挡掉了。
+  ⇒ 裁决：**无缺陷**。负值没有打死这条链上的任何分支。
+  ⚠ 顺带订正我自己的一个错判：我在读源码后写下的候选结论「23/150 张负 leadDays 的订单被显式跳过」
+    是错的 —— 那个 150 是 **sim 世界**的订单数，而该函数读的是**对象库**且只收 OPEN。
+    形态：「我用『sim 世界里 23 张负 leadDays』当作『会被 chain-impediment 守卫跳过的那批』的证据，
+    而前者并不度量后者。」已作废，不写进结论。
+
+§4 · 被证伪的预言（如实登记，不改预言迁就读数）
+────────────────────────────────────────────────────────────────────────────────
+H1 **证伪**。原预言：「FinishedGoodsInventory.coverDays 在 tick0 世界态里 18 格全部 = 0（distinct 值数 = 1）
+   ⇒ propagation.ts 的 `if (sourceVal === 0) continue;` 每拍命中 ⇒ 边 demo_fg_cover_days_to_model_demand
+   一次都不进 trace」。
+  实测三层全反：
+   ① coverDays 18 格 = [1.931700, 42.344400]，**负0 正18 零0**（没有任何一格是 0）
+   ② 该边零扰动臂每拍 **18/18** 进 trace（n=18），贡献全负、Σ=−0.939553
+   ③ 臂 C3（coverDays set 200）让该边 Σ 走到 **−8.387604**（>8.9×），靶格 Model.demandLoad
+      **6/6 下降**、最大 Δ=−2.672475 ⇒ 该边随输入变，是活的
+   ⇒ 起因线索 `apps/datacore/src/domain.ts` 里「coverDays 18 个对象、1 个 distinct 值：0」的注释
+     **是过期的**（该注释把「对象上没有这个属性」读成了「属性值恒 0」）。
+     ⚠ 本单只陈述「该注释与运行期不符」，未改它（不改产品代码）。
+
+未被证伪但需订正的预言：无。（H2–H7 与 P1–P5 全部命中，读数见 §1/§2/§5。）
+
+§5 · 双向金丝雀读数
+────────────────────────────────────────────────────────────────────────────────
+正向（已知必中，不中即报「工具坏了」）：
+  ✅ 主线索复现：PurchaseOrder.procurementDelay tick0 = **30 格 [-7, -1]，负30 正0 零0**
+     —— 上一单 ca7205a36 的实数逐位复现（区间上下界也一致）。
+  ✅ 运行期 `undeclaredStateVars` = 恰好本单要审的 9 个（`backlogPriceTop, backlogQtyTop,
+     clearanceQueueDays, coverDays, deliveryDelay, leadDays, procurementDelay, qty, unitPrice`）。
+  ✅ 9 个未声明量在 tick0 入口投影被夹 **0 条**（未声明 ⇒ `projectWorldCells` 直接 continue）。
+  ✅ 域表读数本身有效：`STATE_VAR_DOMAINS` 条数 = **38**（与上一单对齐），9 个量逐个查不到。
+  ✅ reaction 非空 = **1** 条（与上一单 ② 对齐）；clamp 非空 = **1** 条，且其靶不是 Material.shortageRisk。
+  ✅ 工具活着：`Order` 对象读取出 500 张（total=500），不是空集合。
+  ✅ 判决实验的翻转确实落地：F3 的 30 条扰动 POST 回包里目标格值 = 30 格全 **3.0**；
+     `GET /world`（一次 tick 都没发）实测差异 **30 格**：`[-7,-1] 负30` → `[3,3] 正30`。
+反向（我确信合法、不许被误报成缺陷）：
+  ✅ ① `demo_supplier_procurement_delay_to_material_shortage` 同一条边上**两符号并存**
+     （实测 13 条：负2 正11）⇒ 我的「取值落在一侧 ⇒ 分支死」判法**没有**把它误报成缺陷
+     （确信它合法：货早到/晚到都该有贡献）。
+  ✅ ② `Supplier.procurementDelay` 有 2 格恰为 0 ⇒ 我的仪器**会**报「B1 部分命中」，
+     且 trace 条数 13 = 15 − 2 独立对上 —— 判法是活的；但取值 0 = 准时 ⇒ 本就无贡献，**不是缺陷**。
+     （这一条同时是「仪器有鉴别力」与「有鉴别力 ≠ 报了就是缺陷」两件事的读数。）
+  ✅ ③ 无关扰动臂 C3/L3 上，PO 边的逐边 amount 与 Z3 **逐位相同**、appliedDays 与 Z3 逐位相同
+     ⇒ 我的差分仪器不会把「任何扰动」都读成「这条边动了」。
+
+§6 · 依据不足 / NOT-MEASURED（逐条单列，不凑数）
+────────────────────────────────────────────────────────────────────────────────
+NOT-MEASURED：
+  N1 「已声明且**域内合法为负**的量，我的判法保持沉默」这一臂**没有活样本**：
+     `STATE_VAR_DOMAINS` 里唯一的带符号量 `forecastBias`（域 [−100,100]，静息点 0）今天实测
+     6 格 [1, 88]、**不含负值**。故这一臂未测到，不拿它充当已通过。
+  N2 `readBaseContention` 的 `!(lead > 0)` 守卫**真触发时**的行为未测：今天的 373 张负 leadDays
+     全在 COMPLETED/IN_PRODUCTION，OPEN 单里一张都没有 ⇒ 「守卫真的挡下订单后，`claimedDailyRate`
+     会怎么变、下游判定会不会翻」**未测**。
+  N3 其他环境未测：本单只测 demo 租户 `SEED_DEMO=1` 内存态单实例；pg 仓储 / 别的 industry·scale·seed
+     下这 9 个量的取值区间未测。
+  N4 跨进程复现未测：全部读数取自 4511 单实例同一批会话，**未做第二次独立启动的复现**。
+  N5 chain-loss 与 chain-impediment 之外的 stateVar 消费方未系统扫：本单覆盖到
+     ①propagation 规则表（运行期 API 全 55 条）②chain-loss `simDeltaDaysFor` ③chain-impediment
+     `readBaseContention` 三处；**前端 / agentcore 侧是否还有消费方，未查**。
+
+依据不足（不写成结论）：
+  S1 第 1/2/4/5/9 号量（qty / unitPrice / backlogQtyTop / backlogPriceTop / clearanceQueueDays）
+     的「无缺陷」结论只覆盖到「出边活 / 出度 0」这一层；见 N5，其余消费面未查 ⇒ 该结论**范围有限**。
+  S2 「`Math.max(0, cell)` 的 clamp 是否**应该**保留」——本单只证明它今天吞掉了一整个半轴、
+     且是**有意设计**（源码注释「负的等待天数没有业务含义，夹到 0」）；该不该改属业务口径，
+     **本单不下判**（改了它就要回答「早到能不能冲抵其它腿的天数」，那是另一个问题）。
+
+§7 · 判决实验的预言 vs 实测（全部写于取数之前，逐条对账）
+────────────────────────────────────────────────────────────────────────────────
+ P1 预言 F3 该边翻正、shortageRisk 升高 → 实测 F3 30/30 正、shortageRisk **158/158 全升**（maxΔ=+1.159953）  ✅ 中
+ P2 预言 Z 30负/0正 → F 0负/30正                                            → 实测逐位相同                        ✅ 中
+ P3 预言 Z 的 PO 腿 stateValue<0 且 deltaDays=0；F 的 >0 且 >0                → 实测 −4/0 → 3/3，appliedDays +3.000000000 ✅ 中
+ P4 预言 C 的 coverDays 边更负、demandLoad 更低                                → 实测 Σ −0.939553→−8.387604，demandLoad 6/6 降 ✅ 中
+ P5 预言 leadDays 边 23 条正贡献、L 后翻负                                     → 实测 23→0（负127→负150），costPressure 156/156 降 ✅ 中
+ ⛔ 对照臂：每一支都同时跑了零扰动臂 Z3 与无关扰动臂（C3 或 L3），两臂读数与 Z3 逐位相同 ⇒ 观测有鉴别力。
+
+§8 · 复现命令
+────────────────────────────────────────────────────────────────────────────────
+  bash docs/evidence/WO-UNDECLARED-VAR-AUDIT-capture3.sh    # 四臂抓取（每条写请求断言 201）
+  bash docs/evidence/WO-UNDECLARED-VAR-AUDIT-capture3b.sh   # 链损叠加 + 扰动列表回读（显式捕获 rc）
+  curl -H 'X-Debug-User: demo:admin:admin' 'http://127.0.0.1:4511/a/v1/objects?type=Order&pageSize=500' \
+    -o docs/evidence/WO-UNDECLARED-VAR-AUDIT-orders.json
+  curl -X POST -H 'Content-Type: application/json' -H 'X-Debug-User: demo:admin:admin' \
+    -d '{"args":{"scope":{}}}' 'http://127.0.0.1:4511/a/v1/solvers/chain_impediments/invoke' \
+    -o docs/evidence/WO-UNDECLARED-VAR-AUDIT-chainimpediments.json
+  node docs/evidence/WO-UNDECLARED-VAR-AUDIT-analyze3.mjs   # 全部金丝雀；不中即 RC=2
+  ⚠ 起实例必带 --max-old-space-size=8192（默认 4G 堆在 4425 对象/tick 下 OOM）
+  ⚠ 读 tick0 只走 `GET …/world`，**一次 /tick 都不发**（`POST /tick {n:0}` 会静默推一拍）
+════════════════════════════════════════════════════════════════════════════════
