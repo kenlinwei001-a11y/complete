@@ -1,0 +1,44 @@
+# WO-3ROOT-P2-GAPFIX · 缺口A 定性证据（铁律 0.5 判据5 + 铁律 0.6 第6条）
+# 采集: 2026-10-04T10:10:42Z  base=6a5aac1d8
+
+## 1) 金丝雀（双向 · 必须能分辨语法位置）
+符号 specCellIndex · 扫描 324 个 .ts/.tsx 文件
+原始出现次数 = 4 · 剥注释与字面量后 = 4
+--- 剥后仍有命中的文件 ---
+apps/datacore/src/sim/seed-world.ts: 原始命中 2 次 → 剥注释/字面量后 2 次
+apps/datacore/src/sim/spec-cells.ts: 原始命中 2 次 → 剥注释/字面量后 2 次
+
+## 2) 被测量对象：specRefDiffs
+符号 specRefDiffs · 扫描 324 个 .ts/.tsx 文件
+原始出现次数 = 2 · 剥注释与字面量后 = 1
+--- 剥后仍有命中的文件 ---
+apps/datacore/src/sim/spec-cells.ts: 原始命中 2 次 → 剥注释/字面量后 1 次
+
+## 3) 反向金丝雀：不存在的符号名（必须 0/0）
+符号 SPEC_CELLS_BOGUS · 扫描 208 个 .ts/.tsx 文件
+原始出现次数 = 0 · 剥注释与字面量后 = 0
+--- 剥后仍有命中的文件 ---
+
+## 4) 全仓（含 test）出现处
+apps/datacore/test/spec-cells-freshness.seam.test.ts:3:  computeBaseFreshness, digestSpecCells, fnv1a, specCellIndex, specCellKey, specRefDiffs, todayOfSpecCell,
+apps/datacore/test/spec-cells-freshness.seam.test.ts:39:    expect(specRefDiffs(index)).toEqual([]);
+apps/datacore/test/spec-cells-freshness.seam.test.ts:64:    expect(specRefDiffs(specCellIndex(specsOf()))).toEqual([]);
+apps/datacore/test/spec-cells-freshness.seam.test.ts:67:    const renamed = specRefDiffs(specCellIndex(specsOf((k, sk) => (k === refKey ? "some_other_key" : sk))));
+apps/datacore/test/spec-cells-freshness.seam.test.ts:71:    const empty = specRefDiffs(new Map());
+apps/datacore/src/sim/spec-cells.ts:18: *    本模块只给它加一条**对账**（见 `specRefDiffs`），差集非空沿用既有的「绑定断裂」抛错路径。
+apps/datacore/src/sim/spec-cells.ts:108:export function specRefDiffs(index: SpecCellIndex): string[] {
+GREP_RC=0
+
+## 5) 间接调用面排查（re-export / 当值传 / 字符串键分发 / 事件订阅）
+-- 5a spec-cells.ts 的导出被谁 import（含 type-only）--
+apps/datacore/test/spec-cells-freshness.seam.test.ts:5:} from "../src/sim/spec-cells.js";
+apps/datacore/test/spec-cells-freshness.seam.test.ts:29:describe("WO-3ROOT-P2 · spec-cells（归属 + 时效）", () => {
+apps/datacore/src/app.ts:70:import { computeBaseFreshness, digestSpecCells, specCellIndexFor, worldCellKeys, type BaseFreshness, type BaseSnapshotSource, type SpecCellIndex } from "./sim/spec-cells.js";
+apps/datacore/src/sim/seed-world.ts:41:import { specCellIndex, specCellKey, worldCellKeys, type SpecCellSourceEntry } from "./spec-cells.js";
+apps/datacore/src/sim/seed-world.ts:412:   *    （理由与实测见 `sim/spec-cells.ts` 头注）。
+apps/datacore/src/sim/seed-world.ts:463:        // （索引 = ACTIVE 规格 ∩ 世界量纲空间，见 `sim/spec-cells.ts`）。语义不变：
+apps/datacore/src/sim/spec-base-synthesis.ts:48:import { specCellKey, type SpecCellIndex } from "./spec-cells.js";
+apps/datacore/src/sim/spec-base-synthesis.ts:63:   * WO-3ROOT-P2 · D1：规格格**归属**的运行期单源（`sim/spec-cells.ts`）。
+apps/datacore/src/sim/metric-series.ts:19:import { type SpecCellIndex } from "./spec-cells.js";
+-- 5b 任何 re-export（export ... from spec-cells）--
+GREP_RC=1
