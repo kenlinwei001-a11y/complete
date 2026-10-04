@@ -1,0 +1,21 @@
+WO-3ROOT-P2 缺口B · E3 归属活性接缝（**真 Fastify 实例 + 真仓储写入**）
+树：/Users/apple/deploy/complete/.claude/worktrees/agent-a2370c3515ec2edb6
+分支：claude/handoff-3root-P2-gapfix @ eadafffa6
+命令：pnpm --filter datacore exec vitest run spec-cells-freshness --maxWorkers=2 --testTimeout=180000
+（超时沿用仓内 vitest.config.ts 的 180000，未下调 —— 本机负载 16–38/4 核，收紧会制造假红）
+测定：2026-10-04 18:22:12
+----------------------------------------
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/agent-a2370c3515ec2edb6/apps/datacore
+
+stdout | test/spec-cells-freshness.seam.test.ts > WO-3ROOT-P2 · spec-cells（归属 + 时效） > E3 · 归属随规格库走（真 Fastify + 真仓储）：RETIRE ⇒ `evaluatedCellCount` 25→24、减少键恰为 `Order|demandPressure`；T5 ≡ R5 且 ≠ K5
+[E3-READING] 真路由建会话 sims_4tbfkwtyfwfanj20/sims_t1psddt84aaxa755/sims_hn57kn1fgv1852mb（201）；世界格数=6375；index.size 25→24；减少键=Order|demandPressure；新增键=（无）；RETIRE 后空 body 建会话=500；T5 vs R5 差格=0；T5 vs K5 差格=655（量纲=changeoverPressure|demandLoad|demandPressure|drawdownPressure|inboundExpeditePressure|loadIndex|qualificationQueue|splitPressure|transferPressure|utilPressure|windowSqueeze）
+
+ ✓ test/spec-cells-freshness.seam.test.ts (8 tests) 40195ms
+   ✓ WO-3ROOT-P2 · spec-cells（归属 + 时效） > E3 · 归属随规格库走（真 Fastify + 真仓储）：RETIRE ⇒ `evaluatedCellCount` 25→24、减少键恰为 `Order|demandPressure`；T5 ≡ R5 且 ≠ K5  40182ms
+
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+   Start at  18:20:50
+   Duration  56.51s (transform 8.58s, setup 0ms, collect 14.85s, tests 40.20s, environment 1ms, prepare 378ms)
+

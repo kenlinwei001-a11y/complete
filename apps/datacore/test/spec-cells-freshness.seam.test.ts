@@ -246,8 +246,10 @@ describe("WO-3ROOT-P2 · spec-cells（归属 + 时效）", () => {
     const idxRetired = await indexNow();
     expect(idxRetired.size).toBe(24);
     expect(tRetired.baseFreshness.evaluatedCellCount).toBe(idxRetired.size); // 路由读数 = 唯一入口读数（不是两条算径）
-    expect([...idxActive.keys()].filter((k) => !idxRetired.has(k))).toEqual(["Order|demandPressure"]); // Y②
-    expect([...idxRetired.keys()].filter((k) => !idxActive.has(k))).toEqual([]); // 反向：退役**不许**换进来别的格
+    const removedKeys = [...idxActive.keys()].filter((k) => !idxRetired.has(k));
+    const addedKeys = [...idxRetired.keys()].filter((k) => !idxActive.has(k));
+    expect(removedKeys).toEqual(["Order|demandPressure"]); // Y②
+    expect(addedKeys).toEqual([]); // 反向：退役**不许**换进来别的格
 
     // ── ④ 边界：RETIRE 之后「空 body 建会话」这条路会红（绑定断裂守卫活着）───────────────
     const denied = await t.app.inject({ method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN, payload: {} });
@@ -266,9 +268,22 @@ describe("WO-3ROOT-P2 · spec-cells（归属 + 时效）", () => {
     expect(t5.tick).toBe(5);
     expect(r5.tick).toBe(5);
     expect(cellCount(t5.state)).toBeGreaterThan(0); // 金丝雀：两个世界都真铺了格
-    expect(diffCells(t5.state, r5.state)).toEqual([]); // Y③：逐位相同（空数组 = 零格差）
-    expect(t5.state).toEqual(r5.state);
+    expect(t5.state).toEqual(r5.state); // Y③：逐位相同
+    const t5VsR5 = diffCells(t5.state, r5.state); // 同一件事的第二种量法：差器看得见"差在哪一格"
     const tVsK = diffCells(t5.state, k5.state);
+    /**
+     * 读数值落屏（取证件要的是**真读数**，不是「测试绿了」这一句 —— 绿只说明断言成立，
+     * 读数说明它量到了什么；两者缺一，复验方就得回去重跑一遍才知道数是多少）。
+     */
+    console.log(
+      `[E3-READING] 真路由建会话 ${K.id}/${T.id}/${R.id}（201）；世界格数=${cellCount(t5.state)}；` +
+      `index.size ${idxActive.size}→${idxRetired.size}；减少键=${removedKeys.join(",")}；新增键=${addedKeys.join(",") || "（无）"}；` +
+      `RETIRE 后空 body 建会话=${denied.statusCode}；T5 vs R5 差格=${t5VsR5.length}；T5 vs K5 差格=${tVsK.length}` +
+      `（量纲=${[...new Set(tVsK.map((k) => k.split(".").pop()))].sort().join("|") || "（无）"}）`,
+    );
+    // ⚠ 金丝雀**先于** Y③：**差器量得到差** —— 否则下面那个「零差」不度量任何东西（恒零的差器也报零差）。
+    //    同时它就是 PRD §四 E3 的反向否证：老代码读编译期字面量表 ⇒ 无论规格状态如何 T5 恒等于 K5。
     expect(tVsK.length, `RETIRE 必须让轨迹真的分叉（否则 D1 没落地）：差格=${tVsK.join(",") || "（无）"}`).toBeGreaterThan(0);
+    expect(t5VsR5).toEqual([]); // Y③：T5 逐位等于 R5（空数组 = 零格差）
   });
 });
