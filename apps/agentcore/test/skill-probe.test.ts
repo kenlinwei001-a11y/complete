@@ -225,6 +225,27 @@ describe("SkillProbeRunner · WO-1 生产化缺陷修复", () => {
     expect(probe!.skills).toHaveLength(1);
   });
 
+  // ── SP6b · 不绑定任何 LLM：model 必须是**空串**（继承系统 LLM 配置），⛔ 不是厂商字面量 ──────
+  it("SP6b · probe 与 twin 的 model 均为空串 = 继承系统 LLM 配置，不硬编具体模型", async () => {
+    const { repos, runner } = await setup();
+    const skill = skillFixture({ key: "nb", name: "NB" });
+    await repos.skills.insert(skill);
+
+    await runner.runSkill(auth(TENANT_A), "nb");
+    const probe = await repos.agents.get(`agt_probe_${TENANT_A}_nb`);
+    const twin = await repos.agents.get(`agt_probe_twin_${TENANT_A}_nb`);
+
+    // 契约 `AgentDefinitionSchema.model` 原文：「空=继承租户「用途绑定矩阵」的 agent 模型…
+    // **写死具体模型会盖过用户在 LLM Provider 里配的绑定**」。
+    // ⛔ 反例形态是 `"claude-opus-4-8"` 这类字面量：它经 `engine.ts` 的
+    //    `agent.model || undefined` 变成 explicit，抢在租户绑定之前解析（本部署只配 Kimi 时
+    //    曾因此静默空答 —— 见 role-model-fallback.test.ts 头注）。
+    // 断言点选在**落库行**不是随意的：探针只把 agentId/version 交给引擎，引擎自己
+    // `resolveAgent` 再读这一行的 model ⇒ 这一行就是运行时的真实入参。
+    expect(probe!.model).toBe("");
+    expect(twin!.model).toBe("");
+  });
+
   it("SP7 · engine 异常捕获：单 case 失败不阻断整体", async () => {
     const repos = createMemoryRepos();
     await repos.packages.insert({ ...seedScenarioPackage(), id: PKG, tenantId: TENANT_A });
