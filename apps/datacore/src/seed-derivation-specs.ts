@@ -61,19 +61,17 @@ export const DEMO_DERIVATION_SPECS: readonly {
     targetProp: "etaDay",
     formula: "this.dispatchDay + this.transitDays",
   },
-  // ── WO-SIM-REAL-DATA §2 · A 档第 1 条（§3 valueRef 的活样本）────────────────────
-  // 业务口径：应收压力 = 应收账款占授信额度的百分比（receivables / creditLimit × 100）。
-  //   出处 = WO 工单 §5 已验证范本（实测 22.67）。`COALESCE(..., 0)` 兜除零/缺属性（陷阱 9）。
-  // 对照真值：demo 某客户 receivables/creditLimit 实测算得 22.67（WO 实测值）。
-  // 先乘后除（陷阱 3 定点 4 位）：`this.receivables * 100 / this.creditLimit`。
-  // ⛔ 不 CLAMP：receivablePressure 在 STATE_VAR_DOMAINS 里（0–100 压力族），
-  //   但超界由引擎按域夹（回执点名），式子只算原始百分比，不内联边界常数（R14/陷阱 6）。
-  {
-    specKey: "customer_receivable_pressure",
-    targetType: "Customer",
-    targetProp: "receivablePressure",
-    formula: "COALESCE(this.receivables * 100 / this.creditLimit, 0)",
-  },
+  // ⛔ `customer_receivable_pressure` 已于 2026-10-05 退役（WO-COSTPRESSURE-IDENTITY）。
+  //   **退役理由 = 语义身份错（水平值被当偏离读）**，不是「值算错了」：
+  //   原式 `COALESCE(this.receivables × 100 / this.creditLimit, 0)` = **授信额度占用率**（实测 6.4–125.6），
+  //   是一个**水平值**；而它落点的格子自报身份是压力族（`[0,100] restPoint 0`），
+  //   消费端 `solvers/finance-world.ts` 按**偏离**读：`应收投影 = Σ 金额 × (1 + 压力 ÷ 100)`。
+  //   ⇒ 把「已占用授信 15.7%」读成「应收要涨 15.7%」，零扰动下 `arProjected ≠ arBaseline`。
+  //   ⚠ 与 `Order.costPressure` 是**同一条病**：两者都是「授信占用率」被当成「压力偏离」。
+  //   ⚠ 退役必须**连同** `battery.ts` 的 `STATE_VAR_VALUE_REFS["Customer|receivablePressure"]` 一起删
+  //     （只删规格 ⇒ `brokenRefs` 抛错，同 `model_forecast_bias` 先例）。
+  //   ⚠ 这条曾是 `WO-SIM-REAL-DATA §3` valueRef 机制的**活样本**，退役后样本改由
+  //     `order_demand_pressure` 等在场条目承担（机制本身不动，`battery.ts` 同段有注）。
   // ── A 档第 2–19 条（量纲全部经 `/tmp/candidate-truths.mjs` 独立分布实测，非拍脑袋）─────────
   // 每条：业务口径出处 + 对照真值 + 实测分布（min–max）。先乘后除（陷阱 3）；
   // CLAMP 边界一律不内联（陷阱 6：有域的引擎夹、14 个天数/件数族不许夹）。
@@ -124,9 +122,15 @@ export const DEMO_DERIVATION_SPECS: readonly {
   // Material.shortageRisk：缺料风险 = (日耗×提前期 − 在手 − 在途) / (日耗×提前期) × 100（缺货率，负=超储）。
   //   出处：dailyUse/leadTime/onHand/inTransit。实测 −161~51。COALESCE 兜除零。
   { specKey: "material_shortage_risk", targetType: "Material", targetProp: "shortageRisk", formula: "COALESCE((this.dailyUse * this.leadTime - this.onHand - this.inTransit) * 100 / (this.dailyUse * this.leadTime), 0)" },
-  // Model.costPressure：成本压力 = 单位成本 / 单位售价 × 100（成本占售价比，越高越压毛利）。
-  //   ⚠ 不用 (1−cost/price)：那是毛利率，seed 实测虚高 96–97（巧合贴 100）。本式实测 2.5–3.9。
-  { specKey: "model_cost_pressure", targetType: "Model", targetProp: "costPressure", formula: "COALESCE(this.unitCost * 100 / this.unitPrice, 0)" },
+  // ⛔ `model_cost_pressure` 已于 2026-10-05 退役（WO-COSTPRESSURE-IDENTITY），与
+  //   `order_cost_pressure` / `customer_receivable_pressure` **同批同理由**（见本文件那两条长注）：
+  //   原式 `COALESCE(this.unitCost × 100 / this.unitPrice, 0)` 实测 2.5–3.9，是一个**成本占售价比的
+  //   *水平值***，不是一个**相对基线的偏离**。而它落点的格子自报身份是压力族（`[0,100] restPoint 0`），
+  //   消费端（`sim/world-read.ts` 的 `SIM_WORLD_PROJECTION_RULES`）按偏离读：
+  //   `成本' = 成本 × (1 + 压力 ÷ 100)` —— 把「成本占售价 2.9%」读成「成本已上浮 2.9%」。
+  //   ⇒ 退役后本格出处章 = `derived`，值 = 该格声明的 `restPoint` = 0，由传导边驱动。
+  //   ⚠ 退役必须**连同** `battery.ts` 的 `STATE_VAR_VALUE_REFS["Model|costPressure"]` 一起删
+  //     （只删规格 ⇒ `brokenRefs` 抛错，同 `model_forecast_bias` 先例）。
   // ── ⛔ `model_forecast_bias` 已于 2026-09-20 退役（WO-FORECASTBIAS-RETIRE）────────────
   //
   // 原式：`COALESCE((this.totalDemand - SUM(in(order_for_model).qty)) * 100 / this.totalDemand, 0)`
