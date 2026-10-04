@@ -883,6 +883,13 @@ const ROUTE_EXEMPTIONS = [
   { re: /\/jwks/, why: "JWKS 公钥集·服务间验签用" },
   { re: /^\/a\/v1\/references\/report$/, why: "服务间引用上报·SERVICE_TOKEN 专用（见 CLAUDE.md 服务间凭证一节）" },
   { re: /\/credential$/, why: "凭据读取·SERVICE_TOKEN 专用，no-secrets-echo 纪律禁止前端触达" },
+  // WO-LEDGER-SINGLE-TAP（2026-10-04）· OC7 记账通路健康度读出口。**不是**「后端开了口子前端没接」：
+  // `server.ts` 的 `requireServiceToken` 是 fail-closed（`SERVICE_TOKEN` 未配 / 头不符一律 401
+  // 「仅限服务间调用」），前端取到它 = 暴露进程级记账计数，**刻意不给前端**（同 `/credential$` 一类）。
+  // 消费者是灰度观察方（ROLLOUT §1-a①），形态与裸 `/metrics` 同族 —— 但**必须写这条豁免**：
+  // 裸 `/metrics` 靠 ROUTE_EXEMPTIONS 第一行命中，而这条带前缀路由不在任何既有模式里，
+  // 不写就会被记成一条假的「零调用缺口」，将来被 burn-down 当真的去接。
+  { re: /\/ops\/llm-budget-stats$/, why: "记账通路健康度读出口·SERVICE_TOKEN 专用（requireServiceToken fail-closed）·运维观察面，前端一律 401" },
   // ⛔ `{ re: /^\/openapi/, why: "API 自描述文档端点" }` 已删（C15 首跑当场报死）。
   //   追一层复核（不止 grep 一次）：① 全仓无 `"/openapi…"` 形态的路由注册；
   //   ② 三个 package.json 里**没有任何** swagger/openapi/scalar/redoc 类依赖
