@@ -1,0 +1,58 @@
+── 实例自证（⛔ 不用 ss/netstat 的沉默当证据）──
+占有 4155 的 LISTEN 进程：PID=28366（下一行 = 它的 cwd，必须落在本 worktree）
+COMMAND   PID  USER   FD   TYPE DEVICE SIZE/OFF        NODE NAME
+node    28366 apple  cwd    DIR    1,9     1024 13065349337 /Users/apple/deploy/complete/.claude/worktrees/agent-a5d980d51c0679fde
+28366 31:04 node --max-old-space-size=8192 apps/datacore/dist/server.js
+────────────────────────────────────────
+BASE=http://127.0.0.1:4155/a/v1 TICK=10
+登记表 STATE_VAR_VALUE_REFS 规格格 n=25
+金丝雀⓪ 登记表读到 25 格 ✅
+金丝雀⓪′ 规则表 55 条 · 必然命中 Order.demandPressure 入度=1 ✅ · 必然不命中 ___nope___ 入度=0 ✅
+   入边明细：demo_forecast_bias_to_order_demand src=Model.forecastBias k=-0.222 status=PUBLISHED
+金丝雀ⓠ 按 typeKey 枚举对象：Base=13 Customer=20 DefectRecord=85 Equipment=780 FinishedGoodsInventory=18 Line=130 MaterialBalance=9 MaterialBatch=24 Material=8 Model=6 Order=500 Process=650 PurchaseOrder=30 Supplier=15 WIPLot=260 WorkOrder=260 ✅
+
+会话 sims_fach8yy8y0b7gwav · baseSnapshot 对象 4425 · curTick=0
+
+── 控制 2 · 播种态没被碰（建会话后**零 tick**直读 /world）──
+   /world.tick = 0（要求 0）· 逐格对拍 6375 格：不同 0
+   SO-3391.demandPressure @world(tick0) = 60（基值锚点，对照 §二 的 base=60）
+✅ A9-1/C2 控制 2：建会话后 /world 即 tick0 基值（tick===0 且逐格 === baseSnapshot） · tick=0 不同=0/6375
+
+推到 10 拍（HTTP=200）· λ(Order.demandPressure) = 0.37 · decay 键 33 个
+
+规格拥有格 │ 入度 │ tick0 (非零/总, max) │ tick10 (非零/总, max) │ 变化格 │ 判定
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Base.loadIndex                    │   1 │   13/13   max=552.0209     │   13/13   max=300.033189   │     13 │ 衰减(仍有非零)
+Customer.receivablePressure       │   1 │   20/20   max=125.591      │   20/20   max=129.216507   │     17 │ 衰减(仍有非零)
+DefectRecord.defectPressure       │   1 │   85/85   max=0.3618       │   85/85   max=38.391523    │     85 │ 衰减(仍有非零)
+Equipment.equipmentFailure        │   0 │  780/780  max=22           │  780/780  max=22           │      0 │ **恒定**
+Equipment.loadPressure            │   0 │  780/780  max=22.4         │  780/780  max=22.4         │      0 │ **恒定**
+FinishedGoodsInventory.coverDays  │   0 │   18/18   max=42.3444      │   18/18   max=42.3444      │      0 │ **恒定**
+Line.blockedPressure              │   1 │  130/130  max=182.7257     │  130/130  max=159.310262   │    130 │ 衰减(仍有非零)
+Line.utilPressure                 │   1 │  130/130  max=95.8912      │  130/130  max=127.447349   │    130 │ 衰减(仍有非零)
+MaterialBalance.gapPressure       │   1 │    7/9    max=8.9944       │    7/9    max=57.79266     │      7 │ 衰减(仍有非零)
+MaterialBatch.procurementDelay    │   0 │   24/24   max=154          │   24/24   max=154          │      0 │ **恒定**
+Material.priceShock               │   0 │    8/8    max=8            │    8/8    max=8            │      0 │ **恒定**
+Material.shortageRisk             │   6 │    8/8    max=51.0022      │    8/8    max=75.775427    │      8 │ 衰减(仍有非零)
+Model.costPressure                │   3 │    6/6    max=3.8858       │    6/6    max=16.768107    │      6 │ 衰减(仍有非零)
+Model.demandLoad                  │   4 │    6/6    max=138          │    6/6    max=137.187362   │      6 │ 衰减(仍有非零)
+Model.supplyRisk                  │   2 │    6/6    max=-28.8571     │    6/6    max=2.275193     │      6 │ 衰减(仍有非零)
+Order.costPressure                │   1 │  150/150  max=115          │  150/150  max=122.610208   │    150 │ 衰减(仍有非零)
+Order.demandPressure              │   1 │  148/150  max=60           │  148/150  max=105.974346   │    148 │ 衰减(仍有非零)
+Order.shortageRisk                │   1 │  143/150  max=35           │  147/150  max=33.516943    │    147 │ 衰减(仍有非零)
+Process.queuePressure             │   3 │  650/650  max=100          │  650/650  max=123.693825   │    650 │ 衰减(仍有非零)
+PurchaseOrder.expeditePressure    │   2 │   26/30   max=212.5        │   28/30   max=166.597649   │     28 │ 衰减(仍有非零)
+PurchaseOrder.procurementDelay    │   0 │   30/30   max=-1           │   30/30   max=-1           │      0 │ **恒定**
+Supplier.deliveryDelay            │   0 │   15/15   max=10           │   15/15   max=10           │      0 │ **恒定**
+Supplier.procurementDelay         │   0 │   13/15   max=5            │   13/15   max=5            │      0 │ **恒定**
+WIPLot.feedPressure               │   1 │  260/260  max=111.1888     │  260/260  max=129.889872   │    260 │ 衰减(仍有非零)
+WorkOrder.releasePressure         │   2 │  260/260  max=15.027       │  260/260  max=92.130505    │    260 │ 衰减(仍有非零)
+
+═══ 控制 1 判定 ═══
+入度 0 的规格格：8/8 恒定  Equipment.equipmentFailure, Equipment.loadPressure, FinishedGoodsInventory.coverDays, MaterialBatch.procurementDelay, Material.priceShock, PurchaseOrder.procurementDelay, Supplier.deliveryDelay, Supplier.procurementDelay
+入度>0 的规格格：17/17 有变化  Base.loadIndex, Customer.receivablePressure, DefectRecord.defectPressure, Line.blockedPressure, Line.utilPressure, MaterialBalance.gapPressure, Material.shortageRisk, Model.costPressure, Model.demandLoad, Model.supplyRisk, Order.costPressure, Order.demandPressure, Order.shortageRisk, Process.queuePressure, PurchaseOrder.expeditePressure, WIPLot.feedPressure, WorkOrder.releasePressure
+✅ A9-1/C2 控制 1 非退化（两类都非空，否则等式免疫） · 入度0=8 入度>0=17
+✅ A9-1/C2 控制 1a：入度 0 的规格格逐格恒定（变化对象数 === 0） · 8/8 恒定
+✅ A9-1/C2 控制 1b：入度>0 的规格格全动（变化对象数 > 0） · 17/17 有变化
+
+A9-1 控制 PASS ✅（8 格恒定 + 17 格全动 + 播种态未被碰）

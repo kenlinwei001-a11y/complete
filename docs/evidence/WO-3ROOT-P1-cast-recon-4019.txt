@@ -1,0 +1,51 @@
+BASE=http://127.0.0.1:4019/a/v1
+金丝雀⓪ 必然命中: Order.demandPressure 入边 1 条 ✅
+金丝雀⓪ 必然不命中: 0 条 ✅
+   入边 demo_forecast_bias_to_order_demand src=Model.forecastBias k=-0.222 delay=0 status=PUBLISHED
+金丝雀① cfg.stateVars n=47 含forecastBias=true
+
+会话 sims_wa7m30rjada7kwqk · Model 6 个 · Order 150 个
+── ① Model.forecastBias @tick0（哈希铸造格，只存在于世界态）──
+   obj_model_2170-NCM forecastBias=1
+   obj_model_4680-LFP forecastBias=88
+   obj_model_4680-NCM forecastBias=50
+   obj_model_圆柱-LFP forecastBias=88
+   obj_model_方形-LFP forecastBias=8
+   obj_model_方形-NCM forecastBias=79
+   n=6 min=1 max=88 负数=0
+
+引擎自报 λ(Order.demandPressure) = null
+── ② 由 c 反解的型号分组（每型号一个 c = k×fb）──
+   c=-0.222  fb=1  单数=25  样例base=19  预言x*=null
+   c=-1.776  fb=8  单数=25  样例base=48  预言x*=null
+   c=-19.536  fb=88  单数=23  样例base=48  预言x*=null
+   c=-11.1  fb=50  单数=16  样例base=60  预言x*=null
+   c=-17.538  fb=79  单数=10  样例base=46  预言x*=null
+   c=-0.63  fb=2.8378  单数=5  样例base=1  预言x*=null
+   c=-2.52  fb=11.3514  单数=4  样例base=4  预言x*=null
+   c=-6.3  fb=28.3784  单数=3  样例base=10  预言x*=null
+   c=-8.82  fb=39.7297  单数=3  样例base=14  预言x*=null
+   c=-11.34  fb=51.0811  单数=3  样例base=18  预言x*=null
+   c=-19.53  fb=87.973  单数=3  样例base=31  预言x*=null
+   c=-3.15  fb=14.1892  单数=3  样例base=5  预言x*=null
+   c=-11.97  fb=53.9189  单数=3  样例base=19  预言x*=null
+   c=-10.71  fb=48.2432  单数=2  样例base=17  预言x*=null
+   c=-6.93  fb=31.2162  单数=2  样例base=11  预言x*=null
+   c=-15.75  fb=70.9459  单数=2  样例base=25  预言x*=null
+   c=-12.6  fb=56.7568  单数=2  样例base=20  预言x*=null
+   c=-14.49  fb=65.2703  单数=2  样例base=23  预言x*=null
+   c=-16.38  fb=73.7838  单数=2  样例base=26  预言x*=null
+   c=0  fb=0  单数=2  样例base=0  预言x*=null
+   c=-3.78  fb=17.027  单数=1  样例base=6  预言x*=null
+   c=-1.89  fb=8.5135  单数=1  样例base=3  预言x*=null
+   c=-13.23  fb=59.5946  单数=1  样例base=21  预言x*=null
+   c=-5.67  fb=25.5405  单数=1  样例base=9  预言x*=null
+   c=-10.08  fb=45.4054  单数=1  样例base=16  预言x*=null
+   c=-5.04  fb=22.7027  单数=1  样例base=8  预言x*=null
+   c=-17.01  fb=76.6216  单数=1  样例base=27  预言x*=null
+   c=-9.45  fb=42.5676  单数=1  样例base=15  预言x*=null
+   c=-8.19  fb=36.8919  单数=1  样例base=13  预言x*=null
+   c=-18.27  fb=82.2973  单数=1  样例base=29  预言x*=null
+   合计 150 单；c>0（fb<0，上穿基值）的 0 单
+
+── ④ 零扰动 20 拍：上穿基值(+0.01) 单数 = 0/150（预期 0）

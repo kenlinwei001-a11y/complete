@@ -1,0 +1,9 @@
+A9-2 端到端基值对拍（4019 修前 vs 4031 修后）：对象 4425 · 格 6375 · 相同 6369 · 不同 6
+金丝雀：forecastBias 格必须出现在「不同」里（否则对拍工具没有鉴别力）
+  obj_model_2170-NCM.forecastBias: 修前=1 修后=-98
+  obj_model_4680-LFP.forecastBias: 修前=88 修后=77
+  obj_model_4680-NCM.forecastBias: 修前=50 修后=1
+  obj_model_方形-LFP.forecastBias: 修前=8 修后=-85
+  obj_model_方形-NCM.forecastBias: 修前=79 修后=58
+  obj_model_圆柱-LFP.forecastBias: 修前=88 修后=75
+读数：非 forecastBias 的格全部逐字节相同 ⇒ 压力族/其余量纲端到端未被本单触碰

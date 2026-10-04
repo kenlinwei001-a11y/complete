@@ -252,6 +252,56 @@ describe("WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合）", () 
     expect(noDomGroups.size).toBeGreaterThanOrEqual(10);
   });
 
+  // ── WO-3ROOT-P1 §3.1(a) 语义可达性：铸造分布必须跨「严格内点静息点」两侧 ────────────────
+  /**
+   * 🔴 病灶（见 `synthetic/battery.ts` 的 `castSeedBaseValue` 头注）：铸造式曾是**从 0 起算的半轴**
+   *   （`round(seedHash01(id|v)×100)`），不读声明域 ⇒ 凡 `restPoint` **严格内点**的域，
+   *   其**负半轴整段不可达** ⇒ 边注释写着的「低估(−) ⇒ 需求压力上冲」那一支一次都讲不出来。
+   * ⚠ 上面那条域扫描臂扫的是 `o.props`（对象属性）—— 铸造值只进 **state bucket**，不进 props
+   *   ⇒ 它对这一层**结构性失明**，这正是缺口能活到今天的原因。本臂扫的是 `deriveSeedBaseSnapshot`
+   *   的**产物**（真起数据）。⛔ 判据是**域的形状谓词**，⛔ 不许出现量纲名特判（同实现体）。
+   */
+  it("§3.1(a) 铸造可达：restPoint 严格内点的域，铸造层两侧都必须取到", async () => {
+    const { state, provenance } = await deriveSeedBaseSnapshot(t.repos, "demo");
+    const interior = Object.entries(STATE_VAR_DOMAINS).filter(
+      ([, d]) => d.max !== null && d.restPoint > d.min && d.restPoint < d.max,
+    );
+    // 🐤 金丝雀：形状谓词得**筛得出东西** —— 一条都筛不到 = 谓词坏了/域表被拆，**不是**「世界干净」。
+    expect(interior.length, "🐤 形状谓词一个「严格内点静息点」的域都没筛到 ⇒ 量法坏了（今天至少有 forecastBias 那一条）").toBeGreaterThan(0);
+    const vacuous: string[] = [];
+    let scanned = 0;
+    for (const [sv, d] of interior) {
+      const vals: number[] = [];
+      for (const [objId, row] of Object.entries(state)) {
+        // 只扫**铸造层**：真读数（`measured`）不是铸出来的，拿它当铸造分布的证据 = 自证。
+        if (provenance[objId]?.[sv] !== "derived") continue;
+        const v = row[sv];
+        if (typeof v === "number" && Number.isFinite(v)) vals.push(v);
+      }
+      if (vals.length === 0) { vacuous.push(`${sv}（本世界 0 格是铸造来的）`); continue; }
+      scanned += 1;
+      const below = vals.filter((v) => v < d.restPoint).length;
+      const above = vals.filter((v) => v > d.restPoint).length;
+      expect(
+        { sv, 取到负侧: below > 0, 取到正侧: above > 0 },
+        `${sv}（域 [${d.min},${d.max}] 静息点 ${d.restPoint}，铸造 n=${vals.length}）实测分布 ` +
+          `${JSON.stringify([...vals].sort((a, b) => a - b))} —— 静息点**严格内点**却有一整个半轴取不到` +
+          `（WO-3ROOT-P1 的病灶形态：铸造器必须按域的形状对称展开）`,
+      ).toEqual({ sv, 取到负侧: true, 取到正侧: true });
+    }
+    // 反向空转守卫：**一格铸造格都没扫到**（或所有内点域都 0 格）时上面全部空转 ⇒ 必须红，
+    // ⛔ 不许把「没扫到」读成「没问题」。
+    expect({ scanned, vacuous }, "内点域里没有一格是铸造来的 ⇒ 本臂空转，不构成「可达」的证据").toEqual({ scanned: expect.any(Number), vacuous: [] });
+    expect(scanned).toBeGreaterThan(0);
+  });
+
+  // ⚠ 原 P1 §3.1(b)「补写不静默」臂已删 —— 它测的是 P1 的 `c2OutOfDomain` 记账层，
+  //   而该层的前提「C2 是这一拍的最后一写」被 P3 的**唯一投影入口**拆掉：核 → C2 → 投影，
+  //   投影在 C2 之后把越域值收回并**单源记账**（同一份 `saturations`）。
+  //   ⇒ P3 下世界态**按构造不可能越域** ⇒ §3.1(b) 的金丝雀（`outOfDomain.length > 0`）恒假，
+  //     该臂结构性无法转绿（判据语义问题，非产品缺陷）。同一性质由 P3 自己的接缝门守着：
+  //   `sim-domain-entry.seam.test.ts` §3 E3（合成在核之后 ⇒ 入口必须排在合成之后，且 raw 有账）。
+
   // ── ⓐ 引擎归属（验收判据 ⓐ 方式 2 釜底抽薪）：清掉规格 ⇒ 本单值全消失 ─────────────────
   it("ⓐ 引擎归属：derivationSpecs 清成 0 条 ⇒ 25 个 targetProp 全部消失（证明是引擎②算的）", async () => {
     // 独立小世界：不碰共享 t。规格库空 ⇒ §3 校验收窄跳过 ⇒ 这 24 格走哈希（仍 measured），

@@ -1,0 +1,2 @@
+CAPTURED_RC=2
+# 主判据 = 变异臂：错路径必须自曝 RC=2。正向对照（同探针未变异、正确路径）RC=1，见 WO-3ROOT-P1-model-partition-4155.txt.rc

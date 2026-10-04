@@ -1,0 +1,26 @@
+── svr() 路径自曝守卫 · 反向金丝雀（变异臂）──
+变异：探针第 93 行取数路径改回**旧版错路径** t.json?.disclosure（= REJECT R2 的病灶原形）
+备份：/tmp/p1-mp.orig.mjs md5=5297eec86d01a040fdd0f4ec2adc4530（⛔ 未用 git checkout 还原）
+变异落点自证：grep -n 命中第 93 行；git diff 1 insertion 1 deletion（见提交前 git diff 记录）
+判据：路径不存在时守卫**必须自曝并 RC=2**（工具坏了），⛔ 不许印成「λ=null / 键 0 / 点名 0」那个假读数
+────────────────────────────────────────
+BASE=http://127.0.0.1:4155/a/v1 TICK=20
+金丝雀⓪ 必然命中 customer_places_order = ✅（HTTP 200）
+金丝雀⓪′ 虚构链路 ___nope___ 命中 = 0 ✅
+会话 sims_maneg8wj9ww68mgm HTTP=200 · Model 6 · Order 150
+
+── A2 · 域 forecastBias = [-100,100] rest=0 形状=严格内点:true ──
+  obj_model_2170-NCM 实测=-98 重算=-98 ✅
+  obj_model_4680-LFP 实测=77 重算=77 ✅
+  obj_model_4680-NCM 实测=1 重算=1 ✅
+  obj_model_圆柱-LFP 实测=75 重算=75 ✅
+  obj_model_方形-LFP 实测=-85 重算=-85 ✅
+  obj_model_方形-NCM 实测=58 重算=58 ✅
+✅ A2a 世界读数 == 进程内生产铸造器重算（逐值） · 6/6
+✅ A2b forecastBias 负数个数 ≥ 1（负半轴可达；PRD §4.3 预言 2 个负数） · 负数=2/6
+✅ A8 同种子两会话 baseSnapshot 逐字节相同
+
+❌ 路径自曝：tick(1) 回包**顶层无 stateVarReport** ⇒ 取数路径错了（**工具坏了**，不是「世界干净」）。
+   tick(1) 顶层键：fromTick,toTick,data,slice,rules,constraints,agent,timings
+   ⛔ 本次结论作废，不许读作「λ 门不开 / 无点名」——那是旧版 disclosure.stateVarReport 的假读数。
+REVERSE_ARM_RC=2（期望 2 = 工具自己坏了）
