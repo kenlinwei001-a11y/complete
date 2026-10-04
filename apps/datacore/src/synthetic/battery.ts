@@ -3962,8 +3962,24 @@ export function castSeedBaseValue(domain: StateVarDomain | undefined, u: number)
     const cast = Math.round(rest + (2 * u - 1) * span);
     return cast === 0 ? 0 : cast; // 规整 −0（同 `propagation.ts` 的 `round12` 边角处置）
   }
-  // 静息点就是某一侧端点（压力族 restPoint = min = 0）：旧式，逐字节不变。
-  return Math.round(rest + u * (hi - rest));
+  // 静息点就是某一侧端点 ⇒ **无入流即停在该格自己声明的静息点上**，不掷值。
+  //
+  // 🔴 2026-10-05 修（WO-COSTPRESSURE-IDENTITY），病灶与判据：
+  //   **今天的行为 X**：本支旧式 `Math.round(rest + u × (hi − rest))`，对压力族
+  //     （`restPoint = min = 0, max = 100`）即 `round(hash01(objectId|var) × 100)` ——
+  //     把**每一个没有实测源的压力格**均匀铺满 `[0,100]`（实测 1300 格，p50 = 48）。
+  //   **应该是 Y**：它的值 = 该格声明域里的 `restPoint`（压力族 = 0，本仓释义「无入流即不受压」）。
+  //   **为什么 restPoint 对**：消费方 `finance-world.ts` 的式子是
+  //     `成本 = 基线 × (1 + 压力 ÷ 100)`，而**基线本身就是「今天的成本」**
+  //     ⇒ 压力必须是**相对今天基线的偏离**，静息态就是 0。掷一个 0–100 的值进去，
+  //     等于凭空声称「今天成本已经偏离了 0–100%」——实测把 `FinancePlan.MARGIN.rolling`
+  //     的 118.9 亿压成 **−20.72 亿**（零扰动对照臂，差额 139.62 亿，100% 来自这一项）。
+  //   **影响面**：本仓今天走到这一支的**只有压力族** —— `max: null` 的积压/天数族在上面早退，
+  //     `forecastBias` 是内点支，未登记域在上面早退。⛔ 本支**不是**「旧行为回放」，
+  //     它与内点支同为「按域的形状铸造」的一条；旧式那半轴是**没读域表**的遗留。
+  //   ⚠ `u` 在此支不再被读，这是**有意的**：该格的声明域说它没有「散布」可言
+  //     （restPoint 落在端点 ⇒ 域的形状是「从静息点单侧展开」，不是以静息点为中心的散布）。
+  return rest;
 }
 
 /**
@@ -4051,7 +4067,11 @@ export const STATE_VAR_VALUE_REFS: Record<string, { specKey: string }> = {
   "Model|supplyRisk": { specKey: "model_supply_risk" },
   // ── A⚠ 档 5 条（仓主 2026-09-16 ③全批落 5；orderChurn 无诚实源停笔，理由见
   //    seed-derivation-specs.ts 该段尾注）。specKey 与规格表逐一对齐。
-  "Order|costPressure": { specKey: "order_cost_pressure" },
+  // ⛔ `"Order|costPressure": { specKey: "order_cost_pressure" }` 已于 2026-10-05 退役
+  //    （WO-COSTPRESSURE-IDENTITY），**与 `seed-derivation-specs.ts` 那条规格同生共死**。
+  //    退役理由 = 语义身份错：该式实测 150/150 格逐位 ≡ 授信占用率×100，而本格自报身份是成本压力，
+  //    且 `Order` 上无任何数值字段是成本压力的诚实来源。全文见 `seed-derivation-specs.ts` 该段。
+  //    退役后本格回到「没有显式绑定」那一档，出处章 = `derived`，值 = 该格声明的 `restPoint` = 0。
   "Order|demandPressure": { specKey: "order_demand_pressure" },
   "Order|shortageRisk": { specKey: "order_shortage_risk" },
   "MaterialBatch|procurementDelay": { specKey: "materialbatch_procurement_delay" },

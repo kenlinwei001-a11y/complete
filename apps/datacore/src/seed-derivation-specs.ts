@@ -177,9 +177,30 @@ export const DEMO_DERIVATION_SPECS: readonly {
   // ── A⚠ 档 5 条（仓主 2026-09-16 ③全批 6 条中落 5 条；orderChurn 停笔，理由见本段尾）─────────
   // 口径性质（仓主逐条批过的**建模判断**，原料全是真业务数）：对现有真业务字段的口径代理。
   // 字段名与分布经 `/tmp/a6-probe.mjs` 进世界对象实测（Order n=150 / MaterialBatch n=24 / Model n=6），非按名推断。
-  // Order.costPressure：成本压力 = 授信占用率 × 100。出处：creditUsedRatio（仓规：超 100% 即阻断——超信用额度的新单拒接）。
-  //   实测 40–115（i%7 单 1.15×100=115：超授信即超压，如实；越域由引擎按域夹，同 expeditePressure 212 / loadIndex 552 先例）。
-  { specKey: "order_cost_pressure", targetType: "Order", targetProp: "costPressure", formula: "COALESCE(this.creditUsedRatio * 100, 0)" },
+  // ⛔ `order_cost_pressure` 已于 2026-10-05 退役（WO-COSTPRESSURE-IDENTITY）。
+  //   **退役理由 = 语义身份错**，不是「值算错了」：原式 `COALESCE(this.creditUsedRatio × 100, 0)`
+  //   实测 150/150 格逐位 ≡ **授信占用率 ×100**（`SO-3391`: `creditUsedRatio 1.15` → `costPressure 115`）。
+  //   而它落点的格子自报的身份是**成本压力**（`STATE_VAR_DOMAINS` 压力族 `[0,100] restPoint 0`）。
+  //   **授信占用率不是成本**：它度量「这张单吃掉了多少授信额度」，与「这一单的成本相对基线偏了多少」
+  //   是两回事；本仓今天 `Order` 上**没有任何数值字段**是成本压力的诚实来源
+  //   （`orderProps` 实测：`qty/unitPrice/leadDays/demandDelta/outsourceRatio/creditUsedRatio/...` 全表核过）。
+  //   ⇒ 写不出来源就不写（同本段尾 `orderChurn` 停笔的判据）。
+  //
+  //   **退役后这一格持什么值**：走 `sim/seed-world.ts` 的铸造档 ⇒ 出处章 = `derived`（如实：不是实测），
+  //   值 = 该格自己声明的 `restPoint` = **0**。这正是 `battery.ts` 的 `castSeedBaseValue`
+  //   2026-10-05 同批修的那条（压力族端点支不再掷 `hash01×100`）—— 两处**同生共死**：
+  //   只改铸造器不退役本式 ⇒ 这格仍是 `measured` 的 115（越域）；只退役本式不改铸造器 ⇒ 值是掷出来的
+  //   随机数（比 115 更坏，因为它**看起来入域**）。⛔ 两条必须一起上。
+  //
+  //   ⚠ `Order.costPressure` **不从 `STATE_VAR_DOMAINS` 移出**：移出 = 把这一维藏起来，
+  //     不是修复（它仍是 `finance-world` 按率消费的量，越域后果见下）。
+  //   ⚠ **下游后果（本次一并修的根因链）**：`finance-world.ts` 的
+  //     `成本 = 基线 × (1 + 加权costPressure ÷ 100)` 读的是**绝对世界压力**，而它要的是
+  //     **相对基线的偏离**。旧值 40–115（加权 23.04）⇒ 毛利 118.9 亿 → −20.72 亿。
+  //   ⚠ 与 `Model|costPressure`（`model_cost_pressure`，另有其源）**不是一条**，那条仍在，别一起删。
+  //   ⚠ 本行退役必须**连同** `battery.ts` 的 `STATE_VAR_VALUE_REFS["Order|costPressure"]` 一起删 ——
+  //     只删规格不删登记 ⇒ `deriveSeedBaseSnapshot` 判 `brokenRefs` 并**抛错**，整条 SEED_DEMO 播种路炸
+  //     （同 `Model|forecastBias` 退役时实测的原文）。
   // Order.demandPressure：需求压力 = 需求增量比例 × 100。出处：demandDelta（仓规：超 50% 触发承接评审线）。实测 0–60。
   { specKey: "order_demand_pressure", targetType: "Order", targetProp: "demandPressure", formula: "COALESCE(this.demandDelta * 100, 0)" },
   // Order.shortageRisk：短缺风险 = 外协比例 × 100（外协依赖度 = 供应敞口）。出处：outsourceRatio。实测 0–35。
