@@ -2818,12 +2818,19 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
    * 提出去的理由同 `createSimSessionWorld`：`SEED_DEMO=1` 播种要推的是**真的拍**
    * （同一份传导核、同一套 active 规则、同一条落盘序），不是把 `status` 改成 `RUNNING`。
    *
-   * 世界冻结闸从路由**挪进来**（不是删掉）：两条路径都必须过闸，且对路由而言判据与顺序不变
-   * —— 原先它排在 `n` 解析之前，而 `n` 解析不抛（`Math.max(1, Math.floor(NaN))` 只是让循环不执行）。
+   * 世界冻结闸从路由**挪进来**（不是删掉）：两条路径都必须过闸。
+   *
+   * ⚠ **`n` 的校验排在闸门之后**（`parseSimTickN` 在下一行）：本函数提出去之前，路由里
+   * 「闸 → 解析 `n`」就是这一次序；当时成立是因为 `n` 解析**不抛**（`Math.max(1, Math.floor(NaN))`
+   * 只是让循环不执行），故解析挪到闸前闸后都不可观测。**2026-10-04 起 `n` 解析会抛 400**
+   * （静默改写输入被修掉），次序从此可观测：PAUSED + 非法 `n` 必须仍报 409 冻结，而不是变成 400 ——
+   * 否则就是"修 A 顺手改了 B 的错误码"。同族 `createPerturbationWorld` 也是「先闸后 safeParse」。
    */
-  const tickSimSessionWorld = async (c: AuthCtx, s: SimSession, n: number) => {
+  const tickSimSessionWorld = async (c: AuthCtx, s: SimSession, rawN: unknown) => {
     // PAUSED/ENDED 不许推进（WO-SIMSESSION-BIZ-REUSE）：暂停不是标签，是世界真的不走；ENDED 终态不可复活。
     assertSimSessionWritable(s, "tick");
+    // `n` 的**唯一口径**（含上界与"拒绝而非静默改"），与 `…/counterfactual` 共用同一份 Zod schema。
+    const n = parseSimTickN(rawN);
     // PUBLISHED only，**再减去本会话屏蔽的边**（WO-ACTIVE-EDGE-UX 的引擎接缝就是这一行）。
     // `disabledRuleKeys` 为空 ⇒ `partitionPropagationRules` 原样返回 ⇒ 与本单引入前逐字节相同（RL9）。
     const sess = await sessionPropRules(c, s);
@@ -2840,7 +2847,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.post("/a/v1/sim/sessions/:id/tick", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.propagation");
     const s = await getSimOr404(c, (req.params as { id: string }).id);
-    const n = Math.max(1, Math.floor(Number((req.body as { n?: number })?.n ?? 1)));
+    // ⛔ `n` **不再在这里解析**（原先的 `Math.max(1, Math.floor(Number(… ?? 1)))` 会静默改写输入：
+    //    `0`/负数→1 拍、非数→NaN→0 拍、`1e9`→真推 10 亿拍）。校验唯一入口 `parseSimTickN`，
+    //    排在 `tickSimSessionWorld` 的世界冻结闸**之后**（次序理由见该函数头注）。
+    //    形参收 `unknown` 而不是 `number`：写成 `number` 就等于在类型上假装"已经校验过了"。
+    const rawN = (req.body as { n?: unknown } | undefined)?.n;
     // 逐对权重出处要不要下发（见下方 `pairWeighting` 段的实测理由）。query 与 body 都认：
     // 前端按 query 发最省事，而脚本/审计侧常常只在 body 里带参数。
     const wantExplain =
@@ -2855,7 +2866,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const wantDisclosure =
       String((req.query as Record<string, unknown> | undefined)?.disclose ?? "") === "1" ||
       (req.body as { disclose?: unknown } | undefined)?.disclose === true;
-    const r = await tickSimSessionWorld(c, s, n);
+    const r = await tickSimSessionWorld(c, s, rawN);
     /**
      * 「阈值来自哪条规则表达式」那一问的原料（④）：A5 规则表达式原文。
      * **只在真要披露时读**——不然就是给每一拍都加一次全表扫，为了一段大多数人不看的文字。
@@ -2905,9 +2916,15 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return {
       curTick: s.curTick,
       state: r.state,
-      // tick0 那一批的单源账（WO-3ROOT-P3 · 服务 A4）：`n=0` 时下面的逐拍 `stateVarReport`
-      // 恒 `null`（没跑核 ⇒ 没有本拍账），而"世界从第 0 拍起就带着这一批被收回去的读数"
-      // 这件事必须**在首拍就看得见** —— 所以它随会话带上，不依赖跑了多少拍。
+      // tick0 那一批的单源账（WO-3ROOT-P3 · 服务 A4）：下面的逐拍 `stateVarReport` 只有
+      // **本次真的跑了核**才有账，而 `curTick=0` 的新会话一次核都没跑过 ⇒ 那一格恒 `null`。
+      // 于是"世界从第 0 拍起就带着这一批被收回去的读数"这件事，在**首次 `/world` 或首拍 `/tick`**
+      // 都必须看得见 —— 所以它随会话带上，不依赖跑了多少拍。
+      //
+      // ⚠ 原文这里写的是「`n=0` 时…恒 null」。**2026-10-04 真后端实测推翻**：`n=0` 从来没走到过
+      //   引擎（路由的 `Math.max(1, …)` 把它改成 1 拍），实测 `n:0` ⇒ `curTick` 0→1、`stateVarReport`
+      //   是一份**非 null** 的本拍账（与 `n:1` 逐字节同）。真正产生「跑了 0 拍 ⇒ 账为 null」的输入是
+      //   **非数**（`n:"abc"` ⇒ `Math.max(1,NaN)`=NaN ⇒ 循环 0 次，却回 200）。两种输入现在都是 400。
       baseStateVarReport: simBaseStateVarReport(s),
       ...(r.propagate
         ? {
@@ -3014,10 +3031,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const c = ctx(req); await requireSim(c, "sim.propagation"); // R3
     const s = await getSimOr404(c, (req.params as { id: string }).id); // R2
     const body = parseBody(
-      z.object({ n: z.number().int().min(1).max(64).optional(), disabledRuleKeys: z.array(z.string()).optional() }),
+      // `n` 与 `…/tick` **共用同一个** `SimTickNSchema`：原先这里内联的 `int().min(1).max(64)`
+      // 与隔壁路由的 `Math.max(1, Math.floor(Number(…)))` 是两套口径（病灶 A）。
+      // ⛔ 不许再把 `1` / `64` 这两个字面量抄进来 —— 抄一次就多一个可以漂的副本。
+      z.object({ n: SimTickNSchema.optional(), disabledRuleKeys: z.array(z.string()).optional() }),
       req.body ?? {},
     );
-    const n = body.n ?? 1;
+    // 缺省也走同一个解析器（`undefined ⇒ 1`），与 `…/tick` 同源。
+    const n = parseSimTickN(body.n);
     const published = await listPublishedPropRules(c);
     if (body.disabledRuleKeys) {
       const unknown = unknownPropagationRuleKeys(body.disabledRuleKeys, published);
@@ -3067,7 +3088,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const s = await getSimOr404(c, (req.params as { id: string }).id);
     const body = parseBody(
       z.object({
-        horizon: z.number().int().min(1).max(64).optional(),
+        // 上界与 `…/tick` 的 `n` **同一个常数**（同一控件同时喂这两条路，见 `SIM_TICK_N_MAX` 注）。
+        horizon: z.number().int().min(1).max(SIM_TICK_N_MAX).optional(),
         candidates: z.array(SolutionCandidateSchema).min(1).max(4),
       }),
       req.body ?? {},
