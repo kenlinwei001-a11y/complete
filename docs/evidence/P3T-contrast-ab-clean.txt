@@ -1,0 +1,23 @@
+## WO-3ROOT-P3 · 测试阶段 · 对照实验 v2（**干净基线臂**：X=4402 未修构建全新启动 / X′=4401 本分支）
+> 命令 `node /tmp/wo-3root/P3T-contrast-ab2.mjs`（FIX=4401 OLD=4402）· 取数 2026-10-04
+> **这是本单验收核心的对照实验**：把 X 改成 X′，Y 按预言变化（A2 0/5088 vs 5075/5168 · A3 0 vs 1211 · A5 tick0 360 格全点名）。
+> 阳性对照⓪①②③ 全部成立（域表 38 · 两实例可分 · 对象数 4425 两同 · 累计变化格 15764）。
+CAPTURED_RC=0
+
+阳性对照⓪ STATE_VAR_DOMAINS=38（≥38）valueRef(Material,shortageRisk)=true
+阳性对照① FIX keys=[tick,state,baseProvenance,baseStateVarReport] OLD keys=[tick,state,baseProvenance,baseFreshness]
+阳性对照② 对象数 FIX=4425 OLD=4425
+FIX tick0：world === baseSnapshot 逐位 相同=6375 不同=0（须 不同<=账条目数）
+A5 tick0（干净臂 4402）：差异格=360 · 台账外=0（须0）· 台账 value≠world=0（须0）· 台账 raw≠OLD=0（须0）· 账条目=360（须≥1）
+A4 tick0 越界：FIX=0（须0）· OLD=360（须>0）
+t1: 变化格=3698 账FIX=1128 账OLD=829 越界FIX=0 越界OLD=1033
+t2: 变化格=4042 账FIX=1299 账OLD=1355 越界FIX=0 越界OLD=1186
+t3: 变化格=4022 账FIX=1322 账OLD=1438 越界FIX=0 越界OLD=1200
+t4: 变化格=4002 账FIX=1339 账OLD=1546 越界FIX=0 越界OLD=1211
+阳性对照③ 累计变化格=15764（须>1000）
+E1-Y1(A2): FIX 点名=5088 world≠回执.value=0（须0）| OLD 点名=5168 违反=5075（须>0）
+E1-Y2(A3): 越界 FIX=0（须0）· OLD=1211（须>0）
+E2(A6) 对照臂 24 点位 world==λ·base 命中=0（须0）· 外生 12 点位两实例逐位相同=12/12
+E3(A7) 负基值 shortageRisk 对象=0 个：
+
+判定: ✅ 干净臂对照成立

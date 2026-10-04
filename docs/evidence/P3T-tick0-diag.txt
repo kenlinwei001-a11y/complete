@@ -1,0 +1,30 @@
+## WO-3ROOT-P3 · 测试阶段 · tick0 差分归属诊断（v1 曾读出 317「台账外变化」）
+> 命令 `node /tmp/wo-3root/P3T-tick0-diag.mjs` · 取数 2026-10-04 · 两实例 tick 均 = 0
+> 读数：总差分 677 / 台账外 317；台账外按量名 top = releasePressure:251 receivablePressure:18 coverDays:18 …
+> ⚠ 该「台账外」**不是**本单缺陷 —— 归属见 P3T-attrib.txt 与 P3T-contrast-ab-clean.txt。
+CAPTURED_RC=0
+
+FIX tick=0 OLD tick=0（须同为 0）
+baseStateVarReport 顶层键=[declaredStateVars,undeclaredStateVars,decayUnresolved,saturations,decayApplied]
+总差分格=677（其中声明域内 659）· 台账外=317（其中声明域内 299）
+台账内按量名 top: feedPressure:260 blockedPressure:49 costPressure:16 expeditePressure:13 loadIndex:10 supplyRisk:6
+台账外按量名 top: releasePressure:251 receivablePressure:18 coverDays:18 expeditePressure:9 gapPressure:6 costPressure:6 shortageRisk:4 loadIndex:3 demandLoad:2
+台账外样例：
+   obj_base_jiangmen.loadIndex OLD=98.471521 FIX=98.4715 有域=true Δ=-0.000021
+   obj_base_meishan.loadIndex OLD=74.176504 FIX=74.1765 有域=true Δ=-0.000004
+   obj_base_xiamen.loadIndex OLD=78.607222 FIX=78.6072 有域=true Δ=-0.000022
+   obj_customer_cust_0.receivablePressure OLD=42.932892 FIX=42.9329 有域=true Δ=0.000008
+   obj_customer_cust_1.receivablePressure OLD=22.67044 FIX=22.6704 有域=true Δ=-0.00004
+   obj_customer_cust_10.receivablePressure OLD=8.609832 FIX=8.6098 有域=true Δ=-0.000032
+   obj_customer_cust_11.receivablePressure OLD=9.084612 FIX=9.0846 有域=true Δ=-0.000012
+   obj_customer_cust_12.receivablePressure OLD=16.429444 FIX=16.4294 有域=true Δ=-0.000044
+   域表有 loadIndex? true {"min":0,"max":100,"restPoint":0,"decayRef":{"ruleKey":"C35","paramKey":"pressureDecayPerTick"},"unit":"0–100 压力指数","source":"压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② 世界态起点分两档取值 —— 对象上有同名属性的那些格取真读数（越界由本表声明的取值域夹住），其余由 tick0 生成式 `round(hash01(objectId|stateVar)×100)` 产出，天然落在 0–100"}
+   域表有 receivablePressure? true {"min":0,"max":100,"restPoint":0,"decayRef":{"ruleKey":"C35","paramKey":"pressureDecayPerTick"},"unit":"0–100 压力指数","source":"压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② 世界态起点分两档取值 —— 对象上有同名属性的那些格取真读数（越界由本表声明的取值域夹住），其余由 tick0 生成式 `round(hash01(objectId|stateVar)×100)` 产出，天然落在 0–100"}
+   域表有 coverDays? false 
+   域表有 shortageRisk? true {"min":0,"max":100,"restPoint":0,"decayRef":{"ruleKey":"C35","paramKey":"pressureDecayPerTick"},"unit":"0–100 压力指数","source":"压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② 世界态起点分两档取值 —— 对象上有同名属性的那些格取真读数（越界由本表声明的取值域夹住），其余由 tick0 生成式 `round(hash01(objectId|stateVar)×100)` 产出，天然落在 0–100"}
+   域表有 gapPressure? true {"min":0,"max":100,"restPoint":0,"decayRef":{"ruleKey":"C35","paramKey":"pressureDecayPerTick"},"unit":"0–100 压力指数","source":"压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② 世界态起点分两档取值 —— 对象上有同名属性的那些格取真读数（越界由本表声明的取值域夹住），其余由 tick0 生成式 `round(hash01(objectId|stateVar)×100)` 产出，天然落在 0–100"}
+   域表有 costPressure? true {"min":0,"max":100,"restPoint":0,"decayRef":{"ruleKey":"C35","paramKey":"pressureDecayPerTick"},"unit":"0–100 压力指数","source":"压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② 世界态起点分两档取值 —— 对象上有同名属性的那些格取真读数（越界由本表声明的取值域夹住），其余由 tick0 生成式 `round(hash01(objectId|stateVar)×100)` 产出，天然落在 0–100"}
+--- 台账样例 3 条 ---
+   {"objectId":"obj_base_changzhou","stateVar":"loadIndex","raw":301.8198,"value":97.518066490403,"bound":"max"}
+   {"objectId":"obj_base_chengdu","stateVar":"loadIndex","raw":151.6338,"value":93.850471004725,"bound":"max"}
+   {"objectId":"obj_base_handan","stateVar":"loadIndex","raw":277.6039,"value":97.254001359379,"bound":"max"}

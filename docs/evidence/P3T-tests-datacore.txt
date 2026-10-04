@@ -1,0 +1,13 @@
+## WO-3ROOT-P3 · 测试阶段 · A10 回归（diff 半径内 4 条接缝门）**独立重跑**
+> 命令 `cd /tmp/wt-p3/apps/datacore && pnpm exec vitest run test/sim-real-cells.seam.test.ts test/sim-domain-entry.seam.test.ts test/prop-clamp-decay.seam.test.ts test/sim-seed-world.seam.test.ts --maxWorkers=1 --testTimeout=180000`
+> 树 = 自建 detached worktree /tmp/wt-p3 @ 224dbdd52（非开发方 worktree）；contracts/llm-adapters/datacore 三包 build RC=0（b-contracts.rc / b-llm.rc / b-datacore.rc）
+CAPTURED_RC=0
+
+ ✓ test/sim-seed-world.seam.test.ts (4 tests) 95984ms
+ ✓ test/sim-real-cells.seam.test.ts (20 tests) 39562ms
+ ✓ test/prop-clamp-decay.seam.test.ts (11 tests) 121ms
+ ✓ test/sim-domain-entry.seam.test.ts (6 tests) 12037ms
+ Test Files  4 passed (4)
+      Tests  41 passed (41)
+
+金丝雀：判据文件 4 个（须 4）；跳过/todo 计数 = 0（须 0）。
