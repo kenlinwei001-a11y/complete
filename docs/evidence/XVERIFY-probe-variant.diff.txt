@@ -1,0 +1,35 @@
+--- docs/evidence/WO-3ROOT-P1-model-partition.mjs	2026-10-04 18:28:31
++++ docs/evidence/XVERIFY-model-partition.mjs	2026-10-04 18:29:43
+@@ -13,7 +13,13 @@
+  * ⛔ 只读 + 建会话 + tick；不 PATCH、不改种子。
+  */
+ const ROOT = new URL("../../", import.meta.url).pathname.replace(/\/$/, "");
+-const { castSeedBaseValue, stateVarDomains } = await import(`${ROOT}/apps/datacore/dist/synthetic/battery.js`);
++// ⚠ XVERIFY 变体（唯一改动区）：本树 (= handoff-3root-integration tip) **不含** WO-3ROOT-P1 的铸造器
++//   导出 castSeedBaseValue（P1 产品代码未并入，见 docs/evidence/XVERIFY-merge-*.txt）。
++//   缺席 ⇒ A2a 标 NOT-MEASURED 并**不冒绿**（铁律：读数取不到时不许当 0 用）。
++//   ⛔ A3/A4/A7/A8 的判据逻辑与 P1 R2 版**逐字节相同**（diff 见 XVERIFY-probe-variant.diff.txt）。
++const __battery = await import(`${ROOT}/apps/datacore/dist/synthetic/battery.js`);
++const { stateVarDomains } = __battery;
++const castSeedBaseValue = typeof __battery.castSeedBaseValue === "function" ? __battery.castSeedBaseValue : null;
+ const { seedHash01 } = await import(`${ROOT}/apps/datacore/dist/sim/seed-world.js`);
+ 
+ const H = { "X-Debug-User": "demo:admin:admin", "Content-Type": "application/json" };
+@@ -71,13 +77,13 @@
+ let neg = 0, a2bad = 0, a2n = 0;
+ for (const m of modelIds) {
+   const got = bs[m]?.forecastBias;
+-  const exp = castSeedBaseValue(dom, seedHash01(`${m}|forecastBias`));
+-  a2n++;
+-  if (got !== exp) { a2bad++; }
++  const exp = castSeedBaseValue === null ? undefined : castSeedBaseValue(dom, seedHash01(`${m}|forecastBias`));
++  if (exp !== undefined) { a2n++; if (got !== exp) { a2bad++; } }
+   if (typeof got === "number" && got < 0) neg++;
+   console.log(`  ${m} 实测=${got} 重算=${exp} ${got === exp ? "✅" : "❌"}`);
+ }
+-chk("A2a 世界读数 == 进程内生产铸造器重算（逐值）", a2bad === 0, `${a2n - a2bad}/${a2n}`);
++if (castSeedBaseValue === null) { console.log("⛔ A2a NOT-MEASURED —— 本树不含 P1 铸造器 castSeedBaseValue（⛔ 不许读成绿）"); }
++else chk("A2a 世界读数 == 进程内生产铸造器重算（逐值）", a2bad === 0, `${a2n - a2bad}/${a2n}`);
+ chk("A2b forecastBias 负数个数 ≥ 1（负半轴可达；PRD §4.3 预言 2 个负数）", neg >= 1, `负数=${neg}/${modelIds.length}`);
+ 
+ // ── A8 · 确定性（R6）────────────────────────────────────────────────────────

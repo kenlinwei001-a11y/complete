@@ -1,0 +1,19 @@
+BASE=http://127.0.0.1:4401/a/v1 TICK=20
+会话 sims_qy2ktag1yk23sgyr · Order 150
+
+── ① 零扰动自证：HTTP 总请求 6 条 · 写请求 3 条（应 = 2：建会话 + 两次 tick 中的…）--
+   POST /sim/sessions
+   GET /sim/sessions/sims_qy2ktag1yk23sgyr
+   POST /sim/sessions/sims_qy2ktag1yk23sgyr/tick
+   GET /sim/sessions/sims_qy2ktag1yk23sgyr/world
+   POST /sim/sessions/sims_qy2ktag1yk23sgyr/tick
+   GET /sim/sessions/sims_qy2ktag1yk23sgyr/world
+
+── ② λ(Order.demandPressure) = 0.37 · 病灶签名 |x − λ·base| < 1e-9 的格数 --
+   签名格 = 2/150（P3 在场应 ≈ 0）
+   样例：[{"o":"obj_order_SO-900474","base":0,"x":0,"lamBase":0},{"o":"obj_order_SO-900485","base":0,"x":0,"lamBase":0}]
+   末拍「一个字节没动」(x === base) = 2 · 动过 = 148
+
+── ③ A4 独立重算（零扰动）：域内 58 单 · max|dev| = 0.005122 · 最差 = {"o":"obj_order_SO-900325","base":60,"fb":88,"T":7.200000000000003,"x":7.205122062949} --
+
+零扰动对照完成
