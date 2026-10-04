@@ -208,3 +208,53 @@ x' = (1−λ)·x + Σ amount + λ·(base − rest)
    是**独立缺陷**，本设计不覆盖，不许合并。
 4. **切片能否枚举状态量对的候选边**未验（`SliceSpec.paths` 只 `project` 对象属性，
    不含状态量）—— 若不能，§4.2 ② 退化为「按类型对枚举」，需复核。
+
+---
+
+## 9. 仓主口径补充（2026-10-05）·「只有扰动是动态的，其他数据都是预设的；空白就补库」
+
+> 原话：「**只有"扰动因素"是动态的，其他数据都是预设的，而不是来自随机播种，如果出现空白数据（之前来自播种数据），就需要补齐数据库数据**」
+
+**这条纠正了本文 §1 的一处**：我原写「偏离量初值恒 = `restPoint`（通常 0）」，
+仓主口径更彻底 —— **`restPoint` 本身也是「预设数据」，该补就补**（我原在 §8-2 标为「留仓主裁决的建模决策」，**已裁决**）。
+
+### 9.1 空白清单（实测，按 (对象类型, 属性) 判定，⛔ 不按属性名）
+
+**判据**：既**被哈希造**、又**进派生式**的属性 —— 这才是「该预设却用了随机数」的空白。
+（⛔ 不是「有多少 hash」：`battery.ts` 共 **100 处** hash 调用，但造 `manufacturer`/`operatorId`/`alarmCode`
+这类**标签**是无害的 —— 合成 demo 世界本就需要造名字。只有**造业务量且入链**的才是空白。）
+
+| 属性 | 哈希表达式 | 进哪条派生式 | 铸成 | 进 P&L？ |
+|---|---|---|---|---|
+| **`Order.creditUsedRatio`** | `hashString(单号+"c")` | `order_cost_pressure` | `Order.costPressure` | ✅ **139.62 亿就是它** |
+| `Order.demandDelta` | `hashString(单号)` | `order_demand_pressure` | `Order.demandPressure` | ❌ |
+| `Order.outsourceRatio` | `hashString(单号+"o")` | `order_shortage_risk` | `Order.shortageRisk` | ❌ |
+
+**⇒ 真阳性 3 个，全在 `Order` 上，全是「比率」。**
+
+⚠ **按属性名判会误报**：同名交集里还有 `qty`，但那是 **`WorkOrder` 移动记录**的 `qty`
+（`battery.ts:7295`，`for (let m = 0; m < nMoves; m++)` 循环内），
+而 **`Order.qty` 是真值**（`battery.ts:6469` 的 `qty,`）。**同名 ≠ 同一属性。**
+
+### 9.2 `creditUsedRatio` 的真源缺口 —— 已探到根
+
+- `Customer.creditLimit` / `Customer.receivables` **被本体声明了**：
+  切片投影（`battery.ts:4547/4593/4745` 的 `project:[…"creditLimit"…"receivables"…]`）·
+  `seed-derivation-specs.ts` · `catalog.ts` · `connectors/registry.ts` 均引用。
+- 但 **`battery.ts` 里 `creditLimit:` / `receivables:` 赋值 0 处** —— **种子没给这两个字段真值。**
+- ⇒ **于是派生式绕过它，用 `hashString` 造了一个 `creditUsedRatio`。**
+
+**⇒ 「补齐数据库数据」的具体动作（一步、可验）**：
+给 `Customer` 补 `creditLimit` / `receivables` 真值 ⇒ `creditUsedRatio = receivables ÷ creditLimit` 可算 ⇒
+删掉 `battery.ts:6482/6542` 两行 `hashString`。
+
+### 9.3 与 §1/§5 的关系（不合并，两条都要）
+
+| | 管什么 | 修法 |
+|---|---|---|
+| **本节（预设数据）** | 预设层缺真值 ⇒ 用哈希顶替 | **补库**（`Customer.creditLimit/receivables` …） |
+| **§1 病 A（偏离量被播种）** | 偏离量的初值不是 `restPoint` | 偏离量初值 = `restPoint` |
+
+⚠ **只补库不修 §1 仍错**：即使 `creditUsedRatio` 是真数据，
+`Order.costPressure = creditUsedRatio × 100` 仍是**水平**（均值约 0.6×100=60），
+消费端按**偏离**读 ⇒ 成本仍被虚增。「补库」解决「值假」，「§1」解决「口径错」。
