@@ -73,10 +73,32 @@ export interface LlmAgentRequest {
   toolChoice?: { type: "auto" } | { type: "tool"; name: string };
 }
 
+/**
+ * 归一化用量（**单点定义** —— 改这里就是改全局口径，两个适配器都只准按它填）。
+ *
+ * ⛔ `inputTokens` ≡ **本次请求实际处理的输入量 = 新输入 + 缓存命中**。
+ *   不许把供应商字面字段直接填进来 —— 它们**不是同一个量**：
+ *     · OpenAI 兼容 `prompt_tokens` = **总输入（含缓存命中）** ⇒ 可直接填；
+ *     · Anthropic `input_tokens` = **新输入**（缓存命中/写入分列在 `cache_read_input_tokens` /
+ *       `cache_creation_input_tokens`，SDK 原文：total input = 三者之和）⇒ **必须补加命中桶**。
+ *   同名不同量曾让双跑账差读出**假的 210%**（2026-10-04 活服务实测，同问句两臂：
+ *   native 19,800 = Σ `input_tokens` vs dsh 97,515 = 未命中 24,427 + 命中 73,088；
+ *   同量对照 19,800 vs 24,427 = +23.4%）。§6.5 表 A 写的「输入取 prompt_tokens·含 cache 命中」
+ *   描述的是**本契约**，不是任何单个适配器的既有行为。
+ *
+ * **具名排除**（不是遗漏）：缓存**写**桶（Anthropic `cache_creation_input_tokens`）不计入本字段 ——
+ *   载体 A 的定义是「未命中 + 缓存命中」，写桶两侧都不计（dsh 侧另有 `cacheWriteTokens` 单独回声）。
+ *   供应商侧写桶按 1.25× 计费，本字段不表达它，别把它当成等价于供应商账单总额。
+ */
+export interface LlmUsage {
+  inputTokens: number;
+  outputTokens: number;
+}
+
 export interface LlmAgentResponse {
   content: LlmContentBlock[];
   stopReason: string; // "tool_use" | "end_turn" | ...
-  usage: { inputTokens: number; outputTokens: number };
+  usage: LlmUsage;
   raw?: unknown;
   /**
    * WO-FIX-REASONING-CONTENT：本轮**终结文本抢救自 reasoning_content**（推理型模型把结论写进
@@ -121,7 +143,8 @@ export interface CompletionReq {
 
 export interface CompletionResp {
   text: string;
-  usage: { inputTokens: number; outputTokens: number };
+  /** 同 `LlmUsage` 契约（单点定义见上）——输入桶含缓存命中。 */
+  usage: LlmUsage;
 }
 
 export interface ParseReq<T> {

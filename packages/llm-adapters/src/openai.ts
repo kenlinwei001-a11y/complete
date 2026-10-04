@@ -283,6 +283,9 @@ export class OpenAiLlmClient implements FullLlmClient {
       content,
       stopReason: hasToolUse || choice?.finish_reason === "tool_calls" ? "tool_use" : "end_turn",
       usage: {
+        // 口径见 types.ts `LlmUsage`：本支**天然合规** —— OpenAI 的 `prompt_tokens` 就是总输入
+        // （含缓存命中）。⛔ 别把它「修」成 uncached 单桶：那会让本支低于 anthropic 支（那里
+        // input_tokens 只是新输入、须补加 cache_read）与 dsh 臂，同名字段又变成两个量。
         inputTokens: resp.usage?.prompt_tokens ?? 0,
         outputTokens: resp.usage?.completion_tokens ?? 0,
       },
@@ -328,6 +331,9 @@ export class OpenAiLlmClient implements FullLlmClient {
     return {
       text: resp.choices[0]?.message?.content ?? "",
       usage: {
+        // 口径见 types.ts `LlmUsage`：本支**天然合规** —— OpenAI 的 `prompt_tokens` 就是总输入
+        // （含缓存命中）。⛔ 别把它「修」成 uncached 单桶：那会让本支低于 anthropic 支（那里
+        // input_tokens 只是新输入、须补加 cache_read）与 dsh 臂，同名字段又变成两个量。
         inputTokens: resp.usage?.prompt_tokens ?? 0,
         outputTokens: resp.usage?.completion_tokens ?? 0,
       },

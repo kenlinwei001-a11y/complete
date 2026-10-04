@@ -10,6 +10,7 @@ import type {
   LlmAgentResponse,
   LlmCapabilities,
   LlmContentBlock,
+  LlmUsage,
   ParseReq,
   RawClassification,
   TokenMetricsPort,
@@ -97,6 +98,26 @@ export class AnthropicLlmClient implements FullLlmClient {
   }
 
   /** 增量 §1.1：count_tokens API 实测（每 2 轮一次，由循环侧控制节奏）。 */
+  /**
+   * 计量**单点出口**：归一化 + 打点，一次算完给两个消费面共用。
+   *
+   * 口径定义在 `types.ts` 的 `LlmUsage`（`inputTokens` ≡ 新输入 + **缓存命中**）。本方法是
+   * 指标面（`qos_llm_tokens_total`）与返回值面（`usage`）**共用**的那一份实现 —— 分头各算一次
+   * 就是在同一个文件里造两个都叫 "input" 的不同量（「同一规则写在 N 个出口 ⇒ 谁漏写谁分裂」）。
+   */
+  private meterUsage(
+    model: string,
+    u: { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number | null },
+  ): LlmUsage {
+    const usage: LlmUsage = {
+      inputTokens: u.input_tokens + (u.cache_read_input_tokens ?? 0),
+      outputTokens: u.output_tokens,
+    };
+    this.track(model, "input", usage.inputTokens);
+    this.track(model, "output", usage.outputTokens);
+    return usage;
+  }
+
   async countTokens(req: LlmAgentRequest): Promise<number> {
     const resp = await this.client.messages.countTokens({
       model: req.model,
@@ -129,8 +150,7 @@ export class AnthropicLlmClient implements FullLlmClient {
       output_config: { format: zodOutputFormat(ClassificationSchema) },
     });
     requireUsage(resp, req.model);
-    this.track(req.model, "input", resp.usage.input_tokens);
-    this.track(req.model, "output", resp.usage.output_tokens);
+    this.meterUsage(req.model, resp.usage);
     if (resp.parsed_output == null) throw new ClassifierParseError();
     // WO-SLOT-HARVEST · 槽位一律经**单源收割器**（与 openai/degrade 同一份合并规则，见 slot-harvest.ts）。
     // 本条路由是服务端 schema 强约束（output_config.format），正常形态槽位就在顶层 extractedSlots，
@@ -180,8 +200,7 @@ export class AnthropicLlmClient implements FullLlmClient {
       Object.keys(reqOptions).length > 0 ? reqOptions : undefined,
     );
     requireUsage(response, req.model);
-    this.track(req.model, "input", response.usage.input_tokens);
-    this.track(req.model, "output", response.usage.output_tokens);
+    const usage = this.meterUsage(req.model, response.usage);
     const content: LlmContentBlock[] = [];
     for (const block of response.content) {
       if (block.type === "text") content.push({ type: "text", text: block.text });
@@ -197,7 +216,7 @@ export class AnthropicLlmClient implements FullLlmClient {
     return {
       content,
       stopReason: response.stop_reason ?? "end_turn",
-      usage: { inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens },
+      usage, // 口径见 types.ts `LlmUsage`；归一化+打点在 meterUsage 单点完成
       raw: response.content,
     };
   }
@@ -217,8 +236,7 @@ export class AnthropicLlmClient implements FullLlmClient {
       ],
     });
     requireUsage(response, req.model);
-    this.track(req.model, "input", response.usage.input_tokens);
-    this.track(req.model, "output", response.usage.output_tokens);
+    this.meterUsage(req.model, response.usage);
     const text = response.content.find((b) => b.type === "text");
     return text && text.type === "text" ? text.text : "";
   }
@@ -252,8 +270,7 @@ export class AnthropicLlmClient implements FullLlmClient {
       output_config: { format: zodOutputFormat(req.schema as never) },
     });
     requireUsage(resp, req.model);
-    this.track(req.model, "input", resp.usage.input_tokens);
-    this.track(req.model, "output", resp.usage.output_tokens);
+    this.meterUsage(req.model, resp.usage);
     return (resp.parsed_output as T | null | undefined) ?? null;
   }
 

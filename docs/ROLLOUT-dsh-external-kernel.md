@@ -53,7 +53,7 @@
 |---|---|
 | **a · 观察指标** | ① `llmBudget.stats.recorded` / `recordFailures`（`llm-budget.ts:82` / `:79,:84`，进程内计数——记账静默失效也是「看起来没事」的一种，该端口注释原话）；② 分租户 token 日账（DataCore `/a/v1/llm-budgets` 读回侧）；③ **同 task 双臂账差**：灰度期对每个新晋 EXTERNAL agent 抽样同 task 双跑（kernel 来回切），比 `answer.stats.tokenUsage` 折出和（pi-ai 口径：cacheRead/uncachedInput/output 分桶，RECONCILIATION §2-A4）对 native `run.total*` 账。⚠️ **2026-10-03 口径统一后，输入侧必须取 `uncachedInputTokens + cacheReadTokens` 两桶之和**（不是单取 uncached）——两臂同名字段自此同量，直接可比 |
 | **b · 账差合理区间** | 初值：`|dsh臂折出和 − native臂账| / native臂账 ≤ 50%`（输入侧按上行「两桶之和」取数）。方差主源已登记：提示组装差。⚠️ **2026-10-03 订正**：原列的主源「cache 命中分桶口径差」**已随口径统一而消除**——live 双跑实测同一句问话，旧口径账差 **79.9%**（native 116,591 vs dsh 23,382，差 5.86×）**是单位差不是用量差**，同口径实为 **19.2%**（区间内）。形态：「我用『两个字段都叫 totalInputTokens』当作『它们是同一个量』的证据」。出区间不自动等于缺陷，但**必须先解释再放行**，且解释前先核对两侧是否同口径 |
-| ⚠️ **2026-10-04 二次订正：上行那句「两臂同名字段自此同量，直接可比」只对 `kind=openai-compat` 档成立** | **`kind=anthropic` 档两臂仍不同量，直接比会得到假的超区间账差。** 实测（活服务 4002 · 同问句双跑 · provider `kind=anthropic` / `https://api.deepseek.com/anthropic`）：native `run.totalInputTokens=19,800`（= Σ `usage.input_tokens`）vs dsh `97,515`（= 未命中 24,427 + 缓存命中 73,088）⇒ 直接比 **210%**（3.10×）。**这不是用量差，是单位差**：native 侧经 `llm-adapters/anthropic.ts` 只读 `input_tokens`（Anthropic 语义**不含**缓存），而 `cache_read_input_tokens` / `cache_creation_input_tokens` 在**整个 `packages/llm-adapters` 零处被读**（金丝雀：同串在 dsh 侧 `platform-llm.mjs` + `dsh-llm-pi-ai` 有命中，扫描面是活的）——**native 臂结构上不产出缓存桶，不是它命中少**。**同量对照（未命中 vs 未命中）：19,800 vs 24,427 ⇒ +23.4%**（区间内，样本 1 / 非受控 A-B）。<br>**判据修订**：`kind=anthropic` 档**禁**直接比 `totalInputTokens`；同量对照只能用**未命中桶**，缓存桶在 native 侧**无对应量、不可比**。恒等式要留档：`prompt_tokens`（openai 语义=总输入）≠ `input_tokens`（anthropic 语义=新输入）。<br>**未决（待裁决，不在本单落地）**：是否给 native 侧也补缓存桶（`anthropic.ts` 读那两个字段并计入 `totalInputTokens`）—— **会抬高 native 记账 ⇒ 改变租户账单**，正属本文件开篇那条「必须当作已知行为跳变点来设计」的情形，故不擅自改。 |
+| ⚠️ **2026-10-04 二次订正：上行那句「两臂同名字段自此同量，直接可比」只对 `kind=openai-compat` 档成立** | **`kind=anthropic` 档两臂仍不同量，直接比会得到假的超区间账差。** 实测（活服务 4002 · 同问句双跑 · provider `kind=anthropic` / `https://api.deepseek.com/anthropic`）：native `run.totalInputTokens=19,800`（= Σ `usage.input_tokens`）vs dsh `97,515`（= 未命中 24,427 + 缓存命中 73,088）⇒ 直接比 **210%**（3.10×）。**这不是用量差，是单位差**：native 侧经 `llm-adapters/anthropic.ts` 只读 `input_tokens`（Anthropic 语义**不含**缓存），而 `cache_read_input_tokens` / `cache_creation_input_tokens` 在**整个 `packages/llm-adapters` 零处被读**（金丝雀：同串在 dsh 侧 `platform-llm.mjs` + `dsh-llm-pi-ai` 有命中，扫描面是活的）——**native 臂结构上不产出缓存桶，不是它命中少**。**同量对照（未命中 vs 未命中）：19,800 vs 24,427 ⇒ +23.4%**（区间内，样本 1 / 非受控 A-B）。<br>**判据修订**：`kind=anthropic` 档**禁**直接比 `totalInputTokens`；同量对照只能用**未命中桶**，缓存桶在 native 侧**无对应量、不可比**。恒等式要留档：`prompt_tokens`（openai 语义=总输入）≠ `input_tokens`（anthropic 语义=新输入）。<br>**已修（WO-LLM-USAGE-CONTRACT · 2026-10-04）**：归一化口径**下沉到单点** —— 定义落在 `packages/llm-adapters/src/types.ts` 的 `LlmUsage`（`inputTokens` ≡ 新输入 + 缓存命中），`anthropic.ts` 改为 `input_tokens + cache_read_input_tokens`，且**指标出口与返回值出口合并为同一个 `meterUsage`**（此前四处各算各的，等于同一文件里两个都叫 "input" 的量）。⇒ 两臂同量在**所有 provider kind** 上成立，「判据限档」随之解除。<br>⚠️ **两个必须记住的边界**：① **修复点之前的 native 读数是旧口径**（不含命中）⇒ 跨修复点做账差对比作废，一个样本组必须整段取自同一侧；② 本次改动**抬高了 anthropic 档 native 侧的记账**（补上的正是原先漏计的缓存命中）—— 按本文件开篇「已知行为跳变点」登记：不是回归，是**关掉一块配额逃逸面**（与 2026-10-03 修 dsh 侧漏计同源同向）。 |
 | **c · 回退开关** | per-agent `kernel` 置回 `"NATIVE"`（或删字段回落 env=0 缺省）——`PUT /b/v1/agents/:id`，下一 run 生效，秒级，零数据迁移（配置真相源从未动，PRD §8 同口径）。**回退不碰 env、不碰部署面**（D1 兼容） |
 | **d · 量化门槛** | 记账通路：`recordFailures / (recorded + recordFailures) > 1%`（窗 1h）⇒ 立案查账本通路，**不回退内核**（账本 fail-open 是设计，`llm-budget.ts:14-15` 原话「账本不可用绝不阻断业务」）；账差：出 §1-b 区间且样本 ≥ 20 个双跑 task ⇒ **回退该租户全部 EXTERNAL agent 并立案** |
 
@@ -207,6 +207,16 @@ W9 验收判据应含「两载体同源等值」断言，但**等值也不许相
 > 退化成 `toBe(uncached + 0)`，与旧断言逐字等价、**没有鉴别力**（已在该处标注诚实位）。
 > 有牙的机器是 `dsh-token-bucket-carrying.seam.test.ts`：stub 造真缓存命中（未命中 90／命中 60／
 > 正确总量 150 三数两两不等），实测定变——把出口改回单桶当场红，读数 `expected 90 to be 150`。
+>
+> **适配器侧对齐（2026-10-04 · WO-LLM-USAGE-CONTRACT）**：上表 native 那句「输入取 `usage.prompt_tokens`·
+> **含** cache 命中」修前**只对 openai-compat 支成立** —— `anthropic.ts` 填的是 `usage.input_tokens`
+> （**新输入**，命中/写入分列），于是 native 臂在 anthropic 档**结构上不产出命中桶**，两臂同名段又变回两个量
+> （活服务实测假的 210%：native 19,800 vs dsh 97,515；同量对照 19,800 vs 24,427 = +23.4%）。今已单点化：
+> 口径定义在 `types.ts` `LlmUsage`，anthropic 支补加 `cache_read_input_tokens`，指标与返回值共用 `meterUsage`。
+> 有牙机器 = `packages/llm-adapters/src/usage-normalization.test.ts`（**一个文件咬两个适配器**：命中桶非零 +
+> 三数两两不等；单桶 mutant 实测 `expected 100 to be 160`，双向变异已跑）。
+> ⛔ 该文件此前不存在，是因为**没有任何测试问过「两个适配器的同名字段是不是同一个量」** ——
+> 各自只对自己的供应商字段负责时，谁都不会发现彼此填的不是同一个东西。缓存**写**桶按契约具名排除（两侧都不计）。
 
 ---
 
