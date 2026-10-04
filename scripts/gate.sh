@@ -312,21 +312,36 @@ run "BUILD (pnpm -r build)" pnpm -r build
 #   这正是 TEST 段当年踩过、并写下「看不见它跑过 正是上次假绿的成因」的那个坑。
 #   故逐包显式点名 + 断言包数，与 run_test 同一口径。
 #
-# ⚠ 包名清单**现算不写死**是做不到的（pnpm 无「列出有某脚本的包」的稳定接口），
-#   故清单在此写死，但**每个包是否真被验到当场断言**：清单漂了会走「无脚本未验」那条分支，
-#   落进 NOT_MEASURED 并把包名打出来 —— 它**不会**静默变成绿。
-EXPECT_TYPECHECK_PKGS=5
+# ⚠ 包清单**现算不写死**：写死的清单会漂（新增包时没人回来改这一行），而它漂掉的表现
+#   **正是「某包的类型检查静默地不再被跑」** —— 本段存在的全部理由就是消灭这种静默。
+#   判据与 pnpm 的执行口径同源：`package.json` 里**声明了 `typecheck` 脚本**的包。
+#   （实测：5 个包有该脚本；`packages/dsh-harness` 没有 —— 它 test/ 下零个 .test.ts，
+#     测试走 test/run.mjs 的 node --test。故它**不进**本段，且这一条写在明处，不是漏掉。）
+TYPECHECK_MIN_PKGS=5
 run_typecheck() {
   echo "───── TYPECHECK (逐包·类型面含 test/) ─────"
-  local pkgs=(packages/contracts packages/llm-adapters apps/datacore apps/agentcore apps/frontend-shell)
+  local pkgs n
+  pkgs="$(node -e '
+const fs=require("fs"),cp=require("child_process");
+let roots=[];
+try{roots=cp.execSync("ls -d apps/* packages/*",{encoding:"utf8"}).trim().split("\n");}catch(e){roots=[];}
+const out=[];
+for(const r of roots){
+  try{const s=JSON.parse(fs.readFileSync(r+"/package.json","utf8")).scripts||{};
+    if(s.typecheck)out.push(r);}catch(e){}
+}
+process.stdout.write(out.join(" "));' 2>/dev/null)"
+  n="$(printf '%s' "$pkgs" | wc -w | tr -d ' ')"
+  # 金丝雀：枚举不到、或低于下界 ⇒ **量法坏了**，不许读成「没有包要查」。
+  # 与 `check-typecheck-coverage.mjs` 的 MIN_PACKAGES 同一条纪律（那边下界也是 5）。
+  if [ -z "$pkgs" ] || [ "${n:-0}" -lt "$TYPECHECK_MIN_PKGS" ]; then
+    echo "❌ TYPECHECK 金丝雀不中：现算只枚举到 ${n:-0} 个带 typecheck 脚本的包（下界 ${TYPECHECK_MIN_PKGS}）—— **量法坏了**（目录枚举 / package.json 解析坏了），不是「没有包要查」"
+    FAILED+=("TYPECHECK 包枚举金丝雀不中 ${n:-0}/${TYPECHECK_MIN_PKGS}")
+    return
+  fi
+  echo "· 包清单（现算）：${pkgs}"
   local p ok=0 bad="" nm=""
-  for p in "${pkgs[@]}"; do
-    # 判据是「这个包**声明了** typecheck 脚本吗」，不是「它有没有 test/ 目录」。
-    if ! node -e "process.exit(require('./$p/package.json').scripts.typecheck?0:1)" 2>/dev/null; then
-      echo "  ◌ ${p}：**无 typecheck 脚本** —— 本包未验（≠ 通过）"
-      nm="${nm} ${p}(无脚本)"
-      continue
-    fi
+  for p in $pkgs; do
     capture "$GATE_STEP_TIMEOUT" pnpm --filter "./$p" typecheck
     if [ "$CAP_STATE" = "NOT-MEASURED" ]; then
       echo "  ◌ ${p} **NOT-MEASURED**（RC=${CAP_RC}）：${CAP_WHY}"
@@ -340,10 +355,15 @@ run_typecheck() {
       bad="${bad} ${p}"
     fi
   done
-  # 金丝雀：一个包都没验到、且一个都没判负 ⇒ 是**探针坏了**，不是"包都干净"。
-  # 判据与主逻辑共用同一份循环结果，不另抄一份正则（抄了就是装饰品）。
-  if [ "$ok" -eq 0 ] && [ -z "$bad" ]; then
-    echo "❌ TYPECHECK 金丝雀不中：${#pkgs[@]} 个包中 0 个通过、0 个判负、$(printf '%s' "$nm" | wc -w | tr -d ' ') 个未验 —— **量法坏了**（包清单漂了 / package.json 读不到 / 过滤器坏），不是类型干净"
+  # 金丝雀：**循环一个判决都没产出** ⇒ 量法坏了（枚举出 5 个包却一次都没进循环）。
+  # ⛔ 判据必须**同时**含 `nm` 为空这一条 —— 初版写成 `ok==0 && bad 为空` 就收工，
+  #    于是「五包全部超时」这个**很可能发生**的场景（本机负载 85、frontend-shell 的
+  #    tsc 实测能跑 30 分钟以上）会被误判成「门坏了」并塞进 FAILED。
+  #    那是把「我没查成」说成「门坏了」，方向正好反了（与 preflight 的 RC=2 同一条纪律）。
+  #    实测：初版在「五包全部 NOT-MEASURED」下打出「金丝雀不中 · 1 个包中 0 个通过」——
+  #    连包数都读错了（`${#pkgs[@]}` 那时已是对字符串取长度）。
+  if [ "$ok" -eq 0 ] && [ -z "$bad" ] && [ -z "$nm" ]; then
+    echo "❌ TYPECHECK 金丝雀不中：枚举到 ${n} 个包、循环却一个判决都没产出 —— **量法坏了**（探针/过滤器坏），不是类型干净"
     FAILED+=("TYPECHECK 金丝雀不中")
     return
   fi
@@ -357,7 +377,7 @@ run_typecheck() {
     NOT_MEASURED+=("TYPECHECK(${nm# })")
     return
   fi
-  echo "✅ TYPECHECK RC=0（${ok}/${EXPECT_TYPECHECK_PKGS} 包全部点名）"
+  echo "✅ TYPECHECK RC=0（${ok}/${n} 包全部点名）"
 }
 run_typecheck
 run "genuine-sim:check" node scripts/check-genuine-sim.mjs
