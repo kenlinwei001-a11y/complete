@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentDefinition } from "@platform/contracts";
-import { createTestApp, PLANNER, TENANT, type TestApp } from "./helpers.js";
+import { createTestApp, TENANT, type TestApp } from "./helpers.js";
 import { toolUse } from "../src/llm/mock.js";
 import { BudgetTracker } from "../src/tools/budget.js";
 import { DataCoreHttpError, DataCoreRequestCancelledError, DataCoreUnavailableError } from "../src/tools/clients.js";
@@ -119,7 +119,11 @@ async function runScript(opts: {
     agentId: "agt_sr",
     version: "latest",
     prompt: "给我几个排产方案，对比一下各自的代价",
-    ctx: PLANNER,
+    // `ctx` 是 `ToolAuthCtx`（对象），不是 X-Debug-User 串 —— `PLANNER` 那种 `a:b:c` 形态只用于
+    // HTTP 头（`submitQuery`/`debugHeaders`）。写错形态的类型检查被 `tsconfig.json` 的
+    // `include: ["src/**/*.ts"]` 挡在门外（build 不查 test/、vitest 只转译不查类型），
+    // 所以它红着进了正线。取值与 `PLANNER` 同源：demo / user-planner / planner。
+    ctx: { tenantId: TENANT, userId: "user-planner", roles: ["planner"] },
     nesting: { callChain: [], budget },
     emit: async () => undefined,
   });
