@@ -1,0 +1,64 @@
+# XVERIFY · P1-rejectfix 并入集成分支 · 冲突原文（两侧逐字，不作裁定）
+# 命令: git merge --no-edit claude/handoff-3root-P1-rejectfix
+# 冲突文件: apps/datacore/src/app.ts (3 块) · apps/datacore/src/sim/seed-world.ts (1 块)
+# 自动合并（无冲突标记）但语义可疑: docs/SYSTEM-ONTOLOGY.md
+
+########## apps/datacore/src/app.ts ##########
+<<<<<<< HEAD
+          restoreSpecBase(driftState, d.stateVarReport.decayApplied);
+          // ⚠ 重放段同样过**唯一投影入口**（同一判据、同一份域册子）：主线夹了而影子线不夹，
+          //    两条线的差就不再是"有没有扰动"，而是"有没有夹" —— 那会直接写进信噪比。
+          //    影子线的账不进回执（回执讲的是**主世界**），故只取副作用、丢弃返回值。
+          projectWorldCells(driftState, replayStart, stateVarDomains);
+=======
+          //    ⛔ 但走**不点名的**那一个实例：重放段的越域格不属于本次推进的世界线。
+          restoreSpecBaseShadow!(driftState, d.stateVarReport.decayApplied);
+>>>>>>> claude/handoff-3root-P1-rejectfix
+<<<<<<< HEAD
+        // ── 唯一投影入口（WO-3ROOT-P3）─────────────────────────────────────────
+        // 三条写路（播种 / 传导核 / C2 合成）**全部写完之后**、`putTickState` **之前**，
+        // 单点执行 + 单源记账 —— 这就是「回执说的」与「落盘的」能是同一个数的全部理由。
+        // 🔴 次序不是风格问题：C2 会在核之后把刚夹住的值改写成 `λ·base`（病灶见
+        //    `sim/world-projection.ts` 头注 / PRD §一 事实 7），故投影**必须**排在它后面；
+        //    而 `putTickState` 排在它后面，落盘与回执才同源。两边挪一个都会退回病灶。
+        stateVarsDisclosure = mergeStateVarDisclosure(
+          out.stateVarReport,
+          projectWorldCells(state, tickStart, stateVarDomains),
+        );
+=======
+        // C2 补写成了一拍的**最后一次写** ⇒ 它推出去的越域读数在核里没人再对账（旧式铸造下这档
+        // 从不触发 ⇒ 一直是条静默路径）。并进**同一份**披露（⛔ 不新造通道；⛔ 就地不夹）。
+        // ⚠ 合并后重排：核的序列本就按 (objectId, stateVar) 排好，重排对它是恒等（稳定排序）。
+        if (c2OutOfDomain.length > 0) {
+          stateVarsDisclosure = {
+            ...out.stateVarReport,
+            saturations: [...out.stateVarReport.saturations, ...c2OutOfDomain].sort(
+              (a, b) => a.objectId.localeCompare(b.objectId) || a.stateVar.localeCompare(b.stateVar),
+            ),
+          };
+        }
+>>>>>>> claude/handoff-3root-P1-rejectfix
+<<<<<<< HEAD
+          // 影子线与主线**同一合成**：两条线只许差「有没有扰动」这一个变量。
+          restoreSpecBase(driftState, d.stateVarReport.decayApplied);
+          // ⚠ 同一投影入口：不投影 ⇒ 主线被夹回域内、影子线留着越界值，两条线的差就不再是
+          //    「有没有扰动」而是「有没有夹」—— `worldDrift` / `signalToNoise` 被直接污染。
+          //    🔴 且必须在 `shadowMemo.put` **之前**：存进去的那一格会被后续请求当成本拍的影子态
+          //    复用，未投影就存 = 缓存了一条与主线语义不同的世界线，且它还会被继续往前推。
+          projectWorldCells(driftState, driftTickStart, stateVarDomains);
+=======
+          // 影子线与主线**同一合成**：两条线只许差「有没有扰动」这一个变量（但**不点名**，见上）。
+          restoreSpecBaseShadow!(driftState, d.stateVarReport.decayApplied);
+>>>>>>> claude/handoff-3root-P1-rejectfix
+
+########## apps/datacore/src/sim/seed-world.ts ##########
+<<<<<<< HEAD
+import { stateVarDisplayName, stateVarDomains, stateVarValueRef } from "../synthetic/battery.js";
+=======
+import {
+  castSeedBaseValue,
+  stateVarDisplayName,
+  stateVarDomains,
+  stateVarValueRef,
+} from "../synthetic/battery.js";
+>>>>>>> claude/handoff-3root-P1-rejectfix
