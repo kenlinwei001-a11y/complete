@@ -37,8 +37,8 @@ import {
 } from "@platform/contracts";
 import type { AuthCtx } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
-import { stateVarDisplayName, stateVarValueRef } from "../synthetic/battery.js";
-import { specCellIndex, specCellKey, worldCellKeys, type SpecCellSourceEntry } from "./spec-cells.js";
+import { stateVarDisplayName } from "../synthetic/battery.js";
+import { specCellIndex, specCellKey, specRefDiffs, worldCellKeys, type SpecCellSourceEntry } from "./spec-cells.js";
 import { buildPropagationInputs } from "./propagation-inputs.js";
 import type { PropagationGraph } from "./propagation.js";
 
@@ -453,26 +453,23 @@ export async function deriveSeedBaseSnapshot(
    *   判据一句话：**你播种了规格，就得绑得上；你没播种规格，这条路对你不存在。**
    *   （变异反证仍有效：规格库非空 + 指一个查无的 specKey ⇒ `specByKey.get` 落空 ⇒ 红。）
    */
-  const brokenRefs: string[] = [];
-  if (specByKey.size > 0) {
-    for (const typeKey of byType.keys()) {
-      for (const v of byType.get(typeKey) ?? new Set<string>()) {
-        const ref = stateVarValueRef(typeKey, v);
-        if (ref === undefined) continue;
-        // WO-3ROOT-P2 · D1：判据由「specByKey 里查得到」换成**索引里查得到**
-        // （索引 = ACTIVE 规格 ∩ 世界量纲空间，见 `sim/spec-cells.ts`）。语义不变：
-        // 查无 ACTIVE 规格 / 落点不指回本格，都落进同一句「绑定断裂」。
-        const spec = specCells.get(specCellKey(typeKey, v));
-        if (spec === undefined) {
-          brokenRefs.push(`${typeKey}.${v} → specKey "${ref.specKey}"（查无 ACTIVE 规格）`);
-        } else if (spec.specKey !== ref.specKey) {
-          brokenRefs.push(
-            `${typeKey}.${v} → specKey "${ref.specKey}"（索引里是 "${spec.specKey}"，不指回本格）`,
-          );
-        }
-      }
-    }
-  }
+  /**
+   * ⛔ **对账只有一处实现**：`sim/spec-cells.ts` 的 `specRefDiffs`（PRD §三 D1「唯一投影入口」）。
+   *
+   * 为什么这里不再自己写一遍（2026-10-04 复验指出的缺口 A）：
+   * 原实现在本文件里另写了一份**更窄**的等价物 —— 只扫 `byType`（世界量纲空间）里的格子，
+   * 而判据是「**`STATE_VAR_VALUE_REFS` 的每个键**都必须在索引里、且 specKey 一致」。
+   * 两套都能跑、都能过门，然后仓里多一个真相源：判据一漂，没有任何东西说话
+   * （本仓反复防的那个形态）。窄口径漏掉的正是「登记了 valueRef、但落点不在世界量纲空间」
+   * 那一档 —— 它恰恰是 D1 要抓的归属漂移，漏掉等于把这条对账做成了装饰品。
+   *
+   * ⚠ 作用域（**保留**，与 `specRefDiffs` 的分工不同：那条是判据，这条是判据的适用范围）：
+   * 只在「本次播种走了显式绑定这条路」（规格库非空）时才强制。生产播种路径先
+   * `seedDemoDerivationSpecs` ⇒ 全强制、断引用必红；而未播种规格的调用方（如只验「名字撞」
+   * 那条路的单元接缝测试）规格库整体空 ⇒ 这条路对它压根不存在 ⇒ 跳过，不许把生产不变量错套过去。
+   * 判据一句话：**你播种了规格，就得绑得上；你没播种规格，这条路对你不存在。**
+   */
+  const brokenRefs: string[] = specByKey.size > 0 ? specRefDiffs(specCells) : [];
   if (brokenRefs.length > 0) {
     throw new Error(
       `WO-SIM-REAL-DATA §3 valueRef 绑定断裂（⛔ 不许静默回落哈希）：\n  · ${brokenRefs.join("\n  · ")}`,
