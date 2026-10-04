@@ -1,0 +1,130 @@
+WO-UNDECLARED-VAR-AUDIT · D0 判据（供仓主裁决用）
+════════════════════════════════════════════════════════════════════════════════
+本文件是**证据**，不是修法；不出路 A / 路 B，不选符号约定。
+⛔ 未改任何式子（`leadTime − transitDays` / `arriveDay − etaDay` 逐字未动）
+⛔ 未改 `STATE_VAR_DOMAINS` 任何一条
+⛔ 未裁决「符号约定该统一成正还是负」
+自证：`git status --short` 空；本支相对基线 951ddc4a8 只动 `docs/evidence/` 下文件。
+读数来源：4511 单实例（`--max-old-space-size=8192`）运行期真读；四臂 Z3/F3/C3/L3。
+════════════════════════════════════════════════════════════════════════════════
+
+第一件 · 「因类型而异义」具体到哪条下游规则、什么条件、算出什么
+────────────────────────────────────────────────────────────────────────────────
+【同一个属性名，三条式子，三套符号语义 —— 逐字引自本树（非推断）】
+  `apps/datacore/src/seed-derivation-specs.ts:111`
+      PurchaseOrder.procurementDelay
+      注释：「采购到货延迟 = 实际到货日 − 计划到货日（天数，**负=提前**）」
+      式子：`this.arriveDay - this.etaDay`
+  `apps/datacore/src/seed-derivation-specs.ts:116`
+      Supplier.procurementDelay
+      注释：「采购**处理天数** = 提前期 − 在途天数（下单到发货的处理时长）」
+      式子：`this.leadTime - this.transitDays`
+  `apps/datacore/src/seed-derivation-specs.ts:189`
+      MaterialBatch.procurementDelay
+      注释：「采购到货延迟 = 批次在库天数（库龄即等待天数的代理口径，仓主批）」
+      式子：`this.ageDays`
+  ⚠ 注意：**同一个文件、相隔 5 行**（:111 与 :116）就给出了两套语义 —— :111 明文声明
+    「负=提前」（这是**偏差**语义，有正负两端），而 :116 给的「处理天数」是**时长**语义
+    （时长没有「提前/晚」两端；它为负只能表示 `transitDays > leadTime`）。
+    :189 的「库龄」按时长语义亦 ≥ 0 为常态。
+  登记意图另见 `apps/datacore/src/seed.ts:1450` 起（PRD 引作 :1454）：
+    三类落点「各自是一本**不同的台账**，扰法与量纲都不同」，
+    并显式声明 `Supplier.procurementDelay` = 「这一家在手单的整体到货延迟（跨单聚合口径）」
+    —— 与 :116 实际落的「处理天数」**不是同一个量**（此即 PRD D0 前置项原文所指）。
+
+【三条式子写出的三份实测数据（tick0 世界态，运行期真读）】
+  承载类型          n    实测值（升序，逐格）
+  PurchaseOrder    30   [-7,-4,-4,-4,-4,-4,-4,-4,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-2,-2,-2,-2,-2,-1,-1,-1,-1,-1,-1]
+                        全负，区间 [-7,-1]
+  MaterialBatch    24   [1,4,7,11,20,27,27,30,34,37,47,51,57,62,65,72,72,74,119,125,135,140,141,154]
+                        全正，区间 [1,154]
+  Supplier         15   [-6,-1,0,0,2,2,3,3,3,3,3,3,4,4,5]
+                        负2 / 零2 / 正11，区间 [-6,5]
+
+【三条式子汇入同一个靶、用同一个系数符号 —— 运行期规则表原样读数】
+  靶（三条都是它）：`Material.shortageRisk`
+    `demo_po_procurement_delay_to_material_shortage`        coeff=+0.07928545  combine=sum  reaction=null clamp=null
+                                                           源 PurchaseOrder.procurementDelay
+    `demo_batch_procurement_delay_to_material_shortage`     coeff=+0.05946418  combine=sum  reaction=null clamp=null
+                                                           源 MaterialBatch.procurementDelay
+    `demo_supplier_procurement_delay_to_material_shortage`  coeff=+0.04955336  combine=sum  reaction=null clamp=null
+                                                           源 Supplier.procurementDelay
+  系数登记处 `apps/datacore/src/synthetic/battery.ts:828/829/830`；规则登记处 `seed.ts:1479/1503/1532`。
+  ⇒ **三条式子的系数全为正、全为 `combine:"sum"`、reaction 与 clamp 全空** ——
+    即：三本「量纲都不同」的台账，被**同一个符号约定**（源值越大 ⇒ 短缺越高）**直接相加**。
+
+【触发条件（引擎真路径，非推断）】
+  `propagation.ts` 的 B 族分支对这三条边**全部不命中**：reaction=null ⇒ `drive = sourceVal`；
+  这三条边的源在实测里均不含「恰好 0」的全零列（PO 30/30 非零、MaterialBatch 24/24 非零）；
+  clamp=null ⇒ 无规则级夹取。故三边**每拍都按 `amount = 系数 × 源值 × 权重份额` 足额入账**，
+  运行期 trace 实测：30 条 / 24 条 / 13 条（Supplier 13 = 15 − 2 个零格，B1 命中）。
+
+【后果：读错会算出什么（同一拍、同一靶，逐边实测）】
+  零扰动臂 Z3 · tick3 trace 逐边 Σ：
+    MaterialBatch  边  Σ = +31.960831     （源全正 ⇒ 只推高短缺）
+    PurchaseOrder  边  Σ =  −1.775558     （源全负 ⇒ 只压低短缺）
+    Supplier       边  Σ =  +0.691249
+  Supplier 边逐格贡献（与源值同号，权重份额使量值不等于 系数×源值）：
+    源 -6 → -0.14866008    源 -1 → -0.033035573333
+    源  2 → +0.019821344   源  3 → +0.029732016 …   源  5 → +0.09910672 / +0.14866008
+  ⇒ **具体算错的样子**：两个负的 Supplier 格让 `Material.shortageRisk` **降低 0.1817/拍**
+    （0.14866008 + 0.033035573333）。按 `seed-derivation-specs.ts:111` 的 PO 口径（负=提前），
+    「提前」压低短缺是自洽的；按 :116 的「处理天数」口径，负值表示在途比提前期还长，
+    那是**在途慢**，压低短缺就不是该口径能推出的结论。
+    **两者哪个对 = D0，归仓主**；本文件只登记「同一系数符号同时套在两套语义上」这一事实及其数值后果。
+  ⇒ 另一处**可观测的异义症状**：`Material.shortageRisk` 的入边里，PO 边**30/30 全负**（推低），
+    而 batch/supplier 两边**以推高为主** —— 同一拍同一靶上，三本台账在**对着干**，
+    净值 +30.876522/拍。这不是「有 bug 的证据」，是「三套语义共用一个符号约定」的可测指纹。
+
+【这条链今天只有一个消费者，异义因此在界面上不可见】
+  `apps/datacore/src/solvers/chain-loss.ts` 的 `SIM_DAY_STATE_VAR_BY_CARRIER` 只给
+  `PurchaseOrder → procurementDelay`、`Supplier → deliveryDelay`、`CustomsClearance → clearanceQueueDays`、
+  `IncomingInspection → queueDays`；运行期 `chain-loss-matrix.simContext.excluded[]` 实测含
+  `{"key":"Supplier.procurementDelay","reason":"OTHER_CARRIER"}` —— **唯一一个会按承载类型
+  区分语义的消费方，明确拒绝消费它**。⇒ 该量今天的消费方**仅** shortageRisk 那一条规则，
+  而那一条恰恰不做类型区分 ⇒ **异义在运行期不可见、只在量纲上生效**（这正是它危险的地方）。
+
+────────────────────────────────────────────────────────────────────────────────
+第二件 · 「真实数据为负被 min:0 夹掉」——运行期实测在哪、不在哪
+────────────────────────────────────────────────────────────────────────────────
+⚠ 如实先说不成立的：**`Material.shortageRisk` 与 `Model.supplyRisk` 上今天 0 条 min 夹取事件**
+  （四臂一致）。所以「shortageRisk/supplyRisk 真实数据为负被夹掉」这一形态
+  **在本批读数里没有实例**，不manufacture认同。两者只是**贴着地板**：
+    tick0：`Material.shortageRisk` 8 格中 **4 格恰为 0**；`Model.supplyRisk` **6 格全为 0**（种子静息值）
+    tick3：`Material.shortageRisk` [1.544245349813, 65.806608360663]（0 格为 0）
+           `Model.supplyRisk`    [9.021319207349, 10.346449248628]（0 格为 0）
+  ⚠ NOT-MEASURED：本批**没有一条臂把 shortageRisk / supplyRisk 往下压**（F3 是往上抬，
+    C3/L3 无关）⇒「它们的未经夹取真值会不会为负」**未测到**，不拿 0 当答案。
+
+✅ **真实数据为负被 min:0 夹掉，今天**有实例，且**点得到名**：
+  量：`Order.demandPressure`（声明域 [0,100]，见 `STATE_VAR_DOMAINS`）
+  证据：`stateVarReport.saturations` 实测 —— **73 条/拍，全部 `bound:"min"`**，形如
+        `{"objectId":"obj_order_SO-3402","stateVar":"demandPressure","raw":-4.81,"value":0,"bound":"min"}`
+        `{"objectId":"obj_order_SO-3529","stateVar":"demandPressure","raw":-18.426,"value":0,"bound":"min"}`
+        raw 区间 [-19.536, -0.4986]，**Σraw = -667.5643**，全部被写成 `value: 0`
+  是真实数据不是扰动产物：四臂 Z3/F3/C3/L3 的 73 条 raw 值**逐位相同**
+        （区间与 Σ 三处全同），且 Z3 是零扰动臂。
+  下游半径（被夹掉之后谁跟着看不见负值）：`Order.demandPressure` **出度 2** ——
+        `demo_order_demand_pressure`        → `Model.demandLoad`      coeff=+0.00698967 combine=sum
+        `demo_order_demand_to_line_split`   → `OrderLine.splitPressure` coeff=+0.15609375 combine=sum
+        ⇒ −667.56 的真实负压在这两条规则看到它**之前**被抹成 0
+          （例：`obj_order_SO-3529` 的 −18.426 若如实带符号，`demandLoad` 那一项本应是
+           −18.426×0.00698967 ≈ −0.12880，实际入账 0）。
+  另：同一份 saturation 报告里 `bound:"max"` 有 1249 条/拍（loadIndex/utilPressure/queuePressure 等）
+        —— 地板与天花板**同时都在工作**，不是只有上限在夹。
+
+────────────────────────────────────────────────────────────────────────────────
+第三件 · 不在本单射程内、如实登记为未测
+────────────────────────────────────────────────────────────────────────────────
+  N6 `Model.supplyRisk` 的真值符号未测（无向下压的臂）。它与 `Material.shortageRisk` 构成
+     `shortageRisk --(+0.161875)--> supplyRisk --(+0.2775)--> shortageRisk` 的**同号回环**
+     （两条系数皆正，运行期规则表读数）。该回环在 supplyRisk 今天非 0 之后是否会把两者推向
+     上限或下限，**未测**。
+  N7 路 A（保持域声明、入口投影压回）与路 B（如实带符号、移出压力族）**各自的代价**未量化 ——
+     本单只测「今天被夹掉了多少」（`Order.demandPressure` 73 格 / Σraw −667.5643）。
+  N8 三条式子在**其它 industry / scale / seed** 下的取值区间未测（本单只测 demo 租户 SEED_DEMO=1）。
+  N9 `Supplier.procurementDelay` 的「跨单聚合口径」与实测 `leadTime − transitDays` 的差距有多大
+     （聚合 vs 逐单），**未测** —— 本单只登记两者不是同一个量，未度量偏差幅度。
+════════════════════════════════════════════════════════════════════════════════
+复现：bash docs/evidence/WO-UNDECLARED-VAR-AUDIT-capture3.sh
+      node docs/evidence/WO-UNDECLARED-VAR-AUDIT-analyze3.mjs   （金丝雀全绿才 RC=0）
