@@ -1,0 +1,32 @@
+## WO-3ROOT-P3 · 测试阶段 · 对照实验 v1（X=4019 未修 / X′=4401 本分支 224dbdd52）
+> 命令 `OLDBASE=http://127.0.0.1:4019/a/v1 FIXBASE=http://127.0.0.1:4401/a/v1 node /tmp/wo-3root/P3T-contrast-ab.mjs` · 取数 2026-10-04 · 探针=测试方自写（非开发方脚本）
+> 判据见 PRD-WO-3ROOT-P3 §四 E1/E2/E3 + 三条阳性对照；**跑前声明**。
+> ⚠ 本版 OLD 臂 4019 是长期被多 agent 驱动的实例，其对象库已漂移（见 P3T-contrast-ab-clean.txt 的归属判定）⇒ 本版只用于 E1/E3。
+CAPTURED_RC=1
+
+阳性对照⓪: STATE_VAR_DOMAINS=38（须≥38）· valueRef(Material,shortageRisk)=true（须 true）
+阳性对照①: FIX /world keys=[tick,state,baseProvenance,baseStateVarReport] · OLD=[tick,state,baseProvenance]
+阳性对照②: 世界对象数 FIX=4425 OLD=4425（须相等且>4000）
+   ⚠ 台账外变化: obj_base_jiangmen.loadIndex 98.471521 -> 98.4715
+   ⚠ 台账外变化: obj_base_meishan.loadIndex 74.176504 -> 74.1765
+   ⚠ 台账外变化: obj_base_xiamen.loadIndex 78.607222 -> 78.6072
+A4/A5 tick0: 账条目=360（须≥1，基线0）· 两实例 tick0 差分格=677 · 台账外变化=317（须0）· 台账 value≠新读数=0（须0）
+t1: 变化格=3698 账FIX=1128 账OLD=829 越界FIX=0 越界OLD=1033 elyte FIX=3.103272484122 OLD=-59.72464964 λb=0
+t2: 变化格=4042 账FIX=1299 账OLD=1355 越界FIX=0 越界OLD=1186 elyte FIX=7.52237208384 OLD=-59.72464964 λb=0
+t3: 变化格=4022 账FIX=1322 账OLD=1438 越界FIX=0 越界OLD=1200 elyte FIX=10.017461574572 OLD=-59.72464964 λb=0
+t4: 变化格=4002 账FIX=1339 账OLD=1546 越界FIX=0 越界OLD=1211 elyte FIX=11.407333701767 OLD=-59.72464964 λb=0
+t5: 变化格=3992 账FIX=1350 账OLD=1640 越界FIX=0 越界OLD=1213 elyte FIX=12.15983714287 OLD=-59.72464964 λb=0
+
+阳性对照③: 5 拍累计变化格=19756（须 >1000）
+E1-Y1(A2): FIX 点名 6438 点位 world≠回执.value = 0（须 0）
+           OLD 点名 6808 点位 world≠回执.value = 6686（对照臂，须 >0）
+E1-Y2(A3): 越界格 FIX=0（须 0）· OLD=5843（对照臂，须 >0）
+E2 (A6): world == λ·base 的点位 FIX=85（须 0）
+E3 (A7): elyte.shortageRisk 全 5 拍 FIX≠λ·base 且 ∈[0,100] = true（须 true，且逐拍未被点名）· 对照臂 OLD 恒 = λ·base = false（须 true）
+   t1 λb=0 FIX=3.103272484122 OLD=-59.72464964 FIX被点名=false
+   t2 λb=0 FIX=7.52237208384 OLD=-59.72464964 FIX被点名=false
+   t3 λb=0 FIX=10.017461574572 OLD=-59.72464964 FIX被点名=false
+   t4 λb=0 FIX=11.407333701767 OLD=-59.72464964 FIX被点名=false
+   t5 λb=0 FIX=12.15983714287 OLD=-59.72464964 FIX被点名=false
+
+判定: ❌ 判据未全部成立 —— 见上逐条

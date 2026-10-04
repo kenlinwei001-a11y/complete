@@ -1,0 +1,17 @@
+## WO-3ROOT-P3 · 测试阶段 · 归属判定（4019 漂移 vs 本单静默改动）
+> 命令 `node /tmp/wo-3root/P3T-attrib.mjs` · 取数 2026-10-04
+> 判据：差分若**在 baseSnapshot 就已存在** ⇒ 分叉在播种输入侧，不在投影入口。
+CAPTURED_RC=0
+
+det 顶层键 FIX=[id,tenantId,baseSnapshot,baseSnapshotProvenance,scope,status,curTick,parentCheckpointId,disabledRuleKeys,tickDays,createdAt]
+baseSnapshot 顶层键 FIX=[obj_arinvoice_arinvoice_0_0,obj_arinvoice_arinvoice_0_1,obj_arinvoice_arinvoice_0_2,obj_arinvoice_arinvoice_1_0,obj_arinvoice_arinvoice_1_1,obj_arinvoice_arinvoice_1_2...]
+baseProvenance 类型 FIX=object OLD=object FIX键样例=obj_arinvoice_arinvoice_0_0,obj_arinvoice_arinvoice_0_1,obj_arinvoice_arinvoice_0_2,obj_arinvoice_arinvoice_1_0,obj_arinvoice_arinvoice_1_1
+差分格中 baseSnapshot 已不同 = 677 ；base 相同只 world 不同 = 0
+   obj_base_changzhou.loadIndex: base FIX=97.518066490403 OLD=301.819778 | world FIX=97.518066490403 OLD=301.819778
+   obj_base_chengdu.loadIndex: base FIX=93.850471004725 OLD=151.633813 | world FIX=93.850471004725 OLD=151.633813
+   obj_base_handan.loadIndex: base FIX=97.254001359379 OLD=277.603892 | world FIX=97.254001359379 OLD=277.603892
+   obj_base_hefei.loadIndex: base FIX=93.687359670005 OLD=149.007657 | world FIX=93.687359670005 OLD=149.007657
+   obj_base_jiangmen.loadIndex: base FIX=98.4715 OLD=98.471521 | world FIX=98.4715 OLD=98.471521
+   obj_base_jinhua.loadIndex: base FIX=98.389251643736 OLD=438.018395 | world FIX=98.389251643736 OLD=438.018395
+检查 obj_base_jiangmen.loadIndex: base FIX=98.4715 OLD=98.471521 · world FIX=98.4715 OLD=98.471521
+检查 obj_customer_cust_0.receivablePressure: base FIX=42.9329 OLD=42.932892 · world FIX=42.9329 OLD=42.932892

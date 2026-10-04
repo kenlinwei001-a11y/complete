@@ -1,0 +1,10 @@
+## WO-3ROOT-P3 · 测试阶段 · A1 单入口存在性（独立复核，非引用开发方读数）
+> 命令 `grep -rn "projectWorldCells(" apps/datacore/src --include=*.ts` + `grep -rn "saturateToDomain(" …` @ /tmp/wt-p3 (224dbdd52)
+> 取数 2026-10-04
+CAPTURED_RC=0
+
+projectWorldCells 调用点（定义在 world-projection.ts:54 不计）：
+  app.ts:2658 · app.ts:2703 · app.ts:2722 · app.ts:4637 · sim/seed-world.ts:534 · sim/metric-series.ts:176 ⇒ 六处，三条写路（播种/推拍/回放环）全部命中同一入口
+saturateToDomain 调用点（定义在 propagation.ts:434 不计）：world-projection.ts:85 ⇒ **恰好 1 处**（唯一入口）
+金丝雀（必然命中）：metric-series.ts 命中 1 次 ⇒ 量法活着
+⚠ PRD §七 A1 原文写「五处调用点（app.ts 四 + metric-series）」——实测为**六处**（多出播种路 seed-world.ts:534，而 A1① 正文正要求播种路命中）。PRD 计数少了一处，不是缺陷。
