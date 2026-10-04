@@ -28,6 +28,26 @@ const post = (p, b) => g(p, { method: "POST", body: JSON.stringify(b ?? {}) });
 let fails = 0;
 const chk = (name, ok, detail = "") => { if (!ok) fails++; console.log(`${ok ? "✅" : "❌"} ${name}${detail ? " · " + detail : ""}`); };
 
+// ── 取数路径自曝（WO-3ROOT-P1 REJECT R2 订正）────────────────────────────────
+// ⛔ `stateVarReport` 在 **tick 回包的响应顶层**，**不在** `disclosure` 下面
+//    （`disclosure` 只有 fromTick/toTick/data/slice/rules/constraints/agent/timings）。
+//    旧版四处写作 `t.json?.disclosure?.stateVarReport?.x ?? {}`：`?.` + `?? {}` 把
+//    「路径不存在」**静默成空对象**，于是报出「λ 门永不打开 / decayApplied 0 键 /
+//    点名 0 条」——**与事实相反**的读数（铁律 0.5 判据 5 的形态：
+//    报 0 命中前先自证工具是对的）。
+//    ⇒ 此后凡取该字段一律经本函数：**路径不存在 = 工具坏了，不是「世界干净」**，
+//      当场自曝顶层真实键名并以 RC=2 退出（3 分退出码：2 = 工具自己坏了）。
+const svr = (j, where) => {
+  const r = j?.stateVarReport;
+  if (r === undefined || r === null) {
+    console.log(`\n❌ 路径自曝：${where} 回包**顶层无 stateVarReport** ⇒ 取数路径错了（**工具坏了**，不是「世界干净」）。`);
+    console.log(`   ${where} 顶层键：${Object.keys(j ?? {}).join(",") || "(回包为空/非 JSON)"}`);
+    console.log(`   ⛔ 本次结论作废，不许读作「λ 门不开 / 无点名」——那是旧版 disclosure.stateVarReport 的假读数。`);
+    process.exit(2);
+  }
+  return r;
+};
+
 // ── 金丝雀⓪ ────────────────────────────────────────────────────────────────
 const nb0 = await g("/objects/obj_order_SO-3391/neighbors");
 const keys0 = (nb0.json?.groups ?? []).map((x) => x.linkKey);
@@ -70,7 +90,7 @@ if (TICK === 0) { console.log(`\n（TICK=0：只做 A2/A8；世界级 A3/A4/A7 �
 // ── 第 1 拍：反解 c = x₁ − base ⇒ 逐单 fb′ ─────────────────────────────────
 const t1 = await post(`/sim/sessions/${s.id}/tick`, { n: 1, disclose: true });
 const st1 = ((await g(`/sim/sessions/${s.id}/world`)).json?.state) ?? {};
-const lam = t1.json?.disclosure?.stateVarReport?.decayApplied?.demandPressure ?? null;
+const lam = svr(t1.json, "tick(1)").decayApplied?.demandPressure ?? null;
 console.log(`\n引擎自报 λ(Order.demandPressure) = ${lam}；−K/λ = ${lam ? +(K / lam).toFixed(6) : "?"}（应 ≈ 0.6 ⇒ x* = base − 0.6·fb′）`);
 const modelByFb = new Map();
 for (const m of modelIds) modelByFb.set(Number(bs[m]?.forecastBias).toFixed(4), m);
@@ -97,11 +117,12 @@ for (const [m, v] of [...groups.entries()].sort((a, b) => b[1].n - a[1].n)) {
 // ── 推到 TICK 拍（合计 TICK；最后一拍取 disclose）──────────────────────────
 const tk = await post(`/sim/sessions/${s.id}/tick`, { n: TICK - 1, disclose: true });
 const stN = ((await g(`/sim/sessions/${s.id}/world`)).json?.state) ?? {};
-const sat = tk.json?.disclosure?.stateVarReport?.saturations ?? [];
+const svrTk = svr(tk.json, `tick(${TICK})`);
+const sat = svrTk.saturations ?? [];
 const dpDom = stateVarDomains()["demandPressure"];
-const decayKeys = Object.keys(tk.json?.disclosure?.stateVarReport?.decayApplied ?? {});
+const decayKeys = Object.keys(svrTk.decayApplied ?? {});
 console.log(`\n推到 ${TICK} 拍（最后一拍 HTTP=${tk.status}，saturations 条目 ${sat.length}；decayApplied 键 ${decayKeys.length} 个：${decayKeys.slice(0, 6).join(",") || "(空)"}）`);
-console.log(`   域查表：Order.demandPressure = [${dpDom?.min},${dpDom?.max}] rest=${dpDom?.restPoint}；λ 门 = decayApplied.demandPressure = ${JSON.stringify(tk.json?.disclosure?.stateVarReport?.decayApplied?.demandPressure)}`);
+console.log(`   域查表：Order.demandPressure = [${dpDom?.min},${dpDom?.max}] rest=${dpDom?.restPoint}；λ 门 = decayApplied.demandPressure = ${JSON.stringify(svrTk.decayApplied?.demandPressure)}`);
 if (sat.length) console.log(`   saturations 样例：${JSON.stringify(sat.slice(0, 2))}`);
 
 const cross = new Set(), pred = new Set(), oob = new Set(), tOut = new Set();

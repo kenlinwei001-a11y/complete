@@ -45,7 +45,17 @@ console.log(`   n=${modelIds.length} min=${min} max=${max} 负数=${neg}`);
 const tk = await post(`/sim/sessions/${s.id}/tick`, { n: 1, disclose: true });
 const w = (await g(`/sim/sessions/${s.id}/world`)).json;
 const st = w.state ?? {};
-const lam = tk.json?.disclosure?.stateVarReport?.decayApplied?.demandPressure ?? null;
+// ⛔ REJECT R2 订正：`stateVarReport` 在 **tick 回包顶层**，不在 `disclosure` 下
+//    （`disclosure` 只有 fromTick/toTick/data/slice/rules/constraints/agent/timings）。
+//    旧版 `?.disclosure?.stateVarReport?... ?? null` 把「路径不存在」静默成 null ⇒
+//    打印出「λ = null」这个**假读数**。路径不存在 = 工具坏了，当场自曝并 RC=2。
+const svrTk = tk.json?.stateVarReport;
+if (svrTk === undefined || svrTk === null) {
+  console.log(`❌ 路径自曝：tick 回包顶层无 stateVarReport ⇒ 取数路径错了（**工具坏了**）。`);
+  console.log(`   顶层键：${Object.keys(tk.json ?? {}).join(",") || "(回包为空/非 JSON)"}`);
+  process.exit(2);
+}
+const lam = svrTk.decayApplied?.demandPressure ?? null;
 console.log(`\n引擎自报 λ(Order.demandPressure) = ${lam}`);
 const k = -0.222;
 const groups = new Map();
