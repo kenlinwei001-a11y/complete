@@ -4,6 +4,7 @@ import { seedDemoPropagationRules } from "../src/seed.js";
 import { deriveSeedBaseSnapshot, entersSimWorld } from "../src/sim/seed-world.js";
 import { buildPropagationInputs } from "../src/sim/propagation-inputs.js";
 import { replayWorldLine } from "../src/sim/metric-series.js";
+import { specCellIndexFor, worldCellKeys } from "../src/sim/spec-cells.js";
 import { resolveSimScope, type Perturbation, type TickState } from "@platform/contracts";
 import type { ObjectInstance } from "../src/domain.js";
 
@@ -52,6 +53,14 @@ async function runWorld(t: TestApp, toTick: number, perturbations: readonly Pert
     engine: {
       graph: inputs.graph, ruleParams: inputs.ruleParams, cadenceGates: inputs.cadenceGates,
       pairWeights: inputs.pairWeights, stateVarDomains: inputs.stateVarDomains,
+      /**
+       * WO-3ROOT-P2 · D1：与生产 tick 路**同一个**索引来源（`app.ts` 的 `simSpecCellIndex` 一字不差：
+       * `specCellIndexFor(repos, tenantId, worldCellKeys(listPropagationRules(tenantId, true)))`）。
+       * ⛔ 少喂这一样，回放环会拿 `undefined` 去 `.has()` —— 不是"退化成旧行为"，是**当场 TypeError**
+       *（`spec-base-synthesis.ts` 的那一行）。本测试不播规格 ⇒ 索引为空 ⇒ 全部格不锚定，
+       * 与生产在同等条件下算出来的**同一份**空索引逐字节一致（不是另立一套判据）。
+       */
+      specCells: await specCellIndexFor(t.repos, "demo", worldCellKeys(rules)),
       // C2 合成基值：本测试没有会话，`seed` 就是那份不含扰动的 tick0（= 路由的 `s.baseSnapshot`）。
       specBase: seed,
     },

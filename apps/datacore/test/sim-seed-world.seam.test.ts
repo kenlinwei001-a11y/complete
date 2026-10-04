@@ -9,6 +9,7 @@ import {
 } from "../src/sim/seed-world.js";
 import { replayWorldLine } from "../src/sim/metric-series.js";
 import { buildPropagationInputs } from "../src/sim/propagation-inputs.js";
+import { specCellIndexFor, worldCellKeys } from "../src/sim/spec-cells.js";
 import {
   partitionPropagationRules,
   resolveSimScope,
@@ -139,6 +140,13 @@ async function censusWorldLines(t: TestApp, sessionId: string): Promise<{
   const engine = {
     graph: inputs.graph, ruleParams: inputs.ruleParams, cadenceGates: inputs.cadenceGates,
     pairWeights: inputs.pairWeights, stateVarDomains: inputs.stateVarDomains,
+    /**
+     * WO-3ROOT-P2 · D1：与生产 metric-series 路由**同一个**索引来源（`app.ts` 那一行一字不差）。
+     * ⛔ 少喂这一样 = 回放环拿 `undefined` 去 `.has()` ⇒ ⑤ 当场 `TypeError`（本单实测的现场，
+     * 就是这条：`spec-base-synthesis.ts` 的 `deps.specCells.has(...)`）。`published` 已经是
+     * 本函数上面那份 `listPropagationRules("demo", true)`，**同一份**规则集，不另取一次。
+     */
+    specCells: await specCellIndexFor(t.repos, "demo", worldCellKeys(published)),
     // C2 合成基值：路由喂的是 `s.baseSnapshot`（**不含扰动**），这里逐条对齐它 ——
     // 注意**不是**上面那个 `seed`（`/act` 直写过 tick0 时两者不同）。少喂一样 = 曲线与落盘世界分家。
     specBase: s.baseSnapshot,
