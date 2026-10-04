@@ -1,0 +1,58 @@
+BASE=http://127.0.0.1:4802/a/v1 TICK=60
+金丝雀⓪ 必然命中 customer_places_order = ✅（HTTP 200）
+金丝雀⓪′ 虚构链路 ___nope___ 命中 = 0 ✅
+会话 sims_5xd334a0dd9sdpgr HTTP=200 · Model 6 · Order 150
+
+── A2 · 域 forecastBias = [-100,100] rest=0 形状=严格内点:true ──
+  obj_model_2170-NCM 实测=1 重算=1 ✅
+  obj_model_4680-LFP 实测=88 重算=88 ✅
+  obj_model_4680-NCM 实测=50 重算=50 ✅
+  obj_model_圆柱-LFP 实测=88 重算=88 ✅
+  obj_model_方形-LFP 实测=8 重算=8 ✅
+  obj_model_方形-NCM 实测=79 重算=79 ✅
+✅ A2a 世界读数 == 进程内生产铸造器重算（逐值） · 6/6
+❌ A2b forecastBias 负数个数 ≥ 1（负半轴可达；PRD §4.3 预言 2 个负数） · 负数=0/6
+✅ A8 同种子两会话 baseSnapshot 逐字节相同
+
+引擎自报 λ(Order.demandPressure) = 0.37；−K/λ = -0.6（应 ≈ 0.6 ⇒ x* = base − 0.6·fb′）
+
+── 型号分组（由 c=k·fb 反解，不依赖链路 API）· 解析不到型号的 32 单 ──
+型号 | fb′(反解) | 带单数 | fb<0?
+obj_model_圆柱-LFP | 88 | 33 | 否
+obj_model_2170-NCM | 1 | 25 | 否
+obj_model_方形-LFP | 8 | 25 | 否
+obj_model_4680-NCM | 50 | 19 | 否
+obj_model_方形-NCM | 79 | 16 | 否
+(未对上表的 fb=4.5045) | 4.5045 | 5 | 否
+(未对上表的 fb=18.018) | 18.018 | 4 | 否
+(未对上表的 fb=45.045) | 45.045 | 3 | 否
+(未对上表的 fb=22.5225) | 22.5225 | 3 | 否
+(未对上表的 fb=85.5856) | 85.5856 | 3 | 否
+(未对上表的 fb=49.5495) | 49.5495 | 2 | 否
+(未对上表的 fb=63.0631) | 63.0631 | 2 | 否
+(未对上表的 fb=0) | 0 | 2 | 否
+(未对上表的 fb=27.027) | 27.027 | 1 | 否
+(未对上表的 fb=13.5135) | 13.5135 | 1 | 否
+(未对上表的 fb=76.5766) | 76.5766 | 1 | 否
+(未对上表的 fb=40.5405) | 40.5405 | 1 | 否
+(未对上表的 fb=72.0721) | 72.0721 | 1 | 否
+(未对上表的 fb=36.036) | 36.036 | 1 | 否
+(未对上表的 fb=81.0811) | 81.0811 | 1 | 否
+(未对上表的 fb=58.5586) | 58.5586 | 1 | 否
+
+推到 60 拍（最后一拍 HTTP=200，saturations 条目 1478；decayApplied 键 33 个：blockedPressure,changeoverPressure,collectionPressure,costPressure,defectPressure,deliveryHoldRisk）
+   域查表：Order.demandPressure = [0,100] rest=0；λ 门 = decayApplied.demandPressure = 0.37
+   saturations 样例：[{"objectId":"obj_base_changzhou","stateVar":"loadIndex","raw":97.392787519592,"value":86.812339330291,"bound":"max"},{"objectId":"obj_base_chengdu","stateVar":"loadIndex","raw":95.925720454646,"value":86.391068146286,"bound":"max"}]
+
+── A3 · 上穿基值(+0.01) 单数 = 0/150（PRD 期望 53/150）──
+   上穿按型号：
+   预言集按型号：
+✅ A3 集合等式 {上穿} == {fb′<0 的型号的单} · 只在实测不在预言=0 只在预言不在实测=0
+❌ A3 非退化（上穿集与预言集都非空） · 上穿=0 预言=0
+✅ A4 域内 58 单（PRD 期望 80）|实测 − (base − 0.6·fb′)| ≤ 0.01 · max|dev|=0 最差={"o":"obj_order_SO-900325","base":60,"fb":88,"T":7.200000000000003,"x":7.200000000049}
+
+── A7 · 末拍越出 [0,100] 的 Order.demandPressure 格 = 0 单（PRD 预言 T∈/域 70/150，实测域外 T 计 89）──
+   回执点名的 demandPressure 格 = 91 单；未被点名 = 0；点名了但实测不越域 = 91
+❌ A7 越域集合 == 回执点名集合（补写不静默）
+
+WORLD FAIL ❌（3 条红）

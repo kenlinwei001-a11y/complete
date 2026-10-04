@@ -1,0 +1,18 @@
+# P1P3-MERGE · 预言（写于取数之前 · 铁律 1.5 判据一）
+# 取数对象：合并树（P3 架构 + P1 铸造器）真后端实例
+# 依据：探针 A4 判据 T = base + (K/λ)·fb'，其中 fb' 由**第 1 拍**反解 c=x1−base, fb'=c/K。
+#      动力学（域内线性段）：x_{t+1} = (1−λ)x_t + c + λ·base   ⇒ x_t − x* = (1−λ)^t (base − x*)
+#      x* = base + c/λ ⇒ base − x* = −c/λ = −(K/λ)·fb' = 0.6·fb'
+#      ⇒ dev(N) = (1−λ)^N · 0.6·|fb'|   （λ=0.37 ⇒ 0.63^N）
+#      ⚠ 仅在**线性段**成立：Order.demandPressure 的 kneeHi = 100 − 100·SATURATION_BAND_FRACTION
+# 金丝雀（先证量法活着）：SO-900325 若仍在，base=60 fb=88 ⇒ 手算 dev = 0.63^20 × 52.8
+# 0.63^20 = 9.700865e-5 ; ×52.8 = 5.12206e-3
+[MERGE-A4-1] A4 max|dev| ≤ 0.01（绿）
+[MERGE-A4-2] 逐格 dev 与 (1−λ)^20·0.6·|fb'| 相符（线性段内 <1e-9 相对差）⇒ 残差=收敛瞬态，非仪器、非产品
+[MERGE-A4-3] SO-900325 的 dev = 0.005122062949（1e-12 内）；= 0.63^20 × 52.8
+[MERGE-A4-4] 反解 fb' 与 baseSnapshot.forecastBias **逐位相同**（150/150）⇒ 反解不引入残差
+[MERGE-A4-5] N=40 的 max|dev| ≈ 0.63^20 × (N=20 的 max|dev|)（收缩 9.70087e-5）
+[MERGE-A4-6] N=60 的 max|dev| < 1e-9
+[MERGE-A2b]  forecastBias 负数 ≥ 1（负半轴可达）
+[MERGE-A3 ]  上穿集非空 且 {上穿} == {fb'<0 的型号的单}（非退化）
+[MERGE-NODEV] 全 150 单里，dev 的中位数 << max（瞬态随 |fb| 成比例，不是单格孤立伪影）

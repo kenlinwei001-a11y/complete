@@ -1,0 +1,17 @@
+BASE=http://127.0.0.1:4801/a/v1 TICK=0
+金丝雀⓪ 必然命中 customer_places_order = ✅（HTTP 200）
+金丝雀⓪′ 虚构链路 ___nope___ 命中 = 0 ✅
+会话 sims_6p4ecg0sdxs08dv1 HTTP=200 · Model 6 · Order 150
+
+── A2 · 域 forecastBias = [-100,100] rest=0 形状=严格内点:true ──
+  obj_model_2170-NCM 实测=-98 重算=-98 ✅
+  obj_model_4680-LFP 实测=77 重算=77 ✅
+  obj_model_4680-NCM 实测=1 重算=1 ✅
+  obj_model_圆柱-LFP 实测=75 重算=75 ✅
+  obj_model_方形-LFP 实测=-85 重算=-85 ✅
+  obj_model_方形-NCM 实测=58 重算=58 ✅
+✅ A2a 世界读数 == 进程内生产铸造器重算（逐值） · 6/6
+✅ A2b forecastBias 负数个数 ≥ 1（负半轴可达；PRD §4.3 预言 2 个负数） · 负数=2/6
+✅ A8 同种子两会话 baseSnapshot 逐字节相同
+
+（TICK=0：只做 A2/A8；世界级 A3/A4/A7 需 TICK=20）
