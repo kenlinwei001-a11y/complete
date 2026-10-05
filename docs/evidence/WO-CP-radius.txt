@@ -1,0 +1,105 @@
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/agent-a21bdfa25dce6c509
+
+stdout | apps/datacore/test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 🔴 头号判据 · 对照实验：三个接线求解器 —— 同 (args,scope) 扰动前 vs 扰动+tick4 后，回包必须**真的不同**
+[contrast] solver=risk_timeline before=be6d4755b5ae530a after=14b4cb076d57e509 equal=false
+
+stdout | apps/datacore/test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 🔴 头号判据 · 对照实验：三个接线求解器 —— 同 (args,scope) 扰动前 vs 扰动+tick4 后，回包必须**真的不同**
+[contrast] solver=capacity_forecast before=021bd0cd61cbff76 after=7c3e5b018115400b equal=false
+
+stdout | apps/datacore/test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 🔴 头号判据 · 对照实验：三个接线求解器 —— 同 (args,scope) 扰动前 vs 扰动+tick4 后，回包必须**真的不同**
+[contrast] solver=affected_orders before=517c2be6c07bcf08 after=78bd025d52f3ee23 equal=false
+
+stdout | apps/datacore/test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > R6 兼容：不传 worldId ⇒ 无 worldState 键且两跑逐字节相同；零压力世界 ⇒ 剥披露键后与真值口径逐字节相同
+[r6-truth] solver=risk_timeline truth=ce528331f0d1bd04
+
+stdout | apps/datacore/test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > R6 兼容：不传 worldId ⇒ 无 worldState 键且两跑逐字节相同；零压力世界 ⇒ 剥披露键后与真值口径逐字节相同
+[r6-truth] solver=capacity_forecast truth=7dcd0ae3e26c6b1a
+
+stdout | apps/datacore/test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > R6 兼容：不传 worldId ⇒ 无 worldState 键且两跑逐字节相同；零压力世界 ⇒ 剥披露键后与真值口径逐字节相同
+[r6-truth] solver=affected_orders truth=74d4c6f474667cb1
+
+ ❯ apps/datacore/test/worldstate-surface.seam.test.ts (8 tests | 1 failed) 240426ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 金丝雀：种子/传导规则/求解器注册/白名单表四样都在（任一不在 ⇒ 后面读不出坏了还是真没变）  31263ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 🔴 头号判据 · 对照实验：三个接线求解器 —— 同 (args,scope) 扰动前 vs 扰动+tick4 后，回包必须**真的不同**  40744ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > R6 兼容：不传 worldId ⇒ 无 worldState 键且两跑逐字节相同；零压力世界 ⇒ 剥披露键后与真值口径逐字节相同  42555ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 闸① 白名单外：capacity_rollup 传 worldId（含幽灵 id）⇒ 机制够不着它（无 worldState 键·与真值口径逐字节相同）  23272ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 闸③ 不静默回落：幽灵 worldId ⇒ 404；跨租户 worldId ⇒ 404；空串 worldId ⇒ 400（金丝雀：同 key 真世界 200）  25020ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 空世界诚实：worldObjects=0 + note 明说「未发生世界隔离」，数值仍给且等于真值口径  25658ms
+   × WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 披露块可复核：sessionId/tick/source/divisor/rules/applied/unconsumed/agentInvolved 齐全，demandLoad 诚实进 unconsumed 25080ms
+     → applied 里找不到 utilPressure→capacityDaily 的 PROJECTED 格 ⇒ 产能投影没落点: expected undefined to be defined
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 世界内 R6：同 (worldId, tick) 两跑逐字节相同（含 worldState 披露键）  26829ms
+ ❯ apps/datacore/test/finance-worldstate.seam.test.ts (12 tests | 3 failed) 270216ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 金丝雀：链路/种子/求解器三样都在（任一不在 ⇒ 后面的『没变化』读不出是坏了还是真没变）  28314ms
+   × WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 头号判据 · SEAM：真扰动 → 真 tick → 金额**真的变了**，且方向与压力一致 27486ms
+     → expected 581.102238 to be close to 581.21, received difference is 0.10776199999997971, but expected 5e-7
+   × WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 现金半同样真的动：应收压力 → 应收投影↑ / 逾期压力 → 逾期敞口↑（逐张发票用真 amount） 32459ms
+     → expected 160802 not to be 160802 // Object.is equality
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 反向判据 · R6 确定性：不施加任何扰动 ⇒ 两次调用**逐字节相同**  27851ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 R6 跨 tick 也确定：同一个 tick 上重复跑字节一致，且 tick 推进后金额单调不回头  20794ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 口径常驻：basis / chain / provenance 三样一起下发（缺一样这个金额就不可复核）  23121ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 诚实缺席：世界态为空 ⇒ available:false + 原因（**不给一个不动的 0**）  22369ms
+   × WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 回落分支真被驱动：tick 态行缺失 ⇒ 读 baseSnapshot 并据实标 BASE_SNAPSHOT（不是默默当空世界） 23450ms
+     → expected 0 to be greater than 0
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > R2 隔离 + 入参纪律：别人的世界 404；不给 worldId 显式 400（不静默回落到本体真值口径）  19101ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 本体签名实跑比对：真读到的类型/属性都在 SOLVER_ONTOLOGY_SIGNATURES 声明内（漏声明即红）  19517ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 分层不重复：`finance_pnl` 保持「本体真值口径」（施加扰动它照样不动，这是它的正确行为）  12204ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 SEAM：贵料 vs 边角料涨同样的价 —— 下游压力之比 == 两者在该型号 BOM 里的成本之比  13544ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  apps/datacore/test/finance-worldstate.seam.test.ts > WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 头号判据 · SEAM：真扰动 → 真 tick → 金额**真的变了**，且方向与压力一致
+AssertionError: expected 581.102238 to be close to 581.21, received difference is 0.10776199999997971, but expected 5e-7
+ ❯ apps/datacore/test/finance-worldstate.seam.test.ts:189:33
+    187|     //    写成恒等式而不是写死一个数 —— 写死等于赌种子不变，种子一改这条测试就在测别的东西。
+    188|     const expectCogs = Math.round(cogsAfter.rolling * (1 + pressureAft…
+    189|     expect(cogsAfter.projected).toBeCloseTo(expectCogs, 6);
+       |                                 ^
+    190|     // ⑤ 基线**没被动过**（R4：投影不写回本体真值）
+    191|     expect(cogsAfter.rolling).toBe(cogsBefore.rolling);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  apps/datacore/test/finance-worldstate.seam.test.ts > WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 现金半同样真的动：应收压力 → 应收投影↑ / 逾期压力 → 逾期敞口↑（逐张发票用真 amount）
+AssertionError: expected 160802 not to be 160802 // Object.is equality
+ ❯ apps/datacore/test/finance-worldstate.seam.test.ts:228:40
+    226|     expect(pressureOf(after, "overduePressure").value).toBeGreaterThan…
+    227|     // 金额真的不同 + 方向一致
+    228|     expect(after.cash.arProjected).not.toBe(before.cash.arProjected);
+       |                                        ^
+    229|     expect(after.cash.arProjected).toBeGreaterThan(before.cash.arProje…
+    230|     expect(after.cash.arDelta).toBeGreaterThan(0);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  apps/datacore/test/finance-worldstate.seam.test.ts > WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 回落分支真被驱动：tick 态行缺失 ⇒ 读 baseSnapshot 并据实标 BASE_SNAPSHOT（不是默默当空世界）
+AssertionError: expected 0 to be greater than 0
+ ❯ apps/datacore/test/finance-worldstate.seam.test.ts:397:39
+    395|     // 回落读到的态**真的被用了**（不是读了个寂寞）：成本压力非 0 ⇒ 金额真的动。
+    396|     expect(pressureOf(out, "costPressure").value).toBeGreaterThan(0);
+    397|     expect(lineOf(out, "COST").delta).toBeGreaterThan(0);
+       |                                       ^
+    398|   });
+    399| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  apps/datacore/test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 披露块可复核：sessionId/tick/source/divisor/rules/applied/unconsumed/agentInvolved 齐全，demandLoad 诚实进 unconsumed
+AssertionError: applied 里找不到 utilPressure→capacityDaily 的 PROJECTED 格 ⇒ 产能投影没落点: expected undefined to be defined
+ ❯ apps/datacore/test/worldstate-surface.seam.test.ts:358:88
+    356|     // 产能投影真的落在 Line.capacityDaily 上（capacity 词库落点）：
+    357|     const capCell = ws.applied.find((a) => a.stateVar === "utilPressur…
+    358|     expect(capCell, "applied 里找不到 utilPressure→capacityDaily 的 PROJECT…
+       |                                                                                        ^
+    359|     expect(capCell!.after).toBeLessThan(capCell!.before); // 利用率压力 ⇒ 可…
+    360|     // 诚实缺席：demandLoad 在世界态里但没有投影规则 ⇒ 必须进 unconsumed（不许留白让人以为没压力）。
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  4 failed | 16 passed (20)
+   Start at  12:22:26
+   Duration  289.27s (transform 10.24s, setup 0ms, collect 35.18s, tests 510.64s, environment 0ms, prepare 999ms)
+
+CAPTURED_RC=1

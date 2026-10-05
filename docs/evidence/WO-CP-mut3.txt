@@ -1,0 +1,82 @@
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/agent-a21bdfa25dce6c509
+
+stdout | apps/datacore/test/deviation-read.seam.test.ts > 落点 (b) · 消费端按率读口吃「偏离」 > §1 名单封闭：真读点 ⊆ 声明名单 ⊆ 已声明域（双向 + 双向金丝雀）
+§1 真读点（world-read 声明表）：costPressure,demandPressure,loadIndex,utilPressure
+§1 真读点（finance-world 实参字面量）：costPressure,overduePressure,receivablePressure
+§1 声明名单：costPressure,demandPressure,loadIndex,overduePressure,receivablePressure,utilPressure
+
+stdout | apps/datacore/test/deviation-read.seam.test.ts > 落点 (b) · 消费端按率读口吃「偏离」 > §2/§3 零扰动 ⇒ 金额逐字节等于基线；有扰动 ⇒ 金额必须动（对照实验）
+§2 世界态逐字节不变：cells=6375 sha256=e1c50f756f8c535f → e1c50f756f8c535f
+§2 零扰动：REVENUE 700→700 COST 581.1→714.966044 MARGIN 118.9→-14.966044 静息缺席=0
+§2 水平读数（面 C）：costPressure=23.036662 receivablePressure=33.221152 overduePressure=0
+§2 金额实际吃的偏离：cost=23.036662
+
+stdout | apps/datacore/test/deviation-read.seam.test.ts > 落点 (b) · 消费端按率读口吃「偏离」 > §2/§3 零扰动 ⇒ 金额逐字节等于基线；有扰动 ⇒ 金额必须动（对照实验）
+§3 Δ+1000：REVENUE 700→700 COST 581.1→721.901936 MARGIN 118.9→-21.901936 静息缺席=0
+§3 Δ+1000 水平读数（面 C）：costPressure=24.230242 receivablePressure=55.541746 overduePressure=10.02504
+§3 Δ+1000 金额实际吃的偏离：cost=24.230242
+
+stdout | apps/datacore/test/deviation-read.seam.test.ts > 落点 (b) · 消费端按率读口吃「偏离」 > §2/§3 零扰动 ⇒ 金额逐字节等于基线；有扰动 ⇒ 金额必须动（对照实验）
+§3 Δ-3：REVENUE 700→700 COST 581.1→712.17482 MARGIN 118.9→-12.17482 静息缺席=0
+§3 Δ-3 水平读数（面 C）：costPressure=22.556328 receivablePressure=55.075625 overduePressure=10.02504
+§3 Δ-3 金额实际吃的偏离：cost=22.556328
+
+stdout | apps/datacore/test/deviation-read.seam.test.ts > 落点 (b) · 消费端按率读口吃「偏离」 > §5 现金半对照臂：有静息点 ⇒ 金额真的动；无静息点 ⇒ 金额纹丝不动但逐格点名
+§5 臂①（无静息点）：水平读数 receivablePressure=3.195333（承载 12）· 应收 165940.15984（基线 160802）· 静息缺席 48 格
+
+ ❯ apps/datacore/test/deviation-read.seam.test.ts (4 tests | 2 failed) 80665ms
+   ✓ 落点 (b) · 消费端按率读口吃「偏离」 > §1 名单封闭：真读点 ⊆ 声明名单 ⊆ 已声明域（双向 + 双向金丝雀） 32ms
+   × 落点 (b) · 消费端按率读口吃「偏离」 > §2/§3 零扰动 ⇒ 金额逐字节等于基线；有扰动 ⇒ 金额必须动（对照实验） 49338ms
+     → 零扰动下成本偏离必须为 0（成本不许自己涨）: expected 714.966044 to be 581.1 // Object.is equality
+   × 落点 (b) · 消费端按率读口吃「偏离」 > §5 现金半对照臂：有静息点 ⇒ 金额真的动；无静息点 ⇒ 金额纹丝不动但逐格点名 31292ms
+     → 无静息点 ⇒ 应收投影一格都不许动（⛔ 既不许拿水平当偏离，也不许静默按偏离 0 乘）: expected 165940.15984 to be 160802 // Object.is equality
+   ✓ 落点 (b) · 消费端按率读口吃「偏离」 > §4 静息值取不到 ⇒ 不退回 0，逐格点名（单元级） 2ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  apps/datacore/test/deviation-read.seam.test.ts > 落点 (b) · 消费端按率读口吃「偏离」 > §2/§3 零扰动 ⇒ 金额逐字节等于基线；有扰动 ⇒ 金额必须动（对照实验）
+AssertionError: 零扰动下成本偏离必须为 0（成本不许自己涨）: expected 714.966044 to be 581.1 // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 581.1[39m
+[31m+ 714.966044[39m
+
+ ❯ apps/datacore/test/deviation-read.seam.test.ts:285:52
+    283|     // 「改前 × 三臂」的全部读数，不必为了看数去放宽某条断言。
+    284|     // 偏离为 0 ⇒ 因子 1 ⇒ 金额**逐字节**等于基线（这就是病：修前是 118.9 → −20.72）
+    285|     expect(zc.projected, "零扰动下成本偏离必须为 0（成本不许自己涨）").toBe(zc.rolling);
+       |                                                    ^
+    286|     expect(zm.projected, "零扰动下毛利必须等于基线（修前 118.9 → −20.72 就是它）").toBe(z…
+    287|     // ⛔ 下面这条是防 (b) 把金额投影改死：只用 §2 的话，「恒等于基线」也能全绿。
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  apps/datacore/test/deviation-read.seam.test.ts > 落点 (b) · 消费端按率读口吃「偏离」 > §5 现金半对照臂：有静息点 ⇒ 金额真的动；无静息点 ⇒ 金额纹丝不动但逐格点名
+AssertionError: 无静息点 ⇒ 应收投影一格都不许动（⛔ 既不许拿水平当偏离，也不许静默按偏离 0 乘）: expected 165940.15984 to be 160802 // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 160802[39m
+[31m+ 165940.15984[39m
+
+ ❯ apps/datacore/test/deviation-read.seam.test.ts:352:7
+    350|       a.d.cash.arProjected,
+    351|       "无静息点 ⇒ 应收投影一格都不许动（⛔ 既不许拿水平当偏离，也不许静默按偏离 0 乘）",
+    352|     ).toBe(a.d.cash.arBaseline);
+       |       ^
+    353| 
+    354|     // ── 臂②「有静息点」：同一扰动、同一条链，唯一差别是把承载体播上静息点 ⇒ 金额必须真的动。
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 2 passed (4)
+   Start at  13:06:40
+   Duration  104.20s (transform 12.28s, setup 0ms, collect 21.01s, tests 80.67s, environment 0ms, prepare 332ms)
+
+CAPTURED_RC=1

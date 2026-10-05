@@ -1,0 +1,12 @@
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/agent-a21bdfa25dce6c509
+
+ ✓ apps/datacore/test/worldstate-surface.seam.test.ts (8 tests | 7 skipped) 47349ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 披露块可复核：sessionId/tick/source/divisor/rules/applied/unconsumed/agentInvolved 齐全，demandLoad 诚实进 unconsumed  47347ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 7 skipped (8)
+   Start at  13:03:23
+   Duration  86.87s (transform 20.62s, setup 0ms, collect 35.54s, tests 47.35s, environment 0ms, prepare 1.15s)
+
+CAPTURED_RC=0

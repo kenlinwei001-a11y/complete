@@ -209,6 +209,12 @@
 | `receivablePressure` | `finance-world` §② | ✓ | 0 |
 | `overduePressure` | `finance-world` §③ | ✓ | 0 |
 
+⚠ **「有读点」是结构性的**（扫描规则表 + 调用实参字面量），**不度量「运行时真的触发过」**。
+运行时已证触发的是：`costPressure`（接缝门 §2/§3）、`receivablePressure` / `overduePressure`（接缝门 §5 臂②，
+36 张发票承载）、`demandPressure`（`worldstate-surface` 的 `demandPressure→qty` 格）。
+`loadIndex` / `utilPressure` **本档未取到运行时触发的读数**（缩小世界里的 utilPressure 恰好是「静息值取不到」那一档）
+—— 如实标 **NOT-MEASURED**，⛔ 不拿「有读点」当「触发过」。
+
 **金丝雀（双向，⛔ 缺一条即为装饰品）**：正向 —— 扫描器从 `deviationOf(x,"T","overduePressure")`
 取到 `["overduePressure"]`；反向 —— **只出现在注释里**的 `// deviationOf(x,"T","loadIndex")` 取出 `[]`。
 读点集合由**结构性来源**算出（规则表 + 调用实参字面量），⛔ 不是手写台账。
@@ -245,3 +251,109 @@
 
 - 面 D **屏上文字**仍 2 位小数（§7.8）—— 后端 6 位白下发，前端 `fmtMoney` 截到百万级。
 - 12 条红未改（§7.6）—— 其中 5 条 `turn-loop` 的「接手断言」**未写**。
+
+---
+
+## 9 · 落点 (b) 的配套：3 条新红逐条钉机制 + 判据重写 + 变异反证
+
+### 9.0 红数对照（同一批文件、同一套参数 `--testTimeout=300000 --maxWorkers=2`）
+
+| 时刻 | 命令 | 读数 | 证据 |
+|---|---|---|---|
+| **(b) 之前** | 2 文件批（`finance-worldstate` + `worldstate-surface`） | **1 failed \| 19 passed** | `docs/evidence/WO-CP-radius-PREB.txt`（同名 `.rc`=1） |
+| **(b) 之后，未改判据** | 同上 2 文件 | **4 failed \| 16 passed** | `docs/evidence/WO-CP-radius.txt`（同名 `.rc`=1） |
+| **(b) 之后，判据重写** | 3 文件批（+ 接缝门 §5） | **`3 passed (3)` / `24 passed (24)`** | `docs/evidence/WO-CP-final.txt`（同名 `.rc`=0） |
+
+⇒ **(b) 新造成的红是 3 条**，另 1 条在 (b) 之前就红（本单的金额精度 2→6 位带来的，见 ①）。
+
+### 9.1 ① `finance-worldstate:189`（头号判据的身份式）—— **(b) 之前就红，红在测试自己**
+
+原文：`const expectCogs = Math.round(rolling × (1 + pressureAfter.value / divisor) × 100) / 100;`
+—— 拿面 C 的**水平**读数复算，而且**测试自己圆整到 2 位**，生产已改六位 `money()`。
+
+- (b) 之前实测：`expected 581.214705 to be close to 581.21`（差 0.0047 = 那两位圆整）
+- (b) 之后实测：`expected 581.102238 to be close to 581.21`
+
+⇒ **不是 (b) 引入的红**（`WO-CP-radius-PREB.txt` 为证），但它也不是「与本单无关」：
+根因是本单交付 #3（金额精度 2→6 位）改了生产位宽而测试的圆整没跟着改。
+
+**判据重写**：不再从面 C 的水平读数复算，改为**从世界态复算本用例唯一播了静息点那张单的偏离**
+（`worldCellOf`），并加三条：金丝雀（该格真的偏离了）、`impliedDev < cellDev`（分母是全域 ⇒ 必被稀释）、
+`impliedDev ≉ pressureAfter.value`（金额吃的不是面 C 那个水平读数 —— **这条在改前会红**）。
+
+### 9.2 ② `finance-worldstate:228`（现金半）—— **探针①实测机制：静息值取不到**
+
+fixture 手写的 `baseSnapshot` 只有 2 格（`{[materialId]:{priceShock:0}, [orderId]:{costPressure:0}}`），
+而 tick5 的世界态里 `Customer.receivablePressure = 0.308777` ⇒ **有格、无静息值** ⇒ 偏离算不出 ⇒
+现金半**不消费**它 ⇒ 应收投影停在基线。探针①（`docs/evidence/WO-CP-probe-cash.txt`，同名 `.rc`=0）实测缺席 117 条：
+`69 costPressure/Order` + `36 overduePressure/ARInvoice` + `12 receivablePressure/Customer`。
+
+⚠ 这是**缩小 fixture** 与生产世界的差异，不是引擎缺陷：生产的 `deriveSeedBaseSnapshot` 把
+(类型 × stateVar) 的格**全播**（真服务三臂 `unresolvedRestPoints` 整键缺席，§8.4 已实测）。
+
+**判据重写**：把该客户与名下发票的静息点**播进会话**；并加两条前提金丝雀（链上有 `customer_has_invoice` 边、
+该客户名下发票数 > 0），外加「播过静息点的格一条都不许进缺席表」。
+
+### 9.3 ③ `finance-worldstate:397`（回落分支）—— **(b) 之后的新语义是对的**
+
+回落分支下 `worldState === world.baseSnapshot` ⇒ 每格偏离**恰好 0**（是「量到了 0」，不是「取不到」）
+⇒ 金额**必须等于**基线，且 `unresolvedRestPoints` **必须缺席**。
+旧断言 `delta > 0` 是把「水平非 0」当成「有效」——正是本单的病。
+**判据重写**：`out.unresolvedRestPoints === undefined` + `projected === rolling` + `delta === 0`；
+水平读数 > 0 保留为**病的指纹**（改前它会把金额推离基线）。
+
+### 9.4 ④ `worldstate-surface:358`（utilPressure 产能投影）—— **探针②实测机制：格在，静息值不在**
+
+探针②（同 `docs/evidence/WO-CP-probe-cash.txt`）实测：tick0 与快照里 `utilPressure` 格数 = **0**，
+世界态在 tick4 才出现一格 `Line.utilPressure = 0.006101188991`（快照里无对应格）⇒
+**不消费**（与改前逐字节同：改前那格 `raw === 0` 的判断结构相同）、逐格进 `unresolvedRestPoints`、不进 `applied`。
+
+**判据重写**：`unresolvedRestPoints` 必须有 utilPressure 条目 + 同一份回包里的 `unconsumed.carriers > 0` 金丝雀 +
+第三档理由**可分辨**（正向：含「取不到」「静息值」「不按 0 算」；反向：另两档的标记语一个都不许出现）+ 不得进 `applied`。
+
+### 9.5 顺带发现并修掉的**披露缺陷**（与本单同族：披露与读数不一致）
+
+`lines[].formula` 的 COST 行原先插 `costAgg.value`（**水平** 0.146429）而 `projected` 吃的是**偏离**
+⇒ 公式**复算不出它自己的数**（`581.1 ×（1 + 0.146429 ÷ 100）= 581.116599` ≠ projected，差 0.83 亿）。
+`cash.formula` 同步改为「按偏离；静息值取不到按因子 1 并逐格进 `unresolvedRestPoints`」。
+先例：落点 (b) 本身已让 `world-read` 的 `rawValue` 记**实际被消费的那个读数**。
+
+### 9.6 接缝门 §5 新增：现金半对照臂（有/无静息点）
+
+| 臂 | 水平读数（面 C） | 应收投影 | 逾期敞口 | 缺席表 |
+|---|---|---|---|---|
+| ① 世界有格、快照**无**静息点 | `receivablePressure = 3.195333`（承载 12） | **160802 == 基线** | 0 | **48 格**（12 应收 + 36 逾期） |
+| ② 同源同扰动 + **播上**静息点 | 同上 | **161209.578106**（> 基线 160802） | **22.605055**（承载发票 36） | 播过的格 0 条 |
+
+两臂同源同扰动，**唯一差别是「静息点在不在」**；`invoiceUniverse` 相等（否则比的是两个世界）。
+⚠ 拍数 **5** 不是随手拍的：`demo_customer_receivable_to_invoice_overdue` 这条边 `delayTicks: 1`
+（seed.ts 原文「逾期是账期到了才显形」），3 拍时发票格**尚未显形** ⇒ 逾期敞口恒 0 会读出**假红**（实测过一次）。
+
+### 9.7 变异反证（把三处金额改回水平）
+
+`cp` 备份（`sha256 4971235288bed36d7b052f4afbd08f4f8184dab93450025e4c9ab6d9fed1227c`）→ 改三处 →
+**自证已落下**：`MUTATION-MARKER` 命中 **3/3**、`git diff --stat` = `3 insertions(+), 3 deletions(-)`：
+
+| # | 位置 | 变异后 |
+|---|---|---|
+| A | `finance-world.ts` 成本因子 | `1 + costAgg.value / divisor`（水平） |
+| B | 应收投影 | `(stateOf(worldState, cid, "receivablePressure") ?? 0)` |
+| C | 逾期敞口 | `(stateOf(worldState, inv.id, "overduePressure") ?? 0)` |
+
+跑接缝门 ⇒ **2 failed \| 2 passed**（`docs/evidence/WO-CP-mut3.txt`，同名 `.rc`=1）：
+- §2/§3 红在 `零扰动下成本偏离必须为 0: expected 714.966044 to be 581.1` —— **病的指纹**；
+- §5 臂① 红在 `无静息点 ⇒ 应收投影一格都不许动: expected 165940.15984 to be 160802` ——
+  **改前它把水平当偏离乘进金额**，这正是 (b) 关掉的那条路。
+
+**还原**：`cp` 回写 ⇒ `git diff` 空 + 两侧 `sha256` 相同 + 标记残留 **0**（⛔ 未用 `git checkout`）。
+
+### 9.8 稀释口径的诚实提醒（⛔ 别读成「(b) 没生效」）
+
+`aggregatePressure` 的分母是**全域**（500 张单），不是承载集。世界态里只有一格偏离时，
+隐含偏离被稀释（接缝门 §4 ④ 的 `impliedDev < cellDev` 就是咬这个）。这是刻意的口径
+（「10 张单里 1 张涨价」不该报成全域涨价），但它意味着**缩小 fixture 世界里金额位移很小**；
+生产世界（派生快照把 (类型 × stateVar) 全播）才有满额位移。
+⇒ 判据要落在**够不够格**上（有静息点 ⇒ 一动就有位移），⛔ 不是落在位移的绝对大小上。
+
+`unresolvedRestPoints` 是**可选键**、一格不缺时整键缺席 ⇒ **「键缺席」不度量「没有取不到的情况」**；
+要读「有没有取不到」，得配合同一份回包里的 `unconsumed[].reason` 第三档或 `carriers`。

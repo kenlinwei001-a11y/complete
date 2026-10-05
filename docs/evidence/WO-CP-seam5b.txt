@@ -1,0 +1,18 @@
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/agent-a21bdfa25dce6c509
+
+stdout | apps/datacore/test/deviation-read.seam.test.ts > 落点 (b) · 消费端按率读口吃「偏离」 > §5 现金半对照臂：有静息点 ⇒ 金额真的动；无静息点 ⇒ 金额纹丝不动但逐格点名
+§5 臂①（无静息点）：水平读数 receivablePressure=3.195333（承载 12）· 应收 160802（基线 160802）· 静息缺席 48 格
+
+stdout | apps/datacore/test/deviation-read.seam.test.ts > 落点 (b) · 消费端按率读口吃「偏离」 > §5 现金半对照臂：有静息点 ⇒ 金额真的动；无静息点 ⇒ 金额纹丝不动但逐格点名
+§5 臂②（有静息点）：应收 161209.578106（基线 160802）· 逾期敞口 22.605055（承载发票 36）· 播过静息点的格进缺席表 0
+
+ ✓ apps/datacore/test/deviation-read.seam.test.ts (4 tests | 3 skipped) 29125ms
+   ✓ 落点 (b) · 消费端按率读口吃「偏离」 > §5 现金半对照臂：有静息点 ⇒ 金额真的动；无静息点 ⇒ 金额纹丝不动但逐格点名  29123ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 3 skipped (4)
+   Start at  12:52:12
+   Duration  54.77s (transform 12.74s, setup 0ms, collect 22.47s, tests 29.13s, environment 0ms, prepare 711ms)
+
+CAPTURED_RC=0
