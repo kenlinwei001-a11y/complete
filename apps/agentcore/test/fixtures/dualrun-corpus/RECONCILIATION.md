@@ -12,7 +12,10 @@
   + `dcp:llmp_stub:kimi-k3` spec）；native 臂 = ScriptedLlmClient 队列剧本。
   **mock-llm 剧本外置化（蓝图 changes #1）已裁决撤销**，本层零 product 改动。
 - dsh 臂 **meta-tools only**（裁决）：生产档零真工具插件，scoped 世界可用 =
-  final_answer（恒）+ load_skill（挂技能时）。语料剧本只用这两件 + 纯文本轮。
+  final_answer（恒）+ **`skill`**（挂技能时）。语料剧本只用这两件 + 纯文本轮。
+  **（P2A 换名 2026-10-05：旧 hand-rolled `load_skill` 已摘除，dsh 臂加载器 = 上游
+  `@deepseek-ai/dsh-tool-skill` 的 `skill`，工具名不可配、入参 `{name}` = setup-spec 的
+  `dshName`（key 下划线换横线）；native 臂仍是我方 `load_skill`/`{skillId}` —— 两臂名不同。）**
   **（W8.5 加注 2026-08-24：dr50-cm 起例外——该任务 agent 挂 WORKFLOW ref，dsh 臂经
   W8.5 反向通道（hostWorkflowTools 下发 ⇒ harness 注册反向工具 ⇒ tool-execute 端点
   kind:"workflow" ⇒ 宿主 runWorkflowAsTool）真调 workflow 工具，driver 对该任务 dsh 臂
@@ -89,9 +92,9 @@ rejects 同通道，engine 出口 FAILED + 「dsh 重组装拒绝：…」既有
 
 ### A3 · SSE 事件名序列
 N2 形态继承：双臂 emit 序列（测试镜像 orchestrator:2187 补 answer.final）→ 剥 answer.final
-stats 键 → 滤收缩白名单（ALLOWED_PSEUDO_TYPES 去 final_answer/load_skill）→ 逐项相等；
+stats 键 → 滤收缩白名单（ALLOWED_PSEUDO_TYPES 去 final_answer/skill）→ 逐项相等；
 差集实际项 ⊆ ALLOWED_PSEUDO_TYPES（反向咬白名单不膨胀）；事件名 ⊆ KNOWN_EVENTS 十名。
-meta-only 语料下两臂非伪步序列均空（load_skill/final_answer 两臂同不产 step 事件）——
+meta-only 语料下两臂非伪步序列均空（skill/final_answer 两臂同不产 step 事件）——
 本面价值 = 50 任务扫频下零意外事件泄漏 + 白名单反咬；真工具 SSE parity 物理不可达
 （dsh 臂无真工具），登记为固有不对称 #3 的推论。
 **（W8.5 加注 2026-08-24：dr50-cm 起真工具 SSE 进入对账——nested workflow 步事件
@@ -122,7 +125,7 @@ native 必不产），剥除面锁死 workflow 语料任务。）**
 | agent_think（step.completed 伪步族） | **真触发**：dr50-ck（dsh 臂 reasoning-delta 流式透传，stub reasoning 通道确定性触发；白名单差集项；native 臂 loop.ts 无 agent_think 发射点） |
 | compaction（step.started/step.completed 伪步族） | harness 内部决策·剧本面无确定性触发通道（压缩由子进程上下文压力触发；mapper 三分支由 N2 A6b + N2-A3/A4 黄金帧单测钉死） |
 | final_answer（meta 伪步族） | meta-skip 销账项·绿态恒不出现（D-7 双臂同不产 meta 步事件；出现即差集反咬 + 收缩过滤后序列不等 ⇒ M10 咬点） |
-| load_skill（meta 伪步族） | meta-skip 销账项·绿态恒不出现（同上行口径） |
+| skill（meta 伪步族） | meta-skip 销账项·绿态恒不出现（同上行口径）。**P2A 换名 2026-10-05**：本行名 = 帧流侧真名（dsh 臂 `skill`，上游常量）；旧行名 `load_skill` 是已摘除的 hand-rolled dsh 工具名。守它的东西一并换名 = `reassemble.ts` `META_TOOL_NAMES`（写回旧名 ⇒ 本族立刻可达：帧流泄漏 step.started:skill + step.completed:，差集白名单含 `skill` 放行、收缩过滤滤不掉 ⇒ 序列不等红） |
 
 ### A4 · 审计逐字段（重定义口径）
 逐字段对账 AgentRunRecord：
