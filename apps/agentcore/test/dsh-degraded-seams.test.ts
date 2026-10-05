@@ -88,6 +88,13 @@ function roleAgentVariant(): AgentDefinition {
     ...seed!,
     model: STUB_DCP_SPEC, // 裁决 A：post-N1 engine 分叉强制 dcp spec（裸模型名 resolveConnectionFacts 诚实抛）
     tools: [{ kind: "BUILTIN", name: "echo_tool" }],
+    // ⚠ 必须显式清空：本变体是 seed 拷贝，而 seed 的供应链 agent 现在挂着求解器 MCP 挂载行
+    // （WO-SOLVERS-MCP-REAL），本测试又**不播种** mcp 配置行 ⇒ 不清空会走 engine 的
+    // `throw new Error("dsh mcp forward: mcp config not found: …")`，任务直接 FAILED
+    // （实测 2026-10-06：本文件 A1 红、status=FAILED、error.code=AGENT_ERROR）。
+    // 生产不受影响（main.ts:33 播种 seedMcpConfigs）；本缝（STALL_LOOP 降级帧）与 MCP 无关，
+    // 变体本就已把 tools/scopeDeclaration 削成 echo_tool，挂载面同理。
+    mcpServers: [],
     scopeDeclaration: { ...seed!.scopeDeclaration, toolNames: ["echo_tool"] },
   };
 }
