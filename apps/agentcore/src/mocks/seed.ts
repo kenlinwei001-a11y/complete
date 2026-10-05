@@ -1481,11 +1481,26 @@ export function seedRegistry(now = new Date().toISOString()): {
         "【对口能力】优先调用 invoke_solver（产能校核/可行性）；涉及排产/优化必须调 solver，不自己算。",
         "【交卷】按 结论/分析/证据/建议/风险 组织，业务数字一律 ⟦ref:N⟧。",
       ].join("\n"),
-      tools: [{ kind: "BUILTIN", name: "query_objects" }, { kind: "BUILTIN", name: "invoke_solver" }, { kind: "WORKFLOW", workflowId: "wf_seed_capacity", version: "latest" }],
+      // WO-DSH-RESOURCE-REACH · 切片两件套授予面：此前本 agent 的授予集只有 query_objects/
+      // invoke_solver/wf_seed_capacity ⇒ plan_slice/resolve_slice 在两个内核上都**不可见**，
+      // 不是通道缺口是没授予（反向通道对切片无特殊分支，见 engine.ts hostTools 通用筛）。
+      // 语义对口：需求增量评估要先跨 Model→Line→Base→Order 取证（plan_slice 动态规划），
+      // 或直接吃预置视图（resolve_slice）；两者互为上下游（plan_slice 产出的 sliceKey 供
+      // resolve_slice 消费，registry.ts:46/:63 同族 descriptionForLLM 自述）。
+      tools: [
+        { kind: "BUILTIN", name: "query_objects" },
+        { kind: "BUILTIN", name: "invoke_solver" },
+        { kind: "BUILTIN", name: "plan_slice" },
+        { kind: "BUILTIN", name: "resolve_slice" },
+        { kind: "WORKFLOW", workflowId: "wf_seed_capacity", version: "latest" },
+      ],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
       skills: [{ skillId: "skl_seed_capacity", version: "latest" }],
       mcpServers: [],
-      scopeDeclaration: { objectTypes: ["Base", "Line", "Model", "Order"], toolNames: ["query_objects", "invoke_solver"] },
+      // scopeDeclaration 是**声明面**（治理网桥 scopeObjectTypes + DRIL 投影读它），
+      // 与授予面同步改——engine.ts「显式配置的工具绝不应被自身 scope 门拒」的并集规则
+      // 虽已兜底，但声明面漏列会让对外能力画像少报这两件。
+      scopeDeclaration: { objectTypes: ["Base", "Line", "Model", "Order"], toolNames: ["query_objects", "invoke_solver", "plan_slice", "resolve_slice"] },
       budget: { maxIterations: 8, maxToolCalls: 10 },
       status: "DRAFT",
       role: "production", // WO-FIVE-ROLE P1：生产角色 agent（产能/产线/工序·Line/Process/Model 域）。
