@@ -188,7 +188,13 @@ try {
 
   // ── A10 终态闭环验证（L4 真后端）：建域并记入历史(sbr-run,自动展开) → 重跑验证按钮 → 终态徽章 ──
   await page.click("[data-testid=sbr-run]").catch(() => {});
-  await page.waitForTimeout(5000); // 真后端建域(floor comprehend + 闭包 + 物化 + 自动验证)
+  // ⚠ 2026-10-05 修（同 WF 段一类）：真后端建域（floor comprehend + 闭包 + 物化 + 自动验证）**跑完才出按钮**，
+  //   原来固定等 5 秒就数 ⇒ 恒得 0 并报「历史记录未现」。改为等按钮真的出现（有界 120 秒）。
+  await page.waitForFunction(
+    () => document.querySelectorAll('[data-testid^="sbr-verify-btn-"]').length > 0,
+    null,
+    { timeout: 120000 },
+  ).catch(() => {});
   const verifyBtns = await page.locator("[data-testid^=sbr-verify-btn-]").count();
   if (verifyBtns > 0) {
     await page.locator("[data-testid^=sbr-verify-btn-]").first().click().catch(() => {});
@@ -200,7 +206,12 @@ try {
   // ── A18.4 整域晋升编排（L4 真后端）：勾选 PROVISIONAL → 建域（隔离物化、UNVERIFIED）→ 整域晋升 → GOVERNED ──
   await page.check("[data-testid=db-provisional]").catch(() => {});
   await page.click("[data-testid=sbr-run]").catch(() => {});
-  await page.waitForTimeout(5000); // 真后端 PROVISIONAL 建域（闭包降级 + 隔离物化到伪租户）
+  // ⚠ 2026-10-05 修（同上）：PROVISIONAL 建域（闭包降级 + 隔离物化到伪租户）跑完才出晋升按钮。
+  await page.waitForFunction(
+    () => document.querySelectorAll('[data-testid^="sbr-promote-btn-"]').length > 0,
+    null,
+    { timeout: 120000 },
+  ).catch(() => {});
   const promoteBtns = await page.locator("[data-testid^=sbr-promote-btn-]").count();
   if (promoteBtns > 0) {
     await page.locator("[data-testid^=sbr-promote-btn-]").first().click().catch(() => {});
