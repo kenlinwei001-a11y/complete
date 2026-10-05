@@ -80,8 +80,9 @@ export interface CorpusMcp {
   /**
    * native 臂固有额外面（方向与 dshExtraTools 相反）：注册 agent 路 engine.ts:811
    * `loadSkillEnabled: true` **无条件**把 load_skill 挂上模型面（零技能也挂，调用期才
-   * resolveSkill 落空）；dsh 路 setup-spec.ts:251 仅在 skills 非空时进 scoped 允许表
-   * ——预存不对称（本 WO 范围=toolFilter 映射，不动 load_skill 元工具策略），REC 登记。
+   * resolveSkill 落空）；dsh 路 setup-spec.ts 的 `loopMetaTools` 仅在 skills 非空时把技能
+   * 加载器进 scoped 允许表（行号会漂，按符号锚）——预存不对称（本 WO 范围=toolFilter 映射，
+   * 不动 load_skill 元工具策略），REC 登记。
    * 声明后 driver 比对时从 native 原始集剥除此列名，且反向钉「该列名必须真在 native 原始集」。
    */
   nativeExtraTools?: string[];

@@ -324,10 +324,15 @@ A5 子集（语料声明 8 条：每类至少一 + 长上下文 + 多轮 + prove
    生产 cordis.yml 无、native 臂无——预存档差，非本 WO 面。
    ② **load_skill（native 臂固有额外面，dr50-cl 首跑实证红出）**：native 注册 agent 路
    engine.ts:811 `loadSkillEnabled: true` **无条件**把 load_skill 挂上模型面（零技能
-   也挂，调用期 resolveSkill 才落空）；dsh 路 setup-spec.ts:251 仅在 skills 非空时把
-   load_skill 进 scoped 允许表 ⇒ 零技能任务两臂差一件。属元工具策略预存不对称，
+   也挂，调用期 resolveSkill 才落空）；dsh 路 setup-spec.ts:316 仅在 skills 非空时把
+   技能加载器进 scoped 允许表 ⇒ 零技能任务两臂差一件。属元工具策略预存不对称，
    不在 W8副 toolFilter 映射范围；修 dsh 侧（loopMetaTools 无条件加）会破 A6 形态B
    「ref 无 toolFilter ⇒ setup 帧逐字节旧行为」锚，登记不修（若评审裁定对齐，另立 WO）。
+   ⚠ **P2A 换名后回写（2026-10-05）**：dsh 臂技能加载器真名 = 上游常量 `skill`
+   （@deepseek-ai/dsh-tool-skill，cordis*.yml 三档均作插件挂载 ⇒ **模型面恒可见**，
+   与 native 恒挂 load_skill 同形；允许表侧仍条件含，见 setup-spec.ts:316）。故本档
+   dshExtraTools 由 `["echo_tool"]` 扩为 `["echo_tool","skill"]`：两臂各登记各的**真名**，
+   不是并集、不是旧名兼容——写回旧名 `load_skill` 则反向钉当场红（该名不在 dsh 原始集）。
    ③ **exotic 裸名（含 `.` 等非法字符）剔除同向不咬**：toolFilter 未含 exotic 名时，
    native 臂由宿主 expandAgentTools 收窄剔除、dsh 臂由 mcp-client-tenant 注册期
    fail-closed 丢弃（publicToolName 规范化名 ≠ contracts 裸拼接表项）——剔除发生在
