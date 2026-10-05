@@ -2647,7 +2647,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
           // ⚠ 影子线必须与真实线**同一份** pairWeights/stateVarDomains —— 两条线只许差「有没有扰动」
           // 这一个变量，任何别的差异都会直接污染信噪比那个读数。
           const replayStart = driftState; // 本拍入口前那一份（投影判据 ① 的基线，同主线）
-          const d = propagateTick(graph, driftState, propRules, driftPending, t, ruleParams, cadenceGates, [], pairWeights, stateVarDomains);
+          // ⚠ 第 11 位 `baseSnapshot` 也必须与主线**同一份**（见下 mainline 调用点）：影子线只是
+          //    "没有扰动"的那条线，它的源侧静息点仍是这个世界的 tick0 基值 —— 两线都取 `s.baseSnapshot`。
+          const d = propagateTick(graph, driftState, propRules, driftPending, t, ruleParams, cadenceGates, [], pairWeights, stateVarDomains, s.baseSnapshot);
           driftState = d.next; driftPending = d.pending;
           // ⚠ 重放段也必须走同一合成：影子态会被 `shadowMemo` 存下来给后续请求复用，
           //    这里少补一次，下一刻就与主线不是同一套语义（`signalToNoise` 直接污染）。
@@ -2686,6 +2688,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
           await perturbationsForTick(beforeTick + 1), // 引擎产出的是 tick+1 那一格
           pairWeights,      // 第 9 位
           stateVarDomains,  // 第 10 位（次序见 propagateTick 签名处的收编注释）
+          // 第 11 位：源侧静息点（WO-RESTPOINT-SOURCE-B）。`drive = 源读数 − 静息点`，静息点优先取
+          // **这个世界 tick0 的基值**（零扰动世界里该格恒定于它）⇒ 零扰动 ⇒ 驱动量为 0 ⇒ 世界不漂。
+          // ⛔ 必须与影子线（下方 replay / drift 两处）喂**同一份** `s.baseSnapshot`：两条线只许差
+          //    「有没有扰动」这一个变量，静息点取两份 = 信噪比那个读数被直接污染。
+          s.baseSnapshot,
         );
         state = out.next; pending = out.pending; unresolvedGates = out.unresolvedGates;
         unresolvedWeights = out.unresolvedWeights;
@@ -2711,6 +2718,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
           const d = propagateTick(
             graph, driftState, propRules, driftPending, beforeTick, ruleParams, cadenceGates,
             [], pairWeights, stateVarDomains,
+            s.baseSnapshot, // 第 11 位：与主线同一份源侧静息点（见上）
           );
           driftState = d.next; driftPending = d.pending;
           // 影子线与主线**同一合成**：两条线只许差「有没有扰动」这一个变量。
