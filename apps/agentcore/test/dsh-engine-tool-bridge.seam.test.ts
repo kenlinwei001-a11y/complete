@@ -912,8 +912,21 @@ describe("W8.5 · C workflow 反向化：模型可见 + 同端点反向执行 + 
       expect(result.outcome).toBe("ANSWERED");
       // 可见性：首轮请求 tools 面含 mcp__workflow__<key>（setup 下发工具名 = 模型面名）
       expect(JSON.stringify(stub.requests[0]!.body)).toContain(`"${WF_TOOL}"`);
-      // 真过宿主引擎：nested workflow 的 qo 步本体真调一次
-      expect(qo.mock.calls.length).toBe(1);
+      // 真过宿主引擎：nested workflow 的 qo 步本体真调**恰好一次**。
+      // ⚠ 判据**不能**落在 `qo.mock.calls.length` 总数上：本 run 里 DRIL 资源目录投影也会逐类型查本体
+      //   （`fetchLiveSolverCatalog` → `ResourceRegistryService.collectOntologyTypes` → mock
+      //    `listObjectTypes` 的逐类型 `count()`；实测 9 型 × 2 轮 = 18 次），**与工作流无关**。
+      //   而它出现在本 run 里正是本单迁移的一个已知后果：工作流工具名成了 `mcp__workflow__*`，
+      //   命中 navigation-slice.ts `canInvokeSolvers` 的 `/^mcp__[a-z0-9_]+__/` ⇒ 取活目录
+      //   （与本体 `mcp__ontology__*` 同待遇，不是本单新立的判据；unmount 时自然消失）。
+      // 分辨判据 = **实参个数**（语义位置，不按类型名猜）：GuardedToolExecutor 是本仓唯一带第 5 实参
+      //   （taskEpoch）的调用方（tools/executor.ts `queryObjects(ctx, type, filter, limit, taskEpoch)`），
+      //   目录投影支只传 3 个（mocks/clients.ts `count()`）。
+      const execCalls = qo.mock.calls.filter((c) => c.length >= 5);
+      // 反证金丝雀：非执行器支**确实也在查**（否则「恰好 1 条」可能是筛子把两边都滤没了 ⇒ 没有鉴别力）
+      expect(qo.mock.calls.filter((c) => c.length === 3).length, "反证：非执行器支确实也在查本体").toBeGreaterThan(0);
+      expect(execCalls.length, `执行器支 queryObjects 调用=${JSON.stringify(execCalls.map((c) => c[1]))}`).toBe(1);
+      expect(execCalls[0]![1], "执行器支查的类型 = workflowDef qo 步点名的那个").toBe("Base");
       // 审计行 = 2 行（native 同构）：nested qo 步过 GuardedToolExecutor 自落一行 +
       // 端点 workflow 行（loop.ts:805-815 对齐：tc_/taskId/toolName/outcome/durationMs 实测）
       const rows = await t.repos.toolCalls.listByTask("task_w85_c1");
@@ -929,12 +942,25 @@ describe("W8.5 · C workflow 反向化：模型可见 + 同端点反向执行 + 
       const req1 = JSON.stringify(stub.requests[1]!.body);
       expect(req1).toContain("常州基地");
       expect(req1).toContain("w85 workflow marker");
-      // W9-full 侧表零改动吃到：run.iterations 该行 toolCallId = 审计行 tc_、outcome OK
+      // 差异 [C1-D1]（**登记，不是缺陷**，与 resource-reach 的 [B1-D1]/[B3-D1] 同一条结构性原因）：
+      // 迁前这条断言是 `wfCall.toolCallId === wfRow.id`（W9-full 侧表**命中支**）—— 那时工作流走
+      // `hostWorkflowTools` 专用字段，桥把**帧 callId 直通**上反向通道，`hostToolCalls.get(call.callId)`
+      // 命得中。迁到 MCP 后，`tools/call` 的 JSON-RPC id 由 SDK 自铸、wire 上到不了宿主，
+      // 故 server 只能自铸 `{全名}@{自增}`（见 workflow-mcp-server.ts 头注）⇒ 侧表**必然 miss**
+      // ⇒ 该行回落成**帧 id**（outcome/durationMs 仍由帧两态推导，值不变）。
+      // ⚠ 关联没丢：帧 id ↔ `tc_` 行的对应由**端点回执**承担（C2 断言 `rows[0].id === body.toolCallId`）。
+      // 下面两条钉死它，漂了就红：帧 id 必须**真能在模型面回执里寻址**（同一份证据两处读到），
+      // 且必须**不是**审计行主键（只写 `.not.toBe` 是纯否定、无鉴别力，故前一条才是值校验）。
       const iterCalls = result.run.iterations.flatMap((it) => it.toolCalls);
       const wfCall = iterCalls.find((c) => c.toolName === WF_TOOL);
-      expect(wfCall, "iterations 须经 hostToolCalls 侧表吃到 workflow 调用行").toBeDefined();
-      expect(wfCall!.toolCallId).toBe(wfRow!.id);
+      expect(wfCall, "iterations 须吃到 workflow 调用行（模型面全名）").toBeDefined();
       expect(wfCall!.outcome).toBe("OK");
+      expect(wfCall!.toolCallId, "[C1-D1] 非宿主审计行主键").not.toBe(wfRow!.id);
+      const msgs1 =
+        (stub.requests[1]!.body as { messages?: { role?: string; tool_call_id?: string; content?: unknown }[] }).messages ?? [];
+      const wfMsg = msgs1.find((m) => m.role === "tool" && m.tool_call_id === wfCall!.toolCallId);
+      expect(wfMsg, `[C1-D1] 帧 id(${wfCall!.toolCallId}) 必须在模型面回执里可寻址`).toBeDefined();
+      expect(String(wfMsg?.content), "[C1-D1] 该回执里就是工作流产物").toContain("常州基地");
       // emit 透传：nested workflow 步事件经 workflowCtx.emit 宿主侧发射（出处差登记：非帧流）
       expect(emitted.some((f) => f.event === "step.started" && (f.payload as { stepId?: string }).stepId === "qo")).toBe(true);
       expect(emitted.some((f) => f.event === "step.completed" && (f.payload as { stepId?: string }).stepId === "ra")).toBe(true);
