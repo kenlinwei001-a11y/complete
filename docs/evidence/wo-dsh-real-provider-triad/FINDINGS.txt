@@ -1,0 +1,89 @@
+WO-DSH-REAL-PROVIDER-TRIAD · 证据与结论
+=======================================
+
+base commit : fa12a2546（origin/claude/inspiring-gates-aqczjg）
+分支        : claude/handoff-dsh-real-provider
+产品源码    : 0 行改动（git status --porcelain 为空；本单只读 + 本目录）
+门/棘轮/基线: 未新增、未修改
+
+【结局归属】结局 2 · 凭据不在 ⇒ 停
+
+【今天的行为是 X，应该是 Y】
+X：真外部供应商一跳的验证臂由 `DSH_REAL_API_KEY` + `DSH_REAL_BASE_URL` 门控
+   （`apps/agentcore/test/dsh-e2e-real-triad.test.ts:64-77` 取值，`:382` / `:631` describe.skipIf）。
+   本机这两个变量**未设置** ⇒ L2.A1 / L2.A4 走 `describe.skipIf` 跳过
+   ⇒ 真外部供应商一跳**在本机从未跑过**，R1 行所述状态今天依然成立。
+Y：应由持凭据一侧注入这两个变量（+ 与该供应商对得上的 `DSH_REAL_MODEL`）跑一次
+   L2.A1 / L2.A4，产出「两问回答 A≠B 且各含 ALPHA-7Q3 / BRAVO-2X8」的真供应商应答读数，
+   再据此销 R1 的账。
+
+【WO 指针订正】
+派单书写「`docs/ROLLOUT-dsh-external-kernel.md` §7 裁决史 R1 行」。
+实读：该 R1 行在 `docs/DECISION-dsh-fusion.md:545`（§13.2 剩余风险 R1），
+不是 ROLLOUT 的 §7（ROLLOUT §7 是「出处」表，无 R1 行；ROLLOUT §3 回退判据的 R1 是
+「EXTERNAL FAILED 率 > native +5pp」，另一件事）。本条照实读的原文取用。
+
+【判据实测读数表】每行两个独立出处
+--------------------------------------------------------------------------------
+读数                                     出处A                        出处B
+--------------------------------------------------------------------------------
+门控变量 DSH_REAL_API_KEY                 triad-credentialfree.txt     shell 存在性探针
+  未设置（unset）                          :72 打印 skip 原因            （10 个供应商变量全 unset）
+  KIMI_API_KEY / OPENAI_API_KEY /
+  ANTHROPIC_API_KEY / DEEPSEEK_API_KEY /
+  MOONSHOT_API_KEY 同样 unset
+
+L2.A1 / L2.A4 = skipped（NOT-MEASURED）   triad-credentialfree.txt     test 源码 :71 KIMI_READY
+  不是 passed                             「6 passed | 2 skipped」      + :382/:631 skipIf
+                                           + :75「L2.A1/L2.A4 跳过」
+
+免凭据臂 6 条全绿                         triad-credentialfree.txt     同文件逐条 ✓ 行
+  （L2.A1′ 变异反证 / L2.A2 allow+deny /   「Tests 6 passed | 2 skipped」 L2.A1′ A=<<固定端点写死串>>
+   L2.A3 真 MCP / L2.A5 ⑤a+⑤b）           CAPTURED_RC=0                 B=<<固定端点写死串>>
+
+门控是活的（对照实验，本单最关键格）      gate-live-contrast.txt        test 源码 :64-71
+  未设 env ⇒ skip（0 条测试执行）          设 env 后「真供应商臂 skip」    REAL_KEY/REAL_BASE 读取
+  设 env ⇒ 该臂真跑并 FAILED               命中 0 次（未跳过），           + KIMI_READY 判据
+  （死端点 127.0.0.1:9）                    L2.A1 真跑 ⇒ FAILED
+--------------------------------------------------------------------------------
+真跑读数（真供应商应答 / token 账 / 两问 A≠B 原文）: **NOT-MEASURED**，缺上述两个变量。
+
+【关键定性：那次 FAILED 不是缺陷】
+gate-live-contrast 用的是**非凭据字面量**（明确假值）+ 死端点 ⇒ outcome=FAILED 是预期。
+它证明的是「门读的就是这两个变量、该臂真的接线了」，不是「链路坏了」。
+
+【解锁路径（谁放、放哪）】
+  变量：DSH_REAL_API_KEY · DSH_REAL_BASE_URL（+ DSH_REAL_MODEL，缺省 kimi-k3；
+        可选 DSH_REAL_KIND=openai_compatible|anthropic）
+  谁放：持有外部供应商凭据的一方（本机/本容器内没有，故不是本机可解）
+  放哪：只经 env 或 0600 文件传入；⛔ 不进命令行、不进任何文件、不回显
+  怎么跑：
+    DSH_REAL_API_KEY=… DSH_REAL_BASE_URL=… DSH_REAL_MODEL=… \
+      npx vitest run test/dsh-e2e-real-triad.test.ts -t "真 LLM"
+  看两件事（缺一件不算跑通）：
+    ① `[L2.A1 判别力]` 两段回答必须**不同**，且各含 ALPHA-7Q3 / BRAVO-2X8；
+    ② 该臂**不再 skip**（skip = env 没被读到）。
+    两段相同 ⇒ 报「量法坏了 / 打到固定端点」，⛔ 不许报「真路通了」。
+
+【还差什么（结构缺口，不是本机环境）】
+1. 就算插上 key，今天这版 L2.A1/A4 也**产不出派单书要的读数**：本文件全篇
+   `native` / `runAgentLoop` / `run.total` 命中 **0**（金丝雀：同文件 `isDiscriminating`
+   命中 6 ⇒ 扫描器是好的），`cacheReadTokens` 亦 **0** 命中。
+   今天该臂只断言 `uncachedInputTokens>0`（`:433`），并在 `:427-430` 自陈这是
+   「次要观测、不是真实性证据」。⇒ 派单书要的「dsh 臂 vs native 臂同一句问话、
+   输入侧两桶之和」在本文件里**既没有 native 臂、也没有两桶求和**。
+2. 该口径与 canonical 现存的一处既定裁决**冲突**，动手前要先裁决：
+   `apps/agentcore/test/dsh-token-bucket-carrying.seam.test.ts:27-28` 原文
+   「**native 臂的输入桶**…本文件只钉 EXTERNAL 臂，**不做两臂互比**
+   （**两臂 token 账不互比是既定口径**）」。
+   而 `docs/ROLLOUT-dsh-external-kernel.md` §1-a ③ / §1-b 恰恰要求两臂账差对比。
+   两处口径相反，⛔ 不许按一边默默实现。
+3. 「换成 stub ⇒ 读数必须变」这条对照，在**token 账**这一轴上今天不成立：
+   同文件的本地 stub 自报 usage 50/10 会被逐字透传（原 WO-DSH-REAL-PROVIDER 实测，
+   见 docs/EVIDENCE-dsh-real-provider.md §3），`>0` 在 stub 上照样绿。
+   今天有判别力的是**两问对照**（L2.A1），不是 token 账；报告读数时别把两轴混读。
+
+【本单未做（明示，不许读成做了）】
+- 未翻任何 flag；未改 apps/agentcore/src/**、packages/**、门/棘轮/基线 JSON。
+- 未寻找凭据（未 grep 密钥、未读 plist、未翻 ~/ 配置）——按派单书红线。
+- 未用 stub / mock 冒充真供应商应答；NOT-MEASURED 一律显式写 NOT-MEASURED。
