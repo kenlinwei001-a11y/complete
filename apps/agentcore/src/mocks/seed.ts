@@ -14,6 +14,8 @@ import {
 import { BUILTIN_TOOLS } from "../tools/registry.js";
 // WO-DSH-RESOURCE-REACH · 本体切片的两件套（裸名清单 / MCP 全名拼接 / 配置行 id）单一来源。
 import { ONTOLOGY_MCP_CONFIG_ID, ONTOLOGY_MCP_TOOL_NAMES, ontologyMcpToolName } from "../tools/ontology-mcp.js";
+import { SOLVERS_MCP_CONFIG_ID } from "../mcp/solvers-catalog.js";
+import { SOLVERS_MCP_SERVER, solverMcpToolName } from "@platform/contracts";
 // DF.13 外协红线单一来源（C08）：场景建议问句里的红线百分数派生，禁手写。
 import { OUTSOURCE_REDLINE, outsourceRedlinePct } from "@platform/contracts";
 import { SCENARIO_CATALOG } from "../scenarios-catalog.js";
@@ -1429,7 +1431,11 @@ export function seedRegistry(now = new Date().toISOString()): {
         // ⛔ 替代掉的那条是 `{ kind: "BUILTIN", name: "resolve_slice" }` —— 同一能力两条授予路并存
         //    正是本单要退的旧路（两条真相源）。裸名形态在 `buildExploratoryTools` 里已结构性剔除。
         { kind: "MCP", mcpConfigId: ONTOLOGY_MCP_CONFIG_ID, toolFilter: ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)) },
-        { kind: "BUILTIN", name: "invoke_solver" },
+        // WO-SOLVERS-MCP-REAL · 求解器从**裸 BUILTIN 授予**改挂 **MCP 面**（同本体切片先例）。
+        // 三面同改：本行（授予面）+ 下方 mcpServers（DSH 挂载面）+ scopeDeclaration（声明面·全名）。
+        // ⛔ 退掉的那条是 `{ kind: "BUILTIN", name: "invoke_solver" }` —— 同一能力两条授予路并
+        //    存正是本单要退的旧路。执行侧不变：MCP 调用由 executor 的 A1 shim 归一回 invoke_solver。
+        solverMcpRef(SOLVER_KEYS_ANALYST),
         { kind: "BUILTIN", name: "evaluate_rules" },
         { kind: "BUILTIN", name: "search_knowledge" },
         { kind: "BUILTIN", name: "query_timeseries_agg" },
@@ -1440,13 +1446,13 @@ export function seedRegistry(now = new Date().toISOString()): {
       skills: [{ skillId: "skl_seed_capacity", version: "latest" }],
       // DSH 挂载面：本体 MCP server（运行期 command/args/env 由 engine.ts DSH 分叉注入，
       // runToken 不能写死在 seed 里）。与上方 MCP ref 成对 —— 只有 ref 没有它 = 模型面拿不到工具。
-      mcpServers: [{ mcpConfigId: ONTOLOGY_MCP_CONFIG_ID }],
+      mcpServers: [{ mcpConfigId: ONTOLOGY_MCP_CONFIG_ID }, { mcpConfigId: SOLVERS_MCP_CONFIG_ID }],
       scopeDeclaration: {
         objectTypes: ["Base", "Order", "Model", "Line", "Process", "Equipment", "Shipment", "Segment"],
         // 声明面按契约惯例记**全名**（scope 门在 `executor.ts`:138 用**调用原名**校验 —— 模型面是
         // `mcp__ontology__resolve_slice`，这里就必须是同一个串；记裸名会让这条路被自己的 scope 门拒）。
         toolNames: [
-          "query_objects", "aggregate_objects", "get_object", ...ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)), "invoke_solver", "evaluate_rules",
+          "query_objects", "aggregate_objects", "get_object", ...ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)), ...solverMcpFullNames(SOLVER_KEYS_ANALYST), "evaluate_rules",
           "search_knowledge", "query_timeseries_agg", "search_experience", "create_action_draft",
         ],
       },
@@ -1467,13 +1473,13 @@ export function seedRegistry(now = new Date().toISOString()): {
       ].join("\n"),
       tools: [
         { kind: "BUILTIN", name: "query_objects" },
-        { kind: "BUILTIN", name: "invoke_solver" },
+        solverMcpRef(SOLVER_KEYS_EXPLORE),
         { kind: "WORKFLOW", workflowId: "wf_seed_capacity", version: "latest" },
       ] as AgentDefinition["tools"],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
       skills: [{ skillId: "skl_seed_capacity", version: "latest" }],
-      mcpServers: [],
-      scopeDeclaration: { objectTypes: ["Base", "Order", "Model", "Line"], toolNames: ["query_objects", "invoke_solver"] },
+      mcpServers: [{ mcpConfigId: SOLVERS_MCP_CONFIG_ID }],
+      scopeDeclaration: { objectTypes: ["Base", "Order", "Model", "Line"], toolNames: ["query_objects", ...solverMcpFullNames(SOLVER_KEYS_EXPLORE)] },
       budget: { maxIterations: 8, maxToolCalls: 10 },
       status: "PUBLISHED",
     },
@@ -1487,11 +1493,11 @@ export function seedRegistry(now = new Date().toISOString()): {
         "【对口能力】优先调用 invoke_solver 归因、evaluate_rules 核规则；涉及产能约束/可行性必须调 solver，不自己算。",
         "【交卷】按 结论/分析/证据/建议/风险 组织，业务数字一律 ⟦ref:N⟧。",
       ].join("\n"),
-      tools: [{ kind: "BUILTIN", name: "query_objects" }, { kind: "BUILTIN", name: "invoke_solver" }, { kind: "BUILTIN", name: "evaluate_rules" }, { kind: "WORKFLOW", workflowId: "wf_seed_risk_digest", version: "latest" }],
+      tools: [{ kind: "BUILTIN", name: "query_objects" }, solverMcpRef(SOLVER_KEYS_RISK), { kind: "BUILTIN", name: "evaluate_rules" }, { kind: "WORKFLOW", workflowId: "wf_seed_risk_digest", version: "latest" }],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
       skills: [{ skillId: "skl_seed_capacity", version: "latest" }],
-      mcpServers: [],
-      scopeDeclaration: { objectTypes: ["Base", "Order", "Model", "Line", "Process"], toolNames: ["query_objects", "invoke_solver", "evaluate_rules"] },
+      mcpServers: [{ mcpConfigId: SOLVERS_MCP_CONFIG_ID }],
+      scopeDeclaration: { objectTypes: ["Base", "Order", "Model", "Line", "Process"], toolNames: ["query_objects", ...solverMcpFullNames(SOLVER_KEYS_RISK), "evaluate_rules"] },
       budget: { maxIterations: 8, maxToolCalls: 10 },
       status: "DRAFT",
     },
@@ -1516,7 +1522,8 @@ export function seedRegistry(now = new Date().toISOString()): {
       // 残差：BUILTIN 注册表里两件仍在（供未迁移的消费者），治理建议见报告③「退旧路」栏。
       tools: [
         { kind: "BUILTIN", name: "query_objects" },
-        { kind: "BUILTIN", name: "invoke_solver" },
+        // WO-SOLVERS-MCP-REAL · 同上：求解器改挂 MCP 面（原 `{kind:"BUILTIN", name:"invoke_solver"}` 已退）。
+        solverMcpRef(SOLVER_KEYS_CAPACITY),
         // toolFilter 记**全名**（与声明面同口径；engine.ts:456 两种形态都认，但全名能让
         // 「这条 ref 指的是 MCP 面上的哪个工具」在授予面自证，不再和 BUILTIN 裸名撞脸）。
         { kind: "MCP", mcpConfigId: ONTOLOGY_MCP_CONFIG_ID, toolFilter: ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)) },
@@ -1526,12 +1533,12 @@ export function seedRegistry(now = new Date().toISOString()): {
       skills: [{ skillId: "skl_seed_capacity", version: "latest" }],
       // 挂载本体 MCP server（DSH 侧经 dsh-mcp-client 起 stdio 连接；运行期 command/args/env
       // 由 engine.ts DSH 分叉注入 —— 绝对路径与 per-run runToken 都不能写死在 seed 里）。
-      mcpServers: [{ mcpConfigId: ONTOLOGY_MCP_CONFIG_ID }],
+      mcpServers: [{ mcpConfigId: ONTOLOGY_MCP_CONFIG_ID }, { mcpConfigId: SOLVERS_MCP_CONFIG_ID }],
       // scopeDeclaration 是**声明面**（治理网桥 scopeObjectTypes + DRIL 投影读它），
       // 与授予面同步改——engine.ts「显式配置的工具绝不应被自身 scope 门拒」的并集规则
       // 虽已兜底，但声明面漏列会让对外能力画像少报这两件。
       // MCP 面按契约惯例记**全名**（mcpToolFullName：scopeDeclaration 与审计一律用全名）。
-      scopeDeclaration: { objectTypes: ["Base", "Line", "Model", "Order"], toolNames: ["query_objects", "invoke_solver", "mcp__ontology__plan_slice", "mcp__ontology__resolve_slice"] },
+      scopeDeclaration: { objectTypes: ["Base", "Line", "Model", "Order"], toolNames: ["query_objects", ...solverMcpFullNames(SOLVER_KEYS_CAPACITY), "mcp__ontology__plan_slice", "mcp__ontology__resolve_slice"] },
       budget: { maxIterations: 8, maxToolCalls: 10 },
       status: "DRAFT",
       role: "production", // WO-FIVE-ROLE P1：生产角色 agent（产能/产线/工序·Line/Process/Model 域）。
@@ -1546,10 +1553,10 @@ export function seedRegistry(now = new Date().toISOString()): {
         "【对口能力】优先调用 invoke_solver 诊断；涉及量化优化必须调 solver，不自己算。",
         "【交卷】按 结论/分析/证据/建议/风险 组织，业务数字一律 ⟦ref:N⟧。",
       ].join("\n"),
-      tools: [{ kind: "BUILTIN", name: "query_objects" }, { kind: "BUILTIN", name: "invoke_solver" }],
+      tools: [{ kind: "BUILTIN", name: "query_objects" }, solverMcpRef(SOLVER_KEYS_QUALITY)],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
-      skills: [], mcpServers: [],
-      scopeDeclaration: { objectTypes: ["Process", "Equipment", "QualityStandard"], toolNames: ["query_objects", "invoke_solver"] },
+      skills: [], mcpServers: [{ mcpConfigId: SOLVERS_MCP_CONFIG_ID }],
+      scopeDeclaration: { objectTypes: ["Process", "Equipment", "QualityStandard"], toolNames: ["query_objects", ...solverMcpFullNames(SOLVER_KEYS_QUALITY)] },
       budget: { maxIterations: 6, maxToolCalls: 8 },
       status: "DRAFT",
       role: "quality", // WO-FIVE-ROLE P1：质量角色 agent（良率/检验/合规·Process/Equipment/QualityStandard 域）。
@@ -1564,10 +1571,10 @@ export function seedRegistry(now = new Date().toISOString()): {
         "【对口能力】优先调用 invoke_solver（齐套/库存优化）；涉及资源分配/优化必须调 solver，不自己算。",
         "【交卷】按 结论/分析/证据/建议/风险 组织，业务数字一律 ⟦ref:N⟧。",
       ].join("\n"),
-      tools: [{ kind: "BUILTIN", name: "query_objects" }, { kind: "BUILTIN", name: "invoke_solver" }],
+      tools: [{ kind: "BUILTIN", name: "query_objects" }, solverMcpRef(SOLVER_KEYS_SUPPLY)],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
-      skills: [], mcpServers: [],
-      scopeDeclaration: { objectTypes: ["Material", "Supplier", "PurchaseOrder", "Shipment"], toolNames: ["query_objects", "invoke_solver"] },
+      skills: [], mcpServers: [{ mcpConfigId: SOLVERS_MCP_CONFIG_ID }],
+      scopeDeclaration: { objectTypes: ["Material", "Supplier", "PurchaseOrder", "Shipment"], toolNames: ["query_objects", ...solverMcpFullNames(SOLVER_KEYS_SUPPLY)] },
       budget: { maxIterations: 6, maxToolCalls: 8 },
       status: "DRAFT",
       role: "supply-chain", // WO-FIVE-ROLE P1：供应链角色 agent（物料齐套/供应/采购·Material/Supplier/PO 域）。
@@ -1582,10 +1589,11 @@ export function seedRegistry(now = new Date().toISOString()): {
         "【对口能力】优先调用 invoke_solver（毛利/量价本利/CAPEX）；涉及最优/资源分配必须调 solver，不自己算。",
         "【交卷】按 结论/分析/证据/建议/风险 组织，业务数字一律 ⟦ref:N⟧。",
       ].join("\n"),
-      tools: [{ kind: "BUILTIN", name: "query_objects" }, { kind: "BUILTIN", name: "invoke_solver" }],
+      // WO-SOLVERS-MCP-REAL · 裸名授予已退，改挂 MCP 面（与其余六角色同一条路，三面同改）。
+      tools: [{ kind: "BUILTIN", name: "query_objects" }, solverMcpRef(SOLVER_KEYS_FINANCE)],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
-      skills: [], mcpServers: [],
-      scopeDeclaration: { objectTypes: ["FinanceAccount", "FinanceMetric", "FinancePlan"], toolNames: ["query_objects", "invoke_solver"] },
+      skills: [], mcpServers: [{ mcpConfigId: SOLVERS_MCP_CONFIG_ID }],
+      scopeDeclaration: { objectTypes: ["FinanceAccount", "FinanceMetric", "FinancePlan"], toolNames: ["query_objects", ...solverMcpFullNames(SOLVER_KEYS_FINANCE)] },
       budget: { maxIterations: 6, maxToolCalls: 8 },
       status: "DRAFT",
     },
@@ -1599,10 +1607,11 @@ export function seedRegistry(now = new Date().toISOString()): {
         "【对口能力】优先调用 invoke_solver（碳足迹核算）；涉及量化优化必须调 solver，不自己算。",
         "【交卷】按 结论/分析/证据/建议/风险 组织，业务数字一律 ⟦ref:N⟧。",
       ].join("\n"),
-      tools: [{ kind: "BUILTIN", name: "query_objects" }, { kind: "BUILTIN", name: "invoke_solver" }],
+      // WO-SOLVERS-MCP-REAL · 同上（碳足迹核算 → carbon_footprint）。
+      tools: [{ kind: "BUILTIN", name: "query_objects" }, solverMcpRef(SOLVER_KEYS_CARBON)],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
-      skills: [], mcpServers: [],
-      scopeDeclaration: { objectTypes: ["Model", "Material", "CarbonFactor"], toolNames: ["query_objects", "invoke_solver"] },
+      skills: [], mcpServers: [{ mcpConfigId: SOLVERS_MCP_CONFIG_ID }],
+      scopeDeclaration: { objectTypes: ["Model", "Material", "CarbonFactor"], toolNames: ["query_objects", ...solverMcpFullNames(SOLVER_KEYS_CARBON)] },
       budget: { maxIterations: 6, maxToolCalls: 8 },
       status: "DRAFT",
     },
@@ -1618,14 +1627,14 @@ export function seedRegistry(now = new Date().toISOString()): {
       ].join("\n"),
       tools: [
         { kind: "BUILTIN", name: "query_objects" },
-        { kind: "BUILTIN", name: "invoke_solver" },
+        solverMcpRef(SOLVER_KEYS_MARKET),
         { kind: "MCP", mcpConfigId: "mcp_market_data", toolFilter: ["get_commodity_price", "get_policy_update"] },
         { kind: "WORKFLOW", workflowId: "wf_seed_order_track", version: "latest" },
       ] as AgentDefinition["tools"],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
       skills: [{ skillId: "skl_seed_supply_chain", version: "latest" }],
-      mcpServers: [{ mcpConfigId: "mcp_market_data" }],
-      scopeDeclaration: { objectTypes: ["Material", "Supplier", "Order", "Model"], toolNames: ["query_objects", "invoke_solver", "mcp__market_data__get_commodity_price", "mcp__market_data__get_policy_update"] },
+      mcpServers: [{ mcpConfigId: "mcp_market_data" }, { mcpConfigId: SOLVERS_MCP_CONFIG_ID }],
+      scopeDeclaration: { objectTypes: ["Material", "Supplier", "Order", "Model"], toolNames: ["query_objects", ...solverMcpFullNames(SOLVER_KEYS_MARKET), "mcp__market_data__get_commodity_price", "mcp__market_data__get_policy_update"] },
       budget: { maxIterations: 8, maxToolCalls: 12 },
       status: "PUBLISHED",
     },
@@ -1663,10 +1672,11 @@ export function seedRegistry(now = new Date().toISOString()): {
         "【对口能力】优先经 invoke_agent 扇出调对应角色 agent；涉及排产/优化由被调 agent 调 solver，不自己算。",
         "【交卷】按 各角色分栏 + 综合结论/一致或冲突/每角色溯源 组织，业务数字一律 ⟦ref:N⟧。",
       ].join("\n"),
-      tools: [{ kind: "BUILTIN", name: "query_objects" }, { kind: "BUILTIN", name: "invoke_solver" }],
+      // WO-SOLVERS-MCP-REAL · 同上（编排角色的求解器面 = 组合对策 + 指标骨架 + 缺口归因）。
+      tools: [{ kind: "BUILTIN", name: "query_objects" }, solverMcpRef(SOLVER_KEYS_COORD)],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
-      skills: [], mcpServers: [],
-      scopeDeclaration: { objectTypes: ["Base", "Order", "Model", "Line", "Process", "Equipment", "Material", "Supplier"], toolNames: ["query_objects", "invoke_solver"] },
+      skills: [], mcpServers: [{ mcpConfigId: SOLVERS_MCP_CONFIG_ID }],
+      scopeDeclaration: { objectTypes: ["Base", "Order", "Model", "Line", "Process", "Equipment", "Material", "Supplier"], toolNames: ["query_objects", ...solverMcpFullNames(SOLVER_KEYS_COORD)] },
       budget: { maxIterations: 6, maxToolCalls: 12 },
       status: "PUBLISHED",
       role: "coordinator",
@@ -1674,6 +1684,45 @@ export function seedRegistry(now = new Date().toISOString()): {
   ];
   return { agents, workflows, skills };
 }
+
+/**
+ * WO-SOLVERS-MCP-REAL · 各角色的求解器授予集（MCP 全名）。
+ *
+ * **为什么在 seed 里显式列而不能「全给」**：三面同改要求**授予面 == 声明面**。
+ * 求解器目录随租户/entitlement 变，若 ref 不带 toolFilter（= 全量），scopeDeclaration 就
+ * 无法静态记全名 ⇒ 两个面结构上对不齐。故按角色显式收窄，两面用**同一个数组**（单源）。
+ *
+ * ⚠ 键全部取自本文件内**已在使用**的真实求解器 key（工作流步骤 / CEO 能力位），
+ * ⛔ 不许臆造：写一个不存在的 key 不会报错，只会静默少一个工具（最难查的一类）。
+ *
+ * ⚠ **键必须真在 DataCore `SOLVER_KEYS` 里**（照上一条的同一纪律，2026-10-05 实测纠）：曾在此写
+ * `sop_balance` —— 那是 **S1.8 服务 / 场景卡 / 工作流**的名字，**不在 `SOLVER_KEYS`**（63 条里无此键），
+ * 于是 `mcp__solvers__sop_balance` 是一条**幽灵授予**：三面结构上齐全、目录里永远没有这件工具
+ * ⇒ 「有声明、无实体」在本单内部又长了一遍。改用本文件 BP-4 已经用过的登记替身 `mrp_netting`
+ * （`sop_balance` 卡 → `mrp_netting` 求解器的既有重绑，见 `scenarios-catalog` 消费处）。
+ * 守门的是本单接缝测试 C3（逐键核活目录，幽灵授予即红）。
+ */
+const SOLVER_KEYS_ANALYST = [
+  "gap_attribution", "decision_play", "metric_rollup", "credit_exposure", "finance_pnl",
+  "supply_demand_gap_attribution", "atp_check", "bottleneck_matrix", "base_capacity_outlook",
+  "generic_inference", "capacity_forecast", "affected_orders", "kit_readiness",
+  "risk_timeline", "mrp_netting", "yield_diagnosis",
+] as const;
+const SOLVER_KEYS_CAPACITY = ["capacity_forecast", "mrp_netting", "affected_orders", "bottleneck_matrix", "base_capacity_outlook"] as const;
+const SOLVER_KEYS_RISK = ["risk_timeline", "gap_attribution", "affected_orders", "base_capacity_outlook"] as const;
+const SOLVER_KEYS_QUALITY = ["yield_diagnosis"] as const;
+const SOLVER_KEYS_SUPPLY = ["kit_readiness", "mrp_netting"] as const;
+const SOLVER_KEYS_EXPLORE = ["capacity_forecast", "affected_orders", "gap_attribution"] as const;
+// WO-SOLVERS-MCP-REAL · 剩余四角色（按各自 systemPrompt 的「对口能力」域取键，键全部在 DataCore SOLVER_KEYS 内）
+const SOLVER_KEYS_FINANCE = ["finance_pnl", "margin_attribution", "capex_scenario", "credit_exposure"] as const;
+const SOLVER_KEYS_CARBON = ["carbon_footprint"] as const;
+const SOLVER_KEYS_MARKET = ["supply_demand_gap_attribution", "lta_gap", "quote_margin", "concentration_risk"] as const;
+const SOLVER_KEYS_COORD = ["countermeasure_combo", "metric_rollup", "gap_attribution"] as const;
+
+/** 角色求解器授予集 → MCP 授予面 ref（授予面与声明面**共用一个数组**，禁各写一份）。 */
+const solverMcpRef = (keys: readonly string[]) =>
+  ({ kind: "MCP", mcpConfigId: SOLVERS_MCP_CONFIG_ID, toolFilter: keys.map((k) => solverMcpToolName(k)) }) as AgentDefinition["tools"][number];
+const solverMcpFullNames = (keys: readonly string[]) => keys.map((k) => solverMcpToolName(k));
 
 /**
  * WO-FIVE-ROLE-AI-EMPLOYEE P1 · 五角色画像单一来源（激活 CeoAgentProfile·此前 app 侧零消费的死契约）。
@@ -1689,35 +1738,35 @@ export const ROLE_PROFILES: CeoAgentProfile[] = [
     // `ceo-agent.ts:81` 自注：「该角色可用工具（展示·真实约束以绑定 agent scopeDeclaration.toolNames 为准）」，
     // 全仓唯一读 `toolWhitelist` 的地方是 `orchestrator.ts` 读 **package** 那份）。
     // 仍改这一处：状态相反的两份台账正是本仓反复踩的坑（展示面说裸名、真实约束是全名 ⇒ 下一个人照着它查会查错方向）。
-    agentId: "agt_seed_analyst", toolWhitelist: ["query_objects", "aggregate_objects", "get_object", ...ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)), "invoke_solver", "evaluate_rules", "search_knowledge", "query_timeseries_agg"],
+    agentId: "agt_seed_analyst", toolWhitelist: ["query_objects", "aggregate_objects", "get_object", ...ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)), ...solverMcpFullNames(SOLVER_KEYS_ANALYST), "evaluate_rules", "search_knowledge", "query_timeseries_agg"],
     objectTypes: ["Base", "Order", "Model", "Line", "Process", "Equipment", "Shipment", "Segment"], systemKey: "ceo",
   },
   {
     profileId: "role_supply_chain", role: "supply-chain",
     scope: { allBases: true, baseIds: [] },
     focusMetrics: ["kit_readiness", "lta_coverage"],
-    agentId: "agt_supply_chain", toolWhitelist: ["query_objects", "invoke_solver"],
+    agentId: "agt_supply_chain", toolWhitelist: ["query_objects", ...solverMcpFullNames(SOLVER_KEYS_SUPPLY)],
     objectTypes: ["Material", "Supplier", "PurchaseOrder", "Shipment"], systemKey: "supply-chain",
   },
   {
     profileId: "role_production", role: "production",
     scope: { allBases: true, baseIds: [] },
     focusMetrics: ["capacity_util", "bottleneck"],
-    agentId: "agt_capacity_planner", toolWhitelist: ["query_objects", "invoke_solver"],
+    agentId: "agt_capacity_planner", toolWhitelist: ["query_objects", ...solverMcpFullNames(SOLVER_KEYS_CAPACITY)],
     objectTypes: ["Base", "Line", "Model", "Order"], systemKey: "production",
   },
   {
     profileId: "role_quality", role: "quality",
     scope: { allBases: true, baseIds: [] },
     focusMetrics: ["yield", "quality_compliance"],
-    agentId: "agt_quality_inspector", toolWhitelist: ["query_objects", "invoke_solver"],
+    agentId: "agt_quality_inspector", toolWhitelist: ["query_objects", ...solverMcpFullNames(SOLVER_KEYS_QUALITY)],
     objectTypes: ["Process", "Equipment", "QualityStandard"], systemKey: "quality",
   },
   {
     profileId: "role_base_planner", role: "base-planner",
     scope: { allBases: false, baseIds: [] }, // baseIds 运行时由 OBO 身份 baseScope 注入（A6 行级）
     focusMetrics: ["capacity_util", "kit_readiness"],
-    agentId: "agt_seed_analyst", toolWhitelist: ["query_objects", "invoke_solver", ...ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)), "evaluate_rules"],
+    agentId: "agt_seed_analyst", toolWhitelist: ["query_objects", ...solverMcpFullNames(SOLVER_KEYS_ANALYST), ...ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)), "evaluate_rules"],
     objectTypes: ["Base", "Order", "Model", "Line", "Process"], systemKey: "base-planner",
   },
 ];
@@ -1728,6 +1777,7 @@ export function roleProfile(role: string): CeoAgentProfile | undefined {
 }
 
 /** MCP 服务器出厂种子（3 条演示配置，覆盖 streamable_http / stdio 两种传输，使 MCP 库页不为空）。 */
+
 export function seedMcpConfigs(): McpServerConfig[] {
   return [
     {
@@ -1742,6 +1792,22 @@ export function seedMcpConfigs(): McpServerConfig[] {
       // 一次性 runToken 都写不进静态种子。
       id: ONTOLOGY_MCP_CONFIG_ID, tenantId: SEED_TENANT, name: "本体切片 MCP（平台内置）", serverName: "ontology",
       transport: { type: "stdio", command: "node", args: ["apps/agentcore/dist/dsh-runtime/ontology-mcp-server.js"] },
+      status: "ACTIVE", lifecycle: "PUBLISHED", version: 1,
+    },
+    {
+      // WO-SOLVERS-MCP-REAL · 平台内置求解器 MCP server（DSH 原生 MCP 模式的载荷）。
+      // 工具面 = mcp__solvers__{solverKey}（**随租户/entitlement 变**，非静态清单）。
+      // **执行**不落在本进程的 MCP server 里：它把 tools/call 转回宿主反向通道 → 同一只
+      // GuardedToolExecutor 的 A1 shim 归一到 invoke_solver（dsh-runtime/solvers-mcp-server.ts
+      // 头注有完整链路）。故本行只是「DSH 可发现/可配」的登记项，不是第二套执行体。
+      //
+      // 与本体那行的唯一差别：**工具清单不能静态投影**（求解器目录随 entitlement 变，关某
+      // feature ⇒ 必须消失，R3 先于 authz），故由 engine.ts DSH 分叉在 spawn 前现算并注入
+      // 子进程 env `SOLVERS_MCP_TOOLS_JSON`（派生源 = 本 run 的 expandAgentTools，两臂同源）。
+      // transport 里的 command/args 同为 **cwd=仓根 时的可用回落**；真进程形态（node 绝对路径、
+      // 服务树绝对路径、per-run env）由 engine.ts DSH 分叉在 run 期注入。
+      id: SOLVERS_MCP_CONFIG_ID, tenantId: SEED_TENANT, name: "求解器 MCP（平台内置）", serverName: SOLVERS_MCP_SERVER,
+      transport: { type: "stdio", command: "node", args: ["apps/agentcore/dist/dsh-runtime/solvers-mcp-server.js"] },
       status: "ACTIVE", lifecycle: "PUBLISHED", version: 1,
     },
     {

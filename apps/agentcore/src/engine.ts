@@ -30,6 +30,8 @@ import { GuardedToolExecutor } from "./tools/executor.js";
 import type { SkillResourceReader } from "./tools/skill-resources.js";
 import { BUILTIN_TOOLS } from "./tools/registry.js";
 import { buildOntologyMcpTools, ONTOLOGY_MCP_SERVER } from "./tools/ontology-mcp.js";
+import { buildSolverMcpWireTools, type SolverCatalogItem } from "./mcp/solvers-catalog.js";
+import { parseSolverMcpToolName, SOLVERS_MCP_SERVER } from "@platform/contracts";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -44,10 +46,18 @@ import { fileURLToPath } from "node:url";
  * 两条候选都缺 ⇒ 返回 dist 形态路径（子进程起不来时 mcp-client 侧 fail-closed 得 ERROR，
  * 不编一个能跑的空壳）。**该路径不落任何模型可见面**（R-UI-4）。
  */
-function resolveOntologyMcpServerPath(): string {
-  const sibling = fileURLToPath(new URL("./dsh-runtime/ontology-mcp-server.js", import.meta.url));
+function resolveDshServerPath(fileName: string): string {
+  const sibling = fileURLToPath(new URL(`./dsh-runtime/${fileName}`, import.meta.url));
   if (existsSync(sibling)) return sibling;
-  return fileURLToPath(new URL("../dist/dsh-runtime/ontology-mcp-server.js", import.meta.url));
+  return fileURLToPath(new URL(`../dist/dsh-runtime/${fileName}`, import.meta.url));
+}
+
+function resolveOntologyMcpServerPath(): string {
+  return resolveDshServerPath("ontology-mcp-server.js");
+}
+
+function resolveSolversMcpServerPath(): string {
+  return resolveDshServerPath("solvers-mcp-server.js");
 }
 import type { FeatureGate } from "./features/gate.js";
 import { ResourceRegistryService } from "./dril/resource-registry.js";
@@ -480,7 +490,33 @@ export class ExecutionEngine {
   }
 
   /** Expand AgentToolRef[] → AgentToolSpec[] (BUILTIN / MCP discovered tools / WORKFLOW-as-tool). */
-  async expandAgentTools(agent: AgentDefinition): Promise<AgentToolSpec[]> {
+  /**
+   * WO-SOLVERS-MCP-REAL · 本 run 的求解器目录（`mcp__solvers__*` 的**唯一**供给源）。
+   *
+   * 与本体那件不同，求解器目录**随租户与 entitlement 变**（关某求解器 feature ⇒ 注册表不返回
+   * ⇒ 工具必须消失，R3 先于 authz），故**不能**像本体那样走静态投影。单源 = 与治理端点
+   * `/b/v1/mcp/servers/solvers` **同一只** `catalog.solverRegistry(ctx)`（不新造第二份名单）。
+   *
+   * 失败 ⇒ 空集（**诚实缺席**）：该 run 看不到任何求解器 MCP 工具，而不是看到一批调不通的名字。
+   * ⛔ 不缓存：目录随 entitlement 变，缓存会把「刚被关掉的求解器」继续发出去。
+   */
+  private async solverCatalogItems(ctx: ToolAuthCtx | undefined): Promise<SolverCatalogItem[]> {
+    if (!ctx) return [];
+    try {
+      const r = await this.deps.dataCore.catalog.solverRegistry(ctx);
+      return r.items.map((it) => ({
+        key: it.key,
+        name: it.name,
+        description: it.description,
+        domain: it.domain,
+        argHints: it.argHints,
+      }));
+    } catch {
+      return [];
+    }
+  }
+
+  async expandAgentTools(agent: AgentDefinition, ctx?: ToolAuthCtx): Promise<AgentToolSpec[]> {
     const specs: AgentToolSpec[] = [];
     for (const ref of agent.tools) {
       if (ref.kind === "BUILTIN") {
@@ -512,6 +548,26 @@ export class ExecutionEngine {
               // 经 MCP wire 到达模型面，两内核文本逐字同（前缀禁在本处再拼一次）。
               description: t.description,
               inputSchema: t.inputSchema,
+              binding: { kind: "MCP", mcpConfigId: ref.mcpConfigId },
+            });
+          }
+          continue;
+        }
+        // WO-SOLVERS-MCP-REAL · 平台内置求解器 MCP server：工具集**随租户/entitlement 变**，
+        // 故这里**不能**静态投影（与上方本体分支的唯一差别）。走与治理端点同一只
+        // `catalog.solverRegistry(ctx)`；目录不可得 ⇒ 本 run 该 server 工具全缺席（诚实缺席）。
+        // 描述逐字取 `buildSolverMcpWireTools`（内含 SOLVERS_MCP_DESC_PREFIX）——DSH 臂同一段
+        // 文字经 MCP wire 到达模型面（engine.ts DSH 分叉把同一份清单注入子进程 env），两内核
+        // 文本逐字同（前缀禁在本处再拼一次）。
+        if (serverName === SOLVERS_MCP_SERVER) {
+          for (const t of buildSolverMcpWireTools(await this.solverCatalogItems(ctx))) {
+            if (ref.toolFilter && !ref.toolFilter.includes(t.rawName) && !ref.toolFilter.includes(t.name)) continue;
+            specs.push({
+              name: t.name,
+              description: t.description,
+              // 未登记 inputSchema ⇒ 发 `{type:"object"}`（不宣称任何属性），**不发**空 properties
+              // 空壳 —— 那等于替我们宣称「此求解器无入参」（诚实缺席 > 静默错答）。
+              inputSchema: (t.inputSchema ?? { type: "object" }) as Record<string, unknown>,
               binding: { kind: "MCP", mcpConfigId: ref.mcpConfigId },
             });
           }
@@ -553,7 +609,9 @@ export class ExecutionEngine {
   async runRegisteredAgent(opts: RunRegisteredAgentOpts): Promise<AgentLoopResult> {
     const agent = await this.resolveAgent(opts.agentId, opts.version);
     const model = await this.deps.llmSettings.roleModel(agent.tenantId, "agent", agent.model || undefined);
-    const expanded = await this.expandAgentTools(agent);
+    // ctx 透传（WO-SOLVERS-MCP-REAL）：求解器 MCP 工具集随租户/entitlement 变，目录要用本 run
+    // 的 OBO 身份去问 DataCore（`catalog.solverRegistry(ctx)`，与治理端点同源）。
+    const expanded = await this.expandAgentTools(agent, opts.ctx);
     const mcpSpecs = expanded.filter((t) => t.binding.kind === "MCP");
     // §2.2 留痕：实际执行的 agent 版本
     opts.onResolvedRef?.({ kind: "agent", key: agent.key, version: agent.version });
@@ -777,12 +835,18 @@ export class ExecutionEngine {
           // 执行仍归一回宿主反向通道（server 侧见 dsh-runtime/ontology-mcp-server.ts 头注），
           // 因此本路径**不新增第二条执行路**：MCP wire 只是进同一只 executor 的另一种协议门。
           const serverName = mcpConfig.serverName ?? mcpServerNameSlug(mcpConfig.name);
-          if (serverName === ONTOLOGY_MCP_SERVER) {
-            const serverPath = resolveOntologyMcpServerPath();
+          // 平台内置 MCP server 的**运行期形态**（本体 / 求解器共用这段 env 契约）：
+          // 绝对路径随机器/工作树变、runToken 是 per-run 一次性量、端点 URL 要跟 cfg.PORT 走，
+          // 三样都不能写死在 seed 里。落不到真进程的形态由本处兑现。
+          const builtinPath =
+            serverName === ONTOLOGY_MCP_SERVER ? resolveOntologyMcpServerPath()
+            : serverName === SOLVERS_MCP_SERVER ? resolveSolversMcpServerPath()
+            : undefined;
+          if (builtinPath) {
             Object.assign(spec, {
               transport: "stdio" as const,
               command: process.execPath,
-              args: [serverPath],
+              args: [builtinPath],
               cwd: process.cwd(),
               env: {
                 PLATFORM_TOOL_EXEC_URL: cfg.DSH_TOOL_EXEC_URL ?? `http://127.0.0.1:${cfg.PORT}/b/v1/dsh/tool-execute`,
@@ -790,6 +854,23 @@ export class ExecutionEngine {
                 ...(cfg.SERVICE_TOKEN ? { PLATFORM_TOOL_EXEC_TOKEN: cfg.SERVICE_TOKEN } : {}),
               },
             });
+          }
+          // WO-SOLVERS-MCP-REAL · 求解器工具清单**注入子进程 env**：求解器目录随租户/entitlement
+          // 变，子进程又**不去连 DataCore**（那需要凭据与 OBO，会把这个「不读凭据」的适配器变成
+          // 第二个执行体）—— 故由宿主在 spawn 前现算并注入。
+          // 派生源 = **`expanded`（本 run 已算好的那一份）**，不是再问一次 DataCore：
+          // 这样子进程的 `tools/list` 与原生臂的模型面**同源同序**，两内核描述逐字同；
+          // 且 `parseSolverMcpToolName` 是契约单源反解，不靠字符串切片猜前缀。
+          if (serverName === SOLVERS_MCP_SERVER) {
+            const wireTools = expanded
+              .filter((t) => t.binding.kind === "MCP" && t.binding.mcpConfigId === ref.mcpConfigId)
+              .flatMap((t) => {
+                const rawName = parseSolverMcpToolName(t.name);
+                return rawName
+                  ? [{ rawName, description: t.description, inputSchema: t.inputSchema }]
+                  : [];
+              });
+            spec.env = { ...(spec.env ?? {}), SOLVERS_MCP_TOOLS_JSON: JSON.stringify(wireTools) };
           }
           // WO-DSH-PROD-READY · W8副（可见性 parity）：toolFilter 真源 = agent.tools 的 MCP ref
           // （contracts AgentToolRefSchema；mcpServers 挂载行本身只有 mcpConfigId 不带 filter）。

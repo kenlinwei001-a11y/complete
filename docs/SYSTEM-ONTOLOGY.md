@@ -730,6 +730,7 @@ DataCore SolverRegistry(全集 32 = 业务场景 22 + 净室通用 9 + 决策驾
       --OBO HTTP /a/v1/solvers/{key}/invoke--> DataCore Solver
   · 收敛纪律：「无 LLM 描述不允许发布」→ 注册表每条带描述（catalog.test 守无漂移：注册表键集 === SOLVER_KEYS）
   · feature 过滤先于 authz（关 view.plan-audit → plan_audit 工具消失，R3）；与 QOS 场景 discover(22) 分列、互不影响
+  · **A1-MCP-REAL 求解器落 DSH 原生 MCP 模式（已落 2026-10-05）**：求解器补上**真 stdio MCP server** `apps/agentcore/src/dsh-runtime/solvers-mcp-server.ts`（serverName `solvers`，与本体那件共用反向通道桥 `mcp-host-bridge.ts`；工具清单由宿主按 `expandAgentTools` 现算、经 env `SOLVERS_MCP_TOOLS_JSON` 注入——目录随租户/entitlement 变，故**不做**静态投影），per-agent 三面同改（`tools` 的 MCP ref ∧ `mcpServers` 挂载行 ∧ `scopeDeclaration` 全名），执行体不变仍归一回 `invoke_solver`（OBO/scope/预算/审计全链一条不变）；**⚠ 本块首行「AgentCore `solvers` MCP server(mcp/solvers-catalog.ts buildSolverMcpTools)」描述的是迁前形态**（只有目录投影 + 治理端点、无 server 进程 ⇒ `mcp__solvers__{key}` 是合成名、对模型不可达），**该句已过期**。
 ```
 **本体查询引擎链（WO-Phase3-B · `ontology_query` 薄层遍历求解器·join≠compute·R6/R12/R13/R14/R15）**
 ```
