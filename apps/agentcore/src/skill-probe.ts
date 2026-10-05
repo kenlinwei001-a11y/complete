@@ -186,6 +186,18 @@ export class SkillProbeRunner {
       // 「写死具体模型会盖过用户在 LLM Provider 里配的绑定」）。归因链：`engine.ts` 的
       // `agent.model || undefined` → `roleModel(tenant, "agent", …)` → 租户绑定 → env `QOS_AGENT_MODEL`。
       model: "",
+      // WO-SKILL-PROBE-KERNEL · 运行内核**显式钉死**，不吃 `process.env.DSH_HARNESS` 兜底。
+      // ① 探针量的是 native 路：本文件 `PROBE_TOOL_NAMES` 声明的是 native 加载器名 `load_skill`
+      //    （`tools/registry.ts` 的 `LOAD_SKILL_TOOL`），而两臂加载器真名不同 ——
+      //    `engine.ts` 的 `SKILL_LOADER_TOOL = { native: "load_skill", dsh: "skill" }`。
+      // ② 不钉的后果是**静默换路**：字段缺失时 `engine.ts` 分叉兜底
+      //    （`agent.kernel === undefined && process.env.DSH_HARNESS === "1"`）会把探针翻到 dsh 臂，
+      //    于是它带着 native 工具面去量另一条路，而读数照样是绿的（量到的不是要量的）。
+      // ③ 也消掉 probe/twin 差分里的第二个变量：差分的唯一变量必须是「挂没挂 skill」，
+      //    内核若由 env 决定，差出来的是「两条内核差多少」而不是 skill 增益。
+      // 值取 "NATIVE"：调用方 `EvalCase.expect.toolSequence` 与 `skill-lint.ts` 的触发判据
+      // 都按 native 名 `load_skill` 写，钉死它才使「声明的工具面 ≡ 真跑的工具面」。
+      kernel: "NATIVE",
       systemPrompt,
       tools: this.buildProbeTools(skill),
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "PRE_CHECK" },
@@ -230,6 +242,11 @@ export class SkillProbeRunner {
       // 同 probe：空串 = 继承系统 LLM 配置（配对对照的 twin 必须与 probe 同一解析口径，
       // 否则 behaviorGain 量的就不是「有没有 skill」而是「两个模型差多少」）。
       model: "",
+      // WO-SKILL-PROBE-KERNEL · 内核同理显式钉死，且**必须与 probe 同值**——理由同上面 model：
+      // twin 是 probe 的对照组，两者除了「挂没挂 skill」不许再有第二个差异。
+      // 若只钉 probe 不钉 twin，env 为 "1" 时 probe 落 native、twin 落 dsh，
+      // 差分度量的就变成「两条内核的差」而非 skill 增益（对照组失格）。
+      kernel: "NATIVE",
       systemPrompt,
       tools: this.buildProbeTools(skill),
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "PRE_CHECK" },
