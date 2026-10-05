@@ -1,4 +1,4 @@
-import type { PageContext } from "@platform/contracts";
+import { parseSolverMcpToolName, type PageContext } from "@platform/contracts";
 import { domainResolve } from "../router/domain-resolver.js";
 import { isOptWhatifSignal } from "../router/opt-whatif-route.js"; // WO-OPTWHATIF-NL-WIRING · opt_whatif 双命中信号（单一来源·leaf 模块·无环）
 
@@ -497,7 +497,7 @@ export interface NavigationSlice {
   nonEmpty: boolean;
 }
 
-/** 本轮工具是否具备调 solver 的能力（invoke_solver 或任一 mcp__*__<key> solver 工具）。
+/** 本轮工具是否具备调 solver 的能力（原生 `invoke_solver` 或 MCP 面 `mcp__solvers__<key>`）。
  *  WO-CAPMAP-LIVE 导出：调不了 solver 的 agent，投影出来的图里本就一条 solver 都不会列
  *  （见下方 `solversAllowed` 分支）——此时**再去打活资源目录纯属白花钱**，调用方据此跳过取目录。 */
 export function scopeCanInvokeSolvers(toolNames: string[] | undefined): boolean {
@@ -506,7 +506,13 @@ export function scopeCanInvokeSolvers(toolNames: string[] | undefined): boolean 
 
 function canInvokeSolvers(toolNames: string[] | undefined): boolean {
   if (!toolNames || toolNames.length === 0) return true; // 未声明 = 不限（通用 path-B）
-  return toolNames.some((n) => n === "invoke_solver" || /^mcp__[a-z0-9_]+__/.test(n));
+  // ⚠ 判据必须落在 **solver 命名空间**上，不能是「任一 `mcp__*__`」——后者把本体面
+  // （`mcp__ontology__*`）与工作流面（`mcp__workflow__*`）也算成「调得动求解器」，
+  // 于是**调不了 solver 的 agent 照样去打一次活资源目录**（实测：工作流面每 run 白付
+  // 9 型 × 2 轮 = 18 次本体查询）。反解走契约单源 `parseSolverMcpToolName`，不靠字符串切片猜前缀。
+  // 本条与 WO-WORKFLOW-MCP 迁移叠加后才显形：工作流工具名由 BUILTIN 裸名变成 `mcp__workflow__*`，
+  // 才开始命中那条过宽的 `^mcp__[a-z0-9_]+__`。
+  return toolNames.some((n) => n === "invoke_solver" || parseSolverMcpToolName(n) !== undefined);
 }
 
 /**

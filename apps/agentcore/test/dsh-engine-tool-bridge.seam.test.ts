@@ -913,18 +913,25 @@ describe("W8.5 · C workflow 反向化：模型可见 + 同端点反向执行 + 
       // 可见性：首轮请求 tools 面含 mcp__workflow__<key>（setup 下发工具名 = 模型面名）
       expect(JSON.stringify(stub.requests[0]!.body)).toContain(`"${WF_TOOL}"`);
       // 真过宿主引擎：nested workflow 的 qo 步本体真调**恰好一次**。
-      // ⚠ 判据**不能**落在 `qo.mock.calls.length` 总数上：本 run 里 DRIL 资源目录投影也会逐类型查本体
-      //   （`fetchLiveSolverCatalog` → `ResourceRegistryService.collectOntologyTypes` → mock
-      //    `listObjectTypes` 的逐类型 `count()`；实测 9 型 × 2 轮 = 18 次），**与工作流无关**。
-      //   而它出现在本 run 里正是本单迁移的一个已知后果：工作流工具名成了 `mcp__workflow__*`，
-      //   命中 navigation-slice.ts `canInvokeSolvers` 的 `/^mcp__[a-z0-9_]+__/` ⇒ 取活目录
-      //   （与本体 `mcp__ontology__*` 同待遇，不是本单新立的判据；unmount 时自然消失）。
-      // 分辨判据 = **实参个数**（语义位置，不按类型名猜）：GuardedToolExecutor 是本仓唯一带第 5 实参
+      // ⚠ 判据必须落在**执行器那一条**上，不能落在 `qo.mock.calls.length` 总数上 —— 本 run 里
+      //   还可能混进 DRIL 活资源目录投影的逐类型查询（`fetchLiveSolverCatalog` →
+      //   `collectOntologyTypes` → mock `listObjectTypes` 的逐类型 `count()`），与工作流无关。
+      //   分辨判据 = **实参个数**（语义位置，不按类型名猜）：GuardedToolExecutor 是本仓唯一带第 5 实参
       //   （taskEpoch）的调用方（tools/executor.ts `queryObjects(ctx, type, filter, limit, taskEpoch)`），
       //   目录投影支只传 3 个（mocks/clients.ts `count()`）。
+      //
+      // ✅ 2026-10-06 收窄（本条断言随之换形，记录在此免得后来人当成回归）：那支投影之所以出现在
+      //   本 run 里，是 `canInvokeSolvers` 拿「任一 `mcp__*__`」当判据 ⇒ 工作流面 `mcp__workflow__*`
+      //   （与本体 `mcp__ontology__*`）被误判成「调得动求解器」⇒ 白取一次活目录（实测 9 型 × 2 轮 = 18 次）。
+      //   判据已改为契约单源反解 `parseSolverMcpToolName`（只认 `mcp__solvers__<key>` 命名空间）
+      //   ⇒ workflow-only agent 不再触发该投影。
+      //   ⚠ 代价如实记：本 run 如今**只剩一种实参形态**，故「按实参个数分辨两支」这条鉴别力
+      //   在本用例里**不再被行使**（过滤器留着仍是对的语义判据，但已不承重）。
       const execCalls = qo.mock.calls.filter((c) => c.length >= 5);
-      // 反证金丝雀：非执行器支**确实也在查**（否则「恰好 1 条」可能是筛子把两边都滤没了 ⇒ 没有鉴别力）
-      expect(qo.mock.calls.filter((c) => c.length === 3).length, "反证：非执行器支确实也在查本体").toBeGreaterThan(0);
+      // 反证金丝雀（换形，仍咬「替代解释」）：总数 > 0 证伪「mock 压根没被调用」——那种情况下
+      //   下面两条 `=== 1` 会变成瞎子；而「总数 === 执行器条数」正是本次收窄的直接后果。
+      expect(qo.mock.calls.length, "反证：本 run 确实查过本体（否则下一条恒真）").toBeGreaterThan(0);
+      expect(qo.mock.calls.length, "非执行器支（活目录投影）本轮已不发生").toBe(execCalls.length);
       expect(execCalls.length, `执行器支 queryObjects 调用=${JSON.stringify(execCalls.map((c) => c[1]))}`).toBe(1);
       expect(execCalls[0]![1], "执行器支查的类型 = workflowDef qo 步点名的那个").toBe("Base");
       // 审计行 = 2 行（native 同构）：nested qo 步过 GuardedToolExecutor 自落一行 +
