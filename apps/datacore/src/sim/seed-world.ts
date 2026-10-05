@@ -37,9 +37,53 @@ import {
 } from "@platform/contracts";
 import type { AuthCtx } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
-import { stateVarDisplayName, stateVarValueRef } from "../synthetic/battery.js";
+import { STATE_VAR_DOMAINS, stateVarDisplayName, stateVarValueRef } from "../synthetic/battery.js";
 import { buildPropagationInputs } from "./propagation-inputs.js";
-import type { PropagationGraph } from "./propagation.js";
+import { saturateToDomain, type PropagationGraph } from "./propagation.js";
+
+/**
+ * tick0 世界态里**落在声明取值域之外**的格子（WO-DERIV-BACKFILL · 双所有者普查）。
+ *
+ * ── 为什么需要它（缺口比"没记账"窄，说准了才对得上修法）────────────────────────────
+ * 引擎**已经有**越界账：`propagation.ts` 每拍把越界格记进 `stateVarReport.saturations[]`
+ * （含 `raw`/`value`/`bound`），`disclosure.ts:353` 把它投影成屏上的「本拍饱和 N 次」。
+ * ⛔ 但那条账**只覆盖 tick ≥ 1** —— 本函数把 tick0 的值**直接写进库、一次都不查域**。
+ * 于是「规格算出来的数本来就出界」这一类**从头到尾不在任何一张账上**：
+ * 用户看到的第一屏读数是出界的，而屏上那句"本拍饱和 0 次"说的是**此后每拍**。
+ *
+ * ── 谁在乎这件事（为什么不是记账洁癖）──────────────────────────────────────────────
+ * `saturateToDomain` 不是硬截断：它在深区的导数按 `1/(1+u)²` 塌掉 ⇒ **源上加多大扰动，
+ * 下游差被压掉几个数量级**。实测（2026-10-05）：`Base.loadIndex` 13 个基地里 10 个 >100，
+ * 落点选在其中一个（301.8）时，`MaintPlan.windowSqueeze` / `Shipment.inboundExpeditePressure`
+ * 与零扰动臂**差 0 格**；换未饱和的落点（98.47）后同样两列立刻动（6.09 / 5.33）。
+ * ⇒ 这正是「输出与输入无关」的可复现形态，**而它从第一屏就开始**。
+ *
+ * ── 判据与边界（三条，缺一条这个数就会骗人）────────────────────────────────────────
+ *  ① **「出界」用引擎自己那一句**：`raw < min || (max !== null && raw > max)`
+ *     —— 与 `propagation.ts` 归一的那处**同一个谓词**。⛔ 不在这里另写一份判断，
+ *     另写一份就是第二套真相源，判据一漂两个数就开始各说各话。
+ *  ② **「归哪条规格」用 `stateVarValueRef()` 现查**，不按名字猜、不另立登记表
+ *     —— 与 `spec-base-synthesis.ts` 的守卫**同一个函数**（那条注释明写「复用，不许另立」）。
+ *     `null` = 该格没有显式规格绑定（占位格 / 纯传导格），照样进清单，不隐藏。
+ *  ③ **范围是现算的**（逐格累计 min/max），不是抄注释里的"实测 X–Y"——
+ *     注释会过期，数字不会。
+ */
+export interface SeedWorldOutOfDomainCell {
+  /** `类型.状态变量`。 */
+  cell: string;
+  /** 该格归哪条派生规格（`stateVarValueRef` 现查；`null` = 无显式绑定）。 */
+  specKey: string | null;
+  /** 本类型里落域外的对象数（分母见 `objects`）。 */
+  outside: number;
+  /** 本类型进世界的对象数（分母）。 */
+  objects: number;
+  /** 现算实测范围（该类型**全部**对象，不只域外那些）。 */
+  observed: readonly [number, number];
+  /** 声明的取值域（`max: null` = 无界声明）。 */
+  declared: readonly [number, number | null];
+  /** 引擎把值压到哪（用 `saturateToDomain` **同一个函数**算，不是另写一个截断）。 */
+  saturatedTo: readonly [number, number];
+}
 
 /**
  * 推演世界的两条**生产写路径**（`app.ts` 的路由与本播种模块共用同一份实现）。
@@ -310,6 +354,14 @@ export interface SeedWorldSnapshotOrigin {
   measuredCells: number;
   /** 其中派生占位的格子数（`cells - measuredCells`）。 */
   derivedCells: number;
+  /**
+   * tick0 就落在声明取值域之外的格子（**现算**；口径与必要性见 `SeedWorldOutOfDomainCell`）。
+   *
+   * ⚠ additive 字段（RL9）：不要它的消费方看到的回包与本字段引入前**逐字节相同**。
+   * 空数组 = **现算出来真的没有**，不是"没算"—— 判据是 `saturateToDomain` 实际压没压动，
+   * 不是名字里有没有 `Pressure`。
+   */
+  outOfDomain: readonly SeedWorldOutOfDomainCell[];
 }
 
 /** 播种回执（供 `server.ts` / `seed-cli.ts` 打日志；`created:false` = 幂等命中 / 修复 / 诚实缺席）。 */
@@ -411,6 +463,13 @@ export async function deriveSeedBaseSnapshot(
    * （数还是那个数，只是章盖反了），比崩掉更难查。
    */
   const provenance: CellProvenance = {};
+  /**
+   * tick0 越界普查的累加器（`类型.变量` → 现算范围 / 域外计数）。
+   * ⚠ 在**写 `row[v]` 的同一个循环里**累加，不另起一轮扫 `state`：
+   *   两处各判一次「这一格的值是多少」就是第二套真相源，判据一漂，账上的范围就与库里的值对不上。
+   *   （同一纪律见上方 `provenance` 那段：与 `measuredCells` 在同一个 `if/else` 里写。）
+   */
+  const domainAgg = new Map<string, { lo: number; hi: number; outside: number; objects: number }>();
   let objects = 0;
   let cells = 0;
   let measuredCells = 0;
@@ -484,6 +543,14 @@ export async function deriveSeedBaseSnapshot(
           originRow[v] = "derived";
         }
         cells += 1;
+        // 越界普查（WO-DERIV-BACKFILL）。判据 ① 见 `SeedWorldOutOfDomainCell`：与引擎归一那处同一个谓词。
+        const dv = STATE_VAR_DOMAINS[v];
+        const val = row[v]!;
+        const agg = domainAgg.get(`${typeKey}.${v}`) ?? { lo: Infinity, hi: -Infinity, outside: 0, objects: 0 };
+        agg.lo = Math.min(agg.lo, val);
+        agg.hi = Math.max(agg.hi, val);
+        if (dv !== undefined && (val < dv.min || (dv.max !== null && val > dv.max))) agg.outside += 1;
+        domainAgg.set(`${typeKey}.${v}`, agg);
       }
       // 空 vars 不会发生（类型进 byType 必带至少一个变量），但仍不写空行：空行是"这个对象在世界里
       // 却一格都没有"，读起来像数据丢了。
@@ -491,6 +558,10 @@ export async function deriveSeedBaseSnapshot(
         state[o.id] = row;
         provenance[o.id] = originRow; // 与 `state[o.id]` 同一个条件写入 ⇒ 两表的键集恒等
         objects += 1;
+        for (const v of vars) {
+          const agg = domainAgg.get(`${typeKey}.${v}`);
+          if (agg !== undefined) agg.objects += 1; // 分母 = 真的进了世界的那批（与 `objects` 同一处加）
+        }
       }
     }
   }
@@ -570,8 +641,43 @@ export async function deriveSeedBaseSnapshot(
       cells,
       measuredCells,
       derivedCells: cells - measuredCells,
+      outOfDomain: tallyOutOfDomain(domainAgg),
     },
   };
+}
+
+/**
+ * 把普查累加器折成清单（按 `类型.变量` 升序 ⇒ 重播字节一致 R6）。
+ *
+ * ⚠ 只收**真的有格子出界**的那些：`outside === 0` 不入清单。
+ *   空清单 = 现算出来真的没有，**不是"没算"** —— 判据是引擎那个谓词跑过一遍的结果。
+ */
+function tallyOutOfDomain(
+  agg: ReadonlyMap<string, { lo: number; hi: number; outside: number; objects: number }>,
+): SeedWorldOutOfDomainCell[] {
+  const out: SeedWorldOutOfDomainCell[] = [];
+  for (const [cell, a] of [...agg.entries()].sort((x, y) => x[0].localeCompare(y[0]))) {
+    if (a.outside === 0) continue;
+    const dot = cell.lastIndexOf(".");
+    const typeKey = cell.slice(0, dot);
+    const v = cell.slice(dot + 1);
+    const d = STATE_VAR_DOMAINS[v];
+    if (d === undefined) continue; // 无声明域 ⇒ 引擎不夹 ⇒ 不构成"出界"（上面也不会计数，此处是类型收窄）
+    out.push({
+      cell,
+      specKey: stateVarValueRef(typeKey, v)?.specKey ?? null,
+      outside: a.outside,
+      objects: a.objects,
+      observed: [a.lo, a.hi],
+      declared: [d.min, d.max],
+      // 压到哪：**用引擎那个函数算**，不另写一个截断 —— 它带压缩带，不是 min/max 直夹。
+      saturatedTo: [
+        saturateToDomain(a.lo, d.min, d.max, d.restPoint),
+        saturateToDomain(a.hi, d.min, d.max, d.restPoint),
+      ],
+    });
+  }
+  return out;
 }
 
 /**
