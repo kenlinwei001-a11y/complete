@@ -523,6 +523,80 @@ async function main() {
     }
   }
 
+  // ── ⑥b 承载集分解 ─────────────────────────────────────────────────────────
+  /**
+   * 审核方 2026-10-05：`carriers/universe = 150/500` ⇒ 需要**承载集那一侧**的读数，
+   * 与全域 `MARGIN.projected` 增量**并排**，才分得清「扰动没生效」与「生效了但被聚合稀释」。
+   *
+   * ⛔ 探针侧**只报原值差**，不重算求解器的加权口径（`finance-world.ts:224`
+   * `orderValue = props.qty × props.unitPrice`）—— 复算是诊断，不是判据；
+   * 求解器自己的 `costPressure.value` 并排给出，两者不一致时一眼可见。
+   */
+  say("\n════════════════════════════════════════════════════════");
+  say("══ ⑥b 承载集分解（承载订单自己的读数 vs 全域加权读数）══");
+  try {
+    const carriersOf = async (a) => {
+      const w = await readWorld(a.sessionId);
+      const m = new Map();
+      for (const [oid, row] of Object.entries(w.state ?? {})) {
+        if (!oid.startsWith("obj_order_")) continue;
+        const cp = row?.costPressure;
+        if (typeof cp !== "number") continue; // 承载 = 世界态里真有这一格
+        const qty = row?.qty, up = row?.unitPrice;
+        const value = typeof qty === "number" && typeof up === "number" ? qty * up : null;
+        m.set(oid, { cp, value });
+      }
+      return m;
+    };
+    const carrierMap = {};
+    for (const nm of CFG.arms) if (arms[nm]) carrierMap[nm] = await carriersOf(arms[nm]);
+    const ref = carrierMap.zero ?? carrierMap[CFG.arms[0]];
+    if (!ref) say("NOT-MEASURED：无可用参照臂");
+    else {
+      say(`承载集（state 里真有 costPressure 的 Order）规模 = ${ref.size}（求解器报 carriers=${z?.series.at(-1)?.costPressureCarriers} / universe=${z?.series.at(-1)?.costPressureUniverse}）`);
+      say(`⚠ 金丝雀：承载集必须非空，且至少一臂在承载集上真有非零 Δ —— 否则先怀疑承载集取法，⛔ 不许报「确实没变」。`);
+      say("");
+      say(`臂\t承载集规模\tΔ≠0 的承载数\tmax|Δ|\tΣ|Δ|\t承载集均值Δ(价值加权,诊断)\t求解器 costPressure.value\tΔ(value)\tMARGIN.projected\tΔ(MARGIN)`);
+      for (const nm of CFG.arms) {
+        const cm = carrierMap[nm];
+        if (!cm) continue;
+        const ids = [...new Set([...ref.keys(), ...cm.keys()])];
+        let nz = 0, maxAbs = 0, sumAbs = 0, sw = 0, swd = 0;
+        for (const id of ids) {
+          const b = ref.get(id)?.cp, v = cm.get(id)?.cp;
+          if (typeof b !== "number" || typeof v !== "number") continue;
+          const d = v - b;
+          if (d !== 0) nz += 1;
+          if (Math.abs(d) > maxAbs) maxAbs = Math.abs(d);
+          sumAbs += Math.abs(d);
+          const wgt = cm.get(id)?.value;
+          if (typeof wgt === "number" && wgt > 0) { sw += wgt; swd += wgt * d; }
+        }
+        const last = arms[nm].series.at(-1), lz = z?.series.at(-1);
+        say([nm, ids.length, nz, num(maxAbs, 6), num(sumAbs, 6),
+             sw > 0 ? num(swd / sw, 6) : "—",
+             num(last?.costPressureValue, 6),
+             num((last?.costPressureValue ?? 0) - (lz?.costPressureValue ?? 0), 6),
+             num(last?.marginProjected, 4),
+             num((last?.marginProjected ?? 0) - (lz?.marginProjected ?? 0), 4)].join("\t"));
+      }
+      // 逐格明细：承载集上 Δ 最大的前 8 个（按 |Δ| 降序，同值按 id 升序 —— 遍历序即语义）
+      for (const nm of CFG.arms) {
+        const cm = carrierMap[nm];
+        if (!cm || nm === "zero") continue;
+        const rows = [];
+        for (const id of [...new Set([...ref.keys(), ...cm.keys()])]) {
+          const b = ref.get(id)?.cp, v = cm.get(id)?.cp;
+          if (typeof b === "number" && typeof v === "number" && v !== b) rows.push({ id, b, v, d: v - b });
+        }
+        rows.sort((p, q) => Math.abs(q.d) - Math.abs(p.d) || (p.id < q.id ? -1 : 1));
+        say(`\n[${nm} − zero] 承载集逐格 Δ 前 8（共 ${rows.length} 格有 Δ）：`);
+        for (const r of rows.slice(0, 8)) say(`   ${r.id}  ${num(r.b, 6)} → ${num(r.v, 6)}  Δ=${num(r.d, 6)}`);
+        if (rows.length === 0) say(`   （无 —— 若 ${nm} 是 B/AB 臂则**这就是探针坏了的信号**，先查承载集取法）`);
+      }
+    }
+  } catch (e) { say(`承载集分解失败：${e instanceof Error ? e.message : String(e)}`); }
+
   // ── ⑦ 全量网络观测 ────────────────────────────────────────────────────────
   say("\n══ ⑦ 全量网络观测（每一次请求；⚠ 只记失败会被读成『没有』）══");
   say(`总请求数 = ${NET.length}`);
