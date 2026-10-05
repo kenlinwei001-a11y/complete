@@ -43,7 +43,13 @@ try {
 
   // cockpit P1 经营驾驶舱富 KPI（L4 真后端）：DemandSegment/FinancePlan/MaterialBalance 合成→派生→聚合→widget
   await page.click('a[href="/v/dash"]').catch(() => {});
-  await page.waitForTimeout(1500);
+  // ⚠ 2026-10-05 修（同类）：富 KPI 由 DemandSegment/FinancePlan/MaterialBalance 聚合派生后异步上屏，
+  //   固定等 1.5 秒是赌；改为等 KPI 真的出现（有界 90 秒）。
+  await page.waitForFunction(
+    () => !!document.querySelector("[data-testid=widget-demand-p50]"),
+    null,
+    { timeout: 90000 },
+  ).catch(() => {});
   const demandKpi = await page.locator("[data-testid=widget-demand-p50]").count();
   const marginKpi = await page.locator("[data-testid=widget-gross-margin]").count();
   const matKpi = await page.locator("[data-testid=widget-material-gap]").count();
@@ -52,7 +58,13 @@ try {
     : bad(`cockpit P1 真后端：富 KPI 缺失（demand=${demandKpi} margin=${marginKpi} mat=${matKpi}）`);
 
   // cockpit P2 规划决策推演 · 根因 DAG（L4 真后端）：plan_rootcause 求解器经营 KPI 越线 → 因子 → 取证叶三层真渲染
-  await page.waitForTimeout(1500); // 等 plan_rootcause solver widget 拉取
+  // ⚠ 2026-10-05 修（同类）：plan_rootcause 求解器是异步的（同页 counterfactual 实测 6.93s），
+  //   固定等 1.5 秒 ⇒ 本轮 P2 报 dag=0 而上一轮同一条是绿的 —— 抖动全来自这里，与产品无关。
+  await page.waitForFunction(
+    () => !!document.querySelector("[data-testid=provenance-dag]"),
+    null,
+    { timeout: 90000 },
+  ).catch(() => {});
   const dagRoot = await page.locator("[data-testid=provenance-dag]").count();
   const dagKpi = await page.locator('[data-testid^="dag-node-kpi:"]').count();
   const dagFactor = await page.locator('[data-testid^="dag-node-factor:"]').count();
@@ -139,7 +151,9 @@ try {
   await page.click("[data-testid=sop-step-chip-3]").catch(() => {});
   await page.waitForSelector("[data-testid=sop-run-3]", { timeout: 8000 }).catch(() => {});
   await page.click("[data-testid=sop-run-3]").catch(() => {});
-  await page.waitForSelector("[data-testid=sop-mrp-table]", { timeout: 8000 }).catch(() => {});
+  // ⚠ 2026-10-05 修（同类）：第 3 步要跑真 mrp_netting 求解器再出表，8 秒在负载下不够
+  //   （上一轮 9 行绿、下一轮被拖红）。放宽到 90 秒。
+  await page.waitForSelector("[data-testid=sop-mrp-table]", { timeout: 90000 }).catch(() => {});
   const sopMrp = await page.locator("[data-testid^=sop-mrp-row-]").count();
   sopMrp > 0
     ? ok(`SOP 前端真后端：物料线 MRP 表 ${sopMrp} 物料真浏览器渲染（mrp_netting，C06 齐套）`)
@@ -157,7 +171,12 @@ try {
 
   // A11 连接器归类列
   await page.click('a[href="/admin/connections"]').catch(() => {});
-  await page.waitForTimeout(1000);
+  // ⚠ 2026-10-05 修（同类）：连接列表异步加载，固定等 1 秒是赌（实测两轮 57 → 81 条，条数随建域在长）。
+  await page.waitForFunction(
+    () => document.querySelectorAll("[data-testid^='conn-cat-']").length > 0,
+    null,
+    { timeout: 90000 },
+  ).catch(() => {});
   const cats = await page.$$eval("[data-testid^=conn-cat-]", (els) => els.length);
   cats > 0 ? ok(`A11 真后端：${cats} 条连接含归类列`) : bad("A11 真后端：无连接归类列");
 
@@ -187,6 +206,13 @@ try {
   steps >= 6 ? ok(`工作流真后端：7 步状态机 + 比对现状${gap ? "表" : "(未展开)"}`) : bad(`工作流真后端：步骤异常 ${steps}`);
 
   // ── A5 FDE 编排节点图（L4 真后端）：展开运行 → 8 节点 DAG 真浏览器渲染 ──
+  // ⚠ 2026-10-05 修（同类）：这一段**原本一个等待都没有** —— 它一直沾上面 WF 段 90 秒等待的光，
+  //   本轮 WF 提前返回就露馅（fdeNodes=0，上一轮同一条是绿的）。显式等节点真的渲染出来。
+  await page.waitForFunction(
+    () => document.querySelectorAll("[data-testid^='fde-node-']").length > 0,
+    null,
+    { timeout: 90000 },
+  ).catch(() => {});
   const fdeNodes = await page.$$eval("[data-testid^=fde-node-]", (els) => new Set(els.map((e) => e.getAttribute("data-testid"))).size);
   fdeNodes >= 8 ? ok(`A5 真后端：FDE 节点图 ${fdeNodes} 节点真浏览器渲染`) : bad(`A5 真后端：FDE 节点数异常 ${fdeNodes}`);
 
@@ -242,7 +268,12 @@ try {
   const evalRun = await page.locator("[data-testid=eval-run]").count();
   if (evalRun > 0) {
     await page.click("[data-testid=eval-run]").catch(() => {});
-    await page.waitForTimeout(3500);
+    // ⚠ 2026-10-05 修（同类）：评测跑批 + parity 失因列异步上屏，固定等 3.5 秒是赌。
+    await page.waitForFunction(
+      () => document.querySelectorAll("[data-testid^='eval-parity-']").length > 0,
+      null,
+      { timeout: 90000 },
+    ).catch(() => {});
     const parityCol = await page.locator("[data-testid^=eval-parity-]").count();
     parityCol > 0 ? ok("A14 真后端：评测 parity 失因列真浏览器渲染") : bad("A14 真后端：parity 列缺失");
   } else { bad("A14 真后端：evals 页无运行入口"); }
