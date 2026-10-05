@@ -301,6 +301,74 @@ describe("落点 (b) · 消费端按率读口吃「偏离」", () => {
     }
   }, 300_000);
 
+  it("§5 现金半对照臂：有静息点 ⇒ 金额真的动；无静息点 ⇒ 金额纹丝不动但逐格点名", async () => {
+    const t = await seededApp();
+    const links = await t.repos.links.list("demo");
+    // 一条**真**链路实例（不是编的 id —— 编 id 会让这条门在链路改了之后照样绿）：
+    // Material --material_used_by_model--> Model --model_demanded_by_order--> Order --order_of_customer--> Customer
+    const mubm = links.find((l) => l.type === "material_used_by_model");
+    expect(mubm, "金丝雀：链路表里没有 material_used_by_model ⇒ 用例前提不成立").toBeDefined();
+    const chainOrder = links.find((l) => l.type === "model_demanded_by_order" && l.fromId === mubm!.toId);
+    expect(chainOrder, "金丝雀：该物料所属型号没有下游订单 ⇒ 用例前提不成立").toBeDefined();
+    const orderId = chainOrder!.toId;
+    const custId = links.find((l) => l.type === "order_of_customer" && l.fromId === orderId)!.toId;
+    const invIds = links.filter((l) => l.type === "customer_has_invoice" && l.fromId === custId).map((l) => l.toId);
+    expect(invIds.length, "该客户名下没有发票 ⇒ 应收链无从驱动，用例前提不成立").toBeGreaterThan(0);
+
+    const run = async (base: Record<string, Record<string, number>>) => {
+      const r = await t.app.inject({
+        method: "POST",
+        url: "/a/v1/sim/sessions",
+        headers: ADMIN,
+        payload: { baseSnapshot: base },
+      });
+      expect(r.statusCode, `建会话失败：${r.body}`).toBe(201);
+      const sid = r.json().id as string;
+      await perturbDelta(t, sid, mubm!.fromId, 1000);
+      await tick(t, sid, 3);
+      return { sid, d: await project(t, sid) };
+    };
+
+    // ── 臂①「无静息点」：世界态里**有**客户/发票的压力格，开局快照里**没有** ⇒ (b) 不消费它。
+    //    这正是「水平读数非 0 而金额不许动」的场景 —— 改前它会把 0.126pp 当偏离乘进金额（本病的指纹）。
+    const a = await run({ [orderId]: { costPressure: 0 } });
+    const aLvl = (a.d.pressures as any[]).find((p) => p.stateVar === "receivablePressure");
+    const aMiss = (a.d.unresolvedRestPoints ?? []).filter(
+      (u: any) => u.stateVar === "receivablePressure" || u.stateVar === "overduePressure",
+    );
+    console.log(
+      `§5 臂①（无静息点）：水平读数 receivablePressure=${aLvl.value}（承载 ${aLvl.carriers}）·` +
+        ` 应收 ${a.d.cash.arProjected}（基线 ${a.d.cash.arBaseline}）· 静息缺席 ${aMiss.length} 格`,
+    );
+    // 金丝雀：世界态里必须真有承载格 —— 否则下面两条读不出是「静息值取不到」还是「压根没这格」。
+    expect(aLvl.carriers, "金丝雀：世界态里必须有客户的 receivablePressure 格").toBeGreaterThan(0);
+    expect(aMiss.length, "有世界态格、快照里取不到静息值 ⇒ 必须逐格进诚实缺席表").toBeGreaterThan(0);
+    expect(
+      a.d.cash.arProjected,
+      "无静息点 ⇒ 应收投影一格都不许动（⛔ 既不许拿水平当偏离，也不许静默按偏离 0 乘）",
+    ).toBe(a.d.cash.arBaseline);
+
+    // ── 臂②「有静息点」：同一扰动、同一条链，唯一差别是把承载体播上静息点 ⇒ 金额必须真的动。
+    const b = await run({
+      [orderId]: { costPressure: 0 },
+      [custId]: { receivablePressure: 0 },
+      ...Object.fromEntries(invIds.map((id) => [id, { overduePressure: 0 }])),
+    });
+    const seeded = new Set<string>([`${custId}|receivablePressure`, ...invIds.map((id) => `${id}|overduePressure`)]);
+    const bMiss = (b.d.unresolvedRestPoints ?? []).filter((u: any) => seeded.has(`${u.objectId}|${u.stateVar}`));
+    console.log(
+      `§5 臂②（有静息点）：应收 ${b.d.cash.arProjected}（基线 ${b.d.cash.arBaseline}）·` +
+        ` 逾期敞口 ${b.d.cash.overdueExposure} · 播过静息点的格进缺席表 ${bMiss.length}`,
+    );
+    expect(bMiss, "播过静息点的格不许进诚实缺席表（否则「金额动了」读不出是偏离驱动还是别的路）").toHaveLength(0);
+    expect(b.d.cash.arProjected, "有静息点 ⇒ 应收投影必须真的动（否则 (b) 把现金半改死了）").toBeGreaterThan(
+      b.d.cash.arBaseline,
+    );
+    expect(b.d.cash.overdueExposure, "有静息点 ⇒ 逾期敞口必须 > 0").toBeGreaterThan(0);
+    // 两臂**同源同扰动**，唯一差别是「静息点在不在」—— 这才叫对照实验。
+    expect(a.d.cash.invoiceUniverse, "两臂的发票全域必须相同（否则比的是两个世界）").toBe(b.d.cash.invoiceUniverse);
+  }, 300_000);
+
   it("§4 静息值取不到 ⇒ 不退回 0，逐格点名（单元级）", () => {
     // (i) 世界态有格、快照里连对象都没有 ⇒ 记一条，返回 undefined（⛔ 不是 0）
     const r1 = new DeviationReader({ o1: { costPressure: 24 } }, {});

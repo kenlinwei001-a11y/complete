@@ -72,6 +72,22 @@ async function project(t: TestApp, worldId: string): Promise<FinanceWorldProject
 }
 
 const lineOf = (out: FinanceWorldProjectionOutput, role: string) => out.lines.find((l) => l.role === role)!;
+
+/**
+ * 读会话**当前拍**的世界态里某一格（复算金额用的原始读数）。
+ *
+ * ⛔ 复算金额**不许**拿 `pressures[].value` —— 那是**面 C 的水平读数**，而落点 (b) 之后
+ * 金额吃的是**偏离**（世界态 − 开局快照静息值）。拿水平去算出来的恒等式是装饰品：
+ * 它两边口径不同却可能凑巧接近，改前就是这么绿着的。
+ */
+async function worldCellOf(t: TestApp, sid: string, objId: string, stateVar: string): Promise<number> {
+  const r = await t.app.inject({ method: "GET", url: `/a/v1/sim/sessions/${sid}/world`, headers: ADMIN });
+  expect(r.statusCode, `读世界态失败：${r.body}`).toBe(200);
+  const j = r.json() as { state: Record<string, Record<string, number>> };
+  const v = j.state[objId]?.[stateVar];
+  expect(typeof v, `世界态里没有 ${objId}.${stateVar} ⇒ 这条判据的前提不成立`).toBe("number");
+  return v as number;
+}
 const pressureOf = (out: FinanceWorldProjectionOutput, v: string) => out.pressures.find((p) => p.stateVar === v)!;
 
 /**
@@ -183,10 +199,19 @@ describe("WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影", () 
     expect(cogsAfter.delta).toBeGreaterThan(0);
     expect(gmAfter.projected).toBeLessThan(gmBefore.projected);
     expect(gmAfter.delta).toBeLessThan(0);
-    // ④ 金额与压力**同一条算式**：projected == rolling ×（1 + 压力 ÷ divisor）。
+    // ④ 金额与**它实际吃的那个读数**同一条算式（落点 (b) 之后吃的是**偏离**）。
     //    写成恒等式而不是写死一个数 —— 写死等于赌种子不变，种子一改这条测试就在测别的东西。
-    const expectCogs = Math.round(cogsAfter.rolling * (1 + pressureAfter.value / after.basis.divisor) * 100) / 100;
-    expect(cogsAfter.projected).toBeCloseTo(expectCogs, 6);
+    //    ⚠ 旧写法拿 `pressureAfter.value`（面 C 的**水平**读数）去算：改前两边口径恰好相同所以它绿，
+    //    改后**复算不出** projected（实测 581.102238 vs 581.21），却仍然会绿 —— 那就是装饰品。
+    //    今天从世界态复算本用例唯一播了静息点的那张单的偏离，再咬「金额吃的是它、且被全域权重稀释」。
+    const cellDev = await worldCellOf(t, sid, orderId, "costPressure"); // 本用例给这张单播的静息值 = 0
+    const impliedDev = (cogsAfter.projected / cogsAfter.rolling - 1) * after.basis.divisor;
+    expect(cellDev, "金丝雀：扰动必须让这一格真的偏离静息值，否则下面的复算无从谈起").toBeGreaterThan(0);
+    expect(impliedDev, "金额必须真的吃到了偏离").toBeGreaterThan(0);
+    // 聚合分母是**全域** 500 张单（只有这一张有静息点）⇒ 单格偏离必被稀释 ⇒ 隐含值严格小于单格值。
+    expect(impliedDev, "隐含偏离等于单格偏离 ⇒ 聚合口径变了（分母不再是全域）").toBeLessThan(cellDev);
+    // ★ 头号口径判据：金额吃的**不是**面 C 报的那个水平读数（改前两者相等 ⇒ 这一条当场红）。
+    expect(impliedDev).not.toBeCloseTo(pressureAfter.value, 6);
     // ⑤ 基线**没被动过**（R4：投影不写回本体真值）
     expect(cogsAfter.rolling).toBe(cogsBefore.rolling);
     expect(gmAfter.rolling).toBe(gmBefore.rolling);
@@ -204,7 +229,24 @@ describe("WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影", () 
     const { materialId, orderId, customerId } = await costChainInstance(t);
     expect(customerId, "这条订单没挂到客户上 ⇒ 现金链走不通，用例前提不成立").not.toBeNull();
 
-    const sid = await createWorld(t, { [materialId]: { priceShock: 0 }, [orderId]: { costPressure: 0 } });
+    // ⚠ 落点 (b) 之后「有世界态格、开局快照里没有静息值」= 偏离算不出来 = **不消费**。
+    //    故本用例的缩小世界必须把**现金链的承载体**也播上静息点（客户 + 其名下发票）——
+    //    否则它测的是「静息值取不到」那条诚实缺席路，而不是「应收压力真的推动金额」。
+    //    （生产路 `deriveSeedBaseSnapshot` 是按 (类型,变量) 全量铺的，本用例原先只播两格是缩样。）
+    const cashCells: Record<string, Record<string, number>> = { [customerId!]: { receivablePressure: 0 } };
+    const invoiceIds: string[] = [];
+    for (const l of await t.repos.links.list("demo")) {
+      if (l.type === "customer_has_invoice" && l.fromId === customerId) {
+        invoiceIds.push(l.toId);
+        cashCells[l.toId] = { overduePressure: 0 };
+      }
+    }
+    expect(invoiceIds.length, "该客户名下没有发票 ⇒ 应收链无从驱动，用例前提不成立").toBeGreaterThan(0);
+    const sid = await createWorld(t, {
+      [materialId]: { priceShock: 0 },
+      [orderId]: { costPressure: 0 },
+      ...cashCells,
+    });
     const before = await project(t, sid);
     expect(before.cash.available).toBe(true);
     expect(before.cash.arBaseline).toBeGreaterThan(0);
@@ -224,6 +266,21 @@ describe("WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影", () 
     const after = await project(t, sid);
     expect(pressureOf(after, "receivablePressure").value).toBeGreaterThan(0);
     expect(pressureOf(after, "overduePressure").value).toBeGreaterThan(0);
+    // 金丝雀（前提自证）：播过静息点的格**不许**进诚实缺席表 —— 否则下面「金额真的动了」读不出是
+    // 偏离驱动还是别的路径。同时反向咬住「这张表不是恒空」：别的客户/发票仍在缺席表里。
+    const seeded = new Set<string>([
+      `${customerId}|receivablePressure`,
+      ...invoiceIds.map((id) => `${id}|overduePressure`),
+    ]);
+    const unresolvedNow = after.unresolvedRestPoints ?? [];
+    expect(
+      unresolvedNow.filter((u) => seeded.has(`${u.objectId}|${u.stateVar}`)),
+      "播过静息点的格进了诚实缺席表 ⇒ 本用例前提不成立",
+    ).toHaveLength(0);
+    expect(
+      unresolvedNow.some((u) => u.stateVar === "receivablePressure" || u.stateVar === "overduePressure"),
+      "缺席表恒空 ⇒ 上面那条是装饰品（本用例只播了一条链的承载体，其余承载体本就该留在表里）",
+    ).toBe(true);
     // 金额真的不同 + 方向一致
     expect(after.cash.arProjected).not.toBe(before.cash.arProjected);
     expect(after.cash.arProjected).toBeGreaterThan(before.cash.arProjected);
@@ -392,9 +449,15 @@ describe("WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影", () 
     expect(out.worldStateSource).toBe("BASE_SNAPSHOT");
     expect(out.worldObjectCount).toBe(1);
     expect(out.available).toBe(true);
-    // 回落读到的态**真的被用了**（不是读了个寂寞）：成本压力非 0 ⇒ 金额真的动。
+    // 回落读到的态**真的被用了**（不是读了个寂寞）：成本压力的**水平读数非 0**（下面第一条）。
     expect(pressureOf(out, "costPressure").value).toBeGreaterThan(0);
-    expect(lineOf(out, "COST").delta).toBeGreaterThan(0);
+    // 而**金额一行都不许动** —— 落点 (b) 的分母是「偏离 = 世界态 − 静息值」，
+    // 回落分支里世界态**就是**开局快照本身（`worldState = world.baseSnapshot`）⇒ 每格偏离 ≡ 0。
+    // ⚠ 这是**量出来的 0**，不是「取不到」：静息值就在同一个对象上，故不许进诚实缺席表（下一条）。
+    expect(out.unresolvedRestPoints, "回落分支的静息值取不到等于「同一个对象上取不到」——不许发生").toBeUndefined();
+    expect(lineOf(out, "COST").projected).toBe(lineOf(out, "COST").rolling);
+    expect(lineOf(out, "COST").delta).toBe(0);
+    // ★ 这一对（水平 >0 ∧ 金额 Δ=0）就是本病的指纹：改前 `delta = 30% × 基线`（水平当偏离）。
   });
 
   it("R2 隔离 + 入参纪律：别人的世界 404；不给 worldId 显式 400（不静默回落到本体真值口径）", async () => {

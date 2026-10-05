@@ -415,7 +415,11 @@ export async function projectFinanceWorld(
       driver: role === "COST" ? "Order.costPressure" : role === "MARGIN" ? "Order.costPressure（经 收入Δ − 成本Δ 传导）" : "",
       formula:
         role === "COST"
-          ? `${rolling} ×（1 + ${round(costAgg.value, 6)} ÷ ${divisor}）= ${projected}`
+          ? // ⚠ 这里插的必须是**金额实际吃的那个读数**（落点 (b) 之后 = 偏离 `costDev.value`）。
+            // 插 `costAgg.value`（水平）会让这条公式**复算不出它自己的 projected** ——
+            // 实测过：公式写 `581.1 ×（1 + 0.146429 ÷ 100）` 而 projected 是 `581.116599`，
+            // 两者相差 0.83 亿。披露与读数不一致 = 另一种静默错答（本单病的同族）。
+            `${rolling} ×（1 + 偏离 ${round(costDev.value, 6)} ÷ ${divisor}）= ${projected}`
           : role === "MARGIN"
             ? `${gmRolling} +（Δ收入 ${money(revProjected - revRolling)}）−（Δ成本 ${money(cogsProjected - cogsRolling)}）= ${projected}`
             : role === "REVENUE"
@@ -483,9 +487,12 @@ export async function projectFinanceWorld(
     invoiceCarriers,
     customerLinked,
     formula:
-      `应收投影 = Σ_发票 amount ×（1 + 该发票客户 receivablePressure ÷ ${divisor}）；` +
-      `逾期敞口 = Σ_发票 amount × overduePressure ÷ ${divisor}。` +
-      "客户经真链路 `customer_has_invoice` 反查（= 传导规则自己走的那条边，不另造映射）。",
+      // 落点 (b)：括号里那个数是**偏离**（世界态 − 静息值），不是水平 —— 不写清就会被读成水平。
+      // 「水平 0」的意思是「该量本身为零」，「偏离 0」的意思是「相对静息没动」，两者不是一回事。
+      `应收投影 = Σ_发票 amount ×（1 + 该发票客户 receivablePressure **偏离**（世界态 − 开局快照静息值）÷ ${divisor}）；` +
+      `逾期敞口 = Σ_发票 amount × overduePressure **偏离** ÷ ${divisor}。` +
+      "客户经真链路 `customer_has_invoice` 反查（= 传导规则自己走的那条边，不另造映射）。" +
+      "静息值取不到的格**按因子 1 计**（没乘）并逐格进 `unresolvedRestPoints` —— ⛔ 不是按偏离 0 计。",
     provenance: {
       kind: "实测",
       drillType: "ARInvoice",

@@ -353,10 +353,28 @@ describe("WO-WORLDSTATE-SURFACE · 统一世界态读取面", () => {
     expect(qtyCell!.kind).toBe("PROJECTED");
     expect(qtyCell!.objectId).toBe(cand.orderId);
     expect(qtyCell!.after).toBeGreaterThan(qtyCell!.before); // 需求压力 60pp ⇒ qty ×1.6
-    // 产能投影真的落在 Line.capacityDaily 上（capacity 词库落点）：
-    const capCell = ws.applied.find((a) => a.stateVar === "utilPressure" && a.property === "capacityDaily");
-    expect(capCell, "applied 里找不到 utilPressure→capacityDaily 的 PROJECTED 格 ⇒ 产能投影没落点").toBeDefined();
-    expect(capCell!.after).toBeLessThan(capCell!.before); // 利用率压力 ⇒ 可用产能↓
+    // ── 产能投影：落点 (b) 之后判据换成「静息值取不到 ⇒ 不消费且逐格点名」─────────────
+    // 本用例的世界是**缩小世界**（开局快照只播了那一格需求压力），而世界态里**有** utilPressure
+    // 的承载格（下面两条金丝雀证明它有）。⇒ 偏离算不出来 ⇒ 投影**不消费**它。
+    // ⛔ 不许退回 0（退回 0 恰好就是把「水平」当「偏离」用 —— 那是本单的病），
+    //    也不许静默留白（留白会被读成「这个变量没有压力」）。判据落在哪一格都不许含糊。
+    const unWs = ws.unresolvedRestPoints ?? [];
+    const utilMiss = unWs.filter((u) => u.stateVar === "utilPressure");
+    expect(
+      utilMiss.length,
+      "世界态里有 utilPressure 的承载格、开局快照里取不到静息值 ⇒ 必须逐格进 unresolvedRestPoints",
+    ).toBeGreaterThan(0);
+    // 金丝雀（同一份回包里的**载体系数**，不是另一条命令的输出）：承载格数必须 > 0 ——
+    // 否则上面那条读不出是「静息值取不到」还是「世界态压根没这一格」，两种处置完全不同。
+    const utilRow = ws.unconsumed.find((u) => u.stateVar === "utilPressure");
+    expect(utilRow?.carriers ?? 0, "unconsumed 里 utilPressure 的承载格数必须 > 0（否则用例前提不成立）").toBeGreaterThan(0);
+    expect(utilRow!.reason, "有承载格却取不到静息值 —— 措辞必须与「没有承载体」那一档分开").toContain("静息值取不到");
+    // 而且它一格都不许进 applied：没有静息值就没有可复算的 rawValue，
+    // 记成一次改写会让 `cellsApplied` 虚高（那个数是「这次推演影响了几格」的唯一读数）。
+    expect(
+      ws.applied.some((a) => a.stateVar === "utilPressure"),
+      "静息值取不到的格不许出现在 applied 里（改了但算不出来 ≠ 改了）",
+    ).toBe(false);
     // 诚实缺席：demandLoad 在世界态里但没有投影规则 ⇒ 必须进 unconsumed（不许留白让人以为没压力）。
     const unc = ws.unconsumed.map((u) => u.stateVar);
     expect(unc).toContain("demandLoad");
