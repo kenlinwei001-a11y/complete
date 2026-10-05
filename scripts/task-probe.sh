@@ -18,20 +18,58 @@
 #   SILENT_LIMIT=1800 bash scripts/task-probe.sh  # 自定静默阈值（秒·默认 1800=30min）
 #
 # 退出码：0 = 全部健康或已确认死亡并给出处置；2 = 存在「进程在但不动」的真卡死（需人工介入）
-
+#        ⚠ 2 亦用于「**探针自己坏了**」——两者都需要人工介入，屏上会写明是哪一种。
+#
+# ══ 便携性（2026-10-05 实测：本机 macOS 13 · BSD ps · 系统 bash 3.2）══════════
+# 本脚本原先是「只在 GNU 下成立」的写法，在 mac 上**静默失效**过四处，全是实测读数：
+#   ① `ps -eo pid,args --no-headers` ⇒ BSD ps 回 `illegal option -- -`，**一行进程都不回**（RC=1）
+#      ⇒ alive 恒 0，而 0 被读成「没有在跑」。「我没找到」与「它不存在」是两个命题。
+#   ② `declare -A`（关联数组）⇒ bash 3.2 没这个内建 ⇒ SZ1/MT1 一个元素都没有 ⇒ SUSPECT 恒空
+#      ⇒ 对着 2020 年就没写过的文件印「✅ 所有目标都有写入」（实测 false-green，比 ① 更坏）。
+#   ③ `stat -c%s` / `-c%Y` ⇒ BSD stat 不认 `-c` ⇒ 大小与时间戳读不到。
+#   ④ `find -newermt "@<epoch>"` ⇒ BSD find 不认 `@epoch`（`Can't parse date/time`）⇒ 目标枚举恒空。
+# 修法一律**双平台成立**，不是把 mac 写法换成另一个 mac 写法：
+#   剥表头用 `tail -n +2`（`dispatch-deficit.sh:75` 的 awk 剥表头是同一思路的既有先例）；
+#   关联数组换平行索引数组；stat 双语法回退；时间窗改用 `-mmin`（GNU/BSD 都成立）。
 set -uo pipefail
+
+# 剥表头取进程表：`ps -eo <fmt>` + `tail -n +2`（GNU 与 BSD 都成立）
+ps_lines() { ps -eo "$1" 2>/dev/null | tail -n +2; }
+
+# 文件大小 / mtime：GNU 用 `-c`，BSD/macOS 用 `-f`。两种都失败 ⇒ 返回空，由调用方判「探针坏了」。
+f_size()  { stat -c%s "$1" 2>/dev/null || stat -f%z "$1" 2>/dev/null; }
+f_mtime() { stat -c%Y "$1" 2>/dev/null || stat -f%m "$1" 2>/dev/null; }
 
 SILENT_LIMIT="${SILENT_LIMIT:-1800}"     # 静默多久算可疑（秒）
 SAMPLE_GAP="${SAMPLE_GAP:-20}"           # 二次采样间隔（秒）——用来区分「慢」与「停」
 NOW=$(date +%s)
-UP_SEC=$(awk '{print int($1)}' /proc/uptime)
 
-echo "═══ 任务探针 $(date '+%F %H:%M:%S') · 机器已运行 ${UP_SEC}s ═══"
+# 机器运行时长：Linux 读 /proc/uptime；macOS **没有 /proc**，用 kern.boottime 反算。
+UP_SEC=$(awk '{print int($1)}' /proc/uptime 2>/dev/null)
+if [ -z "$UP_SEC" ]; then
+  _BOOT=$(sysctl -n kern.boottime 2>/dev/null | sed -n 's/.*sec = \([0-9][0-9]*\).*/\1/p')
+  [ -n "$_BOOT" ] && UP_SEC=$(( NOW - _BOOT ))
+fi
+[ -z "$UP_SEC" ] && echo "⚠️  读不到机器运行时长（/proc/uptime 与 kern.boottime 都不行）—— **机器重启判据未判定**，本节不据此断言任何任务「阵亡」。"
+
+# ── 金丝雀⓪：进程表读得到吗？────────────────────────────────────────────
+# 报「没有在跑」是个**否定结论**。进程表读空时，它和「真的没有在跑」在屏上长得一模一样，
+# 所以先自证读得到，再据它下任何「零」结论。
+PS_TOTAL=$(ps_lines pid,args | wc -l | tr -d ' ')
+if [ "${PS_TOTAL:-0}" -lt 2 ]; then
+  echo "⛔ 探针自己坏了：ps 表只读到 ${PS_TOTAL:-0} 行。"
+  echo "   ⇒ 这不是「没有进程在跑」，是**没查成**。此刻任何「进程已结束」的结论都不成立。"
+  exit 2
+fi
+
+echo "═══ 任务探针 $(date '+%F %H:%M:%S') · 机器已运行 ${UP_SEC:-未判定}s · 进程表 ${PS_TOTAL} 行 ═══"
 
 # ── 0. 先判机器：重启会一次性杀光所有后台任务，且现场全是「静默很久」——
 #       不先判这一条，会把「集体阵亡」误诊成「集体卡死」，处置方向完全相反。
 MACHINE_RESTARTED=0
-if [ "$UP_SEC" -lt "$SILENT_LIMIT" ]; then
+if [ -z "$UP_SEC" ]; then
+  :  # 未判定：不设 MACHINE_RESTARTED —— 缺一个数时**不硬判生死**（本文件第 91–95 行的同一条纪律）
+elif [ "$UP_SEC" -lt "$SILENT_LIMIT" ]; then
   MACHINE_RESTARTED=1
   echo "⚠️  机器仅运行 ${UP_SEC}s（< 静默阈值 ${SILENT_LIMIT}s）—— **容器很可能刚重启**。"
   echo "    → 所有后台任务应视为**已阵亡**，不是卡死。处置顺序："
@@ -49,28 +87,41 @@ if [ ${#TARGETS[@]} -eq 0 ]; then
     # 只收**本次 boot 之后**动过的产物：更早的一律是上个容器生命周期的残骸，不是活任务。
     # 首版用 `-mmin -1440`（24h），结果把 21 小时前的陈年日志全报成「💀 阵亡」，
     # 刷了一屏噪音、真实状态反而被淹掉 —— 探针自己变成了假警报源（2026-08-06 实测）。
-    while IFS= read -r f; do TARGETS+=("$f"); done < <(find "$d" -maxdepth 1 -type f \( -name '*.output' -o -name '*.log' \) -newermt "@$(( $(date +%s) - UP_SEC ))" 2>/dev/null)
+    # 时间窗：原写法 `-newermt "@<epoch>"` 在 BSD find 上是 `Can't parse date/time: @...`（实测），
+    # 配上 2>/dev/null 就是**安静的空枚举** ⇒ 每次都报「没找到可探的产物」。改用 `-mmin`（GNU/BSD 都成立）。
+    SINCE_MIN=$(( ${UP_SEC:-86400} / 60 + 1 ))
+    while IFS= read -r f; do TARGETS+=("$f"); done < <(find "$d" -maxdepth 1 -type f \( -name '*.output' -o -name '*.log' \) -mmin "-${SINCE_MIN}" 2>/dev/null)
   done
 fi
 [ ${#TARGETS[@]} -eq 0 ] && { echo "（没找到可探的产物文件；用 bash scripts/task-probe.sh <file> 指定）"; exit 0; }
 
 # ── 2. 第一次采样
-declare -A SZ1 MT1
+# ⚠ 原来是 `declare -A SZ1 MT1`（关联数组）。本机系统 bash 是 **3.2**，没有关联数组：
+#   `declare -A` 报 invalid option，随后按**文件名**当下标的赋值全部 `syntax error: operand expected`
+#   ⇒ 两个表各一个元素都没有 ⇒ SUSPECT 恒空 ⇒ 对着 2020 年起就没动过的文件印「✅ 都有写入」。
+#   改用 bash 3.2 可用的**平行索引数组**（语义等价）。
+FILES=(); SZ1=(); MT1=()
 for f in "${TARGETS[@]}"; do
   [ -f "$f" ] || continue
-  SZ1["$f"]=$(stat -c%s "$f"); MT1["$f"]=$(stat -c%Y "$f")
+  _sz=$(f_size "$f"); _mt=$(f_mtime "$f")
+  if [ -z "$_sz" ] || [ -z "$_mt" ]; then
+    echo "⛔ 探针自己坏了：读不到 $(basename "$f") 的大小/时间戳（stat 的 -c 与 -f 两种语法都失败）。"
+    echo "   ⇒ 不许据此印「健康」—— 读不到数与「没有异常」在屏上长得一模一样。"
+    exit 2
+  fi
+  FILES+=("$f"); SZ1+=("$_sz"); MT1+=("$_mt")
 done
 
-SUSPECT=()
-for f in "${!SZ1[@]}"; do
-  silent=$(( NOW - ${MT1[$f]} ))
-  [ "$silent" -ge "$SILENT_LIMIT" ] && SUSPECT+=("$f")
+SUSPECT=()   # 存**下标**（不是文件名），下面靠它回查 FILES/SZ1/MT1
+for i in "${!FILES[@]}"; do
+  silent=$(( NOW - ${MT1[$i]} ))
+  [ "$silent" -ge "$SILENT_LIMIT" ] && SUSPECT+=("$i")
 done
 
 if [ ${#SUSPECT[@]} -eq 0 ]; then
   echo "✅ 所有目标在 ${SILENT_LIMIT}s 内都有写入 —— 无可疑任务。"
-  for f in "${!SZ1[@]}"; do
-    printf "   %-52s %8s bytes  静默 %ss\n" "$(basename "$f")" "${SZ1[$f]}" "$(( NOW - ${MT1[$f]} ))"
+  for i in "${!FILES[@]}"; do
+    printf "   %-52s %8s bytes  静默 %ss\n" "$(basename "${FILES[$i]}")" "${SZ1[$i]}" "$(( NOW - ${MT1[$i]} ))"
   done
   exit 0
 fi
@@ -82,10 +133,11 @@ echo "⏳ ${#SUSPECT[@]} 个目标静默超阈值，二次采样（${SAMPLE_GAP}
 sleep "$SAMPLE_GAP"
 
 RC=0
-for f in "${SUSPECT[@]}"; do
-  sz2=$(stat -c%s "$f" 2>/dev/null || echo -1)
+for i in "${SUSPECT[@]}"; do
+  f="${FILES[$i]}"
+  sz2=$(f_size "$f"); [ -z "$sz2" ] && sz2=-1
   name=$(basename "$f")
-  silent=$(( $(date +%s) - ${MT1[$f]} ))
+  silent=$(( $(date +%s) - ${MT1[$i]} ))
 
   # 该文件对应的进程还在不在？
   # ⚠️ 首版拿日志文件名去 grep 进程命令行，然后据此断言「进程已不在」——**那是句无法检查却照样断言的话**：
@@ -94,22 +146,31 @@ for f in "${SUSPECT[@]}"; do
   #    （与本仓 execute-plan 裸 catch 报「未接入 provider」同族：断言性的句子，从不检查它所断言的条件。）
   # 修法：匹不到就诚实说**匹不到**，并用「系统里有没有高 CPU 的 node」做旁证，绝不硬判生死。
   key=$(basename "$f" | sed -e 's/\.output$//' -e 's/\.log$//')
-  alive=$(ps -eo pid,args --no-headers | grep -F "$key" | grep -v grep | wc -l)
-  busy=$(ps -eo pcpu,comm --no-headers | awk '$2=="node" && $1>20' | wc -l)
+  # ⚠ 自匹：`bash task-probe.sh <file>` 时，**探针自己的命令行里就有那个路径**（路径含 key）
+  #   ⇒ 不剔掉就把自己数进去，「有进程在跑」恒为真（实测：对着一个没有对应进程的目标也印 🔴）。
+  #   ⛔ 只按 `$$`/`$PPID` 剔**不够** —— 实测：两个**子 shell 继承同一份 argv 而 pid 既非 $$ 也非 $PPID**，
+  #     它们照样被数进去（同一 key 数出 alive=2）。故再加一条：整行含本脚本自身路径的一律剔。
+  alive=$(ps_lines pid,args | awk -v me="$$" -v pa="$PPID" -v self="$0" \
+            '$1 != me && $1 != pa && index($0, self) == 0' \
+          | grep -F -- "$key" | grep -v grep | wc -l | tr -d ' ')
+  busy=$(ps_lines pcpu,comm | awk '$2=="node" && $1>20' | wc -l | tr -d ' ')
+  # ⚠ `grep -v grep` 是**自滤**：key 里若含 "grep" 字样，真命中会被连着滤掉 ⇒
+  #   「探针坏了」与「真没有」在屏上又长得一样。真碰上就显式告警，不静默。
+  case "$key" in *grep*) echo "     ⚠ key 含 'grep' 字样 —— 本行 alive 读数被自滤污染，**不可信**";; esac
 
-  if [ "$sz2" -gt "${SZ1[$f]}" ]; then
-    printf "🟢 %-46s 仍在写入（%s→%s bytes）—— **慢，不是卡死**，继续等\n" "$name" "${SZ1[$f]}" "$sz2"
+  if [ "$sz2" -gt "${SZ1[$i]}" ]; then
+    printf "🟢 %-46s 仍在写入（%s→%s bytes）—— **慢，不是卡死**，继续等\n" "$name" "${SZ1[$i]}" "$sz2"
   elif [ "$MACHINE_RESTARTED" = "1" ]; then
     printf "💀 %-46s 静默 %ss 且机器刚重启 —— **阵亡**，按上方 ①②③ 处置\n" "$name" "$silent"
   elif [ "$alive" -gt 0 ]; then
     printf "🔴 %-46s 静默 %ss 但进程仍在 —— **真卡死**，需人工介入\n" "$name" "$silent"
     echo "     → 别直接 pkill -f '<含本命令字串的模式>'：会把探针自己也匹进去（本会话已自杀 3 次，exit 144）。"
-    echo "       用 ps -eo pid,args --no-headers | grep -F '<key>' | grep -v grep 取到确切 pid 再 kill。"
+    echo "       用 ps -eo pid,args | tail -n +2 | grep -F '<key>' | grep -v grep 取到确切 pid 再 kill。"
     RC=2
   elif [ "$busy" -gt 0 ]; then
     printf "🟡 %-46s 静默 %ss，进程名匹不到（**无法定位**，不硬判生死）；但系统里有 %s 个高 CPU node 在跑\n" "$name" "$silent" "$busy"
     echo "     → 长跑 gate 的正常形态就是这样（日志到阶段末才写、命令行不含日志名）。"
-    echo "       要定性请直接看：ps -eo pid,etime,args --no-headers | awk '/gate\\.sh/ && !/awk/'"
+    echo "       要定性请直接看：ps -eo pid,etime,args | tail -n +2 | awk '/gate\\.sh/ && !/awk/'"
   else
     printf "⚫ %-46s 静默 %ss · 进程名匹不到 · 系统无高 CPU node —— 大概率已结束/被杀，查产物与远端分支定性\n" "$name" "$silent"
   fi
