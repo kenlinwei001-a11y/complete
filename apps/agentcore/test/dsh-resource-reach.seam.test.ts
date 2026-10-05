@@ -473,9 +473,14 @@ describe("RESOURCE-REACH · A 授予面契约（seed → expandAgentTools → se
     const agent = seedCapacityAgent();
     // ① seed 侧：MCP ref（不是 BUILTIN 授予）
     const mcpRefs = agent.tools.filter((t) => t.kind === "MCP");
-    expect(mcpRefs.map((r) => (r.kind === "MCP" ? r.mcpConfigId : "")), "工具面 MCP ref").toEqual([
-      ONTOLOGY_MCP_CONFIG_ID,
-    ]);
+    const mcpRefIds = mcpRefs.map((r) => (r.kind === "MCP" ? r.mcpConfigId : ""));
+    // ⚠ 收编方订正（2026-10-05）：原写 `toEqual([ONTOLOGY_MCP_CONFIG_ID])` —— 那等于断言
+    // 「本体是**唯一**的 MCP server」。WO-SOLVERS-MCP-REAL 合并后本 agent 合法地多挂了一个
+    // solvers server，该断言随即变红。**那不是回归，是这条断言把「当时的状态」当成了判据。**
+    // 本文件的主语是「切片」⇒ 判据收窄到本体这一条；同时保留「ref 不许重复」这条硬约束
+    // （重复 = 同一 server 挂两次，也会让模型面出现两份同名工具）。
+    expect(mcpRefIds, "切片走 MCP 授予（本体 server 在 ref 里）").toContain(ONTOLOGY_MCP_CONFIG_ID);
+    expect(new Set(mcpRefIds).size, "MCP ref 不许重复").toBe(mcpRefIds.length);
     expect(
       agent.tools.filter((t) => t.kind === "BUILTIN").map((t) => (t.kind === "BUILTIN" ? t.name : "")),
       "BUILTIN 授予面不再含切片（收敛：不许两条路并存）",
@@ -485,7 +490,7 @@ describe("RESOURCE-REACH · A 授予面契约（seed → expandAgentTools → se
     expect(agent.scopeDeclaration.toolNames, "声明面全名").toContain(SLICE_RESOLVE_MCP);
     expect(agent.scopeDeclaration.toolNames, "声明面不再记裸名").not.toContain(SLICE_PLAN_RAW);
     // ③ DSH 挂载面：mcpServers 行在（这是「DSH 自己知道有这个 server」的登记点）
-    expect(agent.mcpServers.map((m) => m.mcpConfigId), "DSH mcpServers 挂载面").toEqual([ONTOLOGY_MCP_CONFIG_ID]);
+    expect(agent.mcpServers.map((m) => m.mcpConfigId), "DSH mcpServers 挂载面").toContain(ONTOLOGY_MCP_CONFIG_ID);
     // ④ 配置行真在册（缺它 ⇒ expandAgentTools 的 `if (!config) continue` 静默零工具）
     const row = seedMcpConfigs().find((m) => m.id === ONTOLOGY_MCP_CONFIG_ID);
     expect(row, `seedMcpConfigs 里必须有 ${ONTOLOGY_MCP_CONFIG_ID}`).toBeDefined();
@@ -507,8 +512,13 @@ describe("RESOURCE-REACH · A 授予面契约（seed → expandAgentTools → se
     expect(hostNames).not.toContain(SLICE_RESOLVE_MCP);
     expect(hostNames).not.toContain(SLICE_PLAN_RAW);
     // ⑦ MCP 面：真 server spec + toolAllowlist 收窄到两件
-    expect(spec.mcpServers?.map((m) => m.serverName), "DSH 侧 MCP server 面").toEqual([ONTOLOGY_SERVER_NAME]);
-    expect(spec.mcpServers?.[0]?.toolAllowlist, "MCP wire 侧允许表").toEqual([SLICE_PLAN_MCP, SLICE_RESOLVE_MCP]);
+    // 按 serverName 取，⛔ 不按下标 —— 下标会被后续新增的 server 挤走（本行原先就是踩了这个）。
+    const ontServer = spec.mcpServers?.find((m) => m.serverName === ONTOLOGY_SERVER_NAME);
+    expect(ontServer, "DSH 侧 MCP server 面（本体 server 必须在挂载表里）").toBeDefined();
+    expect(ontServer!.toolAllowlist, "MCP wire 侧允许表（逐字钉死，收窄口径不许漂）").toEqual([
+      SLICE_PLAN_MCP,
+      SLICE_RESOLVE_MCP,
+    ]);
     // ⑧ 描述文本与 MCP server 广告的逐字同源（两内核模型面不许各写一份前缀）
     const advertised = buildOntologyMcpTools();
     const planSpec = expanded.find((x) => x.name === SLICE_PLAN_MCP)!;
@@ -534,7 +544,10 @@ describe("RESOURCE-REACH · A 授予面契约（seed → expandAgentTools → se
     expect(spec.hostTools ?? [], "反向工具面本来就没有它").toEqual(
       (spec.hostTools ?? []).filter((x) => x.name !== SLICE_PLAN_MCP),
     );
-    expect(spec.mcpServers, "server 面也撤（不许「ref 撤了 server 还在」的残缺态）").toBeUndefined();
+    expect(
+      (spec.mcpServers ?? []).map((m) => m.serverName),
+      "本体 server 面也撤（不许「ref 撤了 server 还在」的残缺态）",
+    ).not.toContain(ONTOLOGY_SERVER_NAME);
     // 金丝雀：对照不是「整表空掉」——同批其余授予仍在
     expect((spec.hostTools ?? []).map((x) => x.name)).toContain("query_objects");
   });
