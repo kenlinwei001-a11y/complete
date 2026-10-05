@@ -31,15 +31,25 @@ import { GuardedToolExecutor } from "../src/tools/executor.js";
 import { BudgetTracker } from "../src/tools/budget.js";
 import { TENANT, createTestApp } from "./helpers.js";
 import { seedRegistry, seedMcpConfigs } from "../src/mocks/seed.js";
-import { buildSolverMcpWireTools, SOLVERS_MCP_CONFIG_ID } from "../src/mcp/solvers-catalog.js";
+import { buildSolverMcpWireTools, SOLVERS_MCP_CONFIG_ID, type SolverCatalogItem } from "../src/mcp/solvers-catalog.js";
 
 const SERVER_PATH = fileURLToPath(new URL("../dist/dsh-runtime/solvers-mcp-server.js", import.meta.url));
 const SERVER_NAME = "solvers";
 /** 独立重算（不调 solverMcpToolName）：全名 = mcp__{server}__{key}。 */
 const fullNameOf = (key: string): string => `mcp__${SERVER_NAME}__${key}`;
 
+/**
+ * 持有求解器能力的 agent 全集（6 个首批迁移 + 4 个退裸名时一并迁）。
+ * **常量名单，不是「扫出来有 MCP ref 的」** —— 后者会让漏迁的 agent 自动豁免（自证式断言）。
+ * C 组（三面同改）与 D 组（展开面）**共用这一份**，不各写一份。
+ */
+const MIGRATED = [
+  "analyst", "explore_agent", "risk_advisor", "capacity_planner", "quality_inspector", "supply_chain",
+  "finance_analyst", "carbon_auditor", "external_market", "coordinator",
+];
+
 /** 本单的样例求解器目录（形状 = CatalogClient.solverRegistry 的 item）。 */
-const SAMPLE_ITEMS = [
+const SAMPLE_ITEMS: SolverCatalogItem[] = [
   { key: "capacity_forecast", name: "产能可行性", description: "型号需求增量产能校核", argHints: { modelId: "型号", weeks: "周数" } },
   { key: "yield_diagnosis", name: "良率诊断", description: "良率波动根因", argHints: {} },
 ];
@@ -108,7 +118,7 @@ describe("WO-SOLVERS-MCP-REAL · A 组：真 stdio MCP server（MCP wire 面）"
     const declared = buildSolverMcpWireTools(SAMPLE_ITEMS).find((t) => t.rawName === "capacity_forecast")!;
     expect(cap.inputSchema).toEqual(declared.inputSchema);
     // 描述带来源前缀（两内核模型面同源的锚点）
-    expect(cap.description.startsWith("[MCP·求解器] ")).toBe(true);
+    expect(cap.description!.startsWith("[MCP·求解器] ")).toBe(true);
   });
 
   it("A2 tools/call：宿主收到的是**全名 + 扁平原文**；模型面回执是逐字 <tool_data> 包络", async () => {
@@ -118,11 +128,12 @@ describe("WO-SOLVERS-MCP-REAL · A 组：真 stdio MCP server（MCP wire 面）"
       const r = await client.callTool({ name: "capacity_forecast", arguments: { modelId: "4680-NCM", weeks: 6 } });
       // 宿主侧逐字节证据（值校验：独立记录的请求体）
       expect(loop.seen).toHaveLength(1);
-      expect(loop.seen[0].toolName).toBe("mcp__solvers__capacity_forecast");
-      expect(loop.seen[0].runToken).toBe("rt_test");
-      expect(loop.seen[0].input).toEqual({ modelId: "4680-NCM", weeks: 6 });
+      const seen = loop.seen[0]!;
+      expect(seen.toolName).toBe("mcp__solvers__capacity_forecast");
+      expect(seen.runToken).toBe("rt_test");
+      expect(seen.input).toEqual({ modelId: "4680-NCM", weeks: 6 });
       // 模型面回执：payloadJson 原样透传、toolCallId 用宿主的（禁 parse/stringify 往返）
-      const text = (r.content as { type: string; text: string }[])[0].text;
+      const text = (r.content as { type: string; text: string }[])[0]!.text;
       expect(text).toBe('<tool_data tool_call_id="tc_9">{"capacity":1234}</tool_data>');
       expect(r.isError).toBeFalsy();
     } finally {
@@ -143,7 +154,7 @@ describe("WO-SOLVERS-MCP-REAL · A 组：真 stdio MCP server（MCP wire 面）"
   it("A4 对照实验（改输入）：改 argHints ⇒ wire 上 description 按可预言的方式变", async () => {
     const base = await connectServer(TOOLS_ENV());
     const d0 = (await base.listTools()).tools.find((t) => t.name === "capacity_forecast")!.description;
-    const mutated = [{ ...SAMPLE_ITEMS[0], argHints: { weeks: "周数(改)" } }, SAMPLE_ITEMS[1]];
+    const mutated = [{ ...SAMPLE_ITEMS[0]!, argHints: { weeks: "周数(改)" } }, SAMPLE_ITEMS[1]!];
     const c2 = await connectServer(TOOLS_ENV(mutated));
     const d1 = (await c2.listTools()).tools.find((t) => t.name === "capacity_forecast")!.description;
     expect(d0).toContain("modelId=型号");
@@ -193,14 +204,14 @@ describe("WO-SOLVERS-MCP-REAL · B 组：执行归一 + 入参形态（真 execu
     const { exec, calls } = makeExec();
     await exec.run("mcp__solvers__capacity_forecast", { modelId: "4680-NCM", demandDelta: 0.1, weeks: 6 });
     expect(calls).toHaveLength(1);
-    expect(calls[0].key).toBe("capacity_forecast");
-    expect(calls[0].args).toEqual({ modelId: "4680-NCM", demandDelta: 0.1, weeks: 6 });
+    expect(calls[0]!.key).toBe("capacity_forecast");
+    expect(calls[0]!.args).toEqual({ modelId: "4680-NCM", demandDelta: 0.1, weeks: 6 });
   });
 
   it("B2 兼容：既有 {args:{…}} 包裹形态仍走同一条路（逐键相等）", async () => {
     const { exec, calls } = makeExec();
     await exec.run("mcp__solvers__capacity_forecast", { args: { modelId: "4680-NCM", weeks: 6 } });
-    expect(calls[0].args).toEqual({ modelId: "4680-NCM", weeks: 6 });
+    expect(calls[0]!.args).toEqual({ modelId: "4680-NCM", weeks: 6 });
   });
 
   it("B3 对照实验（改工具名 ⇒ 结果按可预言的方式变）：授予名→实参到位；未授予名→零实参 + 审计 DENIED", async () => {
@@ -227,11 +238,9 @@ describe("WO-SOLVERS-MCP-REAL · B 组：执行归一 + 入参形态（真 execu
 });
 
 describe("WO-SOLVERS-MCP-REAL · C 组：三面同改（授予面 ∧ 挂载面 ∧ 声明面）", () => {
-  const MIGRATED = ["analyst", "explore_agent", "risk_advisor", "capacity_planner", "quality_inspector", "supply_chain"];
-
   it("C1 每个已迁移 agent：tools 的 MCP ref、mcpServers 挂载行、scopeDeclaration 全名**三面一致**", () => {
     const agents = seedRegistry().agents.filter((a) => MIGRATED.includes(a.key));
-    expect(agents.map((a) => a.key).sort()).toEqual([...MIGRATED].sort()); // 金丝雀：六个都在
+    expect(agents.map((a) => a.key).sort()).toEqual([...MIGRATED].sort()); // 金丝雀：十个都在
     for (const a of agents) {
       const ref = a.tools.find((t) => t.kind === "MCP" && t.mcpConfigId === SOLVERS_MCP_CONFIG_ID);
       expect(ref, `${a.key} 缺授予面`).toBeTruthy();
@@ -255,6 +264,28 @@ describe("WO-SOLVERS-MCP-REAL · C 组：三面同改（授予面 ∧ 挂载面 
     // 工具名前缀由 serverName 拼出（同一串，serverName 改了两处一起改）
     expect(fullNameOf("x")).toBe(`mcp__${row!.serverName}__x`);
   });
+
+  it("C3 幽灵授予即红：十个 agent 的**每一个**授予键都真在活目录里（逐键核，不是数个数）", async () => {
+    const t = await createTestApp();
+    const registryKeys = new Set(
+      (await t.dataCore.catalog.solverRegistry({ tenantId: TENANT, userId: "admin", roles: ["admin"] })).items.map((i) => i.key),
+    );
+    expect(registryKeys.size).toBeGreaterThan(50); // 金丝雀：目录活了，「一个都不缺」才有意义
+    const missing: string[] = [];
+    for (const a of seedRegistry().agents.filter((x) => MIGRATED.includes(x.key))) {
+      for (const ref of a.tools) {
+        if (ref.kind !== "MCP" || ref.mcpConfigId !== SOLVERS_MCP_CONFIG_ID) continue;
+        for (const n of (ref as { toolFilter?: string[] }).toolFilter ?? []) {
+          const key = n.replace(`mcp__${SERVER_NAME}__`, "");
+          if (!registryKeys.has(key)) missing.push(`${a.key}:${key}`);
+        }
+      }
+    }
+    // 反面实例（本条就是为抓它而写）：`sop_balance` 是本仓 S1.8 服务/场景卡的名字，
+    // **不在** SOLVER_KEYS（63 条无此键）⇒ 授予它 = 三面结构齐全而目录里永远没有这件工具
+    //（有声明、无实体）。写这个断言时 seed 里真有三处，已改为登记替身 `mrp_netting`。
+    expect(missing).toEqual([]);
+  });
 });
 
 describe("WO-SOLVERS-MCP-REAL · D 组：引擎展开面（原生臂与 DSH 臂的共同派生源）", () => {
@@ -262,20 +293,30 @@ describe("WO-SOLVERS-MCP-REAL · D 组：引擎展开面（原生臂与 DSH 臂�
   const solverSpecsOf = (specs: { name: string; binding: { kind: string; mcpConfigId?: string } }[]) =>
     specs.filter((s) => s.binding.kind === "MCP" && s.binding.mcpConfigId === SOLVERS_MCP_CONFIG_ID).map((s) => s.name).sort();
 
-  it("D1 值校验：analyst 展开出的求解器工具 == 活目录 ∩ 授予面（独立重算，且金丝雀证明目录非空）", async () => {
+  it("D1 值校验：十个 agent 各自展开出的求解器工具 == 活目录 ∩ 该 agent 授予面（逐 agent 独立重算）", async () => {
     const t = await createTestApp();
     for (const m of seedMcpConfigs()) await t.repos.mcpConfigs.insert(m);
     const items = (await t.dataCore.catalog.solverRegistry(ctx)).items;
     const registryKeys = new Set(items.map((i) => i.key));
     expect(registryKeys.size).toBeGreaterThan(50); // 金丝雀：目录活了，否则交集恒空、断言无意义
-    const agent = seedRegistry().agents.find((a) => a.key === "analyst")!;
-    const ref = agent.tools.find((x) => x.kind === "MCP" && x.mcpConfigId === SOLVERS_MCP_CONFIG_ID) as { toolFilter?: string[] };
-    const granted = (ref.toolFilter ?? []).map((n) => n.replace(`mcp__${SERVER_NAME}__`, ""));
-    const expected = granted.filter((k) => registryKeys.has(k)).map(fullNameOf).sort();
-    const specs = await t.deps.engine.expandAgentTools(agent, ctx);
-    expect(solverSpecsOf(specs)).toEqual(expected);
+    const expanded: Record<string, string[]> = {};
+    for (const key of MIGRATED) {
+      const agent = seedRegistry().agents.find((a) => a.key === key)!;
+      const ref = agent.tools.find((x) => x.kind === "MCP" && x.mcpConfigId === SOLVERS_MCP_CONFIG_ID) as { toolFilter?: string[] };
+      // 独立重算：授予面逐键 ∩ 活目录（朴素模板串拼全名，不调生产 helper）
+      const granted = (ref.toolFilter ?? []).map((n) => n.replace(`mcp__${SERVER_NAME}__`, ""));
+      expect(granted.length, `${key} 授予面为空 —— 交集恒空，断言无意义`).toBeGreaterThan(0);
+      const expected = granted.filter((k) => registryKeys.has(k)).map(fullNameOf).sort();
+      const specs = await t.deps.engine.expandAgentTools(agent, ctx);
+      expanded[key] = solverSpecsOf(specs);
+      expect(expanded[key], `${key} 展开集 != 授予面 ∩ 活目录`).toEqual(expected);
+      expect(expected.length, `${key} 声明了却一条都没展开`).toBeGreaterThan(0);
+    }
+    // 十个 agent 的展开集**两两不同来源**：先证明它们不是同一份被复用（否则上面十条等于只测了一条）
+    expect(new Set(Object.values(expanded).map((v) => v.join(","))).size).toBeGreaterThan(3);
     // 展开的描述带来源前缀（两内核同一段文字）
-    const one = specs.find((s) => s.name === fullNameOf("capacity_forecast"))!;
+    const analystSpecs = await t.deps.engine.expandAgentTools(seedRegistry().agents.find((a) => a.key === "analyst")!, ctx);
+    const one = analystSpecs.find((s) => s.name === fullNameOf("capacity_forecast"))!;
     expect(one.description.startsWith("[MCP·求解器] ")).toBe(true);
   });
 
@@ -299,13 +340,19 @@ describe("WO-SOLVERS-MCP-REAL · D 组：引擎展开面（原生臂与 DSH 臂�
     expect(all.length).toBeGreaterThan(narrowed.length);
   });
 
-  it("D3 反例：未挂求解器 server 的 agent 展开出 **0** 条求解器工具（金丝雀：它确有自己的工具）", async () => {
+  it("D3 反例：**名单之外**的 agent 展开出 0 条求解器工具（金丝雀：它确有自己的工具，且这样的 agent 真存在）", async () => {
     const t = await createTestApp();
     for (const m of seedMcpConfigs()) await t.repos.mcpConfigs.insert(m);
-    const agent = seedRegistry().agents.find((a) => a.key === "finance_analyst")!;
-    const specs = await t.deps.engine.expandAgentTools(agent, ctx);
-    // 金丝雀与主断言并排：这名 agent 的 tools 非空，否则「0 条求解器」可能只是没读到它的 tools
-    expect(specs.length).toBeGreaterThan(0);
-    expect(solverSpecsOf(specs)).toEqual([]);
+    // 判据是**名单**而不是某一名写死的 agent：写死过 `finance_analyst`，它一被迁移这条反例就失效
+    // （实测：撤掉这条写死后真红了 1 条 —— 那次红是对的，反例选错了对象）。
+    const others = seedRegistry().agents.filter((a) => !MIGRATED.includes(a.key));
+    expect(others.length, "没有『名单之外』的 agent ⇒ 反例空转，等于没测").toBeGreaterThan(0);
+    expect(others.map((a) => a.key)).toContain("code_assistant"); // 独立旁证：这个反例对象是具体的、不是空集
+    for (const agent of others) {
+      const specs = await t.deps.engine.expandAgentTools(agent, ctx);
+      // 金丝雀与主断言并排：这名 agent 的 tools 非空，否则「0 条求解器」可能只是没读到它的 tools
+      expect(specs.length, `${agent.key} 自己的工具为 0 ⇒ 断言无鉴别力`).toBeGreaterThan(0);
+      expect(solverSpecsOf(specs), `${agent.key} 未挂求解器 server 却展开了求解器工具`).toEqual([]);
+    }
   });
 });
