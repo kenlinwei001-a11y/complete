@@ -12,6 +12,8 @@ import {
   type WorkflowDefinition,
 } from "@platform/contracts";
 import { BUILTIN_TOOLS } from "../tools/registry.js";
+// WO-DSH-RESOURCE-REACH · 本体切片的两件套（裸名清单 / MCP 全名拼接 / 配置行 id）单一来源。
+import { ONTOLOGY_MCP_CONFIG_ID, ONTOLOGY_MCP_TOOL_NAMES, ontologyMcpToolName } from "../tools/ontology-mcp.js";
 // DF.13 外协红线单一来源（C08）：场景建议问句里的红线百分数派生，禁手写。
 import { OUTSOURCE_REDLINE, outsourceRedlinePct } from "@platform/contracts";
 import { SCENARIO_CATALOG } from "../scenarios-catalog.js";
@@ -200,7 +202,21 @@ export function seedScenarioPackage(tenantId = SEED_TENANT, now = new Date().toI
     tenantId,
     name: "battery-manufacturing",
     views: ["dash", "graph", "risk", "order", "plan-audit", "plan-generate", "project-sim", "sop-balance"],
-    toolWhitelist: BUILTIN_TOOLS.map((t) => t.name),
+    // WO-DSH-RESOURCE-REACH 收敛②：**这一行只改了两类口径，别的没动** ——
+    // ① 剔掉两个**裸**切片名（plan_slice / resolve_slice）：它们是 BUILTIN 注册表里的名字，
+    //    但本单已把切片收敛到 DSH 原生 MCP 面，通用 path-B 的工具装配（`buildExploratoryTools`）
+    //    也**结构性**不再产出裸名形态 ⇒ 留着只会是「白名单说有、工具面没有」的谎。
+    // ② 补上两个 **MCP 全名**：能力不减（这条白名单是通用 path-B 的**唯一**消费方，
+    //    orchestrator.ts `buildExploratoryTools`；`:203` 这条改动的影响面**到此为止**），
+    //    只是改走 MCP 授予面（与 agt_capacity_planner / agt_seed_analyst 的 MCP ref 同一条路）。
+    // 其余 N-2 个 BUILTIN 名字**逐个保持原样**（含 sim 工具与写出口 create_action_draft ——
+    // 那是 entitlement 单独把关的，不属本单）。
+    toolWhitelist: [
+      ...BUILTIN_TOOLS.map((t) => t.name).filter(
+        (n) => !(ONTOLOGY_MCP_TOOL_NAMES as readonly string[]).includes(n),
+      ),
+      ...ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)),
+    ],
     createdAt: now,
     updatedAt: now,
   };
@@ -1408,7 +1424,11 @@ export function seedRegistry(now = new Date().toISOString()): {
       tools: [
         { kind: "BUILTIN", name: "query_objects" },
         { kind: "BUILTIN", name: "get_object" },
-        { kind: "BUILTIN", name: "resolve_slice" },
+        // WO-DSH-RESOURCE-REACH 收敛②：切片从**裸 BUILTIN 授予**改挂 **MCP 面**（同 agt_capacity_planner）。
+        // 配套三面同改：本行（授予面）+ 下方 mcpServers（DSH 挂载面）+ scopeDeclaration（声明面，记全名）。
+        // ⛔ 替代掉的那条是 `{ kind: "BUILTIN", name: "resolve_slice" }` —— 同一能力两条授予路并存
+        //    正是本单要退的旧路（两条真相源）。裸名形态在 `buildExploratoryTools` 里已结构性剔除。
+        { kind: "MCP", mcpConfigId: ONTOLOGY_MCP_CONFIG_ID, toolFilter: ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)) },
         { kind: "BUILTIN", name: "invoke_solver" },
         { kind: "BUILTIN", name: "evaluate_rules" },
         { kind: "BUILTIN", name: "search_knowledge" },
@@ -1418,11 +1438,15 @@ export function seedRegistry(now = new Date().toISOString()): {
       ] as AgentDefinition["tools"],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
       skills: [{ skillId: "skl_seed_capacity", version: "latest" }],
-      mcpServers: [],
+      // DSH 挂载面：本体 MCP server（运行期 command/args/env 由 engine.ts DSH 分叉注入，
+      // runToken 不能写死在 seed 里）。与上方 MCP ref 成对 —— 只有 ref 没有它 = 模型面拿不到工具。
+      mcpServers: [{ mcpConfigId: ONTOLOGY_MCP_CONFIG_ID }],
       scopeDeclaration: {
         objectTypes: ["Base", "Order", "Model", "Line", "Process", "Equipment", "Shipment", "Segment"],
+        // 声明面按契约惯例记**全名**（scope 门在 `executor.ts`:138 用**调用原名**校验 —— 模型面是
+        // `mcp__ontology__resolve_slice`，这里就必须是同一个串；记裸名会让这条路被自己的 scope 门拒）。
         toolNames: [
-          "query_objects", "aggregate_objects", "get_object", "resolve_slice", "invoke_solver", "evaluate_rules",
+          "query_objects", "aggregate_objects", "get_object", ...ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)), "invoke_solver", "evaluate_rules",
           "search_knowledge", "query_timeseries_agg", "search_experience", "create_action_draft",
         ],
       },
@@ -1493,14 +1517,16 @@ export function seedRegistry(now = new Date().toISOString()): {
       tools: [
         { kind: "BUILTIN", name: "query_objects" },
         { kind: "BUILTIN", name: "invoke_solver" },
-        { kind: "MCP", mcpConfigId: "mcp_builtin_ontology", toolFilter: ["plan_slice", "resolve_slice"] },
+        // toolFilter 记**全名**（与声明面同口径；engine.ts:456 两种形态都认，但全名能让
+        // 「这条 ref 指的是 MCP 面上的哪个工具」在授予面自证，不再和 BUILTIN 裸名撞脸）。
+        { kind: "MCP", mcpConfigId: ONTOLOGY_MCP_CONFIG_ID, toolFilter: ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)) },
         { kind: "WORKFLOW", workflowId: "wf_seed_capacity", version: "latest" },
       ],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
       skills: [{ skillId: "skl_seed_capacity", version: "latest" }],
       // 挂载本体 MCP server（DSH 侧经 dsh-mcp-client 起 stdio 连接；运行期 command/args/env
       // 由 engine.ts DSH 分叉注入 —— 绝对路径与 per-run runToken 都不能写死在 seed 里）。
-      mcpServers: [{ mcpConfigId: "mcp_builtin_ontology" }],
+      mcpServers: [{ mcpConfigId: ONTOLOGY_MCP_CONFIG_ID }],
       // scopeDeclaration 是**声明面**（治理网桥 scopeObjectTypes + DRIL 投影读它），
       // 与授予面同步改——engine.ts「显式配置的工具绝不应被自身 scope 门拒」的并集规则
       // 虽已兜底，但声明面漏列会让对外能力画像少报这两件。
@@ -1659,7 +1685,11 @@ export const ROLE_PROFILES: CeoAgentProfile[] = [
     profileId: "role_ceo", role: "ceo",
     scope: { allBases: true, baseIds: [] },
     focusMetrics: ["revenue", "gross_profit", "market_share", "cash"],
-    agentId: "agt_seed_analyst", toolWhitelist: ["query_objects", "aggregate_objects", "get_object", "resolve_slice", "invoke_solver", "evaluate_rules", "search_knowledge", "query_timeseries_agg"],
+    // WO-DSH-RESOURCE-REACH 收敛②：这里的 `toolWhitelist` 是**展示字段**（contracts
+    // `ceo-agent.ts:81` 自注：「该角色可用工具（展示·真实约束以绑定 agent scopeDeclaration.toolNames 为准）」，
+    // 全仓唯一读 `toolWhitelist` 的地方是 `orchestrator.ts` 读 **package** 那份）。
+    // 仍改这一处：状态相反的两份台账正是本仓反复踩的坑（展示面说裸名、真实约束是全名 ⇒ 下一个人照着它查会查错方向）。
+    agentId: "agt_seed_analyst", toolWhitelist: ["query_objects", "aggregate_objects", "get_object", ...ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)), "invoke_solver", "evaluate_rules", "search_knowledge", "query_timeseries_agg"],
     objectTypes: ["Base", "Order", "Model", "Line", "Process", "Equipment", "Shipment", "Segment"], systemKey: "ceo",
   },
   {
@@ -1687,7 +1717,7 @@ export const ROLE_PROFILES: CeoAgentProfile[] = [
     profileId: "role_base_planner", role: "base-planner",
     scope: { allBases: false, baseIds: [] }, // baseIds 运行时由 OBO 身份 baseScope 注入（A6 行级）
     focusMetrics: ["capacity_util", "kit_readiness"],
-    agentId: "agt_seed_analyst", toolWhitelist: ["query_objects", "invoke_solver", "resolve_slice", "evaluate_rules"],
+    agentId: "agt_seed_analyst", toolWhitelist: ["query_objects", "invoke_solver", ...ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)), "evaluate_rules"],
     objectTypes: ["Base", "Order", "Model", "Line", "Process"], systemKey: "base-planner",
   },
 ];
@@ -1710,7 +1740,7 @@ export function seedMcpConfigs(): McpServerConfig[] {
       // transport 里的 command/args 是 **cwd=仓根 时的可用回落**；真进程形态（node 绝对路径、
       // 服务树绝对路径、per-run env）由 engine.ts DSH 分叉在 run 期注入 —— 绝对路径与
       // 一次性 runToken 都写不进静态种子。
-      id: "mcp_builtin_ontology", tenantId: SEED_TENANT, name: "本体切片 MCP（平台内置）", serverName: "ontology",
+      id: ONTOLOGY_MCP_CONFIG_ID, tenantId: SEED_TENANT, name: "本体切片 MCP（平台内置）", serverName: "ontology",
       transport: { type: "stdio", command: "node", args: ["apps/agentcore/dist/dsh-runtime/ontology-mcp-server.js"] },
       status: "ACTIVE", lifecycle: "PUBLISHED", version: 1,
     },
