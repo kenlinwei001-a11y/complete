@@ -3814,10 +3814,12 @@ export const STATE_VAR_DOMAINS: Record<string, StateVarDomain> = Object.fromEntr
     "blockedPressure",
     "demandPressure", "demandLoad", "loadIndex", "utilPressure", "queuePressure",
     "shortageRisk", "supplyRisk", "expeditePressure", "priceShock", "costPressure",
-    "receivablePressure", "overduePressure", "changeoverPressure", "releasePressure",
-    "feedPressure", "defectPressure", "turnoverPressure", "switchPressure", "gapPressure",
+    // ⛔ `changeoverPressure` / `turnoverPressure` / `splitPressure` 2026-10-06 **移出本名单**
+    //   （WO-DERIV-BACKFILL）—— 理由与它们在下方单列声明里的出处，见那一段。
+    "receivablePressure", "overduePressure", "releasePressure",
+    "feedPressure", "defectPressure", "switchPressure", "gapPressure",
     "reviewPressure", "loadPressure", "windowSqueeze", "drawdownPressure",
-    "inboundExpeditePressure", "transferPressure", "splitPressure", "promiseRisk",
+    "inboundExpeditePressure", "transferPressure", "promiseRisk",
     "deliveryHoldRisk", "collectionPressure", "orderChurn", "equipmentFailure",
   ].map((v): [string, StateVarDomain] => [
     v,
@@ -3829,6 +3831,66 @@ export const STATE_VAR_DOMAINS: Record<string, StateVarDomain> = Object.fromEntr
     },
   ]),
 );
+// ── WO-DERIV-BACKFILL · 量纲不是「0–100 压力指数」的三格，从名字名单里拆出来单列 ──────────────
+//
+// 🔴 病灶（2026-10-06 实测，非推断）：上面那段压力族是拿一串**名字** `.map()` 出来的，统一盖
+//   `unit: "0–100 压力指数"`。而名字**不带量纲** ⇒ 三格被扫进来时，声明与它真正的量纲不符：
+//   实测（`SEED_DEMO=1` 真库，逐格读对象属性）——
+//     · `ChangeoverMatrix.changeoverPressure` 规格输出 **31–179 分钟**
+//     · `MaterialBatch.turnoverPressure`    规格输出 **0–121 天**
+//     · `OrderLine.splitPressure`            规格输出 **11.81–187 %**（罚金 ÷ 行金额）
+//   落进 `[0,100]` 声明后由 `saturateToDomain` 压成 95.16 / 91.2 / 95.44 —— 上界那一截被吃掉。
+//
+// ⚠ 后果不是"难看一档"，是**边际被压掉**：`saturateToDomain` 深区导数按 `1/(1+u)²` 塌，
+//   源上加扰动、下游差被压几个数量级。实测同族（`Base.loadIndex` 13 个基地 10 个 >100）：
+//   落点在饱和源上时下游 **差 0 格**，换未饱和落点立刻动（6.09 / 5.33）。
+//
+// ── 为什么是 `max: null` 而不是「删掉声明」或「拍一个更大的上界」────────────────────
+//   · ⛔ **不许删声明**：本表头注写着「没有声明的状态量**不夹、不衰减**」，
+//     而那正是本表当初要治的病 —— 实测空转 6 拍 5290 格（73.4%）越界、`loadIndex` 冲到 69,134。
+//     删掉是把纯积分器放回来。
+//   · ⛔ **不许拍上界**：本表头注同一条纪律「拍一个 100 天 / 100 件就是拍脑袋定」。
+//   · ✅ `max: null` = **无界声明**（契约 `StateVarDomain.max` 已为它 nullable，理由见该字段注释）。
+//     它保留 `min: 0` + `restPoint: 0` + 衰减 λ ⇒ 稳态仍是 `rest + inflow/λ`（有限），
+//     不是纯积分器；只是**不再对"业务上没有写得出来处的上界"编一个上界**。
+//     —— 与 `queueDays` / `inspectBacklog` / `repairBacklog` / `handlingBacklog` /
+//        `qualificationQueue` 五格**同一个形态、同一个理由**（评审 §形态②：上界确实拍不出来，
+//        但消化速率有出处）。
+//
+// ⚠ 衰减仍走**同一个** `pressureDecayPerTick`（不开新参数、不改 λ 口径）：
+//   这三格的静息点与压力族同为 0，散掉的物理过程没有不同。
+STATE_VAR_DOMAINS.changeoverPressure = {
+  min: 0, max: null, restPoint: 0,
+  decayRef: { ruleKey: STATE_DECAY_RULE_KEY, paramKey: STATE_DECAY_PARAM_KEY },
+  unit: "分钟（换型耗时）",
+  source:
+    "量纲出处 = 对象自有属性 `ChangeoverMatrix.minutes`（实测 31–179，n=30，28 个不同值）；" +
+    "业务口径 = 边 `Model.demandLoad ×0.148 → ChangeoverMatrix.changeoverPressure` 原文" +
+    "「同一条线换型次数变多、**换型损失变大**」—— 损失的量就是换型耗时。" +
+    "⛔ 不声明上界：本表头注「拍一个上界就是拍脑袋定」，换型耗时没有写得出来处的上界。",
+};
+STATE_VAR_DOMAINS.turnoverPressure = {
+  min: 0, max: null, restPoint: 0,
+  decayRef: { ruleKey: STATE_DECAY_RULE_KEY, paramKey: STATE_DECAY_PARAM_KEY },
+  unit: "天（呆滞天数）",
+  source:
+    "量纲出处 = 对象自有属性 `MaterialBatch.idleDays`（实测 0–121，n=24，22 个不同值）；" +
+    "业务口径 = 边 `Material.shortageRisk ×0.185 → MaterialBatch.turnoverPressure` 原文" +
+    "「缺料时先动批次：提前拉料、拆批、**翻呆滞库存** ⇒ 批次周转压力上升」—— 要翻的就是呆滞那批。" +
+    "⛔ 不声明上界（同上）。",
+};
+STATE_VAR_DOMAINS.splitPressure = {
+  min: 0, max: null, restPoint: 0,
+  decayRef: { ruleKey: STATE_DECAY_RULE_KEY, paramKey: STATE_DECAY_PARAM_KEY },
+  unit: "%（违约罚金 ÷ 行金额）",
+  source:
+    "量纲出处 = `OrderLine.breachPenalty × 100 ÷ (qty × unitPrice)` 实测 11.81–187（n=873，18 个不同值）；" +
+    "业务口径 = 两条入边 `Order.orderChurn ×0.12140625` + `Order.demandPressure ×0.15609375 →" +
+    " OrderLine.splitPressure` 原文「订单频繁变更 ⇒ **订单行拆分/改期压力上升**」—— 拆分/改期的代价" +
+    "就是这张行被违约时的罚金占行金额的比。" +
+    "⛔ 不声明上界：罚金率 >100% 是**业务上可能出现**的（累计罚金），拍一个 100 就是拍脑袋定。",
+};
+
 // 唯一带方向的量纲，单列（静息点 0 ≠ 下界）。
 STATE_VAR_DOMAINS.forecastBias = {
   min: -100, max: 100, restPoint: 0,
