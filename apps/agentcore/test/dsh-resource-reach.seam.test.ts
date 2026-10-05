@@ -897,18 +897,47 @@ describe("RESOURCE-REACH · C 两内核一致：同一 query 同剧本，逐条�
     expect(native.kernel).toBe("NATIVE");
     expect(external.kernel).toBe("EXTERNAL");
 
-    // ② 模型可见工具面：**名字集合**逐项同；**描述**逐项同 —— 唯 `load_skill` 一件例外（[D3]）。
-    //    比**集合**不比顺序：两臂的注册顺序源不同（DSH = harness 注册序；native = 执行器导出序），
-    //    首跑实测两臂**元素逐项相同、顺序不同** —— 这是 [D2]，登记在下方差异清单，不是行为差异。
+    // ② 模型可见工具面：**名字集合**逐项同 —— 唯**技能加载器**一件是**臂属差异**（[D3]）：
+    //    dsh 臂的加载器是上游 `dsh-tool-skill` 注册的模型面真名 `skill`（P2A 换名后）；
+    //    native 臂是我方常量 `load_skill`（`tools/registry.ts`）。两臂**各自与自己的真名对得上**才是判据，
+    //    ⛔ 不是「两臂名字相同」——那在换名后必然假红；也⛔ 不是把这两个名字从比较里删掉：
+    //    删掉会让「两臂的加载器都没了」这种回归静默通过。故下面**既登记差异、又各查各的真名**。
+    //    比**集合**不比顺序：两臂的注册顺序源不同（DSH = harness 注册序；native = 执行器导出序）⇒ [D2]。
+    const LOADER_NAME: Record<string, string> = { NATIVE: "load_skill", EXTERNAL: "skill" };
+    const LOADER_NAMES = new Set([LOADER_NAME.NATIVE, LOADER_NAME.EXTERNAL]);
+    const isLoader = (n: string) => LOADER_NAMES.has(n);
     const sortBy = <T extends { name: string }>(xs: T[]) => [...xs].sort((a, b) => (a.name < b.name ? -1 : 1));
-    expect(sortBy(external.visible).map((x) => x.name), "两臂可见工具名集合").toEqual(
-      sortBy(native.visible).map((x) => x.name),
+    const namesNativeAll = sortBy(native.visible).map((x) => x.name);
+    const namesExternalAll = sortBy(external.visible).map((x) => x.name);
+    // 正向对照（缺了它，「两臂加载器都没了」会被读成「登记差异成功」）
+    expect(namesNativeAll, "native 臂含自己的加载器真名").toContain(LOADER_NAME.NATIVE);
+    expect(namesExternalAll, "dsh 臂含自己的加载器真名").toContain(LOADER_NAME.EXTERNAL);
+    // 非空性钉子（防止把「登记差异」做成「把这两个名字从比较里删掉」）：
+    // 每臂**恰好**排掉一件（就是它自己的加载器）。若哪天把 isLoader 放宽成多排/全排，
+    // 下面的集合比较会退化成空集比空集而恒真 —— 这两条就是那个退化的判据。
+    expect(namesNativeAll.filter(isLoader), "native 臂被排除的加载器件数").toHaveLength(1);
+    expect(namesExternalAll.filter(isLoader), "dsh 臂被排除的加载器件数").toHaveLength(1);
+    expect(namesExternalAll.filter((n) => !isLoader(n)), "两臂可见工具名集合（除各臂加载器真名外）").toEqual(
+      namesNativeAll.filter((n) => !isLoader(n)),
     );
     const descOf = (xs: { name: string; description: string }[]) => Object.fromEntries(xs.map((x) => [x.name, x.description]));
     const dNative = descOf(native.visible);
     const dExternal = descOf(external.visible);
-    // [D3] 描述漂移的**全部**成员必须恰为 load_skill（多一件少一件都红）——见下方差异清单。
-    expect(Object.keys(dNative).filter((n) => dNative[n] !== dExternal[n]), "[D3] 描述漂移名单").toEqual(["load_skill"]);
+    // [D3] 描述漂移：**除加载器外**两臂描述必须逐项同。
+    //      加载器名不同是上面登记的**臂属差异**，不是「描述漂移」——原文写「漂移名单恰为 load_skill」，
+    //      那是把**名字差异**误记成**描述差异**，且只扫 native 一侧的键（dsh 独有名字它结构上看不见）。
+    //      改为剔掉两侧加载器后：名字集合逐项同 ∧ 漂移名单为空集（比原判据更严：真描述漂移现在会红）。
+    const withoutLoader = (m: Record<string, string>) =>
+      Object.fromEntries(Object.entries(m).filter(([n]) => !isLoader(n)));
+    const dNativeNoLoader = withoutLoader(dNative);
+    const dExternalNoLoader = withoutLoader(dExternal);
+    expect(Object.keys(dNativeNoLoader).sort(), "[D3] 两侧工具名（除加载器）").toEqual(
+      Object.keys(dExternalNoLoader).sort(),
+    );
+    expect(
+      Object.keys(dNativeNoLoader).filter((n) => dNativeNoLoader[n] !== dExternalNoLoader[n]),
+      "[D3] 描述漂移名单（除加载器外必须为空集）",
+    ).toEqual([]);
     // 本单主角：本体 MCP 两件的描述两核**逐字同**（[MCP·本体] 前缀单源，见 tools/ontology-mcp.ts）
     for (const n of [SLICE_PLAN_MCP, SLICE_RESOLVE_MCP]) {
       expect(dExternal[n], `${n} 描述两核逐字同`).toBe(dNative[n]);
@@ -937,19 +966,27 @@ describe("RESOURCE-REACH · C 两内核一致：同一 query 同剧本，逐条�
     //   [D1] run.kernel 归属：设计差异（内核选择本身），行为面无差。
     //   [D2] 模型可见工具的**顺序**不同（集合逐项相同）：DSH 面 = harness 注册序（字母序），
     //        native 面 = 执行器导出序。顺序进 prompt ⇒ 理论上可影响模型选择，本单按「事实差异」登记。
-    //   [D3] `load_skill` 的描述文本两核不同（**本单不修，顶回**）：
-    //        native = "按 skillId 加载技能全文（渐进披露）。当技能摘要与当前任务相关时调用。"
-    //        DSH   = "按需加载技能全文（目录摘要在 system prompt；调此取 body/resources）。"
-    //        两处来源：native 在 `apps/agentcore/src/tools/registry.ts`（本单范围内可改），
-    //        DSH 在 `packages/dsh-harness/plugins/platform-world.mjs` 的 **skills 段**
-    //        —— 🚦该段归 WO `claude/handoff-dsh-p2a-skill-seam`，本单**禁改**（只顶回，不改）。
-    //        故本单**只登记不收敛**：修要等 skill seam 那张单落定后由收编方二选一。
-    //        ⚠ 不是本单引入：MCP 迁移前就存在，与非本体类资源无关。
+    //   [D3] **技能加载器名两臂不同**：native = `load_skill`（我方常量，`tools/registry.ts`）；
+    //        dsh = `skill`（上游 `dsh-tool-skill` 注册的模型面真名）。
+    //        ⚠ 这是 **P2A 换名后的有意差异**，不是缺陷：dsh 臂用 DSH 自己的加载器才是「迁到原生配置面」的落点；
+    //        P5 退役 native loop 后只剩 `skill`。收编 P2A 时本单原判据「两臂名字逐字相同」由此假红，
+    //        处置 = **登记为臂属差异 + 各查各的真名**（见上 ②），⛔ 不是删掉比较。
+    //        （原文记的是「load_skill 描述文本不同、只登记不收敛、归 p2a 单」——P2A 已落定，
+    //         那条差异**随加载器名一起**变成了本条；描述漂移本身已由 ② 的 [D3] 断言收成空集。）
     const diffs: string[] = [];
     if (external.kernel !== native.kernel) diffs.push(`[D1] run.kernel: native=${native.kernel} external=${external.kernel}`);
-    if (JSON.stringify(external.visible.map((x) => x.name)) !== JSON.stringify(native.visible.map((x) => x.name)))
-      diffs.push("[D2] 可见工具顺序不同（集合相同）");
-    if (dExternal.load_skill !== dNative.load_skill) diffs.push("[D3] load_skill 描述文本不同（两处来源，归 p2a 单）");
+    // [D2] 除各臂加载器真名外：集合必须逐项相同，差异只允许出在**顺序**上。
+    const namesEx = external.visible.map((x) => x.name).filter((n) => !isLoader(n));
+    const namesNa = native.visible.map((x) => x.name).filter((n) => !isLoader(n));
+    if (JSON.stringify(namesEx) !== JSON.stringify(namesNa)) {
+      const sameSet = [...namesEx].sort().join(" ") === [...namesNa].sort().join(" ");
+      diffs.push(sameSet ? "[D2] 可见工具顺序不同（集合相同）" : "[D2] 除加载器外可见工具集合不同");
+    }
+    // [D3] 技能加载器名两臂不同（P2A 换名）。**由实测数据推导**，不是拿写死常量自比——
+    //      哪天 dsh 臂改回同名，本条不再入列，下方「恰三条」断言会当场红出来要求解释。
+    const loaderSeen = (vs: { name: string }[]) => vs.map((x) => x.name).filter((n) => isLoader(n));
+    if (JSON.stringify(loaderSeen(external.visible)) !== JSON.stringify(loaderSeen(native.visible)))
+      diffs.push("[D3] 技能加载器名两臂不同（native=load_skill / dsh=skill，归 P2A 换名）");
     if (JSON.stringify(external.resolveCalls) !== JSON.stringify(native.resolveCalls)) diffs.push("[D4] 执行体入参不同");
     if (JSON.stringify(external.rows) !== JSON.stringify(native.rows)) diffs.push("[D5] 审计行不同");
     if (external.answerMarkdown !== native.answerMarkdown) diffs.push("[D6] 答案不同");
@@ -961,7 +998,7 @@ describe("RESOURCE-REACH · C 两内核一致：同一 query 同剧本，逐条�
     expect(diffs, "差异清单必须恰为登记的这三条（多/少都要先解释）").toEqual([
       `[D1] run.kernel: native=${native.kernel} external=${external.kernel}`,
       "[D2] 可见工具顺序不同（集合相同）",
-      "[D3] load_skill 描述文本不同（两处来源，归 p2a 单）",
+      "[D3] 技能加载器名两臂不同（native=load_skill / dsh=skill，归 P2A 换名）",
     ]);
   });
 
