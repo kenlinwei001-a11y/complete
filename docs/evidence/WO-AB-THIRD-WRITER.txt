@@ -1,0 +1,22 @@
+=== 第三写入方定位：spec-base-synthesis.ts（C2 合成层）===
+/**
+ * C2 合成层 · `state = 派生基值 + 累积传导量`（WO-CONSOLE-DUE-CHANGE 干预实验）。
+ *
+ * 🔴 病灶（实测定稿，见 `docs/evidence/WO-DUE-CHANGE-rootcause.md`）：
+--- 代数（两锚之差）---
+23: *     **差 = λ·(base − rest)** —— 一次加法，不碰核。
+--- 它判定归属用的函数 ---
+35: *   `stateVarValueRef(typeKey, stateVar)`（`synthetic/battery.ts`）—— 播种路自己就在用它
+36: *   （`measuredRefVarKeys` 那一行）。**复用它，不许另立一份登记表。**
+56:import { stateVarValueRef } from "../synthetic/battery.js";
+91:        //    与播种路（`seed-world.ts` 的 `measuredRefVarKeys`）**同一个函数**，不另立登记表。
+92:        if (stateVarValueRef(tk, sv) === undefined) continue;
+
+=== 为何 EDGE-SUM 只看到 0.9% ===
+合成层在传导核【之外】写 state ⇒ 不产生 trace 行 ⇒ 逐笔求和天然看不到它
+已证：该格 PropagationRule 入边仅 1 条，Σamount=+0.0734；实测变化 -8.0931
+⇒ 余量 -8.1665 由合成层的 λ·(base − rest) 项产生（压力族 rest=0, base=90.384615）
+
+=== 根因解的落点 ===
+stateVarValueRef 已在回答『值从哪来』；缺口 =『这格是 LEVEL 还是 DEVIATION』
+⇒ 扩既有绑定，不另立登记表（守住该文件头注自立的规矩）
