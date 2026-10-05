@@ -368,6 +368,36 @@ async function main() {
   say(`GET /a/v1/sim/sessions → HTTP ${probe.status}（活服务）`);
   if (probe.status !== 200) throw new Error("服务不可达或未播种 —— 先核前置，别核代码");
 
+  // ── 实例身份自证（2026-10-05 加）────────────────────────────────────────────
+  // ⛔ 「回显端口」只证明**我打的串**，不证明**谁应答**。
+  // 本机没有 `ss`/`netstat`（只有 lsof），且 macOS bind 语义允许 `127.0.0.1:P`
+  // 与另一个进程的 `0.0.0.0:P` **并存** ⇒ 光比端口号会把**别人的陈旧实例**当成自己的，
+  // 再从它上面读出「我的改动没生效」这种恰好相反的结论。
+  // 故 ⓪ 必须再取一次**只有本树才有的应答形状**：`/world` 顶层键必须含
+  // `baseStateVarReport`（本树字段，旧树无），且 state 对象数/格数非零。
+  // ⚠ 局限（不许当成万能）：它分辨的是「树」，不是「同树同 commit 的另一个进程」——
+  //   后者要靠 `lsof -nP -iTCP:<port> -sTCP:LISTEN` 的 PID 与启动时 spawn 的 PID 对齐。
+  // 键集不符 ⇒ 报「连的不是本树的实例」并**中止**，⛔ 不许拿它的数当基线。
+  const idSess = await createSession();
+  const idWorld = await api("GET", `/a/v1/sim/sessions/${idSess.id}/world`);
+  const idKeys = Object.keys(idWorld.json ?? {}).sort();
+  const idState = idWorld.json?.state ?? {};
+  const idObjs = Object.keys(idState).length;
+  const idCells = Object.keys(idState).reduce((a, o) => a + Object.keys(idState[o] ?? {}).length, 0);
+  const wantKeys = (process.env.EXPECT_WORLD_KEYS || "baseProvenance,baseStateVarReport,state,tick")
+    .split(",").map((s) => s.trim()).filter(Boolean).sort();
+  const missKeys = wantKeys.filter((k) => !idKeys.includes(k));
+  say(`实例身份自证 session=${idSess.id} → GET /world HTTP ${idWorld.status}`);
+  say(`  /world 顶层键 = ${JSON.stringify(idKeys)}`);
+  say(`  state 对象数 = ${idObjs} · 格数 = ${idCells}`);
+  say(`  树鉴别键（必须全含）= ${JSON.stringify(wantKeys)} ⇒ 缺失 = ${JSON.stringify(missKeys)}`);
+  if (idWorld.status !== 200 || missKeys.length > 0 || idObjs === 0 || idCells === 0)
+    throw new Error(
+      `实例身份自证失败：${CFG.base} 上应答的不是本树实例` +
+      `（缺键 ${JSON.stringify(missKeys)} / 对象数 ${idObjs} / 格数 ${idCells}）` +
+      ` —— 先核你连的是谁，⛔ 别拿它的数当基线`,
+    );
+
   const arms = {};
   for (const name of CFG.arms) {
     say(`\n════════════════════════════════════════════════════════`);
