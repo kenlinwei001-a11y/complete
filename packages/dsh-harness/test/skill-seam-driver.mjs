@@ -20,6 +20,7 @@ import SkillRegistry from '@deepseek-ai/dsh-skill'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import * as ToolSkill from '@deepseek-ai/dsh-tool-skill'
 import { createScope } from '@deepseek-ai/dsh-scope'
+import * as Governance from '../plugins/platform-governance.mjs' // 只有具名导出（name/apply），无 default
 import { validateSetupSpec, applySetupSpec } from '../plugins/platform-world.mjs'
 
 /**
@@ -37,6 +38,11 @@ export async function makeSkillWorld() {
   await app.plugin(SkillRegistry)
   await app.plugin(AgentRegistry)
   await app.plugin(ToolSkill, { catalogDescriptionMaxLength: CATALOG_DESCRIPTION_MAX_LENGTH })
+  // 治理裁决器：三份部署档都挂它，缺了它 platform-world 的 pre-execute 闸对**任何**工具
+  // 一律 deny（"governance ruleBindings present but no adjudicator"）—— 而 buildSessionSetup
+  // 恒下发 governance，所以不挂 = 世界根本跑不起来（错的是世界不是缝）。mock + deny:[] 与
+  // cordis.poc.yml 同款。
+  await app.plugin(Governance, { mode: 'mock', deny: [] })
   return app
 }
 

@@ -170,9 +170,9 @@ describe("P2A 接缝 · 模型面全文加载", () => {
     expect(hit.text).toContain('<skill_content name="capacity-check">');
   });
 
-  it("fail-closed：目录里没有的名字 ⇒ 明确否定 + isError，绝不编造正文", async () => {
+  it("fail-closed：合式名但目录里没有 ⇒ 明确否定 + isError，绝不编造正文", async () => {
     const { app, world } = await seam([skillDef("capacity_check", "s", "BODY-A")]);
-    for (const name of ["order-tracking", "capacity_check", "capacity--check", ""]) {
+    for (const name of ["order-tracking", "capacity-check-x", "final-answer"]) {
       const miss = await driver.callSkillTool(app, world.agent, name, `p2a-miss-${name}`);
       expect(miss.isError).toBe(true);
       expect(miss.text).toContain("is unknown or no longer available");
@@ -182,11 +182,14 @@ describe("P2A 接缝 · 模型面全文加载", () => {
     expect((await driver.callSkillTool(app, world.agent, "capacity-check")).text).toContain("BODY-A");
   });
 
-  it("下划线形态不被接受（模型面名是 kebab：我方 key 不经映射直接喂 = 取不到）", async () => {
+  it("不合式名（下划线/空串）⇒ 更早一道就拒（我方 key 不经映射直接喂 = 取不到）", async () => {
     const { app, world } = await seam([skillDef("capacity_check", "s", "BODY-A")]);
-    const rawKey = await driver.callSkillTool(app, world.agent, "capacity_check");
-    expect(rawKey.isError).toBe(true);
-    expect(rawKey.text).toContain("is unknown or no longer available");
+    for (const name of ["capacity_check", "capacity--check", ""]) {
+      const bad = await driver.callSkillTool(app, world.agent, name, `p2a-bad-${name}`);
+      expect(bad.isError).toBe(true);
+      expect(bad.text).toContain("invalid skill name");
+      expect(bad.text).not.toContain("BODY-A");
+    }
   });
 });
 
