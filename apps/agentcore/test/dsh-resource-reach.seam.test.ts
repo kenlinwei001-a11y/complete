@@ -45,6 +45,12 @@ import type { ToolAuthCtx } from "../src/tools/clients.js";
 import { buildSessionSetup } from "../src/dsh-runtime/setup-spec.js";
 import { buildOntologyMcpTools, ONTOLOGY_MCP_DESC_PREFIX } from "../src/tools/ontology-mcp.js";
 import { buildExploratoryTools } from "../src/router/orchestrator.js";
+import {
+  WORKFLOW_MCP_CONFIG_ID,
+  WORKFLOW_MCP_DESC_PREFIX,
+  WORKFLOW_MCP_SERVER,
+  workflowMcpToolName,
+} from "../src/dsh-runtime/workflow-mcp.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const HARNESS_DIR = join(REPO_ROOT, "packages/dsh-harness");
@@ -70,8 +76,12 @@ const FINAL_ANSWER_ARGS = JSON.stringify({
 
 /** 出厂 agent id（本单的被测对象就是它的授予面）。 */
 const SEED_AGENT_ID = "agt_capacity_planner";
-/** 出厂 workflow（种子 agent 已带，端到端没人验过的那条）。 */
-const SEED_WF_TOOL = "workflow_capacity_check";
+/**
+ * 出厂 workflow（种子 agent 已带）。
+ * ⚠ WO-WORKFLOW-MCP 起**模型可见名 = MCP 全名**（裸名 `workflow_capacity_check` 是退场记法，
+ * 全仓不许再出现 —— D 组 ① 的扫描器咬的就是它）。
+ */
+const SEED_WF_TOOL = workflowMcpToolName("capacity_check");
 /** 平台内置本体 MCP server 的配置行 id + 命名空间。 */
 const ONTOLOGY_MCP_CONFIG_ID = "mcp_builtin_ontology";
 const ONTOLOGY_SERVER_NAME = "ontology";
@@ -85,6 +95,8 @@ const SLICE_RESOLVE_RAW = "resolve_slice";
 const OUT_OF_SCOPE_TOOL = "create_action_draft";
 /** harness 子进程真去 spawn 的 MCP server 入口（与 engine.ts resolveOntologyMcpServerPath 同址）。 */
 const ONTOLOGY_SERVER_ENTRY = join(REPO_ROOT, "apps/agentcore/dist/dsh-runtime/ontology-mcp-server.js");
+/** WO-WORKFLOW-MCP · 工作流 MCP server 入口（与 engine.ts resolveWorkflowMcpServerPath 同址）。 */
+const WORKFLOW_SERVER_ENTRY = join(REPO_ROOT, "apps/agentcore/dist/dsh-runtime/workflow-mcp-server.js");
 
 const PLAN_ARGS = JSON.stringify({
   rootType: "Order",
@@ -203,7 +215,8 @@ function toolResultText(body: unknown, toolCallId: string): string {
 
 /**
  * seed 授予面 → engine 真装配（`expandAgentTools` 真跑，不是手抄名字）→ `buildSessionSetup`。
- * hostTools / hostWorkflowTools / mcpServers 三路与 engine.ts 分叉处逐字同形。
+ * hostTools / mcpServers 两路与 engine.ts 分叉处逐字同形（`hostWorkflowTools` 那条专用通道
+ * 已随 WO-WORKFLOW-MCP 退场，工作流改走 mcpServers 里的内部 workflow server）。
  */
 async function setupFromSeedAgent(agent: AgentDefinition) {
   const t = await createTestApp();
@@ -214,6 +227,12 @@ async function setupFromSeedAgent(agent: AgentDefinition) {
     // mcpServers 映射：与 engine.ts DSH 分叉同构（serverName 从配置行取 + toolAllowlist = expanded 收窄）。
     // ⚠ 注意本助手**不**复刻 engine 的运行期注入（command/args/env：绝对路径 + per-run runToken），
     // 那一段只在真分叉里兑现，由 B 组 e2e 驱动真身 —— 静态映射只验「有哪些 server / 收窄到哪些工具」。
+    // ⚠ 工作流面的 allowlist 取法与本体**不同**（engine.ts 同款分支）：工作流 binding 恒为
+    // `{kind:"WORKFLOW"}` 而非 `{kind:"MCP"}`,按 mcpConfigId 过滤会得到**空表** ⇒ 子进程把工具全丢。
+    // 改为按公开名面（前缀即服务器命名空间）取 —— 与子进程 publicToolName 的比对口径同源。
+    const workflowCatalog = tools
+      .filter((x) => x.name.startsWith(`mcp__${WORKFLOW_MCP_SERVER}__`))
+      .map((x) => x.name);
     const mcpServers: { serverName: string; toolAllowlist?: string[] }[] = [];
     for (const ref of agent.mcpServers) {
       const cfg = await t.repos.mcpConfigs.get(ref.mcpConfigId);
@@ -224,12 +243,19 @@ async function setupFromSeedAgent(agent: AgentDefinition) {
         serverName,
         ...(ref0 && ref0.kind === "MCP" && ref0.toolFilter !== undefined
           ? {
-              toolAllowlist: tools
-                .filter((x) => x.binding.kind === "MCP" && x.binding.mcpConfigId === ref.mcpConfigId)
-                .map((x) => x.name),
+              toolAllowlist:
+                serverName === WORKFLOW_MCP_SERVER
+                  ? workflowCatalog
+                  : tools
+                      .filter((x) => x.binding.kind === "MCP" && x.binding.mcpConfigId === ref.mcpConfigId)
+                      .map((x) => x.name),
             }
           : {}),
       });
+    }
+    // 旧记法兜底（engine.ts 同款）：带 WORKFLOW 授予但没挂 server 行的 agent 自动挂上。
+    if (workflowCatalog.length > 0 && !mcpServers.some((s) => s.serverName === WORKFLOW_MCP_SERVER)) {
+      mcpServers.push({ serverName: WORKFLOW_MCP_SERVER, toolAllowlist: workflowCatalog });
     }
     const spec = buildSessionSetup({
       agent,
@@ -238,9 +264,6 @@ async function setupFromSeedAgent(agent: AgentDefinition) {
       ...(mcpServers.length ? { mcpServers: mcpServers as never } : {}),
       hostTools: tools
         .filter((x) => x.binding.kind === "BUILTIN")
-        .map((x) => ({ name: x.name, description: x.description, inputSchema: x.inputSchema })),
-      hostWorkflowTools: tools
-        .filter((x) => x.binding.kind === "WORKFLOW")
         .map((x) => ({ name: x.name, description: x.description, inputSchema: x.inputSchema })),
     });
     return { spec, expanded: tools };
@@ -481,6 +504,8 @@ describe("RESOURCE-REACH · A 授予面契约（seed → expandAgentTools → se
     // （重复 = 同一 server 挂两次，也会让模型面出现两份同名工具）。
     expect(mcpRefIds, "切片走 MCP 授予（本体 server 在 ref 里）").toContain(ONTOLOGY_MCP_CONFIG_ID);
     expect(new Set(mcpRefIds).size, "MCP ref 不许重复").toBe(mcpRefIds.length);
+    // WO-WORKFLOW-MCP · 旧记法已退净：本 agent 上不许再有 WORKFLOW ref（有 = 两条路并存）
+    expect(agent.tools.filter((t) => t.kind === "WORKFLOW"), "旧 WORKFLOW 记法已退净").toEqual([]);
     expect(
       agent.tools.filter((t) => t.kind === "BUILTIN").map((t) => (t.kind === "BUILTIN" ? t.name : "")),
       "BUILTIN 授予面不再含切片（收敛：不许两条路并存）",
@@ -526,8 +551,16 @@ describe("RESOURCE-REACH · A 授予面契约（seed → expandAgentTools → se
       advertised.find((x) => x.name === SLICE_PLAN_MCP)!.description,
     );
     expect(planSpec.description.startsWith(ONTOLOGY_MCP_DESC_PREFIX)).toBe(true);
-    // ⑨ 交付②的可见性前提：出厂 WORKFLOW 授予走 **hostWorkflowTools**（另一个键，各不串台）
-    expect((spec.hostWorkflowTools ?? []).map((x) => x.name), "workflow 下发面").toContain(SEED_WF_TOOL);
+    // ⑨ 交付②的可见性前提：出厂 WORKFLOW 授予走 **MCP 面**（`mcp__workflow__{key}`，
+    // 与本体同一套命名空间/挂载/收窄机制；专用字段 `hostWorkflowTools` 已退场）。
+    const wfSpec = spec.mcpServers?.find((m) => m.serverName === WORKFLOW_MCP_SERVER);
+    expect(wfSpec, "工作流 server 必须挂上（只有 ref 没有它 = 模型面拿不到工具）").toBeDefined();
+    expect(wfSpec?.toolAllowlist, "workflow wire 侧允许表 = 公开名面").toEqual([SEED_WF_TOOL]);
+    expect(expandedNames, "授予面展开是全名").toContain(SEED_WF_TOOL);
+    // ⑨b 描述文本单源：宿主静态投影 = MCP server 广告（`workflow-mcp.ts` 一处生成，两内核同字）
+    const wfGrants = expanded.filter((x) => x.name === SEED_WF_TOOL);
+    expect(wfGrants.length, "同一工作流只许有一条授予（两条 = 旧记法没退净）").toBe(1);
+    expect(wfGrants[0]!.description.startsWith(WORKFLOW_MCP_DESC_PREFIX), "workflow 描述前缀 = MCP 广告前缀").toBe(true);
     expect(hostNames, "BUILTIN 面不串入 workflow").not.toContain(SEED_WF_TOOL);
     // ⑩ 金丝雀：整表没空掉 —— 其余出厂授予仍在（否则上面所有 not.toContain 对空实现恒真）
     expect(hostNames).toContain("query_objects");
@@ -754,6 +787,38 @@ describe("RESOURCE-REACH · B e2e：DSH 臂经 MCP 真调切片（真 fork + 真
       expect(receipt1, "① 不许是成功载荷").not.toMatch(/tool_data/);
       expect(receipt2, "② workflow 产物上模型面").toContain("产能校核结论");
       expect(receipt2, "② 是成功包络").toMatch(/tool_data/);
+      // ② 不许带 tool_call_id 属性（workflow 面与 BUILTIN 面不同形 —— 模型无法引用多步流程的中间 id）
+      expect(receipt2, "② 包络无 tool_call_id 属性").toMatch(/^<tool_data>\{/);
+
+      // ── 值校验（§4 铁律：这条数我独立地再算一遍）────────────────────────────
+      // 回执里的求解器读数**不是我复述的**，是按它的定义式重算出来的：
+      //   mocks/clients.ts `capacity_forecast`：capWanP50 = round1(baseGwh × (1+rnd×0.1))
+      //                                        effectiveDemand = round1(capWanP50 × (1 + demandDelta))
+      //                                        baselineDemand  = round1(effectiveDemand / max(0.01, 1+demandDelta))
+      // 故拿回执自带的 capWanP50 与脚本入参 0.2 就能独立复算 effectiveDemand —— 两者必须逐位相等。
+      // ⛔ 不是「回执里有数」这种存在性断言：下面三行都**先算出数**再比对。
+      const round1 = (x: number) => Math.round(x * 10) / 10;
+      const envJson = receipt2.slice(receipt2.indexOf("<tool_data>") + "<tool_data>".length, receipt2.indexOf("</tool_data>"));
+      const wfPayload = JSON.parse(envJson) as {
+        status?: string;
+        stepOutputs?: Record<string, { data?: Record<string, number> }>;
+      };
+      expect(wfPayload.status, "② 工作流终态").toBe("COMPLETED");
+      const s2 = wfPayload.stepOutputs?.s2?.data;
+      expect(s2, "② 求解器 s2 读数必须在产物里（值校验的输入）").toBeDefined();
+      const capWanP50 = s2!.capWanP50!;
+      const deltaIn = 0.2; // ① 与 ② 的唯一自变量（脚本里写死的那个数）
+      expect(s2!.demandDelta, "② 求解器收到的 delta = 我发出去的那个数").toBe(deltaIn);
+      // 【值校验·主】按定义式独立复算 —— 左边是回执里的数，右边是我现算的
+      expect(round1(capWanP50 * (1 + deltaIn)), "② effectiveDemand = round1(capWanP50×(1+δ)) 独立复算").toBe(
+        s2!.effectiveDemand,
+      );
+      // 【值校验·副】反向再算一次（除法而非乘法，走另一条式子）
+      expect(round1(s2!.effectiveDemand! / (1 + deltaIn)), "② baselineDemand 反向复算").toBe(s2!.baselineDemand);
+      // 金丝雀：复算式**不是恒等式**（把 delta 换成另一个数，等式必须不成立）
+      // —— 否则上面两条对任何输入都绿，等于没验。
+      expect(round1(capWanP50 * (1 + 0.5)) === s2!.effectiveDemand, "复算式有鉴别力（δ=0.5 时不成立）").toBe(false);
+
       const qoTypes = qo.mock.calls.map((c) => c[1] as string);
       expect(qoTypes, "workflow s1 步真执行（Model 真被查过）").toContain("Model");
       const rows = await t.repos.toolCalls.listByTask("task_reach_b3wf");
@@ -763,11 +828,82 @@ describe("RESOURCE-REACH · B e2e：DSH 臂经 MCP 真调切片（真 fork + 真
       expect(wfRows[0]!.id).toMatch(/^tc_/);
       const iterCalls = result.run.iterations.flatMap((it) => it.toolCalls).filter((c) => c.toolName === SEED_WF_TOOL);
       expect(iterCalls.map((c) => c.outcome), "两次调用的结局").toEqual(["ERROR", "OK"]);
-      expect(iterCalls[1]!.toolCallId, "OK 那次对上端点审计行").toBe(wfRows[0]!.id);
+      // 差异 [B3-D1]（**登记，不是缺陷**；与 B1 的 [B1-D1] 是**同一条结构性原因**在 workflow 面的观测点）：
+      // MCP 路的 `iterations.toolCallId` 是 **DSH 帧 id**，不是宿主审计行主键 `tc_`。
+      // 迁前那条反向工具路是 `hostToolCalls.get(call.callId)` 命中的 —— 因为桥把**帧 callId 直通**上了
+      // 反向通道；MCP wire 不带 DSH 帧 id（`tools/call` 的 JSON-RPC id 由 SDK 自铸），故本 server 只能按
+      // `{全名}@{自增}` 自铸 callId（见 workflow-mcp-server.ts 头注），侧表**必然 miss** ⇒ 回落成帧 id。
+      // ⚠ 这不是「关联丢了」：① 模型面**本就没有** workflow 的 tool_call_id 可引用（包络刻意不带该属性，
+      //    与迁前 `withCallId:false` 同形 —— 上一条断言已咬）；② 帧 id ↔ `tc_` 审计行的对应由**端点回执**
+      //    承担（bridge C 组断言 `rows[0].id === body.toolCallId`，全名逐字可追）。
+      // 下面两条**钉死该差异**，漂了就红：帧 id 必须**真能在模型面回执里寻址**（同一份证据两处读到），
+      // 且**不是**审计行主键 —— 只写 `.not.toBe` 是纯否定，没有鉴别力，故后一条是值校验。
+      const frameId = iterCalls[1]!.toolCallId;
+      expect(frameId, "[B3-D1] 非宿主审计行主键").not.toBe(wfRows[0]!.id);
+      expect(toolResultText(stub.requests[2]?.body, frameId), "[B3-D1] 帧 id 在模型面可寻址且载荷 = ② 那份").toBe(receipt2);
     } finally {
       await close();
       await stub.close();
     }
+  });
+
+  it("B6 对照实验（workflow MCP 入口移走）：工作流工具不可见 ∧ 宿主零执行 ∧ 零审计行，且本体面**不受影响**", { timeout: SEAM_TIMEOUT }, async () => {
+    // 这条是 B2 的**同形对照臂**，被自变量换成工作流 server（WO-WORKFLOW-MCP 的那条新 seam）：
+    //   自变量 X：workflow MCP server 入口在不在
+    //   预言的 Y：在 ⇒ 工具可见且真能被调用（B3 已证）；不在 ⇒ 工具**从未注册**、执行体零调用、
+    //             审计零行；而**同一 run 的另一个 MCP server（本体）照常工作** —— 后一条是关键，
+    //             否则「工具不见了」可能只是「整条 MCP 路都死了」，对照就失去鉴别力。
+    expect(existsSync(WORKFLOW_SERVER_ENTRY), `workflow MCP server 入口必须存在：${WORKFLOW_SERVER_ENTRY}`).toBe(true);
+    const before = createHash("sha256").update(readFileSync(WORKFLOW_SERVER_ENTRY)).digest("hex");
+    const parked = `${WORKFLOW_SERVER_ENTRY}.parked-by-seam-test`;
+    let restored = false;
+
+    const stub = await startStubOpenAi([
+      { toolCall: { name: SEED_WF_TOOL, arguments: JSON.stringify({ model: "4680-NCM", demandDelta: 0.2, weeks: 4 }) }, usage: PLAIN_USAGE },
+      { toolCall: { name: SLICE_PLAN_MCP, arguments: PLAN_ARGS }, usage: PLAIN_USAGE },
+      { toolCall: { name: "final_answer", arguments: FINAL_ANSWER_ARGS }, usage: PLAIN_USAGE },
+      { text: "stub final answer", usage: PLAIN_USAGE },
+    ] satisfies StubRound[]);
+    const { t, close } = await startToolExecApp({ stubUrl: `${stub.url}/v1`, serviceToken: SERVICE_TOKEN });
+    try {
+      await seedWorld(t, seedCapacityAgent());
+      renameSync(WORKFLOW_SERVER_ENTRY, parked);
+      const wfSpy = vi.spyOn(t.deps.engine, "runWorkflowAsTool");
+      const emitted: Emitted[] = [];
+      const result = await runAgent(t, "task_reach_b6wf", emitted, SEED_AGENT_ID);
+
+      // ① 金丝雀：席位仍在（不是整场没起来）
+      expect(result.run.kernel, "真走 DSH 分叉").toBe("EXTERNAL");
+      const names = stubVisibleTools(stub).map((x) => x.name);
+      // ② 自变量落到模型面：工作流工具**从未注册**
+      expect(names, "server 不在 ⇒ 工作流不可见").not.toContain(SEED_WF_TOOL);
+      expect(names.map((n) => n.replace(/^mcp__[a-z]+__/, "")), "裸名也不许冒出来").not.toContain("capacity_check");
+      // ③ **鉴别力对照**：同一 run 的另一个 MCP server 工具照常在 —— 「不见了」只归因于被移走的那个
+      expect(names, "另一个 MCP server 不受影响（否则本对照无鉴别力）").toContain(SLICE_PLAN_MCP);
+      // ④ 执行体零调用 + 零审计行（fail-closed，绝不静默成功）
+      expect(wfSpy.mock.calls.length, "宿主 workflow 执行体零调用").toBe(0);
+      const rows = await t.repos.toolCalls.listByTask("task_reach_b6wf");
+      expect(rows.filter((r) => r.toolName === SEED_WF_TOOL).length, "宿主零审计行").toBe(0);
+      // ⑤ 幻觉调用拿到明确失败（不是静默 OK），且**不是**成功包络
+      const receipt = toolResultText(stub.requests[1]?.body, "call_1");
+      expect(receipt, "必须真回了 tool_result（静默 = 没有回执）").not.toBe("");
+      expect(receipt, "不许是成功载荷").not.toMatch(/<tool_data>/);
+      expect(receipt, "必须是明确失败文案").toMatch(/not found|not in agent scope|unknown|Error|无权|不存在|invalid/i);
+      // eslint-disable-next-line no-console
+      console.log(
+        `\n  ── B6 对照（workflow MCP 入口移走）：模型面工具数=${names.length}` +
+          `（含 workflow=${names.some((n) => n.includes("workflow"))} / 含本体切片=${names.some((n) => n.includes("ontology"))}）\n` +
+          `  ── workflow 执行体调用次数=${wfSpy.mock.calls.length}，审计行=${rows.length} ──\n  ${receipt.slice(0, 300)}\n`,
+      );
+    } finally {
+      if (existsSync(parked) && !existsSync(WORKFLOW_SERVER_ENTRY)) renameSync(parked, WORKFLOW_SERVER_ENTRY);
+      restored = existsSync(WORKFLOW_SERVER_ENTRY);
+      await close();
+      await stub.close();
+    }
+    // 还原自证：sha256 与移动前逐字节同
+    expect(restored, "入口文件必须还原").toBe(true);
+    expect(createHash("sha256").update(readFileSync(WORKFLOW_SERVER_ENTRY)).digest("hex"), "还原后 sha256").toBe(before);
   });
 
   it("B4 fail-closed：请求**不在授予集内**的工具 ⇒ 明确拒绝 ∧ 宿主零执行（不静默放行）", { timeout: SEAM_TIMEOUT }, async () => {
