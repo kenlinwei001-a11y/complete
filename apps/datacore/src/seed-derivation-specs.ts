@@ -196,6 +196,146 @@ export const DEMO_DERIVATION_SPECS: readonly {
   //   （探针 n=0，DSL 只算数值），leadDays/qty/unitPrice 是 WO 红线真值字段且语义非变更。
   //   仓里无第 4 个诚实源 ⇒ 不写。主判据 4,171 ≥ 3,896 不靠它过线；
   //   传导链 orderChurn → Model.demandLoad 走哈希基线值，与本档无关、不受影响。
+  // ═══════════════════════════════════════════════════════════════════════════════════════
+  // ── WO-DERIV-BACKFILL · 哈希铸造 23 列 → 函数库（仓主 2026-10-05 令）─────────────────────
+  //
+  // 病灶：`sim/seed-world.ts` 的兜底分支 `row[v] = round(seedHash01(\`${o.id}|${v}\`) × 100)`
+  //   把「规则触及、但对象上没有同名数值属性」的格子一次性铸成**任意常数**（FNV-1a，确定性
+  //   ⇒ 两次建会话逐位相同，任何确定性测试都验不出来）。实测该分支占 **2192/6375 格（34.4%）**，
+  //   覆盖 **23 个状态变量整列 100%** —— 它们不在任何库里，是写死在 TS 里的一行。
+  //
+  // 本段处置的是**A 档 17 条**：库里**已有**可用的真业务字段，只差一条公式把口径写下来。
+  //   ⛔ 每条公式的右值全部**实测自真对象**（`/a/v1/objects?type=…`，2026-10-05 实测；
+  //      不是按字段名推断 —— 铁律 0.6 判据 3 那条「判 X 是不是对象的属性只能真起数据真读」）。
+  //   口径出处一律取**仓里已有的那一句**（规则 description / 域表 source），不新发明。
+  //   分布栏 = 该公式在真数据上的实测 min–max，写进注释供后来人**独立复算**。
+  //
+  // ⚠ 剩余 6 条（B 档）**不在本段**，理由逐条列在段尾 —— 它们是「库里确实没有」，
+  //   处置是**补数据**（改种子生成器），不是拿一条凑数的公式盖过去。
+  // ⚠ 值经 §1 播种期 recompute 物化进 `o.props[targetProp]`，仍由 `deriveSeedBaseSnapshot`
+  //   的①真读数支取走 —— 与既有 28 条同一通路，本段不改取值引擎。
+  // ═══════════════════════════════════════════════════════════════════════════════════════
+  // ARInvoice.overduePressure：逾期压力 = 逾期天数。出处：边 `Customer.receivablePressure ×0.148 →
+  //   ARInvoice.overduePressure`「客户应收压力大 ⇒ **名下发票逾期风险上升**」—— 风险的自变量就是逾期天数。
+  //   实测 0–38 天（n=60，20 个不同值，med=10）。压力族 [0,100] ⇒ 天然入域，无需 CLAMP。
+  { specKey: "arinvoice_overdue_pressure", targetType: "ARInvoice", targetProp: "overduePressure", formula: "this.overdueDays" },
+  // Certification.qualificationQueue：认证排队 = 认证周期小时数。出处：域表 `qualificationQueue.source`
+  //   逐字「认证周期 certHours med=134h÷24=5.58 天（n=18，2.1–8.0）」—— 域表**自己就在用这个字段推 λ**，
+  //   本式只是把同一个字段从注释里搬进函数库。实测 51–192 h（n=18，16 个不同值，med=129）。
+  //   域声明 max:null ⇒ 不夹（件族，非压力族）。
+  { specKey: "certification_qualification_queue", targetType: "Certification", targetProp: "qualificationQueue", formula: "this.certHours" },
+  // ChangeoverMatrix.changeoverPressure：换型压力 = 换型分钟数。出处：边 `Model.demandLoad ×0.148 →
+  //   ChangeoverMatrix.changeoverPressure`「同一条线**换型次数变多、换型损失变大**」—— 损失的量就是换型耗时。
+  //   实测 31–179 分钟（n=30，28 个不同值，med=113）。⚠ 上界 179 > 100：压力族 [0,100] ⇒ 超界的由**引擎按域夹**
+  //   并在回执点名，式子只算原始值、⛔ 不内联边界常数（同 `expeditePressure` 212 / `loadIndex` 552 先例）。
+  { specKey: "changeovermatrix_changeover_pressure", targetType: "ChangeoverMatrix", targetProp: "changeoverPressure", formula: "this.minutes" },
+  // CustomsClearance.clearanceQueueDays：清关排队天数 = 放行日 − 申报日。出处：边 `PurchaseOrder.expeditePressure
+  //   ×0.4 → CustomsClearance.clearanceQueueDays`「加急的进口采购单**先堆在海关那一段** ⇒ 清关排队天数变长」
+  //   —— 堆的时长就是放行减申报。实测 3 天（n=1）。
+  //   ⚠ 域表**刻意不收**本键，原文「实测出现 −8.9 天负值（n=1），数据本身可疑 ⇒ 交仓主」。
+  //     本式算出的是 **+3**（正），把那个可疑负值替掉了；数据可疑这件事随之消失，但**是否补登记域另议**
+  //     —— 「值变干净了」不等于「域出处写得出」，本单不顺手加域（禁令 3：不新增棘轮/基线）。
+  { specKey: "customsclearance_queue_days", targetType: "CustomsClearance", targetProp: "clearanceQueueDays", formula: "this.clearedDay - this.declaredDay" },
+  // FinishedGoodsInventory.drawdownPressure：成品去化压力 = 覆盖天数。出处：边 `Model.demandLoad ×0.222 →
+  //   FinishedGoodsInventory.drawdownPressure`「型号需求上来 ⇒ 成品库存被消耗（需求负载 = 成品去化压力）」
+  //   与其反向边「成品库存被提走 ⇒ 从型号待产负荷里扣掉」—— 去化的自变量是**还能撑几天**。
+  //   实测 1.93–42.34 天（n=18，18 个不同值，med=21.26 = 与 `fgi_cover_days` 规格同源，逐位一致）。
+  //   ⚠ 依赖链：本式吃 `coverDays`，而 `coverDays` 由规格 `fgi_cover_days` 产出 ⇒ 规格间两级派生，
+  //     `compileSpecs` 按 deps 建图、`recompute` 走拓扑序，无环（`coverDays` 不依赖任何状态量）。
+  { specKey: "fgi_drawdown_pressure", targetType: "FinishedGoodsInventory", targetProp: "drawdownPressure", formula: "this.coverDays" },
+  // IncomingInspection.queueDays：来料检验排队天数 = 放行日 − 到货日。出处：**域表 source 逐字给出的就是本式** ——
+  //   「来料检验周期 releasedDay−arrivedDay med=3 天（n=30，1–4）」（域表拿它推 λ=0.37）。
+  //   实测 1–4 天（n=30，med=3），与该句逐位一致 ⇒ 本式与域表同源、互为交叉验证。
+  //   域声明 min:0 / max:null ⇒ 不夹。
+  { specKey: "incominginspection_queue_days", targetType: "IncomingInspection", targetProp: "queueDays", formula: "this.releasedDay - this.arrivedDay" },
+  // InterBaseTransfer.transferPressure：调拨压力 = 在途天数占预计到货日的比 ×100。出处：边 `Base.loadIndex ×0.111
+  //   → InterBaseTransfer.transferPressure`「某基地过载 ⇒ 跨基地**调拨压力**上升」—— 压力落在「这次调拨要占用多久」。
+  //   实测 4.76–60.00（n=17，14 个不同值）⇒ 天然落在压力族 [0,100] 内，无需夹。
+  //   ⚠ 为什么不裸用 `transitDays`：实测只有 **3 个不同值**（1/2/3 天）⇒ 17 个对象挤成 3 档，
+  //     归一化到到货日之后是 14 档。⛔ 这不是「挑好看的数」，是同一口径下信息量更高的写法。
+  { specKey: "ibtransfer_transfer_pressure", targetType: "InterBaseTransfer", targetProp: "transferPressure", formula: "COALESCE(this.transitDays * 100 / this.etaDay, 0)" },
+  // MaintPlan.windowSqueeze：检修窗口挤压 = 计划周次。出处：边 `Base.loadIndex ×0.148 → MaintPlan.windowSqueeze`
+  //   「基地负载越满 ⇒ **能停机检修的窗口越难排**（产能与维护的真实对立）」—— 周次越靠后 = 被挤得越远。
+  //   实测 3–10 周（n=13，8 个不同值，med=7）。压力族 [0,100] ⇒ 入域。
+  //   ⚠ 诚实声明：`lastMaintStart` 是日期串（DSL 只算数值）⇒ 「距上次保养多久」在**本 DSL 里算不出来**，
+  //     本式是周次代理口径，不是那个量的精确值。要精确值得先补数值字段（B 档同族处置，另议）。
+  { specKey: "maintplan_window_squeeze", targetType: "MaintPlan", targetProp: "windowSqueeze", formula: "this.week" },
+  // MaterialAlternative.switchPressure：替代料切换压力 = 替代优先级位次。出处：边 `Material.shortageRisk ×0.222
+  //   → MaterialAlternative.switchPressure`「物料缺 ⇒ **切换到替代料的压力变大**」+ 其出边「替代料切换压力高
+  //   ⇒ Plan B 在启用」—— priority 就是「启用 Plan B 的排序位」，越大越靠后 = 越难切。
+  //   实测 1–3（n=5，3 个不同值）。压力族 [0,100] ⇒ 入域。
+  { specKey: "materialalternative_switch_pressure", targetType: "MaterialAlternative", targetProp: "switchPressure", formula: "this.priority" },
+  // MaterialBatch.turnoverPressure：批次周转压力 = 呆滞天数。出处：边 `Material.shortageRisk ×0.185 →
+  //   MaterialBatch.turnoverPressure`「缺料时先动批次：提前拉料、拆批、**翻呆滞库存** ⇒ 批次周转压力上升」
+  //   —— 要翻的就是呆滞那批，呆滞越久越压。实测 0–121 天（n=24，22 个不同值，med=42.5）。
+  //   ⚠ 不用 `ageDays`：那个已被 `materialbatch_procurement_delay` 占用（同字段复用 = 硬凑）；`idleDays`
+  //     是**独立字段**（实测与 ageDays 不同值：idle 0–121 vs age 1–154）。压力族 [0,100] ⇒ 超界由引擎夹。
+  { specKey: "materialbatch_turnover_pressure", targetType: "MaterialBatch", targetProp: "turnoverPressure", formula: "this.idleDays" },
+  // Model.backlogQtyTop：在手订单最大单量（套）。出处：边 `Order.qty --[via order_for_model]--> Model.backlogQtyTop`
+  //   的 description **逐字**：「该型号在手订单里**最大的一张**是多少套（订单数量**原样取最大值**，不打折不加权）」
+  //   —— 系数 1、原样取 max，本条就是那句话的 DSL 直译。实测 7624–21777 套（n=6，6 个不同值）。
+  //   ⚠ 链方向实测：`order_for_model` 的 from=Order ⇒ 从 Model 侧用 `in()`（同 `model_supply_risk` 用 out() 的判据）。
+  //   ⚠ 本键**不在域表**（件族，非压力族）⇒ 不夹，量纲如实。
+  { specKey: "model_backlog_qty_top", targetType: "Model", targetProp: "backlogQtyTop", formula: "COALESCE(MAX(in(order_for_model).qty), 0)" },
+  // Model.backlogPriceTop：在手订单最高成交单价（元/套）。出处：边 `Order.unitPrice --[via order_for_model]-->
+  //   Model.backlogPriceTop` 的 description **逐字**：「该型号在手订单里**最高的成交单价**是多少元（订单单价
+  //   **原样取最大值**）」。实测 14420–22660 元（n=6）。
+  //   ⚠ 诚实声明：6 个对象只落 **2 个不同值**（14420 / 22660）——因为全仓 500 张单的 unitPrice 只有 142 个不同值，
+  //     取 max 之后收敛。这是**该口径本来的结果**，不是式子退化；⛔ 不为了让分布好看而换口径。
+  { specKey: "model_backlog_price_top", targetType: "Model", targetProp: "backlogPriceTop", formula: "COALESCE(MAX(in(order_for_model).unitPrice), 0)" },
+  // OverdueRecord.collectionPressure：催收压力 = 逾期天数。出处：边 `Customer.receivablePressure ×0.222 →
+  //   OverdueRecord.collectionPressure`「客户欠款压力大 ⇒ **逾期记录上的催收压力变大**」。
+  //   实测 12–38 天（n=2，2 个不同值）。压力族 [0,100] ⇒ 入域。
+  { specKey: "overduerecord_collection_pressure", targetType: "OverdueRecord", targetProp: "collectionPressure", formula: "this.overdueDays" },
+  // QualityLot.inspectBacklog：质检积压 = 待检批量（件）。出处：边 `WorkOrder.releasePressure ×0.185 →
+  //   QualityLot.inspectBacklog`「工单下达多 ⇒ **待检批次积压**（工单下达压力 = 质检积压）」—— 积压的就是这一批的件数。
+  //   实测 1431–5674 件（n=260，239 个不同值，med=3567）。域声明 min:0 / max:null（件族）⇒ 不夹。
+  //   ⚠ 不用 `batchSize - sampleSize`：实测与 batchSize 只差 28–113（同 239 个不同值），信息量几乎相同，
+  //     而 batchSize 是**未经二次加工的原始字段** ⇒ 取更原始的那个（少一层假设）。
+  { specKey: "qualitylot_inspect_backlog", targetType: "QualityLot", targetProp: "inspectBacklog", formula: "this.batchSize" },
+  // Shipment.inboundExpeditePressure：来料在途加急压力 = 预计到货日。出处：边 `Base.loadIndex ×0.1295 →
+  //   Shipment.inboundExpeditePressure`「基地变忙 ⇒ 来料在途被催（基地负载 = **入厂运输加急压力**）」
+  //   —— 到得越晚，基地等得越急。实测 2–16（n=13，9 个不同值，med=7）。压力族 [0,100] ⇒ 入域。
+  //   ⚠ 不用 `coverageDays`：那个是「还能撑几天」，**方向相反**（越少越急），直接取会把方向读反；
+  //     仓里没有「100 − x」这类反号惯用法（`equipment_failure_rate` 是 `100 − health_score`，但那是
+  //     同量纲反向的**指标对**，coverageDays 与「急」不同量纲）⇒ 不硬凑。
+  { specKey: "shipment_inbound_expedite_pressure", targetType: "Shipment", targetProp: "inboundExpeditePressure", formula: "this.etaDay" },
+  // Supplier.reviewPressure：供应商评审压力 = 供应缺口率 ×100。出处：边 `PurchaseOrder.expeditePressure ×0.148 →
+  //   Supplier.reviewPressure`「采购单频繁加急 ⇒ **该供应商被纳入评审的压力上升**」—— 评审的由头是没按约供上。
+  //   实测 1–10（n=15，10 个不同值，med=5）。压力族 [0,100] ⇒ 入域。COALESCE 兜 contracted=0。
+  //   ⚠ 不用 `onTimeRate`：那个已被 `supplier_delivery_delay` 占用（= (1−onTimeRate)×100，字节级同值）；
+  //     `contractedSupplyTon − actualSupplyTon` 是**独立的一对字段**（合同量 vs 实供量）。
+  { specKey: "supplier_review_pressure", targetType: "Supplier", targetProp: "reviewPressure", formula: "COALESCE((this.contractedSupplyTon - this.actualSupplyTon) * 100 / this.contractedSupplyTon, 0)" },
+  // OrderLine.splitPressure：订单行拆分/改期压力 = 违约罚金占行金额的比 ×100。出处：两条入边
+  //   `Order.orderChurn ×0.12140625` + `Order.demandPressure ×0.15609375 → OrderLine.splitPressure`
+  //   「订单频繁变更 ⇒ **订单行拆分/改期压力上升**」+「需求压力大 ⇒ 行项被拆分/改期」—— 拆分/改期的**代价**
+  //   就是这张行被违约时的罚金，占行金额（qty×unitPrice）的比 = 拆分有多痛。
+  //   实测 11.81–187（n=873，18 个不同值，med=41.36）。压力族 [0,100] ⇒ 超界由引擎按域夹（同 expeditePressure 先例）。
+  //   ⚠ 不用 `lineNo`：实测只有 3 个不同值（1/2/3）⇒ 873 个对象挤成 3 档，近退化。
+  { specKey: "orderline_split_pressure", targetType: "OrderLine", targetProp: "splitPressure", formula: "COALESCE(this.breachPenalty * 100 / (this.qty * this.unitPrice), 0)" },
+  // ═══════════════════════════════════════════════════════════════════════════════════════
+  // ⛔ B 档 6 条 —— **库里确实没有**，处置是**补数据（改种子生成器）**，不由本段覆盖。
+  //    判据不是"想不出公式"，是**真读对象属性**（铁律 0.6 判据 3：grep 源码在「X 是不是属性」上永不构成证据）。
+  //    ⚠ 六条的实测依据（2026-10-05 `/a/v1/objects?type=…` 全量读取）：
+  //   · `CustomerLocation.deliveryHoldRisk`（n=30）：**只有 lon/lat 两个数值**，其余 province/city/address 是串。
+  //     lon/lat 与「收货点被暂停发货的风险」无因果关系 ⇒ 拿它当源就是编。
+  //   · `ExceptionEvent.handlingBacklog`（n=372）：**零个数值属性**。全部是 excId/excType/source/severity/
+  //     status/refType/refId/summary/occurredAt —— 只有 `occurredAt`（时间串）+ `status`。域表 source 也自曝
+  //     「ExceptionEvent 无处置工期属性（只有 occurredAt+status）⇒ 借维修工期 med=1 天，⚠ 暂定档，待仓主定档」。
+  //   · `MaintenanceOrder.repairBacklog`（n=193）：**零个数值属性** —— 工期是 `actualStart`/`actualEnd`
+  //     **日期串**，DSL 只算数值 ⇒ 算不出差。域表 source 里那句「维修工期 actualEnd−actualStart med=1 天
+  //     （n=193，0–2）」**是人工算过一次的**，但那个数**没有落到对象上** ⇒ 补数据的形态 = 把它物化成数值字段。
+  //   · `Model.forecastBias`（n=6）：已退役（原式分子两项同源恒 0），退役后回落到哈希。
+  //     它是**全平台唯一带方向的量纲**（[-100,100]，restPoint 0）⇒ 源必须**带负区间**，现有字段里没有这样的量
+  //     （`totalDemand` 就是 `SUM(Order.qty)`，与减数同源 —— 这正是退役的原因）。
+  //   · `OrderPromise.promiseRisk`（n=50）：**三个字段全退化** —— 实测 `requestedQty ≡ committableQty`
+  //     **50/50**、`shortfallQty ≡ 0` **50/50**、`atpStatus` 全 `CONFIRMED`、`bottleneck` 全 `null`。
+  //     ⇒ 任何由这三者构成的公式**恒等于 0**，与 `forecastBias` 退役前是**同一个病**（恒等式的零，且出处章
+  //     会盖 "measured" 说这是实测）。⛔ 不许写 —— 写了就是把一个恒 0 从哈希档换到"实测"档，更坏。
+  //   · `Order.orderChurn`（n=150）：Order 上 ratio 族只有 3 个（demandDelta / outsourceRatio / creditUsedRatio），
+  //     已分别归 demandPressure / shortageRisk / costPressure 三个状态量；`leadDays`[−180,178] 是业务真值字段
+  //     （交期天数，语义非"变更频度"）、`early` 是布尔、`due`/`dueMonth` 是串 ⇒ **无第 4 个诚实源**（同上方停笔段）。
+  // ═══════════════════════════════════════════════════════════════════════════════════════
 ];
 
 /**
