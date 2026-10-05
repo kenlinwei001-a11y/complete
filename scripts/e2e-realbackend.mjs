@@ -73,6 +73,13 @@ try {
     ? ok(`cockpit P2 真后端：根因归因 DAG 真浏览器渲染（${dagKpi} KPI 根 · ${dagFactor} 因子 · ${dagLeaf} 取证叶，结构=活数据算出）`)
     : bad(`cockpit P2 真后端：根因 DAG 缺失（dag=${dagRoot} kpi=${dagKpi} factor=${dagFactor} leaf=${dagLeaf}）`);
   // SPINE.4 经营指标条（视图读 Metric 单一出处）：metric_rollup 驱动的 op 级指标卡真渲染
+  // ⚠ 2026-10-05 修（同类第 9 例，三连测第 1 轮实测抓到）：这一段**原本也没有自己的等待**，
+  //   一直蹭上面 P2 段的等待 —— P2 快它就快、P2 慢它才赶上。本轮 P2 提前返回 ⇒ strip=0。
+  await page.waitForFunction(
+    () => !!document.querySelector("[data-testid=metric-strip]"),
+    null,
+    { timeout: 90000 },
+  ).catch(() => {});
   const mstrip = await page.locator("[data-testid=metric-strip]").count();
   const mcards = await page.locator("[data-testid^=metric-kpi-], [data-testid^=metric-]").count();
   mstrip > 0 && mcards > 0
