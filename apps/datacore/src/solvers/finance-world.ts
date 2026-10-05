@@ -59,6 +59,7 @@ import type { AuthCtx, ObjectInstance } from "../domain.js";
 import { notFound, validationError } from "../errors.js";
 import type { Repos } from "../repo/repo.js";
 import { round } from "../prng.js";
+import { DeviationReader } from "../sim/deviation-read.js";
 import { deriveTurnDynamics, readWorldLine, WORLD_LINE_DEFAULT_WINDOW } from "../sim/world-line.js";
 import { num, str } from "./types.js";
 
@@ -123,6 +124,15 @@ function aggregatePressure(
   world: TickState,
   stateVar: string,
   weightOf: WeightFn,
+  /**
+   * WO-COSTPRESSURE-IDENTITY · 落点 (b)：给了读器 ⇒ 逐格读的是**偏离**（世界态 − 静息值），
+   * 不给 ⇒ 逐格读的是**水平**（今天的原样）。
+   *
+   * ⛔ **一份实现（`DeviationReader`）两个口径**，不许在这里另抄一遍减法：
+   * 金额侧要偏离、披露侧（`pressures[].value` / `turnDynamics`）要水平，
+   * 两者必须是同一套权重、同一遍历序、同一承载集判据 —— 否则曲线上的点与当前值对不上。
+   */
+  rest?: DeviationReader,
 ): PressureAgg {
   const universe = objects.length;
   if (universe === 0) {
@@ -142,7 +152,9 @@ function aggregatePressure(
   let top: { id: string; pressure: number; w: number } | null = null;
   // R6：按 id 升序遍历 —— 浮点加法不满足结合律，遍历序变则末位可能漂。
   for (const o of [...objects].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
-    const raw = stateOf(world, o.id, stateVar);
+    // 给了读器 ⇒ 这一格读的是偏离；读器对「世界态没这格」仍返回 undefined（不消费），
+    // 对「有格但静息值取不到」也返回 undefined 但**记了账** ⇒ 两件事在上游可分辨。
+    const raw = rest ? rest.deviationOf(o.id, o.type, stateVar) : stateOf(world, o.id, stateVar);
     if (raw !== undefined) carriers += 1;
     const p = raw ?? 0;
     const w = Math.max(0, weightOf(o));
@@ -231,8 +243,11 @@ export async function projectFinanceWorld(
     divisor,
     source: unitArg ? "ARG" : "DEFAULT_DECLARED",
     note:
-      `金额 = 基线 ×（1 + 压力 ÷ ${divisor}）。压力指数按${pressureUnit === "pp" ? "百分点(pp)" : "比率(ratio)"}读；` +
-      "这是**推演投影**不是实测值 —— 基线取本体真值，增量由世界态压力沿传导规则折算。",
+      `金额 = 基线 ×（1 + 压力**偏离** ÷ ${divisor}），压力偏离 = 世界态值 − 静息值（静息值取本世界开局快照同一格）。` +
+      `压力指数按${pressureUnit === "pp" ? "百分点(pp)" : "比率(ratio)"}读；` +
+      "这是**推演投影**不是实测值 —— 基线取本体真值，增量由世界态压力沿传导规则折算。" +
+      "⚠ 吃的是**偏离**不是水平：压力为 0 才叫「没偏」，而水平 0 的意思是「该量本身为零」（两者不是一回事，" +
+      "静息值取不到的格进 `unresolvedRestPoints`，⛔ 不按 0 算）。",
   };
 
   // ── ③ 三个压力量（各自带 carriers / universe / 加权口径）──────────────────────────
@@ -260,6 +275,21 @@ export async function projectFinanceWorld(
   const costAgg = aggregatePressure(orders, worldState, "costPressure", orderValue);
   const arAgg = aggregatePressure(customers, worldState, "receivablePressure", (o) => custWeight.get(o.id) ?? 0);
   const overdueAgg = aggregatePressure(invoices, worldState, "overduePressure", invoiceAmount);
+
+  /**
+   * ── 落点 (b)：**金额侧读「偏离」，披露侧读「水平」**（WO-COSTPRESSURE-IDENTITY）──────────
+   *
+   * 上面三个 `*Agg` 是**对外披露的压力读数**（`pressures[].value` / `turnDynamics`），
+   * 它们报的是那个变量的**水平**，逐字节不动（面 A/B/C 靠它）。
+   * 而**金额**要的是「相对静息偏了多少」——今天它拿水平直接乘，于是零扰动下
+   * `成本 = 基线 ×（1 + 24.03/100）`、毛利 118.9 → −20.72 亿。
+   *
+   * 静息值取 `baseSnapshot` 同一格（**与生产端把静息点播成什么同源**，不另立假设）；
+   * 取不到 ⇒ `DeviationReader` 记账，随回包下发，⛔ 不退回 0。
+   * 一份换算实现（`sim/deviation-read.ts`），本文件与 `sim/world-read.ts` 共用。
+   */
+  const restReader = new DeviationReader(worldState, world.baseSnapshot);
+  const costDev = aggregatePressure(orders, worldState, "costPressure", orderValue, restReader);
 
   const pressureRow = (
     stateVar: string,
@@ -343,7 +373,8 @@ export async function projectFinanceWorld(
   const planOf = (line: string) => plans.find((o) => str(o.props.line) === line);
   const finId = (o: ObjectInstance | undefined) => (o ? str(o.props.finId) || o.id : "*");
 
-  const costFactor = 1 + costAgg.value / divisor;
+  // 落点 (b) ①：成本因子吃的是**偏离**（世界态 − 静息值），不是水平。
+  const costFactor = 1 + costDev.value / divisor;
   const revenuePlan = planOf(roles.revenueLine);
   const costPlan = planOf(roles.costLine);
   const marginPlan = planOf(roles.marginLine);
@@ -424,11 +455,13 @@ export async function projectFinanceWorld(
     arBaseline += amount;
     const cid = custOfInvoice.get(inv.id);
     if (cid) customerLinked += 1;
-    const custPressure = cid ? (stateOf(worldState, cid, "receivablePressure") ?? 0) : 0;
-    arProjected += amount * (1 + custPressure / divisor);
-    const od = stateOf(worldState, inv.id, "overduePressure");
-    if (od !== undefined) invoiceCarriers += 1;
-    overdueExposure += amount * ((od ?? 0) / divisor);
+    // 落点 (b) ②③：这两格同样吃**偏离**。世界态没有这格 ⇒ 不消费（与改动前逐字节同）；
+    // 有格但静息值取不到 ⇒ `deviationOf` 记账并返回 undefined ⇒ 因子退化为 1（⛔ 不是把水平当偏离）。
+    const custDev = cid ? restReader.deviationOf(cid, "Customer", "receivablePressure") : undefined;
+    arProjected += amount * (1 + (custDev ?? 0) / divisor);
+    const odDev = restReader.deviationOf(inv.id, "ARInvoice", "overduePressure");
+    if (restReader.carried(inv.id, "overduePressure")) invoiceCarriers += 1;
+    overdueExposure += amount * ((odDev ?? 0) / divisor);
     // 下钻落点 = 金额最大的那张发票（平手取 id 小者 ⇒ R6 稳定）。**在循环里就把真主键 `invoiceId` 记下**，
     // 不留到下面再去 `invoices.find(...)` 回查 —— 回查那种写法既多一次 O(n) 扫描、又把"取哪张"的规则
     // 拆到两处，改一处忘一处就会静默指错发票。
@@ -528,10 +561,22 @@ export async function projectFinanceWorld(
   }
 
   const summary = available
-    ? `世界 ${world.id} @tick${world.curTick}：成本压力 ${round(costAgg.value, 3)}（${costAgg.carriers}/${costAgg.universe} 张单承载）` +
+    ? `世界 ${world.id} @tick${world.curTick}：成本压力 ${round(costAgg.value, 3)}（偏离 ${round(costDev.value, 3)}，` +
+      `${costAgg.carriers}/${costAgg.universe} 张单承载；**金额吃的是偏离**）` +
       ` ⇒ ${roles.costLine} ${cogsRolling} → ${cogsProjected}（${cogsProjected - cogsRolling >= 0 ? "+" : ""}${money(cogsProjected - cogsRolling)}）、` +
       `${roles.marginLine} ${gmRolling} → ${gmProjected}；逾期敞口 ${money(overdueExposure)}。**推演投影，非实测**。`
     : `世界 ${world.id} @tick${world.curTick}：金额口径不可用 —— ${unavailableReason}`;
+
+  // ── ⑨ 静息值诚实缺席（落点 (b) 的配套）───────────────────────────────────────────
+  // 「有格但静息值取不到」的每一格都点名，随回包下发。⛔ 它**不是**「偏离 0」：
+  // 这些格在金额侧按因子 1 处理（没乘），是「没算」不是「算了等于没偏」—— 两件事在屏上必须可分辨。
+  const unresolvedRestPoints = restReader.unresolvedRestPoints();
+  if (unresolvedRestPoints.length > 0) {
+    notes.push(
+      `⚠ ${unresolvedRestPoints.length} 格有世界态值但在开局快照里取不到静息值 ⇒ 本次金额投影**没有消费**它们` +
+        "（按因子 1 计，不是按偏离 0 计）。逐格点名见 `unresolvedRestPoints`。",
+    );
+  }
 
   return {
     worldId: world.id,
@@ -541,6 +586,8 @@ export async function projectFinanceWorld(
     available,
     ...(unavailableReason ? { unavailableReason } : {}),
     notes,
+    // 一格不差 ⇒ 整键缺席（R6：没有缺席的回包逐字节同旧）。
+    ...(unresolvedRestPoints.length > 0 ? { unresolvedRestPoints } : {}),
     basis,
     pressures,
     lines,

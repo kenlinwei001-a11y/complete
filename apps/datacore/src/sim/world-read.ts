@@ -68,6 +68,7 @@ import {
 import type { AuthCtx, ObjectInstance } from "../domain.js";
 import { notFound } from "../errors.js";
 import type { Repos } from "../repo/repo.js";
+import { DeviationReader } from "./deviation-read.js";
 import { lexiconHit, type RoleLexiconKey } from "../solvers/field-role-lexicon.js";
 
 /**
@@ -198,6 +199,12 @@ export async function buildSolverWorldOverlay(
   const tickRow = await repos.sim.getTickState(tenantId, session.id, session.curTick);
   const world: TickState = tickRow?.state ?? session.baseSnapshot;
   const source: SimWorldReadDisclosure["source"] = tickRow ? "TICK" : "BASE_SNAPSHOT";
+  /**
+   * WO-COSTPRESSURE-IDENTITY · 落点 (b)：**投影吃的是「偏离」，不是「水平」**。
+   * 世界态是「世界线上的当前值」、静息值取**开局快照同一格**；两者相减才是这次推演真正影响的那部分。
+   * 换算只有一份实现（`sim/deviation-read.ts`），与 `solvers/finance-world.ts` 共用。
+   */
+  const restReader = new DeviationReader(world, session.baseSnapshot);
 
   const pressureUnit = opts.pressureUnit ?? "pp";
   const divisor = FINANCE_WORLD_PRESSURE_DIVISOR[pressureUnit];
@@ -297,10 +304,19 @@ export async function buildSolverWorldOverlay(
           if (!carrier) continue;
           const raw = world[carrier.id]?.[rule.stateVar];
           if (!isNum(raw)) continue;
-          // 压力为 0 ⇒ 因子为 1 ⇒ 不是一次改写（记成改写会让 `cellsApplied` 虚高，
+          // 落点 (b)：这一条规则**消费的是偏离**（世界态 − 静息值）。
+          // 世界态有格而快照取不到静息值 ⇒ 读器记账并返回 undefined ⇒ 本次不按这条规则改写
+          //（⛔ **不是**「偏离 0」：它进 `unresolvedRestPoints` 随披露下发，且不计入 `consumed`）。
+          const dev = restReader.deviationOf(
+            carrier.id,
+            typeOfId.get(carrier.id) ?? carrier.type ?? "?",
+            rule.stateVar,
+          );
+          if (dev === undefined) continue;
+          // 偏离为 0 ⇒ 因子为 1 ⇒ 不是一次改写（记成改写会让 `cellsApplied` 虚高，
           // 而那个数是「这次推演到底影响了几格」的唯一读数）。
-          if (raw === 0) { consumedVars.add(rule.stateVar); continue; }
-          const factor = rule.direction === "up" ? 1 + raw / divisor : 1 - raw / divisor;
+          if (dev === 0) { consumedVars.add(rule.stateVar); continue; }
+          const factor = rule.direction === "up" ? 1 + dev / divisor : 1 - dev / divisor;
           // 产能被占用到负数没有物理意义 ⇒ 夹在 0（"这条线满负荷、一格都腾不出来"）。
           const safe = Math.max(0, factor);
           const lex = AFFECTS_LEXICON[rule.affects];
@@ -316,7 +332,9 @@ export async function buildSolverWorldOverlay(
             record({
               objectId: o.id, objectType: o.type, property: p, stateVar: rule.stateVar,
               carrierId: carrier.id, carrierType: typeOfId.get(carrier.id) ?? carrier.type ?? "?",
-              via: carrier.via, rawValue: q(raw), before: q(before), after, kind: "PROJECTED",
+              // `rawValue` = 本条投影**实际消费**的那个读数（(b) 之后 = 偏离）——
+              // 换回水平会让这条明细失去可复算性：`after ≠ before ×(1 ± rawValue/divisor)`。
+              via: carrier.via, rawValue: q(dev), before: q(before), after, kind: "PROJECTED",
             });
           }
         }
@@ -338,17 +356,27 @@ export async function buildSolverWorldOverlay(
      * 世界态里有、本模型没消费的变量。⛔ 不许留白：留白会被读成「这个变量没有压力」，
      * 而真相是「这个模型不看它」—— 两件事的处置完全不同。
      */
+    const worldObjects = Object.keys(world).length;
+    /**
+     * WO-COSTPRESSURE-IDENTITY · 落点 (b) 的配套：**取不到静息值的格，逐格点名**。
+     * 「世界态里有这一格、开局快照里没有」⇒ 投影**没有消费**它（⛔ 不是「偏离 0」）。
+     * 一格不差时整键缺席（R6：没有缺席的披露逐字节同旧）。
+     */
+    const unresolvedRestPoints = restReader.unresolvedRestPoints();
     const unconsumed: SimWorldUnconsumed[] = [...carriersOf.entries()]
       .filter(([v]) => !consumedVars.has(v))
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([stateVar, carriers]) => ({
         stateVar,
         carriers,
-        reason: SIM_WORLD_PROJECTION_RULES.some((r) => r.stateVar === stateVar)
-          ? "本模型读的对象上，既没有同名属性、也没有经真链路够得着的承载体。"
-          : "投影声明表里没有这个变量 —— 收录它等于替租户下一次建模判断，故诚实缺席而不是硬折算。",
+        // 第三档：有承载格但静息值取不到 —— 理由与「没有承载体」完全不同，⛔ 不许合并措辞。
+        reason: unresolvedRestPoints.some((u) => u.stateVar === stateVar)
+          ? "有承载格，但开局快照里取不到这些格的静息值 ⇒ 本次**没有消费**它们（见 unresolvedRestPoints）——" +
+            "这不是「没有压力」，是「偏离算不出来」，⛔ 不按 0 算。"
+          : SIM_WORLD_PROJECTION_RULES.some((r) => r.stateVar === stateVar)
+            ? "本模型读的对象上，既没有同名属性、也没有经真链路够得着的承载体。"
+            : "投影声明表里没有这个变量 —— 收录它等于替租户下一次建模判断，故诚实缺席而不是硬折算。",
       }));
-    const worldObjects = Object.keys(world).length;
     return {
       sessionId: session.id,
       tick: session.curTick,
@@ -360,6 +388,8 @@ export async function buildSolverWorldOverlay(
       applied,
       appliedTruncated: Math.max(0, appliedTotal - applied.length),
       unconsumed,
+      // 一格不差 ⇒ 整键缺席（R6：没有缺席的披露逐字节同旧）。
+      ...(unresolvedRestPoints.length > 0 ? { unresolvedRestPoints } : {}),
       pressureUnit,
       divisor,
       agentInvolved: false,

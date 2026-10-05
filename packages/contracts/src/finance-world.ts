@@ -195,6 +195,24 @@ export const FinanceWorldReconSchema = z.object({
 });
 export type FinanceWorldRecon = z.infer<typeof FinanceWorldReconSchema>;
 
+/**
+ * WO-COSTPRESSURE-IDENTITY · **静息值诚实缺席**的一条账。
+ *
+ * 金额侧吃的是「压力**偏离** = 世界态值 − 静息值」，静息值取本世界开局快照同一格。
+ * 世界态里有这一格、而快照里取不到静息值时 ⇒ 这一格**没有**被金额消费（因子按 1 计），
+ * ⛔ **不是**「偏离 0」——两件事在屏上必须可分辨，否则又是一次静默错答。
+ * 取不到也不许退回 0：退回 0 恰好就是把「水平」当「偏离」用（本单的病）。
+ */
+export const FinanceWorldUnresolvedRestPointSchema = z.object({
+  objectId: z.string().min(1),
+  objectType: z.string(),
+  stateVar: z.string().min(1),
+  /** 世界态里的值（有值才可能进这张表 —— 没值属「这个对象不承载该变量」）。 */
+  worldValue: z.number(),
+  reason: z.string().min(1),
+});
+export type FinanceWorldUnresolvedRestPoint = z.infer<typeof FinanceWorldUnresolvedRestPointSchema>;
+
 export const FinanceWorldProjectionOutputSchema = z.object({
   worldId: z.string(),
   curTick: z.number().int(),
@@ -209,6 +227,12 @@ export const FinanceWorldProjectionOutputSchema = z.object({
   unavailableReason: z.string().optional(),
   /** 诚实位集合（世界态为空 / 收入行无传导规则 / 权重字段缺失 …）。 */
   notes: z.array(z.string()),
+  /**
+   * 取不到静息值的格（见 `FinanceWorldUnresolvedRestPointSchema`）。
+   * **可选且「一格不差时整键缺席」**（同 `turnDynamics` 的 R6 约定）：没有缺席就没有这个键，
+   * 既有回包逐字节不变；一旦有缺席就必然随回包下发，⛔ 不许静默吞掉。
+   */
+  unresolvedRestPoints: z.array(FinanceWorldUnresolvedRestPointSchema).optional(),
   basis: FinanceWorldBasisSchema,
   pressures: z.array(FinanceWorldPressureSchema),
   lines: z.array(FinanceWorldLineSchema),

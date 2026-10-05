@@ -2703,7 +2703,13 @@ export const SimWorldAppliedCellSchema = z.strictObject({
   carrierType: z.string().min(1),
   /** 怎么取过来的：`SELF` = 同对象；否则是**本体里真实存在的那条边**的 linkKey。 */
   via: z.string().min(1),
-  /** 世界态里那一格的原始读数（未经任何折算）。 */
+  /**
+   * 本条改写**实际消费**的那个读数（未经任何折算）。
+   *
+   * ⚠ WO-COSTPRESSURE-IDENTITY 落点 (b) 之后：DIRECT 档仍是世界态原值；
+   * **PROJECTED 档是「偏离」= 世界态值 − 开局快照同一格** —— 因为投影吃的是偏离。
+   * 口径看 `kind`：`after = before ×（1 ± rawValue ÷ divisor）` 恒成立（可复算）。
+   */
   rawValue: z.number(),
   /** 改写前的属性值（本体真值）。 */
   before: z.number(),
@@ -2763,6 +2769,23 @@ export const SimWorldReadDisclosureSchema = z.strictObject({
   appliedTruncated: z.number().int().min(0),
   /** 世界态里有、本模型没消费的状态变量（诚实缺席，不许留白）。 */
   unconsumed: z.array(SimWorldUnconsumedSchema),
+  /**
+   * WO-COSTPRESSURE-IDENTITY · 落点 (b)：**取不到静息值的格**，逐格点名。
+   * 投影吃的是「偏离 = 世界态值 − 开局快照同一格（静息值）」；快照里取不到 ⇒ 本次**没有消费**它
+   * （⛔ 不是「偏离 0」，⛔ 更不许退回 0 —— 那正是本单的病）。
+   * 可选、且**一格不差时整键缺席**（同 `turnDynamics` 的 R6 约定）。
+   */
+  unresolvedRestPoints: z
+    .array(
+      z.strictObject({
+        objectId: z.string().min(1),
+        objectType: z.string(),
+        stateVar: z.string().min(1),
+        worldValue: z.number(),
+        reason: z.string().min(1),
+      }),
+    )
+    .optional(),
   /** 压力量纲桥（`pp` = 按百分点读）。与 `finance-world` 同一座桥，不是第二套。 */
   pressureUnit: z.enum(["pp", "ratio"]),
   divisor: z.number(),
