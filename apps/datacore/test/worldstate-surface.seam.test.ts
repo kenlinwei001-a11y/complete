@@ -368,7 +368,15 @@ describe("WO-WORLDSTATE-SURFACE · 统一世界态读取面", () => {
     // 否则上面那条读不出是「静息值取不到」还是「世界态压根没这一格」，两种处置完全不同。
     const utilRow = ws.unconsumed.find((u) => u.stateVar === "utilPressure");
     expect(utilRow?.carriers ?? 0, "unconsumed 里 utilPressure 的承载格数必须 > 0（否则用例前提不成立）").toBeGreaterThan(0);
-    expect(utilRow!.reason, "有承载格却取不到静息值 —— 措辞必须与「没有承载体」那一档分开").toContain("静息值取不到");
+    // 第三档的措辞必须与另两档**可分辨**（⛔ 不许合并措辞）。判据落在「这个理由说的是哪一档」上，
+    // 不钉死整句散文（散文一改门就红，红的却不是我关心的那件事）：
+    // 正向两条 = 必须说到「取不到 + 静息值 + 不按 0 算」；反向两条 = 另两档的标记语一个都不许出现。
+    const utilReason = utilRow!.reason;
+    expect(utilReason, "第三档必须说清是「静息值取不到」，不许含混成「没有压力」").toContain("取不到");
+    expect(utilReason).toContain("静息值");
+    expect(utilReason, "必须点名「不按 0 算」—— 本单的病就是静默按 0").toContain("不按 0 算");
+    expect(utilReason, "⛔ 不许与「没有承载体」那一档合流").not.toContain("既没有同名属性");
+    expect(utilReason, "⛔ 不许与「投影声明表里没有这个变量」那一档合流").not.toContain("投影声明表里没有这个变量");
     // 而且它一格都不许进 applied：没有静息值就没有可复算的 rawValue，
     // 记成一次改写会让 `cellsApplied` 虚高（那个数是「这次推演影响了几格」的唯一读数）。
     expect(
