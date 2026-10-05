@@ -279,3 +279,61 @@ S8 · 51 个 (类型,变量) 对逐条追消费侧（按危险度排序的结果
       ⛔ **「无字面名读点」不度量「无消费端」**（结论 3 已证有字符串键分发这一层）。
       逐对判定需要把每个 solver 的取数入口都读一遍，**本单时间/范围未覆盖，如实标未追到底**。
   U-6 tick0 实际读数（`measuredCells` / `derivedCells` / 两档各自格数）**需起实例**，本单禁起实例，未测。
+
+--------------------------------------------------------------------------------
+S9 · 封闭名单的软肋复核：6 个量在「字面名看不见的路径」上有没有第 7 个读点
+--------------------------------------------------------------------------------
+背景：S8 结论 1 的名单（6 个 stateVar）**上游两张开发单正拿它当范围**，而 `chain-loss.ts:375-378`
+那种**字符串键查表**的读点，字面名 grep 看不见 ⇒ 若 6 个量中有一个也挂在那种表上，名单就是漏的。
+
+量具：`/tmp/seed-audit/dyn-scan.mjs` —— 只找**带引号**的出现（`"x"` / `'x'` / 模板串里）=
+字符串键分发的签名，外加裸标识符作对照。剥注释后判位置。
+金丝雀（派单要求：先证明查法能命中已知读点，再去报「没有别的」）：
+  · `CANARY_POS world-read.ts/costPressure = HIT-OK`
+  · `CANARY_POS finance-world.ts/costPressure = HIT-OK`
+  · `STRIP_CANARY raw-only(注释)=138 code=86` —— 剥离器有鉴别力
+  ⇒ 两条已知读点都被同一套查法命中，**故下面的否定结论可用**（金丝雀不中则只能报"工具坏了"）。
+
+【结果：铸造层外 38 行，逐行归属完毕，⛔ 无一处是新读点】
+  · `sim/world-read.ts`（6 行）—— 就是 :97/:104/:111/:118 那 4 条投影规则表本身 + :101/:115 的
+    `source` 说明串。即 S2 C-1 已列的 `:303` 循环的**数据源**，非新增。
+  · `solvers/finance-world.ts`（21 行）—— 归属：`:240/241/242` 三个 `aggregatePressure` 实参、
+    `:267/268/269` `pressureRow`、`:307/308/309` `trackOf`、`:407/409` `stateOf`（即 `:408/:411` 两处
+    偏离读的取数）、`:364/390/433/434/476` 说明串。
+    ⚠ `:454 const CHAIN_TARGETS = new Set(["costPressure","receivablePressure","overduePressure"])`
+    是**字符串键集合**，但用途是**闸门**（`:476` 报「本租户没有任何 PUBLISHED 规则的 target 落在这三个上」），
+    **不读值、不做算术** ⇒ 排除。
+  · **只有人读字符串**、不参与取数的：`sim/seed-world.ts:557`、`solvers/world-surface.ts:55/57`、
+    `sim/drill-orchestrator.ts:500`、`catalog.ts:142`（工具描述文本）⇒ 全部排除。
+
+【helper 调用点闭合（这是比逐行扫更硬的判据）】
+  按名读世界态的三个 helper —— `stateOf` / `aggregatePressure` / `trackOf` —— 定义**全部**在
+  `solvers/finance-world.ts`（`:76` / `:101` / `:292`），**全部调用点也都在同一文件**，且**实参全是字面名**。
+  ⇒ 后端不存在「由变量传入 stateVar 名再解释其值」的第二条通路。
+  （`:298 aggregatePressure(objects, f.state, stateVar, weightOf)` 的 `stateVar` 是形参，
+    其唯一实参来源即 `:307-309` 的三个字面名。）
+
+【新扫到的面：`apps/frontend-shell`（本单此前完全未扫）】—— 结论：**不是读点**
+  带引号出现 29/44/8/14/10/14 次，逐条归属后**只有两类**：
+  · **注释与文档串**；
+  · `preferStateVars: ["priceShock","costPressure",…]`（`eventCatalog.ts` / `businessFaces.ts`）——
+    经 `resolveLanding` / `eventCatalog.ts:533 ev.preferStateVars.find(v => live.has(v))` 用来
+    **挑扰动落点（写侧）**，不是取值解释。
+  正面证据（前端自己写明了口径）：`console0828/console0828Model.ts:324`
+    「推演读数是 **0–100 的压力标度**（`costPressure`/`demandPressure`/`utilPressure`…），0.01 即满量程的 0.01%」
+  ⇒ 前端按**水平**读，与后端 `world-read.ts:303` 的偏离读**口径不一致**，但前端不做该乘法，故**不构成新读点**。
+
+【`packages/contracts`】——注释 + `stateVar: z.string()`（名字字段）+ 回包 schema 注释
+  （`:164/:166` 的注释逐字复述了 `finance-world.ts:408/411` 的偏离式，是**下游描述**不是新站点）。
+  否定扫描：全仓 `(percent|deviation) × (这 6 个名)` 同现 = **0 命中** ⇒ 无契约把它们声明为百分比/偏离。
+
+【判据与结论】
+  ✅ **封闭名单成立**：6 个 stateVar 上**没有第 7 个读点**被找到，且三条通路（字面名 / 字符串键 /
+  helper 实参）都已闭合，前端与契约两面也已排除。站点仍是 `world-read.ts:303` +
+  `finance-world.ts:326 / 408 / 411`，**上游两张单的范围可以照用**。
+  ⚠ **本判据的适用域（⛔ 不许当成"已穷尽一切"）**：本方法是**按名查**。若某处按**位置/序号**
+  取世界态格子（不经过名字），任何按名的方法都看不见。本仓世界态的键是
+  `objectId → Record<stateVar, number>`（`seed-world.ts` 的 `cellKey` 用 NUL 拼串、
+  `state[o.id][v]` 取值），**全仓未见按下标取格**；但本单**未证明"不存在这种写法"** ⇒ 标为**未判**。
+  另：`tick0 实际读数`（U-6）已按审核方安排由 `multip-baseline` 的 `/world.baseStateVarReport` 对，
+  **本单不测**。

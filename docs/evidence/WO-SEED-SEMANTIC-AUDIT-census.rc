@@ -59,4 +59,22 @@ NOTE: [8] 的 rc=1 是 git grep 的「无匹配」约定，属预期，不计入
      rules=55 src=33 tgt=39 union=51 types=32
 
 OVERALL_RC=0   （[8] 的 rc=1 是 git grep「无匹配」约定，属预期，不计入）
+
+-- [17..21] S9 新增断言的复算 --
+[17] dyn-scan.mjs 金丝雀 + 归属      rc=0
+     STRIP_CANARY raw-only(注释)=138 code=86 剥离器有鉴别力 OK
+     MINTING_LAYER rows=48 (battery/specs/seed.ts —— 铸造与登记层，非消费)
+     OUTSIDE rows=38
+     CANARY_POS world-read.ts/costPressure = HIT-OK
+     CANARY_POS finance-world.ts/costPressure = HIT-OK
+[18] CHAIN_TARGETS 是闸门非取数      rc=0
+     apps/datacore/src/solvers/finance-world.ts:454:  const CHAIN_TARGETS = new Set(["costPressure", "receivablePressure", "overduePressure"]);
+[19] 前端 preferStateVars 用于落点(写侧) rc=0  行数=17
+     apps/frontend-shell/src/views/sim/unified/console0828/eventCatalog.ts:533:    const hit = ev.preferStateVars.find((v) => live.has(v));
+[20] 契约/后端把 6 量声明为百分比或偏离 = 0 命中   rc=1（git grep 无匹配约定）
+     []
+[21] 投影规则表 4 条之一（S9 的 38 行归属）  rc=0
+     apps/datacore/src/sim/world-read.ts:97:    stateVar: "costPressure",
+
+OVERALL_RC=0
 CAPTURED_RC=0
