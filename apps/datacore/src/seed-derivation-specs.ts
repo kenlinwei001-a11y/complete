@@ -104,8 +104,18 @@ export const DEMO_DERIVATION_SPECS: readonly {
   //   出处：链 wip_lot_found_defect（85 实例）。实测 0.02–0.36（缺陷率本来就是小数值，量纲如实）。
   { specKey: "defect_record_pressure", targetType: "DefectRecord", targetProp: "defectPressure", formula: "COALESCE(this.qty * 100 / SUM(in(wip_lot_found_defect).qty), 0)" },
   // PurchaseOrder.expeditePressure：加急 = 已用在途天数 / 计划窗口天数 × 100。
-  //   出处：shipDay/(etaDay−orderDay)。实测 −32~212（负=未到船期、>100=已超窗，如实）。COALESCE 兜除零。
-  { specKey: "purchaseorder_expedite_pressure", targetType: "PurchaseOrder", targetProp: "expeditePressure", formula: "COALESCE(this.shipDay * 100 / (this.etaDay - this.orderDay), 0)" },
+  //   🔴 2026-10-06 修（WO-DERIV-BACKFILL）：**分子漏减 orderDay**，式子没实现它自己上一行写的口径。
+  //     口径要求分子是「已用在途**天数**」（duration），而 `shipDay` 实测取值 **[−12, 17] 含负值** ⇒
+  //     它是**绝对日历日号**（相对某基准日的偏移，orderDay 实测 [−24, 12]），不是天数。
+  //     把日历日当工期除 ⇒ 输出是「下单日期」的函数，不是「紧迫度」的函数。对照实验（窗口 8 天、
+  //     发货用时 5 天**完全相同**的三笔，只挪日历日）：orderDay=4 → 112.5 / =8 → 162.5 / =12 → 212.5，
+  //     同一笔业务读数拉开 1.89×；且 7/30 笔读出**负的加急压力**（原式 −32.43）。
+  //   ✅ 修法 = 补 `− this.orderDay`（同段 `procurementDelay = arriveDay − etaDay` 的同一house style：
+  //     日期相减得工期）。修后预言（三条，见 wo-deriv-backfill-9cells-probe2.txt）：
+  //       ① 上例三笔读数**必须相同**（今天 112.5/162.5/212.5）；② 全部 ≥0（今天 7/30 为负）；
+  //       ③ 恰好占满计划窗口发货 ⇒ 100。
+  //   ⛔ 不改「/计划窗口×100」这一半：窗口是 duration，量纲自洽，>100 = 已超窗，如实。
+  { specKey: "purchaseorder_expedite_pressure", targetType: "PurchaseOrder", targetProp: "expeditePressure", formula: "COALESCE((this.shipDay - this.orderDay) * 100 / (this.etaDay - this.orderDay), 0)" },
   // PurchaseOrder.procurementDelay：采购到货延迟 = 实际到货日 − 计划到货日（天数，负=提前）。
   //   出处：arriveDay−etaDay。实测 −7~−1（这批单全提前）。天数族不在域表 ⇒ 不 CLAMP（陷阱 6）。
   { specKey: "purchaseorder_procurement_delay", targetType: "PurchaseOrder", targetProp: "procurementDelay", formula: "this.arriveDay - this.etaDay" },
