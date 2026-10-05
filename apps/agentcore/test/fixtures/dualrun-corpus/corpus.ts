@@ -68,7 +68,11 @@ export interface CorpusMcp {
   /** agent.tools MCP ref 的 toolFilter（裸名/全名皆可——host expandAgentTools 同口径收窄）。 */
   toolFilter?: string[];
   /**
-   * dsh 臂 poc 档固有夹具件（cordis.poc.yml echo-tool 插件，生产档无——预存不对称，非本 WO 面）。
+   * dsh 臂固有额外面（方向与 nativeExtraTools 相反），两类都在 dsh 帧/子进程世界里生效：
+   *   ① poc 档夹具件（cordis.poc.yml echo-tool 插件，生产档无——预存不对称，非本 WO 面）；
+   *   ② 技能加载元工具 = 上游常量 `skill`（@deepseek-ai/dsh-tool-skill **恒挂**，零技能也挂上模型面
+   *      ——调用期才因不在 scoped 允许表被 platform-world deny）。对位 native 臂的 `load_skill`
+   *      （见 nativeExtraTools）：P2A 换名后两臂**同形不同名**，各自登记各自的真名。
    * 声明后 driver 比对时从 dsh 原始集剥除此列名，且反向钉「该列名必须真在 dsh 原始集」
    * （豁免名单消失即红，防豁免掩盖真实漂移）。
    */
@@ -958,7 +962,9 @@ export const DUALRUN_CORPUS: DualRunTask[] = [
   //      mock-mcp-stdio-server-multi.mjs（echo/echo2/util.calc）；toolFilter 裸名滤一留一：
   //      echo 留、echo2 两臂同剔；exotic util.calc 未含于 filter（native 宿主剔除 /
   //      dsh 注册期 fail-closed 同向），不咬 name-set。dshExtraTools = poc 档 echo_tool
-  //      夹具件（cordis.poc.yml echo-tool 插件；生产档无，预存不对称登记在 REC §2 家族）。
+  //      夹具件（cordis.poc.yml echo-tool 插件；生产档无，预存不对称登记在 REC §2 家族）
+  //      **+ `skill`**（P2A 后 dsh 臂技能加载元工具真名，上游 dsh-tool-skill 恒挂模型面；
+  //      零技能也可见，与 native 臂恒挂 load_skill 同形——两臂各登记各的真名，不是并集）。
   //      nativeExtraTools = load_skill（engine.ts:811 无条件挂模型面 vs setup-spec.ts:251
   //      仅 skills 非空才进允许表——预存不对称，REC 登记，本 WO 不动元工具策略）。 ----
   answerMcpNameSet({
@@ -974,7 +980,7 @@ export const DUALRUN_CORPUS: DualRunTask[] = [
         { name: "util.calc", description: "Exotic bare name with a dot (normalization seam)", inputSchema: { type: "object", properties: { expr: { type: "string" } } } },
       ],
       toolFilter: ["echo"],
-      dshExtraTools: ["echo_tool"],
+      dshExtraTools: ["echo_tool", "skill"],
       nativeExtraTools: ["load_skill"],
     },
   }),
