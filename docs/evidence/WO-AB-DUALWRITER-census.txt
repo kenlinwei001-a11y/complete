@@ -1,0 +1,49 @@
+## 普查：世界态格子的写入方重叠（规则 × 派生规格）
+> 源：seed.ts（PropagationRule 33 格） · seed-derivation-specs.ts（DerivationSpec 24 格）
+
+### A · ⛔ 双写入方（既有传导边、又有派生规格）共 14 格
+格                                     派生规格                          传导规则条数 / id
+Base.loadIndex                        base_load_index               1 条 · simpr_demo_model_to_base
+DefectRecord.defectPressure           defect_record_pressure        1 条 · simpr_demo_wip_feed_to_defect
+Line.utilPressure                     line_util_pressure            1 条 · simpr_demo_line_to_base
+Material.shortageRisk                 material_shortage_risk        3 条 · simpr_demo_supplier_to_material simpr_demo_alt_to_material simpr_demo_inspection_to_material
+MaterialBalance.gapPressure           materialbalance_gap_pressure  1 条 · simpr_demo_material_to_balance_gap
+Model.costPressure                    model_cost_pressure           1 条 · simpr_demo_material_price_to_model_cost
+Model.demandLoad                      model_demand_load             2 条 · simpr_demo_order_demand simpr_demo_fg_cover_days_to_model_demand
+Model.supplyRisk                      model_supply_risk             1 条 · simpr_demo_material_to_model_supply
+Order.costPressure                    order_cost_pressure           1 条 · simpr_demo_model_cost_to_order_cost
+Order.shortageRisk                    order_shortage_risk           1 条 · simpr_demo_model_supply_to_order
+Process.queuePressure                 process_queue_pressure        2 条 · simpr_demo_line_to_process simpr_demo_process_queue_to_equipment
+PurchaseOrder.expeditePressure        purchaseorder_expedite_pressure2 条 · simpr_demo_material_to_po simpr_demo_balance_to_po
+WIPLot.feedPressure                   wiplot_feed_pressure          1 条 · simpr_demo_wo_release_to_wip_feed
+WorkOrder.releasePressure             workorder_release_pressure    1 条 · simpr_demo_line_util_to_wo_release
+
+### B · 只有传导规则、无派生规格的格（19 格）
+  ARInvoice.overduePressure            ← 1 条
+  Certification.qualificationQueue     ← 1 条
+  ChangeoverMatrix.changeoverPressure  ← 1 条
+  Customer.receivablePressure          ← 1 条
+  CustomerLocation.deliveryHoldRisk    ← 1 条
+  CustomsClearance.clearanceQueueDays  ← 1 条
+  ExceptionEvent.handlingBacklog       ← 1 条
+  FinishedGoodsInventory.drawdownPressure ← 1 条
+  IncomingInspection.queueDays         ← 1 条
+  InterBaseTransfer.transferPressure   ← 1 条
+  MaintPlan.windowSqueeze              ← 1 条
+  MaintenanceOrder.repairBacklog       ← 1 条
+  MaterialAlternative.switchPressure   ← 1 条
+  MaterialBatch.turnoverPressure       ← 1 条
+  OrderLine.splitPressure              ← 1 条
+  OrderPromise.promiseRisk             ← 1 条
+  OverdueRecord.collectionPressure     ← 1 条
+  QualityLot.inspectBacklog            ← 1 条
+  Shipment.inboundExpeditePressure     ← 1 条
+
+### C · 单格被 ≥2 条传导规则写（同族多源，combine 设计如此）共 4 格
+  Material.shortageRisk                ← 3 条
+  Model.demandLoad                     ← 2 条
+  Process.queuePressure                ← 2 条
+  PurchaseOrder.expeditePressure       ← 2 条
+
+汇总：双写入方 14 格 · 仅规则 19 格 · 仅规格 10 格 · 规则总数 38
+DONE 2026-10-05T13:00:42.743Z

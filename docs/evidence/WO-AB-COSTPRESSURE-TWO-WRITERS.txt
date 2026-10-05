@@ -1,0 +1,32 @@
+=== Order.costPressure 的两个写入方 ===
+--- 传导边 seed.ts:664 ---
+    id: "simpr_demo_model_cost_to_order_cost",
+    key: "demo_model_cost_to_order_cost",
+    sourceTypeKey: "Model",
+    sourceStateVar: "costPressure",
+    viaLinkKey: "model_demanded_by_order",
+    targetTypeKey: "Order",
+    targetStateVar: "costPressure",
+    delayTicks: 0,
+    description: "型号成本上抬 ⇒ 订这个型号的单子毛利被吃掉（型号成本 × 0.75 = 订单成本压力）",
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    weightRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+--- 派生规格 seed-derivation-specs.ts:187-193 ---
+  // Order.costPressure：成本压力 = 授信占用率 × 100。出处：creditUsedRatio（仓规：超 100% 即阻断——超信用额度的新单拒接）。
+  //   实测 40–115（i%7 单 1.15×100=115：超授信即超压，如实；越域由引擎按域夹，同 expeditePressure 212 / loadIndex 552 先例）。
+  // ⚠ 2026-10-05 曾按「语义身份错」退役本条，**终裁否掉并已回退**（WO-COSTPRESSURE-IDENTITY）：
+  //   退役 = 把那个语义删掉来消灭矛盾，而屏（0–100 压力标度）与求解器（偏离百分点）两个口径
+  //   **各自都有消费端在守** ⇒ 属「删了用户会看到坏东西」。正解方向走 (b)/(c)（换算只在消费端一处
+  //   或规格直接产出偏离），⛔ 不许再退役。真源与现状实测见 `docs/evidence/` 本单证据档。
+  { specKey: "order_cost_pressure", targetType: "Order", targetProp: "costPressure", formula: "COALESCE(this.creditUsedRatio * 100, 0)" },
+--- leadDays 出边全表 ---
+2224:    sourceStateVar: "leadDays", // = `Order.leadDays` 本尊（单位「天」，实测 150/150 有限数，−14–178）
+--- Order 为 target 且 targetStateVar costPressure 的规则 ---
+643:    targetStateVar: "costPressure",
+670:    targetStateVar: "costPressure",
+1844:    targetStateVar: "costPressure",
+2227:    targetStateVar: "costPressure",

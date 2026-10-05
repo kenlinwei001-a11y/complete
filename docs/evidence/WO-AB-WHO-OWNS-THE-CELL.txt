@@ -1,0 +1,22 @@
+## 双写入方谁赢 · 读数是否恰等于派生规格式
+> BASE=http://127.0.0.1:4051 · TICKS=12 · 判据 相对误差 ≤1e-9 ⇒ 规格赢（传导被覆盖）
+
+### obj_order_SO-3391.costPressure   规格：creditUsedRatio*100
+臂     读数                  规格式值                差                   判
+zero  90.384615385        NaN                 NaN                 ❌ 传导也在写
+m3    82.291509050        NaN                 NaN                 ❌ 传导也在写
+m20   82.323917786        NaN                 NaN                 ❌ 传导也在写
+
+### obj_order_SO-3391.creditUsedRatio   规格：（规格的输入）
+臂     读数                  规格式值                差                   判
+zero  —                   —                   —                   —
+m3    —                   —                   —                   —
+m20   —                   —                   —                   —
+
+### obj_model_4680-NCM.costPressure   规格：unitCost*100/unitPrice
+臂     读数                  规格式值                差                   判
+zero  2.926300000         NaN                 NaN                 ❌ 传导也在写
+m3    2.954598034         NaN                 NaN                 ❌ 传导也在写
+m20   3.114953563         NaN                 NaN                 ❌ 传导也在写
+
+DONE 2026-10-05T13:02:00.962Z
