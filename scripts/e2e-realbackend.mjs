@@ -97,12 +97,12 @@ try {
 
   // cockpit P3 风险看板补全 · 对症方案→工单（L4 真后端）：风险卡 → 详情弹窗 → mitigation_select 方案表 + 采纳→工单按钮
   await page.click('a[href="/v/risk"]').catch(() => {});
-  await page.waitForSelector("[data-testid^=risk-card-]", { timeout: 10000 }).catch(() => {});
+  await page.waitForSelector("[data-testid^=risk-card-]", { timeout: 90000 }).catch(() => {});
   await page.locator("[data-testid^=risk-card-]").first().click().catch(() => {});
   // ⚠ 2026-10-05 修：原选择器 `mitigation-panel` **全仓 0 处**（对照：同文件的 `mitigation-plan-` /
   //   `mitigation-adopt-` 都在，`risk-tab-risk` 也在）⇒ 这条断言**永远不可能通过**，与产品无关。
   //   真容器是下方的跨方案比对矩阵（RiskBoardView.tsx，`plans.length > 0` 才渲染）。
-  await page.waitForSelector("[data-testid=mitigation-matrix]", { timeout: 8000 }).catch(() => {});
+  await page.waitForSelector("[data-testid=mitigation-matrix]", { timeout: 90000 }).catch(() => {});
   const mitPanel = await page.locator("[data-testid=mitigation-matrix]").count();
   const mitPlans = await page.locator("[data-testid^=mitigation-plan-]").count();
   const mitAdopt = await page.locator("[data-testid^=mitigation-adopt-]").count();
@@ -116,7 +116,7 @@ try {
   await page.click('a[href="/v/plan-audit"]').catch(() => {});
   await page.waitForTimeout(1500);
   await page.locator("[data-testid^=tl-toggle-]").first().click().catch(() => {});
-  await page.waitForSelector("[data-testid^=dda-]", { timeout: 8000 }).catch(() => {});
+  await page.waitForSelector("[data-testid^=dda-]", { timeout: 90000 }).catch(() => {});
   const ddaAxis = await page.locator("[data-testid$=-summary][data-testid^=dda-]").count();
   const ddaDots = await page.locator('[data-testid*="-dot-"]').count();
   ddaAxis > 0 && ddaDots > 0
@@ -125,7 +125,7 @@ try {
 
   // ORD 订单全链推演（L4 真后端）：order_fullchain 三判 + 统一结论 + 11 节点建模链 DAG 真渲染
   await page.click('a[href="/v/order-chain"]').catch(() => {});
-  await page.waitForSelector("[data-testid=ofc-verdict]", { timeout: 10000 }).catch(() => {});
+  await page.waitForSelector("[data-testid=ofc-verdict]", { timeout: 90000 }).catch(() => {});
   const ofcVerdict = await page.locator("[data-testid=ofc-verdict]").count();
   const ofcJudges = await page.locator("[data-testid=ofc-judges]").count();
   const ofcDag = await page.locator("[data-testid=ofc-dag]").count();
@@ -135,9 +135,9 @@ try {
 
   // SOP 前端 1:1（L4 真后端）：新建版本 → ③ 供应评审 → 物料线 MRP 表（真 mrp_netting）真渲染
   await page.click('a[href="/v/sop-balance"]').catch(() => {});
-  await page.waitForSelector("[data-testid=sop-create]", { timeout: 10000 }).catch(() => {});
+  await page.waitForSelector("[data-testid=sop-create]", { timeout: 90000 }).catch(() => {});
   await page.click("[data-testid=sop-create]").catch(() => {});
-  await page.waitForSelector("[data-testid=sop-run-1]", { timeout: 8000 }).catch(() => {});
+  await page.waitForSelector("[data-testid=sop-run-1]", { timeout: 90000 }).catch(() => {});
   await page.click("[data-testid=sop-run-1]").catch(() => {});
   // ⚠ 2026-10-05 修：原剧本 create→run-1→chip3→run3 **跳过了第 2 步**，而后端 step3 的第一行就是
   //   `if (!v.steps.s2) throw invalidState("run step 2 first")`（409 INVALID_STATE）—— 拒绝得完全正确。
@@ -145,11 +145,11 @@ try {
   //   补跑第 2 步后实测：三次 advance 全 200，`sop-mrp-table` 真渲染 **9 行**。
   await page.waitForTimeout(2500);
   await page.click("[data-testid=sop-step-chip-2]").catch(() => {});
-  await page.waitForSelector("[data-testid=sop-run-2]", { timeout: 8000 }).catch(() => {});
+  await page.waitForSelector("[data-testid=sop-run-2]", { timeout: 90000 }).catch(() => {});
   await page.click("[data-testid=sop-run-2]").catch(() => {});
   await page.waitForTimeout(2500);
   await page.click("[data-testid=sop-step-chip-3]").catch(() => {});
-  await page.waitForSelector("[data-testid=sop-run-3]", { timeout: 8000 }).catch(() => {});
+  await page.waitForSelector("[data-testid=sop-run-3]", { timeout: 90000 }).catch(() => {});
   await page.click("[data-testid=sop-run-3]").catch(() => {});
   // ⚠ 2026-10-05 修（同类）：第 3 步要跑真 mrp_netting 求解器再出表，8 秒在负载下不够
   //   （上一轮 9 行绿、下一轮被拖红）。放宽到 90 秒。
@@ -163,8 +163,8 @@ try {
   await page.click('a[href="/admin/object-types"]').catch(() => {});
   // ⚠ 2026-10-05 修：裸 await 一超时就抛到最外层 catch，**后面 7 条断言全不跑**（上一版正是死在这儿）。
   //   补 .catch 后失败会如实落进下面那条 bad(...)，而不是把整轮带走。
-  await page.waitForSelector("[data-testid=object-types-page]", { timeout: 10000 }).catch(() => {});
-  await page.waitForSelector("[data-testid^=ot-count-]", { timeout: 8000 }).catch(() => {}); // 等物化计数 stats 异步加载
+  await page.waitForSelector("[data-testid=object-types-page]", { timeout: 90000 }).catch(() => {});
+  await page.waitForSelector("[data-testid^=ot-count-]", { timeout: 90000 }).catch(() => {}); // 等物化计数 stats 异步加载
   const rows = await page.$$eval("[data-testid^=ot-row-]", (els) => els.length);
   const counts = await page.$$eval("[data-testid^=ot-count-]", (els) => els.map((e) => e.textContent));
   rows > 0 && counts.some((c) => c && c !== "0") ? ok(`A4 真后端：${rows} 类型 + 真物化计数`) : bad("A4 真后端：类型/计数异常");
@@ -190,7 +190,7 @@ try {
   //   A5 / A7 / A10 / A18.4 四条下游断言一起红。展开后实测：点击成功且
   //   `POST /a/v1/databuilder/workflow-runs` 真发出。
   await page.click("[data-testid=db-advanced]").catch(() => {});
-  await page.waitForSelector("[data-testid=wf-timeline]", { timeout: 20000 }).catch(() => {});
+  await page.waitForSelector("[data-testid=wf-timeline]", { timeout: 90000 }).catch(() => {});
   await page.click("[data-testid=wf-start]").catch(() => {});
   // ⚠ 2026-10-05 修：同步工作流**跑完才返回**（实测后端 6 秒返回 status=SUCCEEDED / 7 步），
   //   而原写法固定等 4 秒就数步骤 ⇒ 步骤还没上屏，恒得 0。改为**等步骤真的出现**（有界 90 秒），
@@ -232,7 +232,12 @@ try {
   const verifyBtns = await page.locator("[data-testid^=sbr-verify-btn-]").count();
   if (verifyBtns > 0) {
     await page.locator("[data-testid^=sbr-verify-btn-]").first().click().catch(() => {});
-    await page.waitForTimeout(2500);
+    // ⚠ 2026-10-05 修（同类第 7 例）：重跑验证是真跑一遍（后端），固定等 2.5 秒就数终态徽章是赌。
+    await page.waitForFunction(
+      () => document.querySelectorAll('[data-testid^="sbr-verify-status-"]').length > 0,
+      null,
+      { timeout: 120000 },
+    ).catch(() => {});
     const vstatus = await page.locator("[data-testid^=sbr-verify-status-]").count();
     vstatus > 0 ? ok("A10 真后端：重跑验证 → 终态徽章真浏览器渲染") : bad("A10 真后端：验证终态徽章缺失");
   } else { bad("A10 真后端：无重跑验证按钮（历史记录未现）"); }
@@ -249,7 +254,12 @@ try {
   const promoteBtns = await page.locator("[data-testid^=sbr-promote-btn-]").count();
   if (promoteBtns > 0) {
     await page.locator("[data-testid^=sbr-promote-btn-]").first().click().catch(() => {});
-    await page.waitForTimeout(3000); // 迁移隔离域 → 真租户 + 翻转域信任级
+    // ⚠ 2026-10-05 修（同类第 8 例）：整域晋升要真迁隔离数据 → 真租户 + 翻转信任级，固定等 3 秒是赌。
+    await page.waitForFunction(
+      () => document.querySelectorAll('[data-testid^="sbr-promote-summary-"]').length > 0,
+      null,
+      { timeout: 120000 },
+    ).catch(() => {});
     const governed = await page.locator("[data-testid^=sbr-promote-summary-]").count();
     governed > 0
       ? ok("A18.4 真后端：PROVISIONAL 域整域晋升 GOVERNED（隔离数据迁入真租户，晋升摘要真浏览器渲染）")
@@ -264,7 +274,7 @@ try {
 
   // ── A14 evals parity（L4 真后端）：SPA 导航（access token 仅内存，禁 goto 硬刷会丢登录态）→ 跑一次 → parity 失因列 ──
   await page.click('a[href="/admin/evals"]').catch(() => {});
-  await page.waitForSelector("[data-testid=evals-page]", { timeout: 10000 }).catch(() => {});
+  await page.waitForSelector("[data-testid=evals-page]", { timeout: 90000 }).catch(() => {});
   const evalRun = await page.locator("[data-testid=eval-run]").count();
   if (evalRun > 0) {
     await page.click("[data-testid=eval-run]").catch(() => {});
@@ -280,7 +290,7 @@ try {
 
   // ── A18.4 求解器审核台（L4 真后端）：SPA 导航 → 页面渲染 + 真 /a/v1/solvers/artifacts 端点（无临时件→空态）──
   await page.click('a[href="/admin/solver-review"]').catch(() => {});
-  await page.waitForSelector("[data-testid=solver-review-page]", { timeout: 10000 }).catch(() => {});
+  await page.waitForSelector("[data-testid=solver-review-page]", { timeout: 90000 }).catch(() => {});
   const reviewPage = await page.locator("[data-testid=solver-review-page]").count();
   const reviewBody = await page.locator("[data-testid=solver-artifacts-table], [data-testid=solver-review-empty]").count();
   reviewPage > 0 && reviewBody > 0
