@@ -1,0 +1,542 @@
+WO-RESTPOINT-SOURCE-B · 传导核必须吃「源侧静息点」（drive = 源读数 − 源侧静息点）
+==========================================================================================
+
+base commit      : 4120ea1e5（claude/handoff-3root-integration 后代；INT tip = 2b384f30c）
+分支 / tip       : claude/handoff-restpoint-source-b / c0fa6a9e4
+                   · a24fca9af = 内核改动 + 调用点对齐
+                   · c0fa6a9e4 = 新增接缝门 apps/datacore/test/sim-restpoint-source.seam.test.ts（7 臂全绿）
+取证时刻         : 2026-10-05 12:2x CST（本文件尾部各段自带捕获命令与 rc）
+树龄探针         : wc -l apps/datacore/src/sim/propagation.ts = 1290
+                   wc -l apps/datacore/test/sim-restpoint-source.seam.test.ts = 224
+
+──────────────────────────────────────────────────────────────────────────────────────────
+§1 病灶：今天的行为是 X，应该是 Y
+──────────────────────────────────────────────────────────────────────────────────────────
+X（改前）：`drive = sourceVal` —— 源读数**整值（水平）**当流量。一个停在 90.38 的源，
+          每拍往下游灌 `系数 × 90.38`，**零扰动的世界照样一路漂**。
+          实测指纹（本单复现）：`Customer.receivablePressure` 唯一入边系数 ×0.5，
+          零扰动下 3 拍从 15.7452 翻到 65.4029（×4.15）。
+Y（应该）：`drive = sourceVal − 源侧静息点`，静息点优先级：
+          ① `baseSnapshot[objId][stateVar]`（这个世界 tick0 的基值 = 零扰动世界该格的静息值）
+          ② `domains[stateVar].restPoint`（无基值格的兜底）
+          ③ 两处都没有 ⇒ **不归一**（整值直读，与改前逐字节相同）+ `unresolvedRestPoints` 显式点名
+          ⛔ 绝不 `?? 0`；⛔ 不评「该格是水平还是偏离格」（审核方终裁：保留真源、不退役）。
+
+本体依据：§2.I 不变量 ③ `x* = rest + 流入/λ` ⇒ 零扰动 ⇒ 流入必须为 0。
+
+──────────────────────────────────────────────────────────────────────────────────────────
+§2 爆炸半径表（普查，非抽样）
+──────────────────────────────────────────────────────────────────────────────────────────
+方法：从 `seed.ts` 的 `demoPropagationRulesWithDomain` 取 55 条规则，逐条查
+`domains[sourceStateVar].restPoint` 与源类型。**金丝雀**：`costPressure` 必须命中（HIT=true）。
+**决定性读数**：本合同 **47/55 条规则的源状态变量 restPoint === 0**，**0 条非零**，
+**8 条无域** ⇒ 字面 `sourceVal − restPoint` 是**数值 no-op**，真正要减的是 baseSnapshot（与审核方仲裁一致）。
+
+⚠ 审核方点名四格（costPressure / receivablePressure / overduePressure / demandPressure）+
+  loadIndex / utilPressure 的 restPoint **全部 = 0**，取值域 0–100（见下表）——
+  即「偏离读量清单里那 6 个」在域册子上都找不到参照，参照只能来自 baseSnapshot。
+
+⚠ **取不到 ≠ 0**（本表单列）：6 个源状态量**无域**——
+  `coverDays, deliveryDelay, leadDays, procurementDelay, qty, unitPrice`。
+  这 6 个在核里走第 ③ 档：不归一 + 点名进 `unresolvedRestPoints`（改前逐字节同），⛔ 不退回 0。
+  8 条无域规则（= 无域源状态量所涉规则）：
+    demo_supplier_delay_to_material_shortage          （deliveryDelay）
+    demo_fg_cover_days_to_model_demand                （coverDays）
+    demo_po_procurement_delay_to_material_shortage    （procurementDelay）
+    demo_batch_procurement_delay_to_material_shortage （procurementDelay）
+    demo_supplier_procurement_delay_to_material_shortage（procurementDelay）
+    demo_order_qty_to_model_top_qty                   （qty）
+    demo_order_price_to_model_top_price               （unitPrice）
+    demo_order_leaddays_to_model_horizon              （leadDays）
+
+⚠ 23 个哈希铸造格的答案（审核方要求含糊不得）：
+  **减铸造值（= baseSnapshot[objId][stateVar]），不减域的 restPoint。**
+  理由不是"哪个更好看"，而是实测：这 23 格所在的规则所属源状态量 restPoint 全是 0（见上表），
+  减 restPoint = 减 0 = 什么都没做；而 baseSnapshot 里存的就是那格的**铸造值本身**，
+  减它 = 「这一格相对它被铸造出来的样子偏了多少」——对规格派生格、真赋值格、哈希格**一视同仁**，
+  不引入第三种口径（这正是审核方禁的「两套真相源」）。
+
+──────────────────────────────────────────────────────────────────────────────────────────
+§3 接口变更 / 调用点（审核方要求逐条点名）
+──────────────────────────────────────────────────────────────────────────────────────────
+`propagateTick(...)` 新增**第 11 位**形参 `baseSnapshot: TickState = {}`，
+返回体新增 `unresolvedRestPoints: UnresolvedRestPoint[]`（诚实缺席，随 tick 回执下发）。
+位置形参序（文件里明写是接口的一部分）⇒ 新参只能加在最后。
+
+改动/对齐的调用点（共 4 处生产 + 1 处测试探针保持不动）：
+  ① apps/datacore/src/app.ts:2652  **影子线（重放段）**  `s.baseSnapshot`  ← 审核方点名要核的就是这处
+  ② apps/datacore/src/app.ts:2686  主线 tick               `s.baseSnapshot`
+  ③ apps/datacore/src/app.ts:2718  影子线逐拍             `s.baseSnapshot`
+  ④ apps/datacore/src/sim/metric-series.ts:163  `engine.specBase`
+       —— `app.ts:2406` 建引擎时 `engine.specBase = simState(s.baseSnapshot)`，
+          故与 ①②③ **逐字节同一份基值**（不是"另取一套"）。
+  ⑤ apps/datacore/src/app.ts:4632（试算探针，9 实参）**刻意不动**，其自带注释声明 9 参 RL9 语义。
+
+★ 影子线与主线是否拿到同一份基值：**是**。`app.ts:2647` 原话「两条线只许差「有没有扰动」这一个变量」——
+  两条线在同一个 tick 循环里读同一个 `s.baseSnapshot`（同一对象引用），扰动差异只有第 8 位
+  `perturbations`（影子线传 `[]`）。**没有引入第二个静息点来源。**
+
+未改：`apps/datacore/test/sim-restpoint-source.seam.test.ts`（新增）之外无测试改动；
+      `synthetic/battery.ts` · `seed-derivation-specs.ts` · `solvers/finance-world.ts` ·
+      `world-projection.ts`/`saturateToDomain`/`rule.clamp` · `spec-base-synthesis.ts` **代数一行未改**。
+
+──────────────────────────────────────────────────────────────────────────────────────────
+§4 判据① 零扰动臂：并排读数（审核方要求的形态）
+──────────────────────────────────────────────────────────────────────────────────────────
+口径：面 A = `Σ_objs world[o][v] / n`（全对象算术均值，与前端 KPI 同一算式）。
+两臂均为**零扰动**（建会话后仅 `tick(n:1)`，未施加任何 perturbation），同一实例 127.0.0.1:4060。
+改前臂 = dist 回退到「水平口径」那一跑；改后臂 = 本单落地后的 dist。
+
+★ 一句话结论（审核方指定的那句）：**改前与改后的差 == 漂移量，且改后逐拍恒定**（在恒定期内逐字节相同）。
+
+receivablePressure（Σ/n）：
+  t0 = 31.280086（两臂相同，同一种子）
+  改前：t1 = 45.984677（漂移量 +14.704591）→ t3 = 56.000593 → t40 = 60.709657；相邻拍 40/40 都在动
+  改后：t0..t5 **逐字节恒定 31.280086**（漂移量 = 0），首次偏离在 t6 = 31.188124
+  差（改后 − 改前）@t1 = −14.704591 ≡ −(改前的漂移量)，逐位相等
+
+costPressure（Σ/n）：
+  t0 = 63.308304
+  改前：t1 = 62.788040（漂移量 −0.520264）→ t40 = 69.330097；相邻拍 40/40 都在动
+  改后：t0..t3 **逐字节恒定 63.308304**，首次偏离在 t4 = 63.308266 → t40 = 60.879106
+
+三格读数（改前 → 改后；t0/t1/t2/t3/t40）：
+  obj_model_4680-NCM.costPressure        改前 2.9263 → 0.95111 → 1.01165 → 2.038074 → 14.410456
+                                         改后 2.9263 → 2.9263 → 2.9263 → 2.9263 → 1.575124
+  obj_customer_cust_14.receivablePressure 改前 15.7452 → 40.529585 → 55.898320 → 65.402956 → 81.649457
+                                         改后 15.7452 → 15.7452 → 15.7452 → 15.7452 → 13.104682
+  obj_order_SO-3402.costPressure         改前 80 → 80.9x → … → 80.9x
+                                         改后 80 → 80 → 80 → 80 → 77.933026
+
+🔴 **判据① 只算部分达成 —— 诚实结论**：
+  零扰动的**注入式漂移**已被根治（t0..t5 / t0..t3 逐字节恒定，改前的指纹 ×4.15 消失），
+  但**第 40 拍仍非恒定**（receivablePressure 首偏 t6、costPressure 首偏 t4，残余 35/40 与 37/40 拍在动）。
+  残余漂移的根因**已实测定位**，且**不在本单允许的改动面内**：
+  · 机制：§0'' 衰减相 `bucket[sv] = round12(rest + (1-λ)(cur - rest))` 用的是 `domains[sv].restPoint`（= 0），
+    而不是该格的静息值。实测 t0→t1 有 **2014 格**逐格衰减 **×0.63 = (1−λ)**（λ = 0.37 =
+    `C35.pressureDecayPerTick`，作用于 33 个状态变量），衰减到 0 的那些格从 ~t4–t6 起把压力族拉下来。
+  · **同族病灶（静息点读错）的第二个相位**：驱动相读的是「水平」，衰减相读的是「域的 0」。
+  · 试过的修法（dist 实验，非源码）：把衰减相的 rest 也换成 baseSnapshot ⇒ 立刻变**双拉**：
+    `costPressure` 均值 63.308304 → **84.832998**（+34.0%），cust_14 recv 15.7452 → 72.95，
+    因为 `spec-base-synthesis.ts`（本单明令冻结）已经补过一项 `λ·(base − rest)` 来抵消核的衰减。
+    ⇒ 衰减相的修必须与 C2 的代数**同一个改动**落地，改动面超出本单范围；**已回退，未留下任何补丁残留**
+    （原始读数见 §6 的 decayexp 段）。
+
+──────────────────────────────────────────────────────────────────────────────────────────
+§5 判据② 三档线性（30.00 / 30.01 / 29.9 不许破坏）
+──────────────────────────────────────────────────────────────────────────────────────────
+核内（接缝门 ④ 臂，7 臂全绿）：偏离 1/3/30 ⇒ 0.5/1.5/15，比值**恰为 30 与 3**（严格线性，逐字节）。
+  ⚠ 同臂把「回退到水平口径」钉成红：水平口径下三数是 5.5/6.5/20 ⇒ 3.64/1.18（非线性）。
+
+实例 A/B（同一序列：建会话 → tick 3 → 扰动 → tick 5 ⇒ 读 t8；
+  源 = `obj_supplier_SUP-001.deliveryDelay`（kind=supply_disruption，mode=delta），
+  读 = `shortageRisk` 全对象算术均值；**每档配一条零扰动对照臂**，边际 = 扰动臂 − 对照臂）：
+  改后：Δ1 = −0.003872277 · Δ3 = −0.011616223 · Δ30 = −0.093937575
+        ⇒ Δ3/Δ1 = **2.9998** · Δ30/Δ1 = **24.2590**
+  改前：Δ1 = −0.004519695 · Δ3 = −0.013559084 · Δ30 = −0.135590847
+        ⇒ Δ3/Δ1 = **3.0000** · Δ30/Δ1 = **30.0000**
+
+⚠ 大档（Δ30）**不是核算术破了**，实测证据 = 域下界夹逼（饱和自报 `stateVarReport.saturations`）：
+  改后 Δ30 臂把 **6 格**压到恰为 0（对照臂 2 格），改前臂 0 格触底；
+  缺口 = |30×Δ1| − |Δ30| = 0.11617 − 0.09394 = 0.02223，量级与触底格数一致。
+  ⇒ 次线性来自世界层的 `min=0` 边界（`saturateToDomain`），⛔ 不是核里的加号/系数。
+  ⚠ 改前之所以"看起来是 30.00"，是因为水平口径每拍给世界灌入巨量正流入，格子离 0 很远，够不着边界。
+
+──────────────────────────────────────────────────────────────────────────────────────────
+§6 证据附录（原样捕获；每段的捕获命令与其 rc 见段内）
+──────────────────────────────────────────────────────────────────────────────────────────
+
+── §6.1 爆炸半径表（捕获命令：node /tmp/restpoint-table.mjs ; rc=0）──────────────────────────
+CANARY hit(costPressure)=true restPoint=0 min=0 max=100
+domains 总数=38
+rules 总数=55  
+
+=== 源侧状态量数=29 ===
+stateVar                restPoint  min    max    unit            sourceTypeKeys
+blockedPressure         0         0      100    0–100 压力指数      Line
+costPressure            0         0      100    0–100 压力指数      Model,Order
+coverDays               ❗无域                                     FinishedGoodsInventory
+defectPressure          0         0      100    0–100 压力指数      DefectRecord
+deliveryDelay           ❗无域                                     Supplier
+demandLoad              0         0      100    0–100 压力指数      Model
+demandPressure          0         0      100    0–100 压力指数      Order
+drawdownPressure        0         0      100    0–100 压力指数      FinishedGoodsInventory
+equipmentFailure        0         0      100    0–100 压力指数      Equipment
+expeditePressure        0         0      100    0–100 压力指数      PurchaseOrder
+feedPressure            0         0      100    0–100 压力指数      WIPLot
+forecastBias            0         -100   100    −100–100 偏差指数（正=高估）Model
+gapPressure             0         0      100    0–100 压力指数      MaterialBalance
+leadDays                ❗无域                                     Order
+loadIndex               0         0      100    0–100 压力指数      Base
+loadPressure            0         0      100    0–100 压力指数      Equipment
+orderChurn              0         0      100    0–100 压力指数      Order
+priceShock              0         0      100    0–100 压力指数      Material
+procurementDelay        ❗无域                                     PurchaseOrder,MaterialBatch,Supplier
+qty                     ❗无域                                     Order
+queueDays               0         0      null   天               IncomingInspection
+queuePressure           0         0      100    0–100 压力指数      Process
+receivablePressure      0         0      100    0–100 压力指数      Customer
+releasePressure         0         0      100    0–100 压力指数      WorkOrder
+shortageRisk            0         0      100    0–100 压力指数      Material,Order
+supplyRisk              0         0      100    0–100 压力指数      Model
+switchPressure          0         0      100    0–100 压力指数      MaterialAlternative
+unitPrice               ❗无域                                     Order
+utilPressure            0         0      100    0–100 压力指数      Line
+
+取不到的源状态量（6）：coverDays, deliveryDelay, leadDays, procurementDelay, qty, unitPrice
+⚠ 取不到 ≠ 0：上面每一行要么是从域册子读到的实数，要么明确写「无域」。
+
+=== 审核方点名四格 ===
+  costPressure           restPoint=0   min=0 max=100 unit=0–100 压力指数 source=压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② 世界态起点分两档取值 —— 对象上有同名属性的那些格取真读数（越界由本表声明的取值域夹住），其余由 tick0 生成式 `round(hash01(objectId|stateVar)×100)` 产出，天然落在 0–100 (Order+Model 同域)?
+  receivablePressure     restPoint=0   min=0 max=100 unit=0–100 压力指数 source=压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② 世界态起点分两档取值 —— 对象上有同名属性的那些格取真读数（越界由本表声明的取值域夹住），其余由 tick0 生成式 `round(hash01(objectId|stateVar)×100)` 产出，天然落在 0–100 
+  overduePressure        restPoint=0   min=0 max=100 unit=0–100 压力指数 source=压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② 世界态起点分两档取值 —— 对象上有同名属性的那些格取真读数（越界由本表声明的取值域夹住），其余由 tick0 生成式 `round(hash01(objectId|stateVar)×100)` 产出，天然落在 0–100 
+  demandPressure         restPoint=0   min=0 max=100 unit=0–100 压力指数 source=压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② 世界态起点分两档取值 —— 对象上有同名属性的那些格取真读数（越界由本表声明的取值域夹住），其余由 tick0 生成式 `round(hash01(objectId|stateVar)×100)` 产出，天然落在 0–100 
+  loadIndex              restPoint=0   min=0 max=100 unit=0–100 压力指数 source=压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② 世界态起点分两档取值 —— 对象上有同名属性的那些格取真读数（越界由本表声明的取值域夹住），其余由 tick0 生成式 `round(hash01(objectId|stateVar)×100)` 产出，天然落在 0–100 
+  utilPressure           restPoint=0   min=0 max=100 unit=0–100 压力指数 source=压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② 世界态起点分两档取值 —— 对象上有同名属性的那些格取真读数（越界由本表声明的取值域夹住），其余由 tick0 生成式 `round(hash01(objectId|stateVar)×100)` 产出，天然落在 0–100 
+
+=== 铸造档分布（按规则计的 51 对 vs 规则数 55）===
+  有域·rest=0: 47
+  有域·rest≠0: 0
+  无域: 8
+  无域规则明细:
+    demo_supplier_delay_to_material_shortage
+    demo_fg_cover_days_to_model_demand
+    demo_po_procurement_delay_to_material_shortage
+    demo_batch_procurement_delay_to_material_shortage
+    demo_supplier_procurement_delay_to_material_shortage
+    demo_order_qty_to_model_top_qty
+    demo_order_price_to_model_top_price
+    demo_order_leaddays_to_model_horizon
+
+有域非零 rest 的源状态量: （无）
+
+── §6.2 改前/改后并排（由两次实测落盘的原始 JSON 重渲染：
+         node /tmp/restpoint-sidebyside.mjs ← /tmp/restpoint-prefix.json + /tmp/restpoint-postfix.json）──
+# WO-RESTPOINT-SOURCE-B · 改前/改后并排（面 A 口径 = Σ_objs world[o][v]/n，全对象算术均值）
+# 改前会话=sims_ww3501ac7et3n9qv（dist=水平口径）  改后会话=sims_nt1gbp1wdxg4kc4y（dist=偏离口径）  同一实例 127.0.0.1:4060
+# 两臂均为零扰动（建会话后仅 tick(n:1)，未施加任何扰动）
+
+── costPressure ──
+tick   改前        改后        差(改后−改前)
+   0    63.308304    63.308304              0
+   1     62.78804    63.308304       0.520264
+   2    62.346632    63.308304       0.961672
+   3    62.130765    63.308304       1.177539
+   5    63.116349    62.969894      -0.146455
+  10    67.367651    62.005552      -5.362099
+  15    68.945453    61.261037      -7.684416
+  20    69.267777    60.979482      -8.288295
+  25    69.321015     60.89926      -8.421755
+  30    69.328875    60.882542      -8.446333
+  35    69.329956     60.87958      -8.450376
+  40    69.330097    60.879106      -8.450991
+相邻拍变化次数：改前 40/40 · 改后 37/40
+
+── receivablePressure ──
+tick   改前        改后        差(改后−改前)
+   0    31.280086    31.280086              0
+   1    45.984677    31.280086     -14.704591
+   2    52.531239    31.280086     -21.251153
+   3    56.000593    31.280086     -24.720507
+   5    58.639678    31.280086     -27.359592
+  10    60.093634    30.963585     -29.130049
+  15    60.556053    29.488674     -31.067379
+  20     60.67891    29.117211     -31.561699
+  25    60.704321    28.984185     -31.720136
+  30    60.708827    28.947556     -31.761271
+  35    60.709549    28.939386     -31.770163
+  40    60.709657    28.937806     -31.771851
+相邻拍变化次数：改前 40/40 · 改后 35/40
+
+── 样本格（改前 → 改后）t0/t1/t3/t40 ──
+obj_customer_cust_14.receivablePressure     
+   改前: 15.7452 | 40.52958453166 | 65.40295585987 | 81.649457154726
+   改后: 15.7452 | 15.7452 | 15.7452 | 13.104681658353
+obj_model_4680-NCM.costPressure             
+   改前: 2.9263 | 0.951110340397 | 2.03807449633 | 14.410455521196
+   改后: 2.9263 | 2.9263 | 2.9263 | 1.57512389353
+obj_order_SO-3402.costPressure              
+   改前: 80 | 79.715726947818 | 78.906147155792 | 82.399666058426
+   改后: 80 | 80 | 80 | 77.933026061429
+
+── §6.3 零扰动逐拍（改后臂全文，捕获：BASE=… TAG=postfix node /tmp/restpoint-evidence-probe.mjs）──
+# WO-RESTPOINT-SOURCE-B 改前/改后并列读数  TAG=postfix  BASE=http://127.0.0.1:4060  会话=sims_nt1gbp1wdxg4kc4y  拍数=40
+
+── costPressure 逐拍：全对象算术均值（面 A 口径 = Σ_objs world[o][v] / n，与前端 KPI 同一算式）──
+tick   全对象均值      Model类均值     Customer类均值   Order类均值
+   0      63.308304       3.156917                —      65.714359
+   1      63.308304       3.156917                —      65.714359
+   5      62.969894       3.154467                —      65.362511
+  10      62.005552       2.930141                —      64.368568
+  15      61.261037       2.134212                —       63.62611
+  20      60.979482       1.884405                —      63.343285
+  25       60.89926       1.837733                —      63.261721
+  30      60.882542       1.830376                —      63.244629
+  35       60.87958       1.829316                —      63.241591
+  40      60.879106       1.829172                —      63.241103
+  相邻拍均值变化次数 = 37 / 40  ⇒ ❌ 仍在漂
+  t0=63.308304  t40=60.879106
+
+── receivablePressure 逐拍：全对象算术均值（面 A 口径 = Σ_objs world[o][v] / n，与前端 KPI 同一算式）──
+tick   全对象均值      Model类均值     Customer类均值   Order类均值
+   0      31.280086              —        31.280086              —
+   1      31.280086              —        31.280086              —
+   5      31.280086              —        31.280086              —
+  10      30.963585              —        30.963585              —
+  15      29.488674              —        29.488674              —
+  20      29.117211              —        29.117211              —
+  25      28.984185              —        28.984185              —
+  30      28.947556              —        28.947556              —
+  35      28.939386              —        28.939386              —
+  40      28.937806              —        28.937806              —
+  相邻拍均值变化次数 = 35 / 40  ⇒ ❌ 仍在漂
+  t0=31.280086  t40=28.937806
+
+── 样本格原值（前 4 拍 + 末拍）──
+cell                                          t0        t1        t2        t3        t40
+obj_customer_cust_0.receivablePressure          42.9329   42.9329   42.9329   42.9329 30.653101
+obj_customer_cust_1.receivablePressure          22.6704   22.6704   22.6704   22.6704 20.857794
+obj_customer_cust_10.receivablePressure          8.6098    8.6098    8.6098    8.6098  5.192443
+obj_customer_cust_11.receivablePressure          9.0846    9.0846    9.0846    9.0846  7.127374
+obj_customer_cust_12.receivablePressure         16.4294   16.4294   16.4294   16.4294 15.842347
+obj_customer_cust_13.receivablePressure         10.5445   10.5445   10.5445   10.5445   10.5445
+obj_customer_cust_14.receivablePressure         15.7452   15.7452   15.7452   15.7452 13.104682
+obj_customer_cust_15.receivablePressure          6.3958    6.3958    6.3958    6.3958   6.29047
+obj_customer_cust_16.receivablePressure         49.9415   49.9415   49.9415   49.9415 48.817363
+obj_customer_cust_17.receivablePressure         61.8378   61.8378   61.8378   61.8378   61.8378
+obj_customer_cust_18.receivablePressure         29.7099   29.7099   29.7099   29.7099 26.333906
+obj_customer_cust_19.receivablePressure          69.216    69.216    69.216    69.216 68.593425
+obj_customer_cust_2.receivablePressure          30.8858   30.8858   30.8858   30.8858   30.8858
+obj_customer_cust_3.receivablePressure          26.0358   26.0358   26.0358   26.0358 25.986696
+obj_customer_cust_4.receivablePressure          33.2014   33.2014   33.2014   33.2014 31.805013
+obj_customer_cust_5.receivablePressure          19.0015   19.0015   19.0015   19.0015 17.969592
+obj_customer_cust_6.receivablePressure         91.73182  91.73182  91.73182  91.73182 82.377765
+obj_customer_cust_7.receivablePressure          10.5547   10.5547   10.5547   10.5547 10.525141
+obj_customer_cust_8.receivablePressure          43.2165   43.2165   43.2165   43.2165 42.908676
+obj_customer_cust_9.receivablePressure          27.8564   27.8564   27.8564   27.8564 21.102222
+obj_model_4680-NCM.costPressure                  2.9263    2.9263    2.9263    2.9263  1.575124
+obj_order_SO-3402.costPressure                       80        80        80        80 77.933026
+obj_order_SO-3402.demandPressure                     17        17        17        17        17
+
+原始落盘：/tmp/restpoint-postfix.json
+
+── §6.3b 零扰动逐拍（改前臂全文，捕获：BASE=… TAG=prefix …，dist=水平口径）──
+（本臂的屏上输出未落盘，以下由原始 JSON /tmp/restpoint-prefix.json 重渲染）
+
+── costPressure 全对象算术均值 ──
+tick   全对象均值      Model类均值     Customer类均值   Order类均值
+   0      63.308304       3.156917                —      65.714359
+   1       62.78804       0.949678                —      65.261575
+   5      63.116349       6.266649                —      65.390337
+  10      67.367651      12.477386                —      69.563262
+  15      68.945453      13.704881                —      71.155076
+  20      69.267777      13.878227                —      71.483359
+  25      69.321015       13.90005                —      71.537854
+  30      69.328875      13.902652                —      71.545924
+  35      69.329956      13.902953                —      71.547036
+  40      69.330097      13.902987                —      71.547182
+  相邻拍均值变化次数 = 40 / 40
+
+── receivablePressure 全对象算术均值 ──
+tick   全对象均值      Model类均值     Customer类均值   Order类均值
+   0      31.280086              —        31.280086              —
+   1      45.984677              —        45.984677              —
+   5      58.639678              —        58.639678              —
+  10      60.093634              —        60.093634              —
+  15      60.556053              —        60.556053              —
+  20       60.67891              —         60.67891              —
+  25      60.704321              —        60.704321              —
+  30      60.708827              —        60.708827              —
+  35      60.709549              —        60.709549              —
+  40      60.709657              —        60.709657              —
+  相邻拍均值变化次数 = 40 / 40
+
+── §6.4 三档线性 A/B（改后 / 改前；捕获：BASE=http://127.0.0.1:4060 node /tmp/restpoint-linearity-probe.mjs）──
+【改后 · 偏离口径】
+# 三档线性实测 BASE=http://127.0.0.1:4060  源=obj_supplier_SUP-001.deliveryDelay  读=全对象均值.shortageRisk  序列 t3 扰动 → t8
+对照臂（零扰动） t8: 源=2  读=11.012712963646713
+Δ= -1  源@t8=1         读@t8=11.008840686211649 边际(扰动−对照)=-0.003872277
+Δ= -3  源@t8=-1        读@t8=11.001096741073757 边际(扰动−对照)=-0.011616223
+Δ=-30  源@t8=-28       读@t8=10.91877538909432 边际(扰动−对照)=-0.093937575
+边际比：Δ30/Δ1 = 24.2590   Δ3/Δ1 = 2.9998
+判据参考（改前由控制台单测得）：30.00 / 30.01 / 29.9 —— 本单要求「不许破坏」
+【改前 · 水平口径；A/B：把 dist 的 drive 退回 sourceVal 后同一命令】
+# 三档线性实测 BASE=http://127.0.0.1:4060  源=obj_supplier_SUP-001.deliveryDelay  读=全对象均值.shortageRisk  序列 t3 扰动 → t8
+对照臂（零扰动） t8: 源=2  读=26.15610182130047
+Δ= -1  源@t8=1         读@t8=26.15158212668295 边际(扰动−对照)=-0.004519695
+Δ= -3  源@t8=-1        读@t8=26.14254273738947 边际(扰动−对照)=-0.013559084
+Δ=-30  源@t8=-28       读@t8=26.020510974372037 边际(扰动−对照)=-0.135590847
+边际比：Δ30/Δ1 = 30.0000   Δ3/Δ1 = 3.0000
+判据参考（改前由控制台单测得）：30.00 / 30.01 / 29.9 —— 本单要求「不许破坏」
+
+── §6.5 饱和自报（同两臂；捕获：node /tmp/restpoint-sat-probe.mjs）──
+【改后】
+# Δ 臂饱和自报  BASE=http://127.0.0.1:4060
+对照  shortageRisk 均值=11.012713 格数=158  恰为 0 的格=2  本拍饱和 下界91/上界1150(共1241)
+Δ=-3  shortageRisk 均值=11.001097 格数=158  恰为 0 的格=2  本拍饱和 下界91/上界1150(共1241)
+Δ=-30  shortageRisk 均值=10.918775 格数=158  恰为 0 的格=6  本拍饱和 下界91/上界1150(共1241)
+【改前】
+# Δ 臂饱和自报  BASE=http://127.0.0.1:4060
+对照  shortageRisk 均值=26.156102 格数=158  恰为 0 的格=0  本拍饱和 下界91/上界1347(共1438)
+Δ=-3  shortageRisk 均值=26.142543 格数=158  恰为 0 的格=0  本拍饱和 下界91/上界1347(共1438)
+Δ=-30  shortageRisk 均值=26.020511 格数=158  恰为 0 的格=0  本拍饱和 下界91/上界1347(共1438)
+
+── §6.6 衰减相实验（dist 实验：把 §0'' 衰减的 rest 也换成 baseSnapshot）—— 用来证明「这条路会双拉」──
+捕获：BASE=… TAG=decayexp node /tmp/restpoint-evidence-probe.mjs（dist 打了衰减相补丁后重启的实例）
+# WO-RESTPOINT-SOURCE-B 改前/改后并列读数  TAG=decayexp  BASE=http://127.0.0.1:4060  会话=sims_2m94pq2kzp1adnv7  拍数=40
+
+── costPressure 逐拍：全对象算术均值（面 A 口径 = Σ_objs world[o][v] / n，与前端 KPI 同一算式）──
+tick   全对象均值      Model类均值     Customer类均值   Order类均值
+   0      63.308304       3.156917                —      65.714359
+   1      76.159065       4.324976                —      79.032429
+   5       84.29641        7.06446                —      87.385688
+  10      84.755666       8.698758                —      87.797943
+  15      84.820706       9.040697                —      87.851907
+  20      84.831257       9.094519                —      87.860727
+  25      84.832769       9.102007                —         87.862
+  30      84.832969       9.102979                —      87.862169
+  35      84.832995         9.1031                —       87.86219
+  40      84.832998       9.103114                —      87.862193
+  相邻拍均值变化次数 = 38 / 40  ⇒ ❌ 仍在漂
+  t0=63.308304  t40=84.832998
+
+── receivablePressure 逐拍：全对象算术均值（面 A 口径 = Σ_objs world[o][v] / n，与前端 KPI 同一算式）──
+tick   全对象均值      Model类均值     Customer类均值   Order类均值
+   0      31.280086              —        31.280086              —
+  ⇒ costPressure 均值 t0=63.308304 → t40=84.832998（+34.0%）；cust_14 recv 15.7452 → 72.95（本单落地后是 13.10）
+  ⇒ 结论：衰减相不能单独改（C2 已补 λ·(base−rest)），**已回退**；dist 之后从 /tmp/propagation.dist.drivefix.js 复原并重建，A/B 补丁残留 = 0（见 §6.7 的 git 校验）。
+
+── §6.7 红/绿归属 A/B（决定性实验）────────────────────────────────────────────────
+问题：sim-root-procurement ④ / sim-order-real-fields ②③ 变红 —— 是本单引起的，还是本来就在红？
+方法：把 src/sim/propagation.ts 的 drive 一行退回水平口径（cp 备份 + perl 改 + git diff 非空自证），
+      跑同样两个文件；跑完用 cp 复原并自证 git status 为空、残留标记 = 0。
+捕获：npx vitest run test/sim-root-procurement.seam.test.ts test/sim-order-real-fields.seam.test.ts
+ ✓ test/sim-root-procurement.seam.test.ts (6 tests) 185979ms
+   ✓ WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SEAM） > ① 入度臂：procurementDelay 入度=0（根源）· 出度>0（真能推动东西）· shortageRisk 入度>0（是果不是源）  29473ms
+   ✓ WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SEAM） > ② 落点臂：三类采购台账在 world.state 里真带 procurementDelay 且值非空（不是只在对象属性上有）  28868ms
+   ✓ WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SEAM） > ③ 传导臂：给采购单打一条扰动 → propagateTick → 该物料 shortageRisk 按系数真的抬起来（方向+量级）  24419ms
+   ✓ WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SEAM） > ③b 传导臂 · 另两类台账（批次 / 供应商）延一拍到达，同样把 shortageRisk 抬起来  22312ms
+   ✓ WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SEAM） > ④ 全链臂（真 HTTP · 从真种子世界态出发）：采购到货延迟 → 物料短缺 → 型号缺料 → 订单缺口，四跳全程真的分叉  34848ms
+   ✓ WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SEAM） > ⑤ 确定性 R6：同 seed 重种，procurementDelay 的落点与一拍传导结果字节级一致  46049ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ①正向 measuredCells = 在手订单数 × 3，且两边**各自独立**算一遍再比  32652ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ①反向 把某张单的 qty 删掉 ⇒ 该格退回哈希、measuredCells 减 1（只测正向不算）  28910ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ② 改真值 ⇒ 下游读数必须跟着变：把一张单的价格 ×1.5，重跑同一套推演  30439ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ③ 两张金额差一个量级的真订单，同一个扰动 ⇒ 下游读数必须拉开  30564ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ④ R6：同 (industry, scale, seed) 重跑，世界态逐字节一致  51080ms
+   × WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ⑤ 接缝：真值必须**出现在传导结果里**，且 max 语义不随拍数漂（不是纯积分器） 24487ms
+
+归属结论（同两文件、同两臂对照）：
+  · sim-root-procurement ④ 全链臂：改前 ✓ / 改后 ✗ ⇒ **本单引起**
+  · sim-order-real-fields ②③  ：改前 ✓ / 改后 ✗ ⇒ **本单引起**
+  · sim-order-real-fields ⑤    ：改前 ✗ / 改后 ✗（同一断言同一读数）⇒ **本来就在红，与本单无关**
+
+机制（实测，非推断）：这两个文件用「改世界 tick0 的基值」当扰动注入：
+  · ④ 把 baseSnapshot 里那张采购单的 procurementDelay 拨到 3 倍再建会话；
+  · ②③ 改对象 props 后重跑 deriveSeedBaseSnapshot（这份 seed 同时当 state 与 engine.specBase）。
+  本单的静息点定义（= baseSnapshot 的铸造值）下，**改基值就是改静息点本身，不是扰动** ⇒
+  drive = 0 ⇒ 四跳全都不动 ⇒ 断言 expected X to be greater than X 落空。
+  ⛔ 不是核算术破了：走**扰动通道**（/sim/sessions/:id/perturbations, mode=delta）的臂照样动（见 §6.4 三档线性）。
+  ⛔ 我没有改这两个测试文件（它们不是本单的接缝门），也**没有**为了让它们变绿而放松核的判据。
+  最小修路径（留给归属方，一行不动核）：
+    · ④：两个会话都用**未拨动**的 seedState 建（基值相同），扰动改走
+        POST /a/v1/sim/sessions/:id/perturbations {kind, targetObjectId: poId, targetStateVar:'procurementDelay', mode:'delta', magnitude: seeded*2}
+        后再 tick 4；对照臂同 tick 数、不施加 ⇒ 判据（四跳分叉）语义不变。
+    · ②③：同源问题，但②③断言的是「下游读数 === top 单真实字段值」（系数 1.0 · combine:max 的**水平聚合**语义），
+        在偏离口径下该断言**不再成立**（下游拿到的只能是偏离量）⇒ 属语义裁决，需审核方定这三条边
+        （order_qty/price/leaddays → model.backlog*Top）在偏离口径下该取什么口径，**我不自行改断言**。
+
+§7 追加守卫：两条线必须喂同一份源侧静息点（复核方追加要求；本单引入的新不变量）
+════════════════════════════════════════════════════════════════════════════════
+【为什么必须补】本战役根因是「同一个量被两个口径同时读，而全仓无物守着二者一致」。
+本单让 `propagateTick(` 的第 11 位实参出现在**三处**（同一次 tick 推进）：
+  app.ts:2652 影子线·重放段（逐拍循环内） · app.ts:2686 主线 · app.ts:2718 影子线·逐拍段
+不变量 = 三处喂**同一份** `s.baseSnapshot`（`app.ts` 自己的注释：「两条线只许差『有没有扰动』
+这一个变量，任何别的差异都会直接污染信噪比那个读数」）。复核方要求**先实测再答**「有没有东西守着」。
+⚠ 注意「同源」不是「同值」：判据落在**表达式唯一**上（见下 §1），不是落在数值相等上。
+
+【见证集普查（双向金丝雀）】
+  金丝雀（证明量法活着）：`grep -rl "signalToNoise" apps/datacore/src` ⇒ `apps/datacore/src/app.ts`
+  测试树里读到这三个量（`signalToNoise` / `worldDrift` / `userContribution`）的文件**只有两个**：
+    apps/datacore/test/shadow-memo.seam.test.ts                   （既有）
+    apps/datacore/test/sim-restpoint-shadow-baseline.seam.test.ts （本单新增）
+  `apps/agentcore/test` · `apps/frontend-shell/test`：0 命中 ⇒ 别处没有间接读者。
+
+【接缝臂】`apps/datacore/test/sim-restpoint-shadow-baseline.seam.test.ts`（3 臂）
+  §1 结构臂（纯解析，不跑引擎）：剥注释 → 按括号配对切 `propagateTick(` 的**顶层实参**
+     （跳字符串字面量；字符串里的逗号/括号不许把实参切乱）⇒ 带第 11 位的调用里，
+     第 11 位表达式必须**全仓唯一**且以 `.baseSnapshot` 收尾；另单列一条「第 11 位为空」
+     （尾随逗号后没有实参 = 那一处把静息点**删了**，与"喂了别的表达式"分开报）。
+     判「唯一」而不是写死变量名：将来把基值提成 `const baseline = s.baseSnapshot`、三处都传
+     `baseline`，本臂照样绿；只有**某处偷换口径**才红。注释里出现的同形串**不算命中**
+     （本仓栽过 `toContain` 匹到注释的先例）—— 金丝雀里有一条专门咬这个。
+     ⚠ 构建这支工具时金丝雀当场抖出我自己的一处错：第一版"删实参"反证漏了尾随逗号，
+     形状与真变异不一致（会被读成"没这回事"）⇒ 反证本身也要与真变异同形。
+  §2 行为臂（走真路由）：先零扰动走 1 拍（让影子线的**重放环与逐拍环两个调用点都被真跑到**），
+     再上扰动推 3 拍。真扰动 +15 ⇒ `userContribution > 0`（必然命中的对照）；
+     零效果扰动 `magnitude: 0` ⇒ 两条线逐字节相同：`userContribution === 0`、`changedCells === 0`。
+     ⚠ 首版没有"先走一拍"⇒ 重放段的变异 M3 **逃逸**（`curTick === 0` 时重放环一次都不执行）。
+
+【变异反证读数（每一次都自证已落下：md5 变 + `git diff` 非空；只改 app.ts，跑完即还原）】
+  净态（未变异）：`3 passed (3)` —— /tmp/wo-restpoint-arm-baseline5.log，`npx tsc --noEmit` RC=0
+  基准对照（排除"本来就红"）：把传导核换回基线版（`a24fca9af^`，level drive）
+     ⇒ 本文件 + shadow-memo **11/11 全绿**（/tmp/wo-restpoint-arm-P-prefix.log）
+     ⇒ 下面的红不可能是"环境本来就红"。
+
+  变异 | 落点      | 改法                                | §1 结构臂                   | §2 行为臂 | 既有 shadow-memo | 读数
+  M1   | 主线 2695 | 删掉第 11 位实参                     | 红（"删了"判据 1≠0）        | 红        | 不红             | uc=290.559217186649
+  M2   | 主线 2695 | 换成 `{}`                            | 红 `["s.baseSnapshot","{}"]` | 红        | 不红             | uc=290.559217186649（与 M1 **逐位相同**）
+  M3   | 重放 2652 | 换成 `{}`                            | 红 `["{}","s.baseSnapshot"]` | 红（补"先走一拍"后咬住） | **红**（:216） | worldDrift=102.270184443
+  M4   | 逐拍 2721 | 换成 `{}`                            | 红 `["s.baseSnapshot","{}"]` | 红        | **红**（:216）   | worldDrift=182.61248805
+  M5   | 重放 2652 | 换成同值新拷贝 `simState(s.baseSnapshot)` | 红                     | **绿（刻意）** | 不红         | —
+  日志：/tmp/wo-restpoint-mut-{M1,M2,M3,M4}.log · /tmp/wo-restpoint-mut2-{M1,M2,M3,M4,M5}.log
+  「M2 与 M1 逐位相同」是最硬的一条自洽性证据：**"没喂"与"喂了个空"在核眼里是同一件事**。
+
+【逐条回答复核方两问（实测，非推断）】
+  问1「把主线那处第 11 位实参删掉 ⇒ 有哪条测试/门会红？」⇒ **只有本单新增的这个文件**
+       （§1 与 §2 两臂**独立**红）；既有测试**一条都不红**：主线的口径不参与任何既有断言
+       （shadow-memo 在净态本来就红，见下"已知红"，且其红与本变异无关 —— 它读的是影子线内部）。
+  问2「把 replay 或 drift 那处换成 `{}` ⇒ 有哪条会红？」⇒
+       · 既有 `shadow-memo.seam.test.ts:216`（头号判据「命中与冷跑的信噪比回执不同」）**会红** ——
+         它比较的正是"冷跑走重放段 vs 命中走备忘录"两条影子路，两个调用点口径不同即分叉
+         ⇒ **影子线内部**的互等原先有物守着；
+       · 而**主线与影子线之间的同源**，净态下**全仓无物守**（M1/M2 只有新臂红）⇒ 本单补上。
+       · 换成**同值新拷贝**（M5）时行为臂必然绿（值逐字节相同）—— 这是刻意的边界：不变量是
+         「**同一份**」而不是「碰巧相等」，副本是将来被就地改写的入口，故只有 §1 结构臂能红。
+
+【已知红（随本单改动而来、属判据过期，需收编方裁定 · A/B 实测）】
+  `apps/datacore/test/shadow-memo.seam.test.ts:174` 断言 `worldDrift > 0`，消息原文
+  「世界自身漂移为 0 ⇒ 影子线这一跑没有区分度」。它编码的是**旧语义**「世界自己会漂」；
+  本单之后零扰动世界逐拍恒定 ⇒ 该量恒为 0。A/B：基线核 8/8 绿、落地核 1 红 ⇒ 红由本单造成。
+  同源产品可见后果（请审核方知悉）：会话建族下 `worldDrift === 0` ⇒ `ratio` 按
+  `summarizeSignalNoise` **自己的口径**为 `null`（该函数注释原文：「零漂移下这个比值无定义，
+  给个数就是编；前端据此显示『本拍世界无自发漂移』」），而不再是旧日那点"世界自己漂出来的分母"。
+  ⛔ 我没有改这个既有文件（它是别的单的判据），也没有为了让绿而放宽核。
+
+§8 回归归属：同批另外 12 条红（A/B 实测 = **全部由本单造成**，不是既有红）
+════════════════════════════════════════════════════════════════════════════════
+批次：`test/sim-perturbation.test.ts` + `test/seed-demo-propagation.test.ts`
+  · 落地核（a24fca9af）：`Test Files 2 failed (2)` · `Tests 12 failed | 34 passed (46)` · RC=1
+    /tmp/wo-restpoint-regress4.log
+  · 基线核（a24fca9af^，level drive，**只换传导核、其余一字不动**）：
+    `Test Files 2 passed (2)` · `Tests 46 passed (46)` · RC=0  /tmp/wo-restpoint-batch4-prefix.log
+  ⇒ 该两文件在基线核上**一条不红** ⇒ 这 12 条**全部是本单改动造成的**，没有"本来就在红"的。
+机制（与 §6.7 同族；实测非推断）：两个文件都拿「改世界 tick0 的基值」当扰动注入
+（baseSnapshot / 对象 props / seedBase 三类改法）。在本单的静息点定义下，
+**改基值 = 改静息点本身，不是扰动** ⇒ `drive = 0` ⇒ 世界不动 ⇒ 断言落空。
+  · `sim-perturbation.test.ts` 5 条（行 127/152/164/344/384；如 WO-P2 断言2 期望 `o2.risk=14` 实读 `−6`）
+  · `seed-demo-propagation.test.ts` 7 条（行 270/584/825/964/1202/1717/1975；含 live-fire、
+    54 条规则 trace 完整性、两条 WO-COEF-FROM-BOM 对照实验、WO-WEIGHT-BASIS-FIELD、
+    WO-DEMANDLOAD-BUDGET、M0-A11）
+⛔ 我没有改这些文件，也**没有**为了让它们变绿而放松核的判据（它们不是本单的接缝门）。
+⛔ 范围诚实声明：本单**只** A/B 了这 2 个文件；其余 datacore 测试文件**未测** = NOT-MEASURED，
+   不许读成绿（本机跑不动四包全量）。
+最小修路径（留归属方，一行不动核）：把"改基值注入"换成走扰动通道
+  `POST /a/v1/sim/sessions/:id/perturbations`（`mode: delta`），对照臂同 tick 数不施加 ⇒ 判据语义不变。
+  两条例外的语义裁决见 §6.7 末段（order_qty/price/leaddays → model.backlog*Top 在偏离口径下取什么口径）。
+
+【CAPTURED_RC】= 0 —— 对应**末次净态核验**：`npx vitest run test/sim-restpoint-shadow-baseline.seam.test.ts`
+  （落地核、未变异）`3 passed (3)`，日志 /tmp/wo-restpoint-arm-baseline5.log；同目录同名 `.rc` 写的就是这个 0。
+  ⚠ 本文件其余读数**各自带 rc**，不许拿这一个 0 盖全部：
+    · 变异反证 M1–M5 全部 **RC=1**（/tmp/wo-restpoint-mut*.log 尾部的 `RC=` / `MUT*_RC=` 行）；
+    · 基准对照（基线核、11/11 绿）**RC=0**（/tmp/wo-restpoint-arm-P-prefix.log）；
+    · 本文件**不**度量"本工作树全绿"——未跑到的见 §7「已知红」与 §6.7 的清单，一律按 NOT-MEASURED 读。
