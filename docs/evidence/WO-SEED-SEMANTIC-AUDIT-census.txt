@@ -1,0 +1,199 @@
+WO-SEED-SEMANTIC-AUDIT · 「铸造值被当偏离量消费」全量普查（只读取证 · 零产品代码改动）
+================================================================================
+base commit : 8a103c0e3   (origin/claude/inspiring-gates-aqczjg, 2026-10-05 00:44:03 +0800)
+取证时刻    : 2026-10-05 01:13 CST
+树龄探针    : wc -l apps/datacore/src/synthetic/battery.ts = 7700
+                sha256(blob 2ff5338cf92400ad26f9513a9fe540a8bd9152c5)
+
+⚠ base 订正：开工时读到的是 562faf9e8（当晚 23:57）。canonical 随后推进到 8a103c0e3。
+  实测 `git diff --stat 562faf9e8 8a103c0e3` = **仅 1 个 docs 文件 +6 行**，
+  且 battery.ts blob 两侧**逐字节相同** ⇒ 本报告所有行号在 8a103c0e3 上原样成立。
+
+--------------------------------------------------------------------------------
+S0 · 量具与金丝雀（双向，缺一不许下否定结论）
+--------------------------------------------------------------------------------
+G-1 pathspec：`git grep -- 'apps/datacore/src'` 从 cwd=该目录跑会恒 0（cwd 相对当成了
+    嵌套前缀）。全程改用 `:/` 锚定。金丝雀 `qty` 在 battery.ts 命中 215 ⇒ 查法活着。
+
+G-2 赋值扫描器（自写 /tmp/seed-audit/prop-scan.mjs，只读）
+    形态 = 本仓铁律 0.6 第 6 条：「那个串出现过」≠「那是它的赋值」。
+    · v1 把 `STATE_VAR_DISPLAY_NAMES` 中文名字典行数成"有赋值" ⇒ **工具坏了**
+      （battery.ts:3610 `demandPressure: "需求压力"` 被数成赋值）。
+    · v2 改用 `includes(sym)` 做块屏蔽 ⇒ 注释正文里出现同名符号即开始屏蔽、直到 EOF
+      ⇒ 47 个 prop 全报 NO-ASSIGN，**正金丝雀当场报 TOOL-BROKEN**（未采信任何一条）。
+    · v3 锚定 `^(export )?(const|let) NAME` 声明 + 括号配平。三条金丝雀全过：
+        正  CANARY_POS   leadDays → `:6414/:6477` `leadDays: dueDay` 命中 2  = OK
+        反  CANARY_NEG   battery.ts:3610 字典行命中 0（只出现在字典里的同名串不被数到）= OK
+        屏蔽  mask sanity  L3610=masked-OK · L6410(真赋值)=unmasked-OK · masked 619/7701
+    ⇒ 下面的 "NO-ASSIGN" 才是可采信的读数。
+
+--------------------------------------------------------------------------------
+S1 · 铸造支全量清单（以「入消费链」为准；纯 MES/运营表不算消费链）
+--------------------------------------------------------------------------------
+§1.1 直接 hashString 铸造、且**入推演/求解消费链**的 prop —— 全仓只有 3 个：
+--------------------------------------------------------------------------------
+| # | 铸造点 (battery.ts) | 铸造式 | 落点 prop / 值域 |
+|---|---|---|---|
+| M1 | 锚点 `:6410` / 补足 `:6470` | `round((hashString(so) % 50)/100, 2)`；越线单(i%8 / i%25) 取常数 0.6 | `Order.demandDelta` ∈ [0,0.49] ∪ {0.6} |
+| M2 | 锚点 `:6412` / 补足 `:6471` | `round((hashString(`${so}o`) % OUTSOURCE_SAMPLE.normalBucketMod)/100, 2)`；越线单(i%6 / i%17) 取 `OUTSOURCE_SAMPLE.violationRatio` | `Order.outsourceRatio` |
+| M3 | 锚点 `:6413` / 补足 `:6473` | `round(0.4 + (hashString(`${so}c`) % 50)/100, 2)`；越线单(i%7 / i%13) 取 1.15 | `Order.creditUsedRatio` ∈ [0.40,0.89] ∪ {1.15} |
+
+§1.2 这 3 个 prop 全部经**派生规格**（`seed-derivation-specs.ts`，A⚠ 档）二次加工后入链：
+--------------------------------------------------------------------------------
+  M1 → spec `order_demand_pressure`  = `COALESCE(this.demandDelta * 100, 0)`   → `Order.demandPressure`
+  M2 → spec `order_shortage_risk`    = `COALESCE(this.outsourceRatio * 100, 0)`→ `Order.shortageRisk`
+  M3 → spec `order_cost_pressure`    = `COALESCE(this.creditUsedRatio * 100, 0)`→ `Order.costPressure`
+  ※ 三条都在 `STATE_VAR_VALUE_REFS` 登记（battery.ts:3952+，共 25 条），
+    故 `deriveSeedBaseSnapshot` 不抛 brokenRefs。
+
+§1.4 ⚠ 中间态：被当作「真值字段」、实际是哈希/rng 整形的
+--------------------------------------------------------------------------------
+  判据：本仓称 `Order.qty/unitPrice/leadDays` 为「WO 红线真值字段」（不登记 valueRef）。
+  实测（读赋值点，非读注释）：
+   · `Order.qty`   `battery.ts:6467` `qty: shapeBusinessTypeQty(businessType, randInt(rng,1420,7668), so)`
+     ⇒ **randInt(rng)** 播种；`shapeBusinessTypeQty`(`:557`) 对商用车再乘一个
+       `factors[hashString(so) % factors.length]` 哈希选中的波动因子。**不是真值，是随机播种。**
+   · `Order.unitPrice` `:374 orderUnitPriceOf` = `SEG.priceWan*1e4 * (1 + priceVar)`，
+       `priceVar = ((hashString(`${so}:unitprice`) % (2*ppk+1)) - ppk)/1000`（`battery.ts:377`）
+     ⇒ 基价真有出处（`SEG_REGISTRY`），**单间价差是哈希抖动的 ‰ 级**。
+   · `Order.leadDays` `:6414/:6477` `leadDays: dueDay` —— 由 `status`+`dueSpread` 决定，**真**。
+  ⇒ 仓主口径「其他数据都预设、不来自随机播种」若照字面执行，`qty` 与 `unitPrice` 的抖动
+    也在待补范围内；本单只登记，不判该不该补（属建模/业务判断）。
+
+§1.3 最大的一块：`sim/seed-world.ts:483` 的哈希占位档
+--------------------------------------------------------------------------------
+  `row[v] = Math.round(seedHash01(`${o.id}|${v}`) * 100); originRow[v] = "derived";`
+  —— 凡「无 valueRef 登记 ∧ props 上无同名有限数」的状态变量格，全走这一支，值域 [0,100]。
+  规则图共触及 **43** 个 (类型,状态变量) 对 / 55 条规则；其中 **25** 条有 valueRef（走规格），
+  其余靠占位。已知零赋值的消费链状态变量至少含：
+    `ARInvoice.overduePressure`（真源候选见 S3-4）· `Order.orderChurn` · `Base.*` 之外的
+    多数 MES/设备/供应链域变量（未逐条追，见 S5）。
+
+--------------------------------------------------------------------------------
+S2 · 消费侧：读「水平」还是读「偏离」
+--------------------------------------------------------------------------------
+判据（照派单）：`×(1 + x/100)` / `base + x` / `x − rest` = 当偏离读；`x` 直接当量 = 当水平读。
+
+C-1 偏离读（**命中本单病灶**）—— 全仓 3 处，全部集中在世界态→金额/量的投影：
+  · `solvers/finance-world.ts:326`  `costFactor = 1 + costAgg.value / divisor`（divisor=100）
+      ← 消费 `Order.costPressure` ⇒ 直接**乘以 [1.40,1.89]∪{2.15}**
+  · `solvers/finance-world.ts:408`  `arProjected += amount * (1 + custPressure / divisor)`
+      ← 消费 `Customer.receivablePressure`
+  · `solvers/finance-world.ts:411`  `overdueExposure += amount * ((od ?? 0) / divisor)`
+      ← 消费 `ARInvoice.overduePressure`
+  · `sim/world-read.ts:303`  `factor = rule.direction==="up" ? 1 + raw/divisor : 1 - raw/divisor`
+      （4 条 SIM_WORLD_PROJECTION_RULES：`costPressure`/`loadIndex`/`utilPressure`/`demandPressure`）
+      ⇒ 其中 `costPressure`(M3) 与 `demandPressure`(M1) 两个源是铸造值。
+
+C-2 水平读（**不构成本单病灶**，但要记清楚以免误判）：
+  · `sim/propagation.ts:1344` `baseAmount = round12(coeff * drive * factor)`，`drive = sourceVal`
+    —— 源读数按**水平**乘系数。对 pressure 族自洽（`STATE_VAR_DOMAINS` 声明 restPoint=0），
+    故 M1/M2/M3 经传播链（seed.ts:374 `Order.demandPressure → Model.demandLoad` 等）**不是**偏离读。
+
+C-3 已查证并**排除**（避免误记）：
+  · `solvers/capacity.ts:765` `effectiveDemand = (…) * (1 + demandDelta)`
+    —— 此 `demandDelta` 是 `num(args.demandDelta, 0)`，**求解器显式入参**（capacity.ts:764），
+    **不是** `Order.demandDelta` 这个铸造 prop。同名不同物，排除。
+
+--------------------------------------------------------------------------------
+S3 · 三层分类清单（⛔ 无真源者只登记，不编数、不给默认值）
+--------------------------------------------------------------------------------
+【A 类 · 有真源，接线即可】—— 本单范围内 **0 条**。三条主链的真源都不属于"字段在、只是没赋值"。
+
+【B 类 · 有真源但口径不同，须写换算式】—— **2 条**
+
+B-1 `Order.costPressure`（源 M3 `creditUsedRatio`）
+  今天：授信占用率(水平 0.40–1.15) ×100 → 被 `finance-world.ts:326` 当成本**偏离百分比**读。
+  真源：`Customer.receivables` / `Customer.creditLimit`（**有赋值**，见 S4-2），二者相除即
+        「授信占用率」——但那是**客户级**、且量纲是 ratio。
+  ⇒ 换算式须二选一，本单不代选（属建模判断）：
+     (a) 若成本压力要的是**偏离**：真源不该是授信占用率，应取成本类偏离
+         （候选：`Material.devPct`→`priceShock` 链 / `Model.unitCost` 对本体的偏离）；
+     (b) 若沿用授信占用率：客户级 `receivables/creditLimit` 已在
+         spec `customer_receivable_pressure` 用上，Order 级需另定口径。
+  ⚠ 无论 (a)(b)，`finance-world` 的 `×(1+p/100)` 与「占用率」语义**必须二选一改一处**，
+     不能两处都不动（现状 = 零扰动下成本即被放大到 1.40–1.89 倍）。
+
+B-2 `ARInvoice.overduePressure`
+  今天：全仓零赋值 ⇒ seed-world 哈希占位（[0,100]）⇒ `finance-world.ts:411` 当偏离读。
+  真源：**有** —— `ARInvoice.overdueDays`（`battery-extended.ts:945` 真赋值）+ `ARInvoice.amount`。
+  ⇒ 换算式须定：逾期压力 = 逾期天数/账期天数，还是逾期金额/发票金额（本单不代选）。
+
+【C 类 · 无真源，登记为空白】—— **2 条（本单已追到底的）**
+C-1 `Order.demandDelta` —— 全仓无「需求增量」真值字段（`prop-scan` 读数：
+    demandDelta 仅命中 `:6410/:6470` 两处铸造点本身）。**空白**。
+C-2 `Order.outsourceRatio` —— `Outsource` 类型存在（battery-extended.ts:360，按**料**组批，
+    8 料 8 批），与 `Order` **无直接 join**；且它自己没有比例字段。**空白**（仅按料的外协批次，
+    要变成订单级比例须先定归属口径 —— 那本身是建模判断，不是接线）。
+  ※ 同族 `Order.orderChurn` 已由 `seed-derivation-specs.ts:193-198` 自陈「无诚实源·停笔」，
+    与本次独立读数一致（该文件自陈在先，非本单发现）。
+
+--------------------------------------------------------------------------------
+S4 · 两条机制发现（比单个字段更值钱）
+--------------------------------------------------------------------------------
+S4-1 ⚠ **派生规格的产物会被盖上「实测」章**
+  `sim/seed-world.ts:473-477` 判「实测/派生」的唯一判据是
+    `const real = o.props[v]; if (typeof real === "number" && Number.isFinite(real)) → "measured"`
+  而派生规格的产物也写进 `o.props`：`ontology-core.ts:537  obj.props[spec.targetProp] = value;`
+  ⇒ **凡由规格算出的格子一律盖 `measured`，哪怕它的输入是 hashString 铸出来的。**
+  今天 `Order.costPressure` / `demandPressure` / `shortageRisk` 三格出处章都是 `measured`，
+  而它们的唯一输入是 M3/M1/M2 三个哈希值。⇒ 「34% derived」这个数**低报**了：
+  它只数了走 seedHash01 那一档的格子，没数「经规格间接铸造」的格子。
+
+S4-2 `Customer.creditLimit` / `Customer.receivables` **有真源**（派单线索此处需订正）
+  两字段在 `battery-extended.ts:892 / 894`（名册客户）与 `:904 / 906`（规模补足客户）有真赋值，
+  值是 `rng()` 播的（**随机播种**，不是 `hashString`）。
+  故 spec `customer_receivable_pressure` = `receivables*100/creditLimit` **没有绕过**它们、用的正是它们。
+  真正被绕过的是 **`Order.creditUsedRatio`**（M3）—— 它才是「有真源（客户级占用率）却另造了一个哈希量」的那一条。
+
+--------------------------------------------------------------------------------
+S5 · 派单前提订正（3 处）
+--------------------------------------------------------------------------------
+X-1 ⛔ **引文行号漂了，且两段模数被合并了**
+   派单写 `battery.ts:6462-6484` 与规模补足段 `:6539-6542`。
+   实测：**锚点段在 `:6410-6413`**，**规模补足段在 `:6470-6473`**。
+   引文三条式子与**锚点段**逐字相同（`i % 8 / 6 / 7`）—— 那组模数是锚点段的。
+   规模补足段的模数是 `i % 25 / 17 / 13`，且三项都多一道 `scannable &&` 守卫
+   （`scannable = status !== "COMPLETED"`，已交付单不再注入越线值）。
+   ⇒ 照引文去 `:6462 / :6539` 找会**找错段**，且会漏掉 `scannable` 这道守卫。
+
+X-2 见 S4-2：`Customer.creditLimit/receivables` **不是**「声明了但 0 处赋值」——
+   它们在 `battery-extended.ts` 有赋值。派单前半（battery.ts 里 0 处）对，后半（⇒ 派生式绕过它用了
+   hashString）**错**：绕过它们的是 `creditUsedRatio` 那条，不是 `customer_receivable_pressure`。
+   ※ 但派单的**原则**是对的且本单照做了：「切片投影里声明了它」不构成「它有真源」的证据 ——
+     我判 B-1/B-2 时追的都是赋值点，不是 project 列表。
+
+X-3 ✅ 行号订正：「`solvers/finance-world.ts:326` 按偏离读」**成立**
+   （`costFactor = 1 + costAgg.value / divisor`，`divisor = FINANCE_WORLD_PRESSURE_DIVISOR.pp = 100`）。
+   ⚠ 补充：同一偏离读法在仓里**共 3 处**（finance-world 三压力）+ world-read 一处的 4 条规则，
+     不是只有 :326 一处。
+
+X-4 ⚠ 「全库 6375 格中 derived 2192 格 = 34%」与「ARInvoice.overduePressure 60/60 derived」——
+   本单**未复核**（需起实例读 `/world`，本单禁起实例）。见 S6。
+
+--------------------------------------------------------------------------------
+S6 · 未追到底（如实登记，⛔ 不猜）
+--------------------------------------------------------------------------------
+U-1 **43 个 (类型,状态变量) 对里，只有 8 条（Order 3 + Customer 1 + ARInvoice 1 + 相关 3）逐条追了
+    消费侧。其余 35 条（MES/设备/供应链/AI 域）只确认了它们全部落在 seedHash01 占位档，
+    ⛔ 未逐条追消费方**，故不能对它们下「当偏离读」或「无真源」的结论。
+U-2 **未复核**派单给的三个读数（6375/2192/34%、60/60、零扰动少吃 139.62 亿）——
+    它们要求起实例读 `/world`，与「本单不跑测试、不起实例」的 CPU 纪律冲突。
+    本单只做了**静态链路复核**：链条成立（M3 → spec → props.costPressure → finance-world:326）。
+U-3 `Outsource`(按料) → `Order.outsourceRatio`(按单) 的可用 join **未验证**（S3 C-2 只说"无直接 join"）。
+U-4 `Base.formationCapDaily` 在 `battery.ts:6074` 先置 0、`:6683` 回填 —— 回填前的窗口是否被读到
+    **未验证**（若被读到，`base_load_index` 会经 COALESCE 得 0）。低优先级，登记备查。
+
+--------------------------------------------------------------------------------
+S7 · 覆盖面自陈
+--------------------------------------------------------------------------------
+· 铸造支扫描面：`apps/datacore/src/**` 全量 `hashString(` = 148 处 / 21 文件（其中 battery.ts 96）。
+  **逐条追到消费链的只有 3 个**（S1.1）+ 中间态 2 个（S1.4）。
+  ⚠ 其余 143 处**未逐条追消费方**，只做了分区抽查：`battery.ts` 的 96 处里自 `:6517` 起
+    集中在 MES/运营表（WorkOrder/Inspection/Attendance/Alarm/Maint/WIPMove/Shipping…），
+    读起来是预设演示数据；**但"读起来是"不构成"没有消费方"，故不当结论用**（照铁律 0.5）。
+    可查的判据是：这些表**不在**规则图的 33 个类型里（S1.3 的 43 个 (类型,变量) 对已列全），
+    故它们不进 `deriveSeedBaseSnapshot` 的 byType —— 这一条是**机器判据**，不靠目测。
+· `castSeedBaseValue`：**全仓 0 命中**（`git grep -c` 于 8a103c0e3 全树，含 packages/apps）。
+  派单把它列为铸造支之一 —— 该符号在 canonical 上**不存在**（可能来自未并入分支，未追）。
+· 改动：**零产品代码**。新增文件仅本证据两件。

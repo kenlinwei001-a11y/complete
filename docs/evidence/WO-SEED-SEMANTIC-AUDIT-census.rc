@@ -1,0 +1,37 @@
+WO-SEED-SEMANTIC-AUDIT · 复算记录（在 worktree 内重跑 .txt 里每一个被断言的数）
+captured_at : 2026-10-05 01:17:14 CST
+worktree    : /Users/apple/deploy/complete/.claude/worktrees/agent-ab49e2d67c55fdc26
+说明        : 每行 = 一条命令 + 其真实 rc。rc 由被捕获命令本身给出（不用管道末端）。
+
+-- [1..4] base 与树龄探针 --
+[1] base commit ...................... 8a103c0e3   rc=0
+[2] battery.ts blob ................. 2ff5338cf92400ad26f9513a9fe540a8bd9152c5   rc=0
+[3] wc -l battery.ts ................     7700   rc=0
+[4] diff --stat 562faf9e8 HEAD       rc=0
+ docs/ROLLOUT-dsh-external-kernel.md | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+-- [5..10] 计数。一律 git grep -c -- 字面前缀（避开 .txt G-1 的 pathspec 陷阱）--
+[5] hashString( 于 apps/datacore/src . files=21  sites=148  battery.ts=96   rc=0
+    ⇒ 与 .txt S7 断言的 148 / 21 / 96 逐位相同。
+
+    ⚠ 同一次复算里先跑的是不带括号的 hashString，得 171 / 98 —— 二者测的不是同一个东西，
+      差额 23 处 = import 语句 21 行 + 注释正文 2 处（battery.ts:13 import、:6093 注释）。
+      .txt 断言的是「调用点」，故以 148 / 96 为准。此处两种写法都留档以免下次再混。
+[6] CANARY_POS qty@battery.ts ........ apps/datacore/src/synthetic/battery.ts:215   rc=0   (>0 才说明量法活着)
+[7] CANARY_POS seedHash01 ............ sites=6   rc=0  (同上，证明 [5] 的写法有鉴别力)
+[8] castSeedBaseValue 全仓 ........... []   rc=1   rc=1 且输出空 = 0 命中（.txt S7 的否定结论）
+[9] STATE_VAR_VALUE_REFS .......... 3 行（:3952 声明 / :3997 :4007 引用）
+    ACTIVE 登记条数实测 = 25   （25 与 .txt §1.2 断言相同）
+    其中 1 条已退役且是注释行（Model|forecastBias，:1 行 2026-09-20 退役），不计入 25。
+    ⇒ 计法是「对象内 ^  "Type|Var": { specKey: 的行数」，不是文件里该符号出现次数。
+[10] FINANCE_WORLD_PRESSURE_DIVISOR ...  rc=0
+apps/datacore/src/sim/world-read.ts:41: *     桥**复用 `FINANCE_WORLD_PRESSURE_DIVISOR`**（`finance-world.ts` 已声明并已在跑的那座），
+apps/datacore/src/sim/world-read.ts:61:  FINANCE_WORLD_PRESSURE_DIVISOR,
+apps/datacore/src/sim/world-read.ts:203:  const divisor = FINANCE_WORLD_PRESSURE_DIVISOR[pressureUnit];
+apps/datacore/src/solvers/finance-world.ts:44:  FINANCE_WORLD_PRESSURE_DIVISOR,
+apps/datacore/src/solvers/finance-world.ts:207:  const divisor = FINANCE_WORLD_PRESSURE_DIVISOR[pressureUnit];
+
+OVERALL_RC=0   (=0 表示上述每条命令本身都 rc=0)
+NOTE: [8] 的 rc=1 是 git grep 的「无匹配」约定，属预期，不计入 OVERALL_RC。
+CAPTURED_RC=0
