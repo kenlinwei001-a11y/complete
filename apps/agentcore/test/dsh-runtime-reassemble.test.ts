@@ -614,16 +614,17 @@ describe("WO-DSH-PROD-READY W9-lite · 帧流→iterations 骨架", () => {
     expect(r0.iterations).toEqual([]); // 无任何步证据 ⇒ 空壳诚实缺省（零 spawn 早退同形态）
   });
 
-  it("⑤ meta 口径对位 native 审计：final_answer 不进（派发前拦截，其轮留空迭代）；load_skill 进（loop.ts:734-746 同口径）", () => {
+  it("⑤ meta 口径对位 native 审计：final_answer 不进（派发前拦截，其轮留空迭代）；技能加载器进（loop.ts:734-746 同口径）", () => {
+    // 帧流真名 = dsh 臂 `skill`（上游常量；native 的 `load_skill` 不经本函数）。
     const r = reassembleDshRun([
-      callAt(1, 1, "ls1", "load_skill", 1000, { skillId: "sk-a" }), resultAt(1, 1, "ls1", false, 1080), stepEnd(1, 1, 1090),
+      callAt(1, 1, "ls1", "skill", 1000, { name: "sk-a" }), resultAt(1, 1, "ls1", false, 1080), stepEnd(1, 1, 1090),
       toolCall("fa1", "final_answer", { blocks: [{ type: "text", markdown: "x" }], provenance: [] }), stepEnd(1, 2, 1200),
       turnEnd("completed"),
     ]);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.iterations).toHaveLength(2);
-    expect(r.iterations[0]?.toolCalls.map((c) => c.toolName)).toEqual(["load_skill"]);
+    expect(r.iterations[0]?.toolCalls.map((c) => c.toolName)).toEqual(["skill"]);
     expect(r.iterations[1]?.toolCalls).toEqual([]); // final_answer 轮：调用剔除、轮次留痕
   });
 
