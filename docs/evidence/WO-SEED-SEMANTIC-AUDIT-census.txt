@@ -5,6 +5,11 @@ base commit : 8a103c0e3   (origin/claude/inspiring-gates-aqczjg, 2026-10-05 00:4
 树龄探针    : wc -l apps/datacore/src/synthetic/battery.ts = 7700
                 sha256(blob 2ff5338cf92400ad26f9513a9fe540a8bd9152c5)
 
+⛔ 行号适用域：**本文件所有行号基于 canonical `8a103c0e3`**。
+   集成分支 `origin/claude/handoff-3root-integration` 的树与之不同（canonical `sim/propagation.ts`
+   1629 行，INT 树 **1164 行**），两张在跑的单都开在 INT 后代上 ⇒ **本文件行号在那两棵树上全部会漂**。
+   引用本文件时请连同 base commit 一起引用，或改用符号/锚点串定位（同 CLAUDE.md 铁律 0.5 判据 5 的纪律）。
+
 ⚠ base 订正：开工时读到的是 562faf9e8（当晚 23:57）。canonical 随后推进到 8a103c0e3。
   实测 `git diff --stat 562faf9e8 8a103c0e3` = **仅 1 个 docs 文件 +6 行**，
   且 battery.ts blob 两侧**逐字节相同** ⇒ 本报告所有行号在 8a103c0e3 上原样成立。
@@ -64,7 +69,7 @@ S1 · 铸造支全量清单（以「入消费链」为准；纯 MES/运营表不
 --------------------------------------------------------------------------------
   `row[v] = Math.round(seedHash01(`${o.id}|${v}`) * 100); originRow[v] = "derived";`
   —— 凡「无 valueRef 登记 ∧ props 上无同名有限数」的状态变量格，全走这一支，值域 [0,100]。
-  规则图共触及 **43** 个 (类型,状态变量) 对 / 55 条规则；其中 **25** 条有 valueRef（走规格），
+  规则图共触及 **51** 个 (类型,状态变量) 对 / 55 条规则；其中 **25** 条有 valueRef（走规格），
   其余靠占位。已知零赋值的消费链状态变量至少含：
     `ARInvoice.overduePressure`（真源候选见 S3-4）· `Order.orderChurn` · `Base.*` 之外的
     多数 MES/设备/供应链域变量（未逐条追，见 S5）。
@@ -131,14 +136,21 @@ C-2 `Order.outsourceRatio` —— `Outsource` 类型存在（battery-extended.ts
 --------------------------------------------------------------------------------
 S4 · 两条机制发现（比单个字段更值钱）
 --------------------------------------------------------------------------------
-S4-1 ⚠ **派生规格的产物会被盖上「实测」章**
-  `sim/seed-world.ts:473-477` 判「实测/派生」的唯一判据是
-    `const real = o.props[v]; if (typeof real === "number" && Number.isFinite(real)) → "measured"`
-  而派生规格的产物也写进 `o.props`：`ontology-core.ts:537  obj.props[spec.targetProp] = value;`
-  ⇒ **凡由规格算出的格子一律盖 `measured`，哪怕它的输入是 hashString 铸出来的。**
-  今天 `Order.costPressure` / `demandPressure` / `shortageRisk` 三格出处章都是 `measured`，
-  而它们的唯一输入是 M3/M1/M2 三个哈希值。⇒ 「34% derived」这个数**低报**了：
-  它只数了走 seedHash01 那一档的格子，没数「经规格间接铸造」的格子。
+S4-1 ⚠ **出处章：两档口径已存在，缺陷在父句括注盖住了子集**（⛔ 本项**未经独立复验**，
+     仅据 `sim/seed-world.ts:481 / :559-566` 原文；措辞停在证据能支撑处，⛔ 不升级为「假章/假出处」）
+  代码**知道**规格绑定这一档的存在，并**把那几格点名印在屏上**：
+    `:481  if (stateVarValueRef(typeKey, v) !== undefined) measuredRefVarKeys.add(`${typeKey}.${v}`);`
+    `:564-566  …其中 ${measuredRefVarKeys 逐个点名} 由显式规格绑定取值（每条公式的口径见派生规格表，`
+              `规格缺失会在播种时直接报错，不会退回占位）。`
+  ⇒ 屏上那句话是**两档 + 一条限定**，不是一句「实测」盖全表。
+  真正的问题只在**父句括注**——`:559-560` 的「N 格是实测（状态变量名就是对象上的属性名，
+  **直接读了那个对象的真实业务数**）」覆盖了子集 `measuredRefVarKeys`：
+  这几格确实走了真读数支（`o.props[v]` 是有限数），而那个数**是由规格算出来的、不是仓储里的业务数**。
+  ⇒ 定级：**披露精度问题**，不是逻辑缺陷。`Order.costPressure` 本身在那份点名清单里，屏上没瞒它。
+  ⚠ 行号注记：审核方转述时给的是 `:492-500 / :611-619`，在本树（canonical `8a103c0e3`）实测为
+     `:481 / :559-566` —— 同一形态「行号会漂」，引用请连 base commit 一起引。
+  ⇒ 关联量（未复核）：`measuredCells` 与实际「真实业务数」格子数之间的差额 = 规格绑定格数，
+     该差额即父句括注的过宽量。⛔ 本单未起实例，未测该数。
 
 S4-2 `Customer.creditLimit` / `Customer.receivables` **有真源**（派单线索此处需订正）
   两字段在 `battery-extended.ts:892 / 894`（名册客户）与 `:904 / 906`（规模补足客户）有真赋值，
@@ -192,8 +204,78 @@ S7 · 覆盖面自陈
   ⚠ 其余 143 处**未逐条追消费方**，只做了分区抽查：`battery.ts` 的 96 处里自 `:6517` 起
     集中在 MES/运营表（WorkOrder/Inspection/Attendance/Alarm/Maint/WIPMove/Shipping…），
     读起来是预设演示数据；**但"读起来是"不构成"没有消费方"，故不当结论用**（照铁律 0.5）。
-    可查的判据是：这些表**不在**规则图的 33 个类型里（S1.3 的 43 个 (类型,变量) 对已列全），
+    可查的判据是：这些表**不在**规则图的 **32** 个类型里（S1.3 的 **51** 个 (类型,变量) 对已列全），
     故它们不进 `deriveSeedBaseSnapshot` 的 byType —— 这一条是**机器判据**，不靠目测。
+  ⛔ **数字订正（本单自查）**：本节曾写「43 个 (类型,变量) 对 / 33 个类型」，**两个数都不可复现**。
+    以 `seed.ts` 规则表机器解析（`read-scan.mjs`，剥注释后按 `sourceTypeKey/sourceStateVar/
+    targetTypeKey/targetStateVar` 字段抽取）实测：**55 条规则 / 51 个唯一对（source 33 + target 39，
+    交集 21）/ 32 个类型**。试过的其它口径（只数 source、只数 target、只数变量名）分别得
+    33 / 39 / 47，**没有一个得 43 或 33**。原数的来历已不可考 ⇒ 按「对不上就先解释」纪律，
+    以可复现的 51 / 32 为准，并在此留档订正痕迹。
 · `castSeedBaseValue`：**全仓 0 命中**（`git grep -c` 于 8a103c0e3 全树，含 packages/apps）。
   派单把它列为铸造支之一 —— 该符号在 canonical 上**不存在**（可能来自未并入分支，未追）。
 · 改动：**零产品代码**。新增文件仅本证据两件。
+
+--------------------------------------------------------------------------------
+S8 · 51 个 (类型,变量) 对逐条追消费侧（按危险度排序的结果）
+--------------------------------------------------------------------------------
+量具：`/tmp/seed-audit/read-scan.mjs`（剥注释 + 按语法位置判字段抽取，非数串出现）。
+双向金丝雀（三条全中才许下否定结论）：
+  ① `CANARY_RULES rules=55 OK` —— 已知必中的 `demandPressure` 规则抽到了；
+  ② `CANARY_NEG fake-var-in-rules=0-OK` —— 虚构变量不被抽进规则表；
+  ③ `CANARY_STRIP demandPressure: raw-only(注释)=14 code=3` —— **剥离器有鉴别力**：
+     同一串在注释里出现 14 次被抹掉、代码里 3 次被留下（缺 ③ 则「没找到」不可信）。
+消费侧金丝雀：`Order|qty` 在铸造层外 **330** 处读点 ⇒ 查法能命中。
+
+【结论 1 · 偏离读的 stateVar 名单是**封闭的 6 个**】——这就是本单病灶的全部面
+  经形态扫描（`1±x/divisor` / `×(1±…)` / `×(x/100)` 三种形状）全量列点并逐点判操作数：
+    costPressure（命中 `Order` 与 `Model` **两个**类型）· demandPressure · loadIndex ·
+    utilPressure · receivablePressure · overduePressure
+  站点：`sim/world-read.ts:303`（4 条投影规则）· `solvers/finance-world.ts:326 / 408 / 411`。
+  ⇒ **除这 6 个之外，51 对里没有任何一对被当偏离读。** 这一条是本单第 2 步的主结论。
+
+【结论 2 · 天数族 4 对是**水平读**，但读的是占位值】——新发现
+  `solvers/chain-loss.ts:375-378` 的 `SIM_DAY_STATE_VAR_BY_CARRIER` 是**字符串键查表**
+  （`Supplier:"deliveryDelay"` / `PurchaseOrder:"procurementDelay"` /
+  `CustomsClearance:"clearanceQueueDays"` / `IncomingInspection:"queueDays"`），
+  `:398-400` 把格子值**当天数**用：`deltaDays: Math.max(0, cell)`。
+  铸造档实测（`prop-scan.mjs`，金丝雀 `CANARY_POS leadDays→dueDay hits=2 OK`）：
+    · `Supplier.deliveryDelay` / `PurchaseOrder.procurementDelay` / `Supplier.procurementDelay` /
+      `MaterialBatch.procurementDelay` —— **规格派生**，公式确是**天数**
+      （`(1-onTimeRate)*100` / `arriveDay-etaDay` / `leadTime-transitDays` / `ageDays`）⇒ 口径自洽；
+    · `CustomsClearance.clearanceQueueDays` / `IncomingInspection.queueDays` —— **无规格登记、
+      无真赋值 ⇒ 走 `seed-world.ts:483` 哈希占位 `[0,100]`**，而消费侧当日数读。
+  ⇒ 这两格是「**占位值被按天读**」：量纲碰巧都是数，但 [0,100] 是哈希不是天数。
+    ⛔ 本单**不判**该补什么（可能该给规格，也可能该从 `ageDays` 一类真源接 —— 属建模判断），
+    只登记为 **B 类·口径不同**的候选，换算式需要先定「哪条真源度量清关/来料检验的等待天数」。
+    ⚠ 未起实例，**未测**这两格在 tick0 的实际读数 —— 按铁律 0.5 不写成结论。
+
+【结论 3 · 引擎读全部 33 个 source 对，一律水平读】
+  `sim/propagation.ts:1344  baseAmount = round12(coeff * drive * factor)`，`drive = sourceVal`
+  ⇒ 每条规则的源格子都被当**水平**消费（与 S2 C-2 同一条）。故「无消费端」在**引擎层不存在** ——
+  任何 source 对都至少有一个消费端。这正是 grep 字面名看不见的那一层（字符串键分发）。
+
+【结论 4 · 铸造档分布（51 对）】——**这才是本单第 3 步的完整账**
+  · **规格派生 25 对**（在 `STATE_VAR_VALUE_REFS` 登记，值由 DSL 公式算）
+  · **真赋值 3 个变量**：`Order.qty`（`randInt(rng)`）· `Order.unitPrice`（基价真 + 哈希‰抖动）·
+    `Order.leadDays`（`= dueDay`，真）—— 见 S1.4，**都不是"预设真值"**
+  · **哈希占位 23 对**（`seed-world.ts:483  round(seedHash01(id|var)*100)`，值域 [0,100]）
+  ⚠ 三档加起来 25+3+23 = 51，与规则图对数吻合（旁证：同一份规则表机器解析，非目测）。
+
+【同名不同物 —— 本批新增 2 例，判据写进每一批】
+  · `solvers/base-outlook.ts:133` 与 `solvers/sop-reschedule.ts:88`：
+    `capDaily * Math.max(0, 1 - util / 100)` 的 `util` 是 **`BASE_REGISTRY.util`**（种子常数 88=88%），
+    **不是**规则图的 `Line.utilPressure` / `Base.loadIndex`。⇒ **排除**，与本单病灶无关。
+  · （已知第 1 例：`solvers/capacity.ts:765` 的 `demandDelta` 是求解器入参，非 `Order.demandDelta`。）
+
+【域外同形 · 登记不计入 51 对】
+  `planviews.ts:376  actual = round(planned * (1 + devPct / 100), 1)`，
+  `devPct = pv.ltaDevPct?.[i] ?? …((hashString(shipId) % 9) - 4)` —— **哈希兜底被当偏离百分比读**，
+  形态与本单病灶同族，但该量**不在规则图 51 对内**（视图局部参数）。登记备查，不计入本单结论。
+
+【未判（⛔ 不按名推断）】
+  U-5 `Model|backlogPriceTop` / `Model|backlogQtyTop` 等 23 对哈希占位格，**是否经字符串键分发
+      被某个 solver 消费**，本单只做到「铸造层外无字面名读点」——
+      ⛔ **「无字面名读点」不度量「无消费端」**（结论 3 已证有字符串键分发这一层）。
+      逐对判定需要把每个 solver 的取数入口都读一遍，**本单时间/范围未覆盖，如实标未追到底**。
+  U-6 tick0 实际读数（`measuredCells` / `derivedCells` / 两档各自格数）**需起实例**，本单禁起实例，未测。

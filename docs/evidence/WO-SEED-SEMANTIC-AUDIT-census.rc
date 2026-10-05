@@ -34,4 +34,29 @@ apps/datacore/src/solvers/finance-world.ts:207:  const divisor = FINANCE_WORLD_P
 
 OVERALL_RC=0   (=0 表示上述每条命令本身都 rc=0)
 NOTE: [8] 的 rc=1 是 git grep 的「无匹配」约定，属预期，不计入 OVERALL_RC。
+
+-- [11..16] S8 新增断言的复算（同上纪律：rc 取自被捕获命令本身）--
+[11] read-scan.mjs 三条金丝雀        rc=0
+     CANARY_RULES rules=55 OK
+     CANARY_NEG fake-var-in-rules=0-OK
+     CANARY_STRIP demandPressure: raw-only(注释)=14 code=3 (剥离器有鉴别力 OK)
+     
+[12] prop-scan.mjs 双向金丝雀        rc=0
+     SCAN_FILES=7
+     MASK_SANITY battery.ts masked=619/7701 | L3610(dict)=masked-OK | L6410(real assign)=unmasked-OK
+     CANARY_POS leadDays→dueDay hits=2 OK
+     CANARY_NEG dict-line battery.ts:3610 hits=0 OK
+     HAS-ASSIGN	leadDays	battery.ts:6414:leadDays: dueDay, | battery.ts:6477:leadDays: dueDay,
+     NO-ASSIGN	demandPressure	
+[13] 天数族字符串键查表存在          rc=0
+     apps/datacore/src/solvers/chain-loss.ts:183:    /** 叠加所用的状态量裸键（天数族，出处见 `SIM_DAY_STATE_VAR_BY_CARRIER`）。 */
+     apps/datacore/src/solvers/chain-loss.ts:374:export const SIM_DAY_STATE_VAR_BY_CARRIER: Readonly<Record<string, string>> = Object.freeze({
+[14] S4-1 订正所据的 :481 原文        rc=0
+     apps/datacore/src/sim/seed-world.ts:481:          if (stateVarValueRef(typeKey, v) !== undefined) measuredRefVarKeys.add(`${typeKey}.${v}`);
+[15] S4-1 订正所据的 :559 原文        rc=0
+     apps/datacore/src/sim/seed-world.ts:559:          : `种子世界的 tick0 读数分两种：${measuredCells} 格是实测（状态变量名就是对象上的属性名，` +
+[16] 规则图计数（订正 43/33 为 51/32）  rc=0
+     rules=55 src=33 tgt=39 union=51 types=32
+
+OVERALL_RC=0   （[8] 的 rc=1 是 git grep「无匹配」约定，属预期，不计入）
 CAPTURED_RC=0
