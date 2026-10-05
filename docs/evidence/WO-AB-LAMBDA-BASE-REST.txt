@@ -1,0 +1,10 @@
+=== 8.09 的真身 · 手算对照 ===
+spec-base-synthesis.ts:98  bucket[sv] = round12(cur + lambda * (base - rest))
+  base = baseRow[sv] = 规格值 90.384615（规格 creditUsedRatio*100 产 LEVEL）
+  rest = restPoint = 0（域表：压力族静息态）
+  lambda 反推 = 5.859688 / 90.384615 = 0.064831
+  实测 t2 偏离 = -5.859688   ← 与 lambda*(base-rest) 吻合到 3 位有效数字
+  同拍传导边搬运 = 0.002916903406（占 0.05%）
+
+⇒ 8.09 不是未知写入方，就是这一行；收敛形状 = 每拍按 lambda 向 base 拉的几何级数
+⇒ 语义声明 DEVIATION ⇒ base 必须取 restPoint ⇒ base-rest≡0 ⇒ 该项自动归零
