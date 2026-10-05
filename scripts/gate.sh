@@ -104,7 +104,7 @@ preflight() {
   # 负金丝雀：一个**必然存在**的路径若也报缺，说明判据本身坏了（如 root 解析错），
   # 那时同样报 RC=2 —— 「我没找到」与「它不存在」是两个命题。
   if [ ! -f "$root/package.json" ]; then
-    echo "⛔ 前置自证失败：连 package.json 都找不到（root=$root）⇒ **本脚本的路径解析坏了**，不是仓库缺东西。"
+    echo "⛔ 前置自证失败：连 package.json 都找不到（root=${root}）⇒ **本脚本的路径解析坏了**，不是仓库缺东西。"
     echo "   本次结论作废。RC=2"
     exit 2
   fi

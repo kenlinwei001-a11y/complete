@@ -335,7 +335,7 @@ AGENTS="${1:-}"
 if [ -z "$AGENTS" ]; then
   echo "   在跑 agent：**未传入 ⇒ 未评估**（用法：$0 <在跑agent数>；该数只有调度方的 agent 列表能给准）"
 elif ! [ "$AGENTS" -eq "$AGENTS" ] 2>/dev/null; then
-  echo "⛔ 在跑 agent 数「$AGENTS」不是整数 ⇒ 工具用错了，本次结论作废" >&2; exit 2
+  echo "⛔ 在跑 agent 数「${AGENTS}」不是整数 ⇒ 工具用错了，本次结论作废" >&2; exit 2
 else
   echo "   在跑 agent：${AGENTS}（调用方传入）"
 fi
@@ -350,7 +350,7 @@ fi
 
 if false; then :
 elif ! [ "$QUEUE" -eq "$QUEUE" ] 2>/dev/null; then
-  echo "⛔ 待派队列长度「$QUEUE」不是整数 ⇒ 工具用错了，本次结论作废" >&2
+  echo "⛔ 待派队列长度「${QUEUE}」不是整数 ⇒ 工具用错了，本次结论作废" >&2
   exit 2
 elif [ "$QUEUE" -gt 0 ] && [ "$LOAD_INT" -lt "$CORES" ]; then
   echo "🔴 **欠派 ${QUEUE} 张**：机器闲着（载荷 ${LOAD} < ${CORES} 核）而待派队列非空。"
@@ -385,8 +385,8 @@ if [ -d "$MAIN_WT/.git" ] || [ -f "$MAIN_WT/.git" ]; then
   STRAY_BR="$(git -C "$MAIN_WT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
   HERE="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
   if [ "$STRAY" -gt 0 ] && [ "$HERE" != "$MAIN_WT" ]; then
-    echo "⚠️  **可能改错副本**：主工作目录 $MAIN_WT（分支 $STRAY_BR）有 ${STRAY} 处未提交改动，"
-    echo "    而你此刻的 cwd 在 $HERE。两处各有一份同名脚本 —— 用绝对路径编辑 + 相对路径执行时，"
+    echo "⚠️  **可能改错副本**：主工作目录 ${MAIN_WT}（分支 ${STRAY_BR}）有 ${STRAY} 处未提交改动，"
+    echo "    而你此刻的 cwd 在 ${HERE}。两处各有一份同名脚本 —— 用绝对路径编辑 + 相对路径执行时，"
     echo "    会出现「改的是 A、跑的是 B」，表现为「我改完了它还报同样的错」。"
     echo "    复核一句话：ls -i <主目录>/<文件> <当前目录>/<文件>，inode 不同就是两个文件。"
     git -C "$MAIN_WT" status --porcelain 2>/dev/null | head -5 | sed 's/^/      /'
