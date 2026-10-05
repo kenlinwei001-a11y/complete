@@ -3811,13 +3811,23 @@ export const STATE_VAR_DOMAINS: Record<string, StateVarDomain> = Object.fromEntr
     // 压力 / 风险 / 指数 / 负载族 —— 出处 ①②，静息点 = 下界 0。
     // ⚠ `blockedPressure` 2026-09-17 补登记（WO-SIM-DOMAIN-DECLARE）：它是全仓唯一
     //   "入边≠0 且 出边≠0" 的未声明积分器，理由与实测四数见上方文档注释。
-    "blockedPressure",
-    "demandPressure", "demandLoad", "loadIndex", "utilPressure", "queuePressure",
-    "shortageRisk", "supplyRisk", "expeditePressure", "priceShock", "costPressure",
-    // ⛔ `changeoverPressure` / `turnoverPressure` / `splitPressure` 2026-10-06 **移出本名单**
-    //   （WO-DERIV-BACKFILL）—— 理由与它们在下方单列声明里的出处，见那一段。
-    "receivablePressure", "overduePressure", "releasePressure",
-    "feedPressure", "defectPressure", "switchPressure", "gapPressure",
+    "demandPressure", "utilPressure", "queuePressure",
+    "shortageRisk", "supplyRisk", "expeditePressure", "priceShock",
+    // ⛔ 2026-10-06（WO-DERIV-BACKFILL）**移出本名单**共 9 格，分成两批，理由与出处见下方单列声明段：
+    //   · 第 1 批 3 格（changeoverPressure / turnoverPressure / splitPressure）：
+    //     我这一单新加规格时被这串**名字**扫进来，声明的量纲与真量纲不符（分钟 / 天 / %）。
+    //   · 第 2 批 6 格（loadIndex / demandLoad / costPressure / receivablePressure /
+    //     feedPressure / blockedPressure）：**原有**，`max: null` 收口前实测 **6/6 全部有对象越界**
+    //     （tick0 越界普查，共 9 格越界里占 6 格）。
+    //   ── 两批的**共同形态**（这才是判据，不是"名字里带不带 Pressure"）─────────────────
+    //   式子的**分母是产能 / 额度**，不是占比的分母：
+    //     件 ÷ 日产能、单 ÷ 产能、元 ÷ 授信额度、件 ÷ 在制量…
+    //   ⇒ 分子超过分母是**业务上真实存在的状态**（超负荷接单 / 应收超授信 / 积压超一日产能），
+    //     「>100 即病」在这里不成立。而本名单原先一律盖 `max: 100` ⇒ 把真实状态夹成 100。
+    //   ⚠ 与本名单**其余格的区别**：那些是 `utilization × 100` / `(1−onTimeRate) × 100` 这类
+    //     **占比式**，分母天生就是上限（≤1）⇒ [0,100] 是它们的真量纲，不动。
+    "overduePressure", "releasePressure",
+    "defectPressure", "switchPressure", "gapPressure",
     "reviewPressure", "loadPressure", "windowSqueeze", "drawdownPressure",
     "inboundExpeditePressure", "transferPressure", "promiseRisk",
     "deliveryHoldRisk", "collectionPressure", "orderChurn", "equipmentFailure",
@@ -3891,6 +3901,101 @@ STATE_VAR_DOMAINS.splitPressure = {
     "⛔ 不声明上界：罚金率 >100% 是**业务上可能出现**的（累计罚金），拍一个 100 就是拍脑袋定。",
 };
 
+// ── WO-DERIV-BACKFILL · 第 2 批 6 格：分母是**产能 / 额度**，>100 是真实状态 ────────────────────
+//
+// 🔴 病灶（2026-10-06 实测，非推断）：这 6 格原名在压力族名单里 ⇒ 一律盖 `max: 100`。
+//   而它们的式子分母是**产能或额度**，分子是**量**，比值天生无上界。实测逐格（`SEED_DEMO=1` 真库，
+//   源字段重算与物化值**逐位相符**，见 `docs/evidence/wo-deriv-backfill-9cells-probe2.txt`）：
+//     · `Base.loadIndex`           承诺量 ÷ 日产能 ×100     **74.18–552.02**  13/13 相符  越界 10/13
+//     · `Line.blockedPressure`     工单计划量 ÷ 线日产能 ×100 **27.72–182.73**  130/130 相符 越界 49/130
+//     · `WIPLot.feedPressure`      计划投料 ÷ 本批在制 ×100  **111.1–111.2**   260/260 相符 越界 260/260
+//     · `Model.demandLoad`         在手订单数 ÷ 产能 ×100    **23.57–138**     6/6 相符    越界 1/6
+//     · `Customer.receivablePressure` 应收 ÷ 授信额度 ×100   **6.40–125.59**   20/20 相符  越界 1/20
+//     · `Order.costPressure`       授信占用率 ×100           **40–115**        500/500 相符 越界 16/150
+//
+// ⚠ 后果不是"读数难看一档"，是**传导被夹断**：`saturateToDomain` 在深区按 `1/(1+u)²` 塌导数 ⇒
+//   源上加扰动、下游差被压掉几个数量级，表现出来就是「输出与输入无关」。实测同族一例：
+//   13 个 Base 里 10 个 loadIndex > 100（落点天生被夹在 100）⇒ 该落点的下游 **差 0 格**；
+//   换未饱和的落点立刻动（6.09 / 5.33）。
+//
+// ── 为什么是 `max: null`（与第 1 批 3 格同一处置、同一理由）──────────────────────────────
+//   · ⛔ 不许删声明：没声明的状态量**不夹不衰减** = 纯积分器（实测空转 6 拍 5290 格越界）。
+//   · ⛔ 不许拍上界：`loadIndex` 的真实上界取决于单个基地能超接多少单，没有写得出来处的数。
+//   · ✅ `max: null` = 契约已支持的**无界声明**；`min: 0` + `restPoint: 0` + 衰减 λ 全保留，
+//     稳态仍是 `rest + inflow/λ`（有限），只是**不再对"业务上没有上界的量"编一个上界**。
+//   ⚠ 每一格的上界**真的拍不出来**才是理由；本名单其余格（占比式，分母天生 ≤1）不适用。
+STATE_VAR_DOMAINS.loadIndex = {
+  min: 0, max: null, restPoint: 0,
+  decayRef: { ruleKey: STATE_DECAY_RULE_KEY, paramKey: STATE_DECAY_PARAM_KEY },
+  unit: "%（承诺量 ÷ 基地日产能）",
+  source:
+    "量纲出处 = 对象自有属性 `Base.committedQty` ÷ (`formationCapDaily` + `agingCapDaily`) × 100" +
+    "（源三字段实测 116,377–838,896 / 37,924–138,973 / 37,924–138,973 件，n=13）；" +
+    "业务口径 = 规格 `base_load_index` 原文「承诺量占日产能的百分比，>100 = 超负荷接单」。" +
+    "⛔ 不声明上界：单个基地能超接多少单取决于排产策略，没有写得出来处的数。",
+};
+STATE_VAR_DOMAINS.demandLoad = {
+  min: 0, max: null, restPoint: 0,
+  decayRef: { ruleKey: STATE_DECAY_RULE_KEY, paramKey: STATE_DECAY_PARAM_KEY },
+  unit: "%（在手订单数 ÷ 产能）",
+  source:
+    "量纲出处 = `Model.orderCount` ÷ `Model.capacity` × 100（源实测 68–116 单 / 50–314，n=6）；" +
+    "业务口径 = 规格 `model_demand_load` 原文「需求负载 = 在手订单数 / 产能 × 100" +
+    "（**>100 = 订单超产能 = 超负荷**）」—— 该注释自己就写明了 >100 是真实状态。" +
+    "⛔ 不声明上界：超接倍数无出处。",
+};
+STATE_VAR_DOMAINS.costPressure = {
+  min: 0, max: null, restPoint: 0,
+  decayRef: { ruleKey: STATE_DECAY_RULE_KEY, paramKey: STATE_DECAY_PARAM_KEY },
+  unit: "%（Order=授信占用率；Model=单位成本 ÷ 单位售价）",
+  source:
+    "⚠ **本键被两个类型共用，且两型口径不同**（`STATE_VAR_DOMAINS` 按裸变量名做键 ⇒ 只能共用一条声明）：" +
+    "`Order.costPressure` = `creditUsedRatio` × 100（规格 `order_cost_pressure` 原文" +
+    "「仓规：**超 100% 即阻断**——超信用额度的新单拒接」，即 >100 是本格的**业务触发条件**，实测 40–115）；" +
+    "`Model.costPressure` = `unitCost` × 100 ÷ `unitPrice`（规格 `model_cost_pressure`，实测 2.47–3.89）。" +
+    "两型都**无上界**：授信占用可超 100%，成本占售价比同样可超 100%（亏本出货）⇒ `max: null` 对两型都成立。" +
+    "⛔ 不声明上界（同上）。",
+};
+STATE_VAR_DOMAINS.receivablePressure = {
+  min: 0, max: null, restPoint: 0,
+  decayRef: { ruleKey: STATE_DECAY_RULE_KEY, paramKey: STATE_DECAY_PARAM_KEY },
+  unit: "%（应收账款 ÷ 授信额度）",
+  source:
+    "量纲出处 = `Customer.receivables` ÷ `Customer.creditLimit` × 100" +
+    "（源实测 916–7,916 元 / 6,250–26,042 元，n=20）；" +
+    "业务口径 = 规格 `customer_receivable_pressure` 原文「应收压力 = 应收账款占授信额度的百分比」，" +
+    "且该规格明写「⛔ 不 CLAMP：…超界由引擎按域夹（回执点名），式子只算**原始百分比**」——" +
+    "**式子的设计意图就是把越界报出来**，而声明把它夹掉，两处打架。" +
+    "⛔ 不声明上界：应收可以超授信额度多少没有出处。",
+};
+STATE_VAR_DOMAINS.feedPressure = {
+  min: 0, max: null, restPoint: 0,
+  decayRef: { ruleKey: STATE_DECAY_RULE_KEY, paramKey: STATE_DECAY_PARAM_KEY },
+  unit: "%（上游工单计划投料量 ÷ 本批在制量）",
+  source:
+    "量纲出处 = Σ`WorkOrder.qtyPlanned`(经 `work_order_yields_wip_lot`) ÷ `WIPLot.qty` × 100" +
+    "（源实测 1,431–5,674 件 / 1,287–5,106 件，n=260，260/260 逐位相符）；" +
+    "业务口径 = 规格 `wiplot_feed_pressure` 原文「投料压力 = 计划投料 / 本批在制数 × 100」。" +
+    "⚠ 实测比值 `Σ/qty ∈ [1.11111, 1.11189]`（220 个不同值挤在 8e-4 带宽内）⇒ 本格 tick0 读数" +
+    "近乎常数 111.1，**是种子数据的性质（qtyPlanned 与 qty 近成比例），不是式子病**。" +
+    "⛔ 不声明上界（同上）。",
+};
+STATE_VAR_DOMAINS.blockedPressure = {
+  min: 0, max: null, restPoint: 0,
+  decayRef: { ruleKey: STATE_DECAY_RULE_KEY, paramKey: STATE_DECAY_PARAM_KEY },
+  unit: "%（线上工单计划量 ÷ 产线日产能）",
+  source:
+    "量纲出处 = Σ`WorkOrder.qtyPlanned`(经 `line_runs_work_order`) ÷ `Line.max_capacity_day` × 100" +
+    "（源实测 Σ 8,000–9,727 件 ÷ 4,608–16,896，n=130，130/130 逐位相符）；" +
+    "业务口径 = 规格 `line_blocked_pressure` 原文「受阻压力 = 线上工单计划量合计 ÷ 线最大日产能 × 100" +
+    "（= 积压天数占比；**件÷件×100 量纲自洽，>100 = 积压超一日产能**，同 loadIndex 74–552 先例" +
+    "「如实」不夹）」。⚠ 本条**订正 2026-09-17 的裁决**：那次判「名字自报 0–100 压力指数 ⇒" +
+    "无界累积到 945 即病」，前提是**当时还没有这条规格**（格子是裸积分器，945 是发散值）。" +
+    "规格落位后 tick0 基值就是 27.72–182.73，`max: 100` 拦的已不是发散，而是**真实基值**。" +
+    "发散本身由 `min: 0` + `restPoint: 0` + λ 挡住（保留），不靠上界。" +
+    "⛔ 不声明上界：一条线能积压几日产能没有出处。",
+};
+
 // 唯一带方向的量纲，单列（静息点 0 ≠ 下界）。
 STATE_VAR_DOMAINS.forecastBias = {
   min: -100, max: 100, restPoint: 0,
@@ -3946,18 +4051,9 @@ STATE_VAR_DOMAINS.qualificationQueue = {
     "WO-PROP-REVIEW-V2 形态② · 认证周期 certHours med=134h÷24=5.58 天（n=18，2.1–8.0）" +
     "⇒ λ=1−0.25^(1/5.58)≈0.22",
 };
-// 评审原文：「blockedPressure 名字是 0–100 压力指数，却无界累积到 945」⇒ 自报量纲就是出处，
-// 归压力族 [0,100] + 共享 pressureDecayPerTick（不开新参数）。
-// ⚠ 实测 Line 对象上本键真值 27.72–182.73（n=130），**种子数据已有超界值**：引擎域照落，
-// 超界真值在 sim-real-cells 臂2 EXCEPTIONS 归档点名；种子生成式是否收口交仓主（动种子 = 动 hash，不在本单）。
-STATE_VAR_DOMAINS.blockedPressure = {
-  min: 0, max: 100, restPoint: 0,
-  decayRef: { ruleKey: STATE_DECAY_RULE_KEY, paramKey: STATE_DECAY_PARAM_KEY },
-  unit: "0–100 压力指数",
-  source:
-    `${PRESSURE_DOMAIN_SOURCE}；WO-PROP-REVIEW-V2 形态② 裁决：名字自报 0–100 压力指数 ⇒ 无界累积到 945 即病，` +
-    "归压力族收口（⚠ 本键走真值支：Line 对象上有同名属性，与上面 31 个派生支成员的出处差这一句）",
-};
+// ⛔ `blockedPressure` 的声明已上移到「第 2 批 6 格」那一段（2026-10-06 WO-DERIV-BACKFILL）。
+//   原先在这里的 `[0, 100]` 版本**已删除**，理由（含对 2026-09-17 裁决的订正）见那段头注。
+//   ⚠ 别把它加回来：本文件是**顺序赋值**，放在后面的会**静默覆盖**前面的。
 
 /**
  * 状态量声明取值域查表（**全平台唯一入口**；未登记 → `undefined` = 不夹不衰减 + 回执点名）。
