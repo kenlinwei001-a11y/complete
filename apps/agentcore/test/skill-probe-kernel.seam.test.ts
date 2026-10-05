@@ -74,7 +74,16 @@ function queueProbeTurns(t: TestApp): void {
   });
 }
 
-/** 真跑一次探针（真 SkillProbeRunner + 真引擎），返回 runner 结果与两次落库读回。 */
+/**
+ * 真跑一次探针（真 SkillProbeRunner + 真引擎），返回 runner 结果与两个落库读回。
+ *
+ * ⚠ 本函数**不**读 `repos.agentRuns`：探针走的是 `engine.runRegisteredAgent` **直调**，
+ * 而顶层 run 的落库点在编排层（`orchestrator.ts` 的 runPathB / runRolePathB / runSceneAgent，
+ * `engine.ts` 那处 `agentRuns.insert` 只覆盖 FANOUT 子 run）——直调绕过了编排层，
+ * 故探针这次 run **不落 `agentRuns` 表**（实测 `listByAgent` 读回 0 条）。
+ * 「真走了哪条路」改由 `runPersistedAgentOnce` 从引擎**返回的** `result.run.kernel` 读
+ * ——那也是 `propose-candidates.ts` 用的同一口径（「读实际发生的，不预测」）。
+ */
 async function runProbeOnce(t: TestApp) {
   await t.repos.skills.insert(skillFixture());
   await t.repos.evalCases.upsert(evalCaseFixture());
@@ -85,9 +94,39 @@ async function runProbeOnce(t: TestApp) {
 
   const probeAgent = await t.repos.agents.get(PROBE_AGENT_ID);
   const twinAgent = await t.repos.agents.get(TWIN_AGENT_ID);
-  // agentKey = `probe_${skill.key}`（探针）/ `probe_twin_${skill.key}`（twin）——见 skill-probe.ts 两个 desired 的 key 字段。
-  const probeRuns = await t.repos.agentRuns.listByAgent(TENANT, `probe_${SKILL_KEY}`);
-  return { result, probeAgent, twinAgent, probeRuns };
+  return { result, probeAgent, twinAgent };
+}
+
+/**
+ * 把**落库读回的那份**探针 agent 原样喂给真引擎，返回 run 与其工具记账。
+ * 与 `skill-probe.ts` 的 `runAgent` 同形（同 `engine.runRegisteredAgent` 实参形状、
+ * 同 `newId("task")` 先插 task、同 BudgetTracker 缺省），只是把返回的 run 留在本函数里可断言。
+ */
+async function runPersistedAgentOnce(t: TestApp, agent: AgentDefinition, suffix: string) {
+  const taskId = `task_probe_kernel_${suffix}`;
+  await t.repos.tasks.insert({
+    id: taskId,
+    tenantId: TENANT,
+    userId: "user-probe",
+    packageId: PKG,
+    conversationId: taskId,
+    query: "这个技能怎么用",
+    context: {},
+    status: "ROUTING",
+    clarificationRounds: 0,
+    createdAt: new Date().toISOString(),
+  });
+  const run = await t.deps.engine.runRegisteredAgent({
+    taskId,
+    agentId: agent.id,
+    version: agent.version,
+    prompt: "这个技能怎么用",
+    ctx: { tenantId: TENANT, userId: "user-probe", roles: ["catalog_admin"] },
+    nesting: { callChain: [], budget: new BudgetTracker({ maxIterations: 8, maxToolCalls: 12 }) },
+    emit: async () => {},
+  });
+  const toolNames = (await t.repos.toolCalls.listByTask(taskId)).map((r) => r.toolName);
+  return { loopResult: run, toolNames };
 }
 
 /** 引擎级直调（绕过探针封装），用于「字段有无」的 A/B——照 `agent-run-attribution.seam.test.ts` 的 runEngineOnce。 */
@@ -171,7 +210,7 @@ describe("WO-SKILL-PROBE-KERNEL · 探针内核不得吃 env 兜底", () => {
   it("① DSH_HARNESS=1 下真跑探针：kernel 是具体值 NATIVE，且真走的那条路也是 NATIVE", { timeout: 60_000 }, async () => {
     process.env.DSH_HARNESS = "1"; // 评测进程若开着 POC 全局开关——本用例就是那个环境
     const t = await createTestApp();
-    const { result, probeAgent, twinAgent, probeRuns } = await runProbeOnce(t);
+    const { result, probeAgent, twinAgent } = await runProbeOnce(t);
 
     // —— 值校验：字段是**具体值**，不是 undefined（undefined 才会掉进 env 兜底）——
     expect(probeAgent).toBeTruthy();
@@ -179,32 +218,34 @@ describe("WO-SKILL-PROBE-KERNEL · 探针内核不得吃 env 兜底", () => {
     expect(twinAgent).toBeTruthy();
     expect(twinAgent!.kernel).toBe("NATIVE");
 
-    // —— 真跑了：1 个用例 ⇒ 恰好 1 次探针 run（无 behaviorGain ⇒ 不跑 twin）——
+    // —— 探针真的跑到了用例（1 个用例 ⇒ total 1）——
     expect(result.total).toBe(1);
-    expect(probeRuns.length).toBe(1);
 
-    // —— 判据落在「真的走了哪条路」上：run.kernel 是引擎**跑完之后**标的那个字段 ——
-    // （出处：`agent/loop.ts` finishRun 回填 `kernel: "NATIVE"`；dsh 臂由 engine 填 "EXTERNAL"。
-    //  读端先例与语义见 `sim/propose-candidates.ts`：「读实际发生的，不预测」。）
-    // env=1 而这里仍是 NATIVE ⇒ 显式钉压过 env 兜底，探针没被翻走。
-    expect(probeRuns[0]!.kernel).toBe("NATIVE");
+    // —— 判据落在「真的走了哪条路」上：把**落库读回的那份**探针 agent 原样喂回真引擎，
+    //    读引擎跑完之后标的 `run.kernel`（出处：`agent/loop.ts` finishRun 回填 "NATIVE"；
+    //    dsh 臂由 engine 填 "EXTERNAL"）。env=1 而这里仍是 NATIVE ⇒ 显式钉压过 env 兜底。
+    queueProbeTurns(t);
+    const { loopResult, toolNames } = await runPersistedAgentOnce(t, probeAgent!, "env1");
+    expect(loopResult.run.kernel).toBe("NATIVE");
 
-    // —— 探针声明的工具面在真跑的那条路上真的存在：native 加载器名被循环接受并记账 ——
+    // —— 且探针声明的 native 加载器面在那条路上**真的被执行并记账** ——
     // （若被翻到 dsh 臂，真名是 `skill`，这个 native 名不会出现在工具记账里。）
-    expect(result.results[0]!.observed.toolNames).toContain(SKILL_LOADER_TOOL.native);
+    expect(toolNames).toContain(SKILL_LOADER_TOOL.native);
   });
 
-  it("② 同探针 env 关（缺省休眠）⇒ 两读数逐字节相同（钉住不改变缺省行为）", { timeout: 60_000 }, async () => {
+  it("② 同探针 env 关（缺省休眠）⇒ 逐字节相同（钉住不改变缺省行为）", { timeout: 60_000 }, async () => {
     delete process.env.DSH_HARNESS; // 出货缺省：docker-compose `DSH_HARNESS: ${DSH_HARNESS:-0}`
     const t = await createTestApp();
-    const { result, probeAgent, twinAgent, probeRuns } = await runProbeOnce(t);
+    const { result, probeAgent, twinAgent } = await runProbeOnce(t);
 
     expect(probeAgent!.kernel).toBe("NATIVE");
     expect(twinAgent!.kernel).toBe("NATIVE");
     expect(result.total).toBe(1);
-    expect(probeRuns.length).toBe(1);
-    expect(probeRuns[0]!.kernel).toBe("NATIVE");
-    expect(result.results[0]!.observed.toolNames).toContain(SKILL_LOADER_TOOL.native);
+
+    queueProbeTurns(t);
+    const { loopResult, toolNames } = await runPersistedAgentOnce(t, probeAgent!, "env0");
+    expect(loopResult.run.kernel).toBe("NATIVE");
+    expect(toolNames).toContain(SKILL_LOADER_TOOL.native);
   });
 
   it("③ 对照实验：同 env=1、同工具面，「kernel 字段有无」决定走哪条路（可预言的两读数）", { timeout: 60_000 }, async () => {
