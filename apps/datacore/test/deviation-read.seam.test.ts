@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -153,6 +154,26 @@ const project = async (t: TestApp, sid: string) => {
 
 const lineOf = (d: any, role: string) => (d.lines as any[]).find((l) => l.role === role);
 
+/**
+ * `WorldSnapshot.state` 的**逐格指纹**（面 A/B 读的就是它）。
+ * 按 id / stateVar 排序后序列化再哈希 —— 这才是「逐字节」：对象键序不稳定，直接 `JSON.stringify` 会假红/假绿。
+ */
+async function worldCells(t: TestApp, sid: string): Promise<{ cells: number; digest: string }> {
+  const r = await t.app.inject({ method: "GET", url: `/a/v1/sim/sessions/${sid}/world`, headers: ADMIN });
+  expect(r.statusCode, `读世界态失败：${r.body}`).toBe(200);
+  const j = r.json() as { state: Record<string, Record<string, number>> };
+  const ids = Object.keys(j.state).sort();
+  let cells = 0;
+  const canon = JSON.stringify(
+    ids.map((id) => {
+      const vars = Object.entries(j.state[id] ?? {}).sort((a, b) => (a[0] < b[0] ? -1 : 1));
+      cells += vars.length;
+      return [id, vars];
+    }),
+  );
+  return { cells, digest: createHash("sha256").update(canon).digest("hex").slice(0, 16) };
+}
+
 describe("落点 (b) · 消费端按率读口吃「偏离」", () => {
   it("§1 名单封闭：真读点 ⊆ 声明名单 ⊆ 已声明域（双向 + 双向金丝雀）", () => {
     const declared = Object.keys(stateVarDomains());
@@ -203,7 +224,19 @@ describe("落点 (b) · 消费端按率读口吃「偏离」", () => {
 
     // ── 臂 A：**零扰动**（不推任何 tick，世界态 = 开局快照）────────────────────────
     const z = await newSession(t);
+    /**
+     * 面 A/B 逐字节不变性（终裁强判据）：金额投影是**只读**的 ——
+     * 它跑完不许动 `WorldSnapshot.state` 里任何一个格子。
+     * 判据落在**格子值**上（不是"有没有报错"）：同一会话投影前后各取一次全量指纹，必须逐字节相等。
+     */
+    const before = await worldCells(t, z);
     const zd = await project(t, z);
+    const after = await worldCells(t, z);
+    console.log(`§2 世界态逐字节不变：cells=${before.cells} sha256=${before.digest} → ${after.digest}`);
+    expect(after.digest, "金额投影必须是只读的：跑完 WorldSnapshot.state 逐字节不变（面 A/B 靠它）").toBe(
+      before.digest,
+    );
+    expect(before.cells, "金丝雀：世界态非空（空世界这条断言恒真，等于没测）").toBeGreaterThan(1000);
     const zc = lineOf(zd, "COST");
     const zm = lineOf(zd, "MARGIN");
     const zr = lineOf(zd, "REVENUE");
