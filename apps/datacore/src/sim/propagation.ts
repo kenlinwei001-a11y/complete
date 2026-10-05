@@ -327,6 +327,38 @@ export interface UnresolvedPairWeight {
   detail: string;
 }
 
+/**
+ * 一条**算不出源侧静息点**的流（诚实缺席出口，照 `UnresolvedCadenceGate` 范式）。
+ *
+ * WO-RESTPOINT-SOURCE-B：传导核的驱动量是「源读数 − 源侧静息点」，
+ * 而静息点只有两个来路：① 该源格在 `baseSnapshot`（这个世界 tick0 的基值；零扰动世界里它恒定于该值）
+ * ② 该状态量在域册子里声明的 `restPoint`（无基值格用它兜底）。
+ * 两处都没有 ⇒ 本条边的驱动量**没有任何参照**。
+ *
+ * 🔴 **为什么这里不能默认 0**：`drive = 源读数 − 0 = 源读数` 看上去"和旧行为一样"，
+ *    但它把「我不知道这个源的静息点」**装扮成**「我知道它是 0」——
+ *    于是一条**本不该动**的边照样按整值往下游灌（实测形态：`Customer.receivablePressure`
+ *    被一个只动了 8.6% 的源推着三拍翻了 4 倍）。0 在这里不是一个"保守的默认值"，
+ *    它是一个**具体的断言**，且是错的断言。故：算不出就点名，绝不替它编一个数。
+ *
+ * ⚠ 本清单**只点名、不改动力学**（缺参照时该边仍按整值直读 = 与本单引入前逐字节相同）。
+ *   为什么不照 `unresolvedWeights` 那样"本条流本 tick 不传导"：那会牵动**全部不传基值的调用点**
+ *   （本仓 20+ 处接缝测试按位置传 9~10 个实参）⇒ 那些世界的图会整片变暗，
+ *   且会把 `sim-root-procurement.seam.test.ts` 立下的根场景判据弄红。
+ *   让"缺参照"可见、可数、可对账，是本单能给的诚实最大集；把世界冻住不是。
+ */
+export interface UnresolvedRestPoint {
+  ruleKey: string;
+  /** 源侧状态量（本条边读的那个）。 */
+  sourceStateVar: string;
+  /** 机器可读原因：`baseSnapshot` 与域册子都没有这个源格的静息值。 */
+  reason: "NO_REFERENCE";
+  /** 本拍因此**没有做静息点归一**的源实例数（本规则源实例总数 = 这个数 ⇒ 整条边都没归一）。 */
+  affectedSourceObjects: number;
+  /** 说人话：为什么这条边的驱动量没有参照、以及它本拍按什么口径在传。 */
+  detail: string;
+}
+
 /** 浮点固定精度（避免遍历序导致的尾差，R6 字节一致）。 */
 const PRECISION = 1e12;
 export function round12(n: number): number {
@@ -907,6 +939,27 @@ export function reachHopsToOrder(args: {
   return { kind: "unreachable", visited: seen.size };
 }
 
+/**
+ * 源侧静息点（WO-RESTPOINT-SOURCE-B）：该源格**在这个世界里的静息值**。
+ *
+ * 次序即语义（⛔ 不许颠倒，更不许 `?? 0`）：
+ *   ① `baseSnapshot[objectId][stateVar]` —— 这个世界 tick0 的基值。零扰动世界里该格恒定于它
+ *      （真赋值 / 规格派生 / 哈希占位三档全部写在 `baseSnapshot` 里），故它就是这一格的静息值。
+ *      ⚠ 哈希占位格的静息值是**铸造值**，不是域册子里的常数 —— 减错对象这条边就等于没修。
+ *   ② `domains[stateVar]?.restPoint` —— 无基值格（合成世界 / 探针世界）的兜底。
+ *   ③ 两处都没有 ⇒ 返回 `undefined`。调用方**必须**把它显式点名（`unresolvedRestPoints`），
+ *      并按"不归一的整值直读"处理 —— **绝不**当作 0（那是把未知断言成已知，见 `UnresolvedRestPoint`）。
+ */
+function restReference(
+  baseSnapshot: TickState,
+  domains: StateVarDomainLookup,
+  objectId: string,
+  stateVar: string,
+): number | undefined {
+  const base = baseSnapshot[objectId]?.[stateVar];
+  if (typeof base === "number") return base;
+  return domains[stateVar]?.restPoint;
+}
 
 export function propagateTick(
   graph: PropagationGraph,
@@ -931,12 +984,23 @@ export function propagateTick(
   // 故调用方要把上一拍出口的 `perturbationAttribution` 原样喂回来；喂不了（如跨请求续跑）
   // 就必须让消费方看得见「从哪一拍起算」——引擎出口的 `fromTick` 与调用方的推进起点同尺。
   priorAttribution: PerturbationAttributionJSON | null = null,
+  // ⚠ 第 12 位（WO-RESTPOINT-SOURCE-B 收编）。**次序是接口的一部分**，新参一律排在最后一位。
+  // 收编留痕：本条在原分支上占第 11 位，与 WO-PERT-ATTRIBUTION 的第 11 位**撞位**；
+  // canonical 的规矩是「新参一律往后加，⛔ 不许插队」⇒ 本条退到第 12 位，全部调用点据此对齐。
+  //
+  // 源侧静息点：`drive = 源读数 − 静息点`，静息点优先取**这个世界 tick0 的基值**
+  // （零扰动世界里该格恒定于它）⇒ 零扰动 ⇒ 驱动量为 0 ⇒ 世界不漂。
+  // ⛔ 必须与影子线（下方 replay / drift 两处）喂**同一份** `s.baseSnapshot`：两条线只许差
+  //    「有没有扰动」这一个变量，静息点取两份 = 信噪比那个读数被直接污染。
+  baseSnapshot: TickState = {},
 ): {
   next: TickState;
   pending: DelayedContribution[];
   trace: PropagationTrace[];
   unresolvedGates: UnresolvedCadenceGate[];
   unresolvedWeights: UnresolvedPairWeight[];
+  /** 本拍**算不出源侧静息点**因而没做静息点归一的流（诚实缺席，按 ruleKey 升序）。 */
+  unresolvedRestPoints: UnresolvedRestPoint[];
   appliedPerturbations: string[];
   /** 本拍越过容忍线的还手方（WO-ADVERSARY-REACTION·按 (ruleKey, actorObjectId) 升序）。 */
   reactionActors: { ruleKey: string; actorObjectId: string }[];
@@ -1210,6 +1274,8 @@ export function propagateTick(
   const nextPending: DelayedContribution[] = [];
   const unresolvedGates: UnresolvedCadenceGate[] = [];
   const unresolvedWeights: UnresolvedPairWeight[] = [];
+  /** 本拍算不出源侧静息点的流（WO-RESTPOINT-SOURCE-B·诚实缺席，语义见 `UnresolvedRestPoint`）。 */
+  const unresolvedRestPoints: UnresolvedRestPoint[] = [];
   /**
    * 本拍**真的越过容忍线**的还手方（WO-ADVERSARY-REACTION）。
    *
@@ -1312,14 +1378,38 @@ export function propagateTick(
       }
       weights = w;
     }
-    for (const sourceId of idsByType.get(rule.sourceTypeKey) ?? []) {
+    // ── 源侧静息点（WO-RESTPOINT-SOURCE-B）：驱动量是**偏离**，不是水平 ──────────────────────
+    //
+    // 本体 §2.I 不变量 ③ 早已把不动点写死：`x* = rest + 流入/λ`。⇒ **零扰动 ⇒ 流入必须为 0**。
+    // 而修前这里是 `drive = sourceVal`（把源读数的**水平**整值当流量）：
+    // 一个停在 90.38 的源，每拍往下游灌 `系数 × 90.38`，零扰动的世界照样一路漂 ——
+    // 实测指纹：`Customer.receivablePressure` 的唯一入边是 `Order.costPressure`（系数 0.5），
+    // 源三拍只动了 8.6%，目标却翻了 4 倍（每拍注入 ≈ 0.5 × 90.38 ≈ 45.2）。
+    //
+    // 源侧静息点取哪一份，**次序是语义的一部分**：
+    //   ① `baseSnapshot[objId][sv]` —— 这个世界 tick0 的基值。零扰动世界里该格恒定于它，
+    //      故它就是这一格的静息值（真赋值 / 规格派生 / 哈希占位三档全在 `baseSnapshot` 里）。
+    //      ⚠ 这个次序对「哈希占位格」尤其要紧：它的静息值是**铸造值**（在 `baseSnapshot` 里），
+    //        不是域册子里那个常数 `restPoint` —— 减错了对象，边就等于没修。
+    //   ② `domains[sv].restPoint` —— 无基值格（合成世界 / 探针世界）的兜底。
+    //   ③ 两处都取不到 ⇒ **不归一的整值直读** + 显式点名（`unresolvedRestPoints`）。
+    //      ⛔ 这里**绝不写 `?? 0`**：那会把"我不知道这个源的静息点"装扮成"我知道它是 0"，
+    //        正是本单要治的错行为本身（详见 `UnresolvedRestPoint` 头注）。
+    const sourceVar = rule.sourceStateVar;
+    const sourceIds = idsByType.get(rule.sourceTypeKey) ?? [];
+    let refMissing = 0;
+    for (const sourceId of sourceIds) {
       const targets = targetsOf(rule, sourceId);
       if (targets.length === 0) continue;
       // 源态只读 <=t 的 state（绝不读 next/未来 = Temporal Trust）。缺位视为 0（无源即无贡献）。
       // 读 `effState` 而非 `state`：本 tick 落地的扰动**当 tick 就要往下游传**（"停机了，产能马上受影响"），
       // 否则扰动要白等一个 tick 才开始扩散。无扰动时 `effState === state`（同一引用），逐字节不变。
-      const sourceVal = effState[sourceId]?.[rule.sourceStateVar] ?? 0;
-      if (sourceVal === 0) continue;
+      const sourceVal = effState[sourceId]?.[sourceVar] ?? 0;
+      // ⚠ 这里**不再有** `sourceVal === 0 ⇒ continue` 的早退：静息点非 0 时，源读数为 0
+      //    恰恰是"偏离了一大截"（该往下游灌负量），早退会把它悄悄吃掉。
+      //    旧式的那个早退在三种情形下与下面的 `drive === 0 ⇒ continue` **等价**，故旧路径逐字节不变。
+      const ref = restReference(baseSnapshot, domains, sourceId, sourceVar);
+      if (ref === undefined) refMissing++;
       // ── 对手方容忍线（WO-ADVERSARY-REACTION）─────────────────────────────────────
       //
       // 物理传导是线性的（源动一点点，目标就动一点点）；而**还手有容忍区** ——
@@ -1330,8 +1420,28 @@ export function propagateTick(
       //    还手力度就从 0 跳到满格 —— 那是把数值噪声放大成业务结论。
       // ⚠ `rule.reaction == null`（40+ 条普通边）走的是**同一个变量、零额外浮点运算**
       //    ⇒ 逐字节同旧（additive·可回退 RL9）。
-      const drive = rule.reaction == null ? sourceVal : Math.max(0, round12(sourceVal - rule.reaction.tolerance));
-      if (drive === 0) continue; // 没越过容忍线 ⇒ 这个对手本拍不还手（不是"还手了但力度为 0"）
+      //
+      // 🔴 **还手边本单未处置，逐字节保持原样**（`drive = max(0, 源读数 − tolerance)`，读的仍是**水平**）：
+      //    容忍线该与"偏离静息点多少"比，还是与"水平多少"比，是**另一个语义裁决**（`reaction` 是
+      //    对抗方的还手阈值，不是物理传导），改它要连带重新校准每一条还手边的 tolerance。
+      //    ⛔ 「本单未处置还手边」这句话在此留档 —— 免得下一个读代码的人以为这里是漏改。
+      let drive: number;
+      if (rule.reaction != null) {
+        drive = Math.max(0, round12(sourceVal - rule.reaction.tolerance));
+      } else if (ref === undefined) {
+        // 诚实缺席：静息点两处都取不到 ⇒ **不做归一**，本拍按整值直读（缺口见 `unresolvedRestPoints`）。
+        // ⛔ 不写 `?? 0`：那不是"保守默认"，那是把未知断言成 0（见 `UnresolvedRestPoint` 头注）。
+        drive = sourceVal;
+      } else if (ref === 0) {
+        // 归一的零情形：与旧式 `sourceVal` **同一个变量、零额外浮点运算**。
+        // ⚠ 不写成 `round12(sourceVal - 0)` —— 数值相等，却多一次浮点往返，
+        //    而本仓的可回退判据是**逐字节**（同 §2 分摊那一行的纪律）。
+        drive = sourceVal;
+      } else {
+        // 有静息点且非 0 ⇒ 驱动量 = **偏离**。
+        drive = round12(sourceVal - ref);
+      }
+      if (drive === 0) continue; // 偏离为 0 ⇒ 这一拍没有驱动力（还手边则是"没越过容忍线"）
       if (rule.reaction != null) reactionActors.push({ ruleKey: rule.key, actorObjectId: sourceId });
       // 衰减（可选，复用 risk.ts amp x (1 - dist/den)）。源/目标在抽象图上相邻 -> dist=1。
       let factor = 1;
@@ -1430,6 +1540,24 @@ export function propagateTick(
           nextPending.push(queued);
         }
       }
+    }
+    // 本规则只要有一个源实例算不出静息点，就在回执里点名（规则内聚一次，不逐实例刷屏）。
+    // ⚠ 点名**不改动力学**：这条边本拍仍是"整值直读"（与本单引入前逐字节相同），
+    //    可见性给到之后，缺的是 `baseSnapshot` 还是域册子的 `restPoint`，一眼可查。
+    if (refMissing > 0) {
+      unresolvedRestPoints.push({
+        ruleKey: rule.key,
+        sourceStateVar: sourceVar,
+        reason: "NO_REFERENCE",
+        affectedSourceObjects: refMissing,
+        detail:
+          `规则 ${rule.key} 的源状态量 ${rule.sourceTypeKey}.${sourceVar} 算不出静息点` +
+          `（该格既不在本拍喂进来的 baseSnapshot 里、域册子也没给它声明 restPoint）` +
+          `⇒ 本条边本拍**没有做静息点归一**（按整值直读，与本单引入前逐字节相同）。` +
+          `⛔ 不退回 0：那会把"不知道这个源的静息点"装扮成"知道它是 0"，` +
+          `于是一条本不该动的边照样按水平往下游灌。` +
+          `修法是把这个世界的 baseSnapshot（tick0 基值）喂到第 11 位，或给该状态量在域册子里登记 restPoint。`,
+      });
     }
   }
 
@@ -1593,6 +1721,10 @@ export function propagateTick(
 
   return {
     next, pending: outPending, trace, unresolvedGates, unresolvedWeights, appliedPerturbations,
+    // 本拍算不出源侧静息点的流（按 ruleKey 升序。规则级内聚，不逐实例刷屏）。
+    unresolvedRestPoints: unresolvedRestPoints.sort(
+      (a, b) => a.ruleKey.localeCompare(b.ruleKey) || a.sourceStateVar.localeCompare(b.sourceStateVar),
+    ),
     // 还手触发清单，按 (规则 key, 还手方 id) 升序（R6：同输入同字节）。
     // 空数组 = 本拍没有任何对手越过容忍线 —— 与「对抗方关着」是两件事，由调用方分开报。
     reactionActors: reactionActors.sort(

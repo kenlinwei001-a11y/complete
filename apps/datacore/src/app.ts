@@ -2612,7 +2612,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         for (let t = 0; t < s.curTick; t++) {
           // ⚠ 影子线必须与真实线**同一份** pairWeights/stateVarDomains —— 两条线只许差「有没有扰动」
           // 这一个变量，任何别的差异都会直接污染信噪比那个读数。
-          const d = propagateTick(graph, driftState, propRules, driftPending, t, ruleParams, cadenceGates, [], pairWeights, stateVarDomains);
+          // 第 11 位 `priorAttribution` 走缺省（影子线不产归因）；第 12 位 `baseSnapshot` 必须与主线
+          // **同一份**（见下主线调用点）：影子线只是"没有扰动"的那条线，它的源侧静息点仍是这个世界的
+          // tick0 基值 —— 两线都取 `s.baseSnapshot`。
+          const d = propagateTick(graph, driftState, propRules, driftPending, t, ruleParams, cadenceGates, [], pairWeights, stateVarDomains, null, s.baseSnapshot);
           driftState = d.next; driftPending = d.pending;
           // ⚠ 重放段也必须走同一合成：影子态会被 `shadowMemo` 存下来给后续请求复用，
           //    这里少补一次，下一刻就与主线不是同一套语义（`signalToNoise` 直接污染）。
@@ -2645,6 +2648,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
           pairWeights,       // 第 9 位
           stateVarDomains,   // 第 10 位（次序见 propagateTick 签名处的收编注释）
           attributionCarry,  // 第 11 位：上一拍的归因影子原样喂回（见上面的声明处）
+          // 第 12 位：源侧静息点（WO-RESTPOINT-SOURCE-B 收编）。`drive = 源读数 − 静息点`，
+          // 静息点优先取**这个世界 tick0 的基值**（零扰动世界里该格恒定于它）⇒ 零扰动 ⇒ 驱动量为 0
+          // ⇒ 世界不漂。⛔ 必须与影子线（上方 replay / 下方 drift 两处）喂**同一份** `s.baseSnapshot`：
+          // 两条线只许差「有没有扰动」这一个变量，静息点取两份 = 信噪比那个读数被直接污染。
+          s.baseSnapshot,
         );
         state = out.next; pending = out.pending; unresolvedGates = out.unresolvedGates;
         unresolvedWeights = out.unresolvedWeights;
@@ -2661,6 +2669,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
           const d = propagateTick(
             graph, driftState, propRules, driftPending, beforeTick, ruleParams, cadenceGates,
             [], pairWeights, stateVarDomains,
+            null,           // 第 11 位 priorAttribution：影子线不产归因，走缺省
+            s.baseSnapshot, // 第 12 位：与主线同一份源侧静息点（见上）
           );
           driftState = d.next; driftPending = d.pending;
           // 影子线与主线**同一合成**：两条线只许差「有没有扰动」这一个变量。

@@ -159,6 +159,11 @@ export function replayWorldLine(args: {
         perturbationsForTick(tick + 1, states),
         engine.pairWeights,      // 第 9 位
         engine.stateVarDomains,  // 第 10 位 —— 缺它，曲线就与真 tick 走两套物理
+        null,                    // 第 11 位 priorAttribution：曲线这条线不产归因，走缺省
+        // 第 12 位：源侧静息点（WO-RESTPOINT-SOURCE-B 收编）。取 `engine.specBase` ——
+        // `app.ts:2406` 建引擎时它就是 `simState(s.baseSnapshot)` ⇒ 与主线**逐字节同一份基值**，
+        // 换个来源（哪怕只是另拷一份）都会让曲线与落盘世界分叉（A9 判「逐格 0 差」）。
+        engine.specBase,
       );
       state = out.next;
       // C2 合成：必须在核**之后**（拿得到本拍实际生效的 λ）、入 `states` **之前**。
