@@ -14,6 +14,8 @@ import {
 import { BUILTIN_TOOLS } from "../tools/registry.js";
 // WO-DSH-RESOURCE-REACH · 本体切片的两件套（裸名清单 / MCP 全名拼接 / 配置行 id）单一来源。
 import { ONTOLOGY_MCP_CONFIG_ID, ONTOLOGY_MCP_TOOL_NAMES, ontologyMcpToolName } from "../tools/ontology-mcp.js";
+import { SOLVERS_MCP_CONFIG_ID } from "../mcp/solvers-catalog.js";
+import { SOLVERS_MCP_SERVER } from "@platform/contracts";
 // DF.13 外协红线单一来源（C08）：场景建议问句里的红线百分数派生，禁手写。
 import { OUTSOURCE_REDLINE, outsourceRedlinePct } from "@platform/contracts";
 import { SCENARIO_CATALOG } from "../scenarios-catalog.js";
@@ -1742,6 +1744,22 @@ export function seedMcpConfigs(): McpServerConfig[] {
       // 一次性 runToken 都写不进静态种子。
       id: ONTOLOGY_MCP_CONFIG_ID, tenantId: SEED_TENANT, name: "本体切片 MCP（平台内置）", serverName: "ontology",
       transport: { type: "stdio", command: "node", args: ["apps/agentcore/dist/dsh-runtime/ontology-mcp-server.js"] },
+      status: "ACTIVE", lifecycle: "PUBLISHED", version: 1,
+    },
+    {
+      // WO-SOLVERS-MCP-REAL · 平台内置求解器 MCP server（DSH 原生 MCP 模式的载荷）。
+      // 工具面 = mcp__solvers__{solverKey}（**随租户/entitlement 变**，非静态清单）。
+      // **执行**不落在本进程的 MCP server 里：它把 tools/call 转回宿主反向通道 → 同一只
+      // GuardedToolExecutor 的 A1 shim 归一到 invoke_solver（dsh-runtime/solvers-mcp-server.ts
+      // 头注有完整链路）。故本行只是「DSH 可发现/可配」的登记项，不是第二套执行体。
+      //
+      // 与本体那行的唯一差别：**工具清单不能静态投影**（求解器目录随 entitlement 变，关某
+      // feature ⇒ 必须消失，R3 先于 authz），故由 engine.ts DSH 分叉在 spawn 前现算并注入
+      // 子进程 env `SOLVERS_MCP_TOOLS_JSON`（派生源 = 本 run 的 expandAgentTools，两臂同源）。
+      // transport 里的 command/args 同为 **cwd=仓根 时的可用回落**；真进程形态（node 绝对路径、
+      // 服务树绝对路径、per-run env）由 engine.ts DSH 分叉在 run 期注入。
+      id: SOLVERS_MCP_CONFIG_ID, tenantId: SEED_TENANT, name: "求解器 MCP（平台内置）", serverName: SOLVERS_MCP_SERVER,
+      transport: { type: "stdio", command: "node", args: ["apps/agentcore/dist/dsh-runtime/solvers-mcp-server.js"] },
       status: "ACTIVE", lifecycle: "PUBLISHED", version: 1,
     },
     {

@@ -29,6 +29,14 @@ export interface SolverMcpTool {
 export const SOLVERS_MCP_SERVER_INFO = { name: SOLVERS_MCP_SERVER, displayName: "求解器（平台内置）", builtin: true as const, sideEffect: "READ" as const };
 
 /**
+ * 平台内置求解器 MCP server 的**配置行 id**（`seedMcpConfigs()` 的主键 / `agent.tools[].mcpConfigId` /
+ * `agent.mcpServers[].mcpConfigId` 三处同值）。**单源放这里**（照 `tools/ontology-mcp.ts` 的
+ * `ONTOLOGY_MCP_CONFIG_ID` 先例）：授予面、挂载面、运行期 env 注入三处都要写它 ——
+ * 各写各的字面量就是会漂的第二来源（改一处漏一处 ⇒ 静默零工具）。
+ */
+export const SOLVERS_MCP_CONFIG_ID = "mcp_builtin_solvers";
+
+/**
  * 由求解器目录构建 MCP 工具清单（确定性 R6：按工具名排序；description 取目录一句话；
  * inputSchema 取 contracts 注册表的静态投影——同 key 恒同一冻结引用，无 IO / 无时钟 / 无随机）。
  */
