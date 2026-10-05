@@ -3990,6 +3990,32 @@ export const STATE_VAR_VALUE_REFS: Record<string, { specKey: string }> = {
   // ── WO-PROP-REVIEW-V2 · 库存环（评审优先级 2）：成品覆盖天数 = qtyOnHand ÷ dailyDemand，
   //    规格 `fgi_cover_days` 见 seed-derivation-specs.ts（COALESCE 兜底 dailyDemand=0）。
   "FinishedGoodsInventory|coverDays": { specKey: "fgi_cover_days" },
+  // ── WO-DERIV-BACKFILL · 哈希铸造 23 列 → 函数库（仓主 2026-10-05 令）─────────────────────
+  // A 档 17 条：库里已有真业务字段，规格见 `seed-derivation-specs.ts` 同名段（每条附业务口径出处
+  // + 真数据实测分布）。登记即绑定 —— specKey 断或落点不回指本格 ⇒ `deriveSeedBaseSnapshot` 抛错。
+  // ⚠ **本段与上一段的分界**：上一段 25 条的值来自「对象上有同名属性」，本段 17 条来自**规格物化**；
+  //   两者都走①真读数支，但只有本段是「这条状态量的口径被写进了函数库」。
+  // ⛔ B 档 6 条（CustomerLocation.deliveryHoldRisk / ExceptionEvent.handlingBacklog /
+  //   MaintenanceOrder.repairBacklog / Model.forecastBias / OrderPromise.promiseRisk / Order.orderChurn）
+  //   **不在此登记** —— 库里确实没有可用数值字段，处置是补数据（改种子生成器），不是拿公式盖过去；
+  //   逐条实测依据见 `seed-derivation-specs.ts` 段尾。
+  "ARInvoice|overduePressure": { specKey: "arinvoice_overdue_pressure" },
+  "Certification|qualificationQueue": { specKey: "certification_qualification_queue" },
+  "ChangeoverMatrix|changeoverPressure": { specKey: "changeovermatrix_changeover_pressure" },
+  "CustomsClearance|clearanceQueueDays": { specKey: "customsclearance_queue_days" },
+  "FinishedGoodsInventory|drawdownPressure": { specKey: "fgi_drawdown_pressure" },
+  "IncomingInspection|queueDays": { specKey: "incominginspection_queue_days" },
+  "InterBaseTransfer|transferPressure": { specKey: "ibtransfer_transfer_pressure" },
+  "MaintPlan|windowSqueeze": { specKey: "maintplan_window_squeeze" },
+  "MaterialAlternative|switchPressure": { specKey: "materialalternative_switch_pressure" },
+  "MaterialBatch|turnoverPressure": { specKey: "materialbatch_turnover_pressure" },
+  "Model|backlogQtyTop": { specKey: "model_backlog_qty_top" },
+  "Model|backlogPriceTop": { specKey: "model_backlog_price_top" },
+  "OverdueRecord|collectionPressure": { specKey: "overduerecord_collection_pressure" },
+  "QualityLot|inspectBacklog": { specKey: "qualitylot_inspect_backlog" },
+  "Shipment|inboundExpeditePressure": { specKey: "shipment_inbound_expedite_pressure" },
+  "Supplier|reviewPressure": { specKey: "supplier_review_pressure" },
+  "OrderLine|splitPressure": { specKey: "orderline_split_pressure" },
 };
 
 /** `(类型,变量)` → 显式值绑定（裸对精确命中；未登记 → `undefined` = 走名字撞）。全平台唯一入口。 */
