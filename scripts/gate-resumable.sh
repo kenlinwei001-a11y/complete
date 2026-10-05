@@ -58,10 +58,31 @@ mkdir -p "$LOGDIR"
 # 判据不是「让它跑快点」，是**把损失单元切小到远小于容器寿命**。
 # 实测容器在场观测存活 13–77 分钟，故单片目标 ≤5 分钟：即使最差情况被杀，也只赔一片。
 # vitest 原生 --shard=i/N 按文件分片且**互不重叠、并集为全集**，天然适合当断点边界。
-declare -A SHARDS=( ["datacore"]=4 )   # 只切最大的那一包；小包切片的调度开销大于收益
+# ⚠ 原来是 `declare -A SHARDS=( ["datacore"]=4 )`（关联数组）。本机系统 bash 是 **3.2**，没有关联数组，
+#   而且**字符串下标的复合赋值本身**在 3.2 下会把下标当算术表达式求值 ⇒ `datacore: unbound variable`。
+#   实测后果（2026-10-05，本机 BSD userland）：`bash scripts/gate-resumable.sh --status` 在**这一行整个中止**，
+#   一行进度都打不出来，而 **RC=0** —— 读起来像「跑完了/没问题」，实际一个包都没跑。
+#   （`bash -x` 轨迹末行 = `+ SHARDS=(["datacore"]=4)`，此处为唯一停点。）
+#   改用**平行索引数组** + 查表函数（bash 3.2 可用；同 dispatch-collision.sh:42-50 的既有先例）。
+SHARD_KEYS=("datacore"); SHARD_VALS=(4)   # 只切最大的那一包；小包切片的调度开销大于收益
+shards_of() {  # $1=包名 → 分片数（无记录 = 1）
+  local i
+  for i in "${!SHARD_KEYS[@]}"; do
+    [ "${SHARD_KEYS[$i]}" = "$1" ] && { printf '%s\n' "${SHARD_VALS[$i]}"; return 0; }
+  done
+  printf '1\n'
+}
 PKGS=("@platform/contracts" "@platform/llm-adapters" "frontend-shell" "agentcore" "datacore")
 
-echo "═══ gate-resumable · commit $SHA · $(date '+%F %H:%M:%S') · 机器已运行 $(awk '{print int($1/60)}' /proc/uptime) 分钟 ═══"
+# ⚠ 机器年龄：Linux 读 /proc/uptime；macOS **没有 /proc**（`awk: can't open file`）⇒ 横幅恒印空。
+#   与 task-probe.sh / session-resume.sh 同一套：macOS 用 kern.boottime 反算；两个都读不到就印「未判定」。
+UP_SEC=$(awk '{print int($1)}' /proc/uptime 2>/dev/null)
+if [ -z "$UP_SEC" ]; then
+  _BOOT=$(sysctl -n kern.boottime 2>/dev/null | sed -n 's/.*[ ,{]sec = \([0-9][0-9]*\).*/\1/p')
+  [ -n "$_BOOT" ] && UP_SEC=$(( $(date +%s) - _BOOT ))
+fi
+UP_TXT=$([ -n "$UP_SEC" ] && echo "$((UP_SEC/60)) 分钟" || echo "未判定")
+echo "═══ gate-resumable · commit $SHA · $(date '+%F %H:%M:%S') · 机器已运行 ${UP_TXT} ═══"
 if [ -n "$DIRTY" ]; then
   echo "⛔ 工作树不干净 —— 拒绝跑。"
   echo "   gate 的结论必须指向一个确定的 commit；带着未提交改动跑出来的绿证明不了任何 commit。"
@@ -73,7 +94,7 @@ recorded() { [ -f "$CKPT" ] && grep -qx "$1=PASS" "$CKPT"; }
 
 if [ "${1:-}" = "--status" ]; then
   echo "检查点：$CKPT"
-  for p in "${PKGS[@]}"; do n="${SHARDS[$p]:-1}"; if [ "$n" -le 1 ]; then recorded "$p" && echo "  ✅ $p" || echo "  ⬜ $p"; else for i in $(seq 1 "$n"); do recorded "$p#$i/$n" && echo "  ✅ $p#$i/$n" || echo "  ⬜ $p#$i/$n"; done; fi; done
+  for p in "${PKGS[@]}"; do n=$(shards_of "$p"); if [ "$n" -le 1 ]; then recorded "$p" && echo "  ✅ $p" || echo "  ⬜ $p"; else for i in $(seq 1 "$n"); do recorded "$p#$i/$n" && echo "  ✅ $p#$i/$n" || echo "  ⬜ $p#$i/$n"; done; fi; done
   exit 0
 fi
 if [ "${1:-}" = "--reset" ]; then rm -f "$CKPT"; echo "已清 $CKPT"; exit 0; fi
@@ -98,7 +119,7 @@ FAILED=0
 # 展开成「工作单元」列表：不分片的包 = 1 个单元；分片的包 = N 个单元，各自独立记账。
 UNITS=()
 for p in "${PKGS[@]}"; do
-  n="${SHARDS[$p]:-1}"
+  n=$(shards_of "$p")
   if [ "$n" -le 1 ]; then UNITS+=("$p"); else for i in $(seq 1 "$n"); do UNITS+=("$p#$i/$n"); done; fi
 done
 
@@ -127,7 +148,7 @@ done
 
 echo "═════════ 结果 ═════════"
 DONE=0; for u in "${UNITS[@]}"; do recorded "$u" && DONE=$((DONE+1)); done
-echo "· 已记 PASS：$DONE / ${#UNITS[@]} 个工作单元（检查点 $CKPT）"
+echo "· 已记 PASS：$DONE / ${#UNITS[@]} 个工作单元（检查点 ${CKPT}）"
 if [ "$FAILED" = "1" ]; then echo "❌ 有包未通过 —— 不得并线。修完重跑本脚本（已绿的包不会重跑）。"; exit 1; fi
 if [ "$DONE" -lt "${#UNITS[@]}" ]; then
   echo "⏸  尚未跑完（大概率被容器回收打断）。**直接重跑本脚本即可续**，已绿的包会跳过。"

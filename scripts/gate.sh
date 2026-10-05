@@ -31,18 +31,80 @@ set -uo pipefail
 #
 #    判据：跑门所需的**工具本身**必须先自证在位。缺 ⇒ RC=2 + 明确说「本次结论作废」，
 #    **不许**落进 FAILED 数组、不许打印「不得并线」——那是给真违规留的话。
+# ══ 可移植原语（2026-10-04 新增·治「本机 gate 是一台恒绿打印机」）══════════════════════
+#
+# ⛔ 病灶（亲手实测，同一次运行里三层叠加）：
+#   本机 macOS 上 `setsid` / `timeout` / `gtimeout` **三个二进制全不存在**，
+#   而 `date +%s%N` 不支持纳秒（原样回显字面量 `N`）。后果**不是**「某一步被跳过」：
+#     ① `t0=$(date +%s%N)` → `1791110812N`
+#     ② `CAP_MS=$(( (t1 - t0) / 1000000 ))` → bash 报
+#        `value too great for base (error token is "1791110812N")` ⇒ **capture() 当场中止**
+#     ③ 于是 `CAP_STATE` / `CAP_RC` / `CAP_OUT` **全是空串** —— 判定那一段根本没走到
+#     ④ `run()` 读到空值后同样静默返回：**既不打 ✅ 也不打 ❌**，FAILED / NOT_MEASURED 都不记
+#     ⑤ 末尾 `[ ${#FAILED[@]} -ne 0 ]` 与 NOT_MEASURED 双双为空 ⇒ 照印
+#        **「✅ 全绿（可并线）」RC=0**
+#
+#   实测证据（播一个 `error TS2322` 进 `apps/agentcore/test/`，该文件在
+#   `tsconfig.typecheck.json` 的 `include:["src","test"]` 之内，`pnpm --filter agentcore typecheck`
+#   能当场咬住；同一棵树上跑 `bash scripts/gate.sh --no-test`）：
+#       scripts/gate.sh: line 109: 1791110812N: value too great for base …
+#       ═════════ GATE 结果 ═════════
+#       ✅ 全绿（可并线）
+#       RC=0
+#
+#   形态（铁律 0.6 句式）：
+#     > **「我用『门印了全绿』当作『门验过了』的证据，而前者并不度量后者
+#     >    —— 这台机器上的 run() 一次都没走到判定，横幅却照印。」**
+#   ⚠ 它比「假绿」更坏一档：假绿是**信号不指向被测对象**，这里是**根本没有信号**。
+#     本仓「门必须显式捕获退出码」那条戒律防的是 `$?` 取错对象，防不住「压根没执行到取 $?」。
+#
+# 修法两件，**缺任一件都还不行**：
+#   ① 原语可移植 —— 隔离与有界执行不再依赖 setsid/timeout（见 LAUNCH_MODE）。
+#   ② **失败即最保守态** —— capture() 一进门就把 CAP_* 置成 NOT-MEASURED，
+#      从此往下任何中途异常都只留下「没测出来」，**绝不留下会让 run() 静默返回的空串**。
+#      ⚠ 这一件才是治根的：① 只治本机这一种缺法，② 治的是「捕获器自己坏了却不吭声」这个类。
+now_ms() {
+  local n
+  n="$(date +%s%N 2>/dev/null)" || n=""
+  case "$n" in
+    # BSD/macOS date：`%N` 不认识，原样回显字面量 `N` ⇒ 退到秒精度（够用：这里只量耗时）
+    *N|"") printf '%s000' "$(date +%s)" ;;
+    *)     printf '%s' "$(( n / 1000000 ))" ;;
+  esac
+}
+
+# 有界执行的路子，**启动时探一次，探不到就不许跑门**（照 preflight「工具必须先自证在位」的纪律）。
+#   setsid-timeout —— Linux/CI 的原路，行为与改前**逐字节相同**（CI 上零扰动是刻意的）
+#   perl-watchdog  —— macOS 路：perl setpgrp 做进程组隔离（实测 pid==pgid），bash 看门狗做有界
+if command -v setsid >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then
+  LAUNCH_MODE="setsid-timeout"
+elif command -v perl >/dev/null 2>&1; then
+  LAUNCH_MODE="perl-watchdog"
+else
+  LAUNCH_MODE=""
+fi
+
 preflight() {
   local missing=() root; root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
   [ -d "$root/node_modules" ] || missing+=("根 node_modules")
   # 正金丝雀：vitest 是 TEST 段真正要调的那个二进制，缺了整段测试恒假红。
   [ -x "$root/node_modules/.bin/vitest" ] || missing+=("node_modules/.bin/vitest")
+  # 正金丝雀·有界执行原语：capture() 缺它就**必然中途中止**，而中止的后果是「全绿」——
+  # 这正是本次新加自证的那一条。缺了它本次结论一律作废（RC=2），不许落进 FAILED。
+  if [ -z "$LAUNCH_MODE" ]; then
+    echo "⛔ 前置自证失败：找不到有界执行原语 —— `setsid`+`timeout` 与 `perl` 三缺。"
+    echo "   capture() 缺它必然中途中止，而中止会让本脚本打出「✅ 全绿」这种**什么都不度量**的结论。"
+    echo "   装任意一个即可：macOS 自带 perl；Linux 装 util-linux(setsid)+coreutils(timeout)。"
+    echo "   本次结论作废。RC=2"
+    exit 2
+  fi
   for p in packages/contracts packages/llm-adapters packages/dsh-harness apps/datacore apps/agentcore apps/frontend-shell; do
     [ -d "$root/$p/node_modules" ] || missing+=("$p/node_modules")
   done
   # 负金丝雀：一个**必然存在**的路径若也报缺，说明判据本身坏了（如 root 解析错），
   # 那时同样报 RC=2 —— 「我没找到」与「它不存在」是两个命题。
   if [ ! -f "$root/package.json" ]; then
-    echo "⛔ 前置自证失败：连 package.json 都找不到（root=$root）⇒ **本脚本的路径解析坏了**，不是仓库缺东西。"
+    echo "⛔ 前置自证失败：连 package.json 都找不到（root=${root}）⇒ **本脚本的路径解析坏了**，不是仓库缺东西。"
     echo "   本次结论作废。RC=2"
     exit 2
   fi
@@ -99,14 +161,62 @@ GATE_STEP_TIMEOUT="${GATE_STEP_TIMEOUT:-1800}"   # 单个静态门/BUILD 上限�
 GATE_TEST_TIMEOUT="${GATE_TEST_TIMEOUT:-5400}"   # 六包串行测试上限，默认 90 分钟
 capture() {
   local secs="$1"; shift
-  local tmp pgid rc t0 t1
+  local tmp pgid rc t0 t1 wd
+  # ⛔ 先把终态置成**最保守**的那一个，且每个变量的**类型必须是下游能安全比较的**：
+  #    · CAP_STATE=NOT-MEASURED ⇒ run() 走「没测出来」支，记进 NOT_MEASURED，末尾 RC=2；
+  #    · CAP_LEFTOVER=0（**数字**）⇒ run() 的 `[ "$CAP_LEFTOVER" -gt 0 ]` 不会报算术错。
+  #      若留空串，run() 会在那一行中止，**连 NOT-MEASURED 都记不上**，又退回静默。
+  #    来历见上方「可移植原语」整段头注：在这台机器上，**空串是最危险的值**。
+  CAP_STATE="NOT-MEASURED"
+  CAP_RC=1
+  CAP_OUT=""; CAP_MS=""; CAP_LEFTOVER="0"
+  CAP_WHY="capture() 未走到判定就中止了（原语缺失 / 展开报错 / 被信号打断）——本次结论作废"
   tmp="$(mktemp -t gate-capture.XXXXXX)"
-  t0=$(date +%s%N)
-  setsid timeout --signal=TERM --kill-after=15s "${secs}s" "$@" > "$tmp" 2>&1 &
-  pgid=$!
-  wait "$pgid"; rc=$?
-  t1=$(date +%s%N)
-  CAP_MS=$(( (t1 - t0) / 1000000 ))
+  t0="$(now_ms)"
+  if [ "$LAUNCH_MODE" = "setsid-timeout" ]; then
+    # Linux/CI 原路：与改前逐字节相同（CI 上零扰动是刻意的）。
+    setsid timeout --signal=TERM --kill-after=15s "${secs}s" "$@" > "$tmp" 2>&1 &
+    pgid=$!
+    wait "$pgid"; rc=$?
+  else
+    # macOS 路（本机实测 setsid / timeout 二进制都不存在）。两件替代：
+    #   · 进程组隔离：perl `setpgrp(0,0)` 后再 exec ⇒ 新进程 pgid == 自身 pid（实测已验），
+    #     与 setsid 等效；随后 CAP_LEFTOVER 的 `ps -eo pgid=,pid=` 计数照旧成立。
+    #   · 有界执行：bash 看门狗。**超时判据是看门狗亲手留下的标记文件**，不是猜 rc ——
+    #     「命令自己以 143 退出」与「被看门狗打断」在 rc 上完全分不开，而两者处置相反。
+    #   · `exec` 失败退 127（与「命令找不到」同码），保住尾部分支那条
+    #     「是环境缺东西，不是代码违规」的语义。
+    perl -e 'setpgrp(0,0); exec { $ARGV[0] } @ARGV; print STDERR "exec failed: $ARGV[0]: $!\n"; exit 127;' \
+      "$@" > "$tmp" 2>&1 &
+    pgid=$!
+    (
+      sleep "$secs"
+      # 先判「目标还活着没」再写标记：命令恰在到点前自己退了的时候，不该被记成超时。
+      # ⚠ 这消不掉最后那几毫秒的窗口（进程可能在 kill -0 与写标记之间退出）。
+      #   不消除它是**刻意的**——窗口内的误判方向是「判成没测出来」（fail-closed，
+      #   末尾 RC=2），不是「判成全绿」。本段存在的理由就是后者，前者可以接受。
+      if kill -0 "$pgid" 2>/dev/null; then
+        : > "${tmp}.timedout"
+        kill -TERM -"$pgid" 2>/dev/null || kill -TERM "$pgid" 2>/dev/null
+        sleep 15
+        kill -KILL -"$pgid" 2>/dev/null || kill -KILL "$pgid" 2>/dev/null
+      fi
+    ) >/dev/null 2>&1 &
+    wd=$!
+    wait "$pgid"; rc=$?
+    # ⛔ 只 `kill "$wd"` 会**留下孤儿 `sleep`**：看门狗是个子 shell，它正阻塞在 `sleep` 上时
+    #    被杀，`sleep` 会被 reparent 到 init 并继续跑满整个超时 —— 实测一次 gate 跑下来
+    #    攒了 **11 个 `ppid=1` 的 `sleep 1800`**（它们不挡管道、不吃 CPU，但这是**泄漏**，
+    #    而且会让「进程表里有没有残留」这类探针读出噪声）。故**先收它的子进程，再收它自己**。
+    for c in $(ps -eo pid=,ppid= 2>/dev/null | awk -v w="$wd" '$2==w{print $1}'); do
+      kill "$c" 2>/dev/null
+    done
+    kill "$wd" 2>/dev/null; wait "$wd" 2>/dev/null
+    if [ -e "${tmp}.timedout" ]; then rc=124; fi
+    rm -f "${tmp}.timedout"
+  fi
+  t1="$(now_ms)"
+  CAP_MS=$(( t1 - t0 ))
   CAP_RC=$rc
   # 同进程组里还没退出的 = 我起的后代。**只数不杀。**
   # 先给一段**排空宽限**：正常收尾时 worker 可能还差几百毫秒才被收割，
@@ -176,6 +286,100 @@ run() {
 }
 
 run "BUILD (pnpm -r build)" pnpm -r build
+
+# ══ TYPECHECK 段 ══════════════════════════════════════════════════════════════════════
+#
+# ⛔ 为何必须有这一段（2026-10-04 · **真实事故，不是预防性设计**）：
+#   `apps/agentcore/test/solver-budget-refund.seam.test.ts` 把一个 **X-Debug-User 串**
+#   （`a:b:c` 形态）当 `ToolAuthCtx` **对象**传给了 `runRegisteredAgent` —— 类型错。
+#   它**红着进了 canonical**，因为三层同时看不见它：
+#     · 本脚本此前**零处 typecheck**（grep 实证）
+#     · `apps/agentcore/tsconfig.json` 的 `include` 是 `["src/**/*.ts"]` ⇒ `test/` 不在类型面内
+#     · vitest 走 esbuild，**只转译不查类型**
+#   ⇒ 直到有人手跑 `pnpm -r typecheck` 才暴露。
+#
+#   形态（铁律 0.6 句式）：
+#     > **「我用『四包全绿 + gate 全绿』当作『这个 commit 是干净的』的证据，
+#     >    而前者并不度量后者 —— 有一整类错误对这三个信号结构上不可见。」**
+#
+#   ⚠ 类型面本身**早就是全的**，不是本单新建：三个 `tsconfig.typecheck.json`
+#     （datacore / agentcore / contracts）的 `include` 都是 `["src","test"]`，
+#     frontend-shell 的 `tsconfig.json` 是 `["src","test"]`。缺的只是**接线**。
+#     故本段接的是**既有命令**，不新增门文件、不新增棘轮/基线 JSON（禁令 3 射程之外）。
+#
+# ⛔ 为何**不用** `pnpm -r typecheck` 一句话了事：它会**静默跳过**没有 typecheck 脚本的包
+#   （本仓 `packages/dsh-harness` 就没有）⇒「某包被跳过」与「某包通过」在屏上分不开。
+#   这正是 TEST 段当年踩过、并写下「看不见它跑过 正是上次假绿的成因」的那个坑。
+#   故逐包显式点名 + 断言包数，与 run_test 同一口径。
+#
+# ⚠ 包清单**现算不写死**：写死的清单会漂（新增包时没人回来改这一行），而它漂掉的表现
+#   **正是「某包的类型检查静默地不再被跑」** —— 本段存在的全部理由就是消灭这种静默。
+#   判据与 pnpm 的执行口径同源：`package.json` 里**声明了 `typecheck` 脚本**的包。
+#   （实测：5 个包有该脚本；`packages/dsh-harness` 没有 —— 它 test/ 下零个 .test.ts，
+#     测试走 test/run.mjs 的 node --test。故它**不进**本段，且这一条写在明处，不是漏掉。）
+TYPECHECK_MIN_PKGS=5
+run_typecheck() {
+  echo "───── TYPECHECK (逐包·类型面含 test/) ─────"
+  local pkgs n
+  pkgs="$(node -e '
+const fs=require("fs"),cp=require("child_process");
+let roots=[];
+try{roots=cp.execSync("ls -d apps/* packages/*",{encoding:"utf8"}).trim().split("\n");}catch(e){roots=[];}
+const out=[];
+for(const r of roots){
+  try{const s=JSON.parse(fs.readFileSync(r+"/package.json","utf8")).scripts||{};
+    if(s.typecheck)out.push(r);}catch(e){}
+}
+process.stdout.write(out.join(" "));' 2>/dev/null)"
+  n="$(printf '%s' "$pkgs" | wc -w | tr -d ' ')"
+  # 金丝雀：枚举不到、或低于下界 ⇒ **量法坏了**，不许读成「没有包要查」。
+  # 与 `check-typecheck-coverage.mjs` 的 MIN_PACKAGES 同一条纪律（那边下界也是 5）。
+  if [ -z "$pkgs" ] || [ "${n:-0}" -lt "$TYPECHECK_MIN_PKGS" ]; then
+    echo "❌ TYPECHECK 金丝雀不中：现算只枚举到 ${n:-0} 个带 typecheck 脚本的包（下界 ${TYPECHECK_MIN_PKGS}）—— **量法坏了**（目录枚举 / package.json 解析坏了），不是「没有包要查」"
+    FAILED+=("TYPECHECK 包枚举金丝雀不中 ${n:-0}/${TYPECHECK_MIN_PKGS}")
+    return
+  fi
+  echo "· 包清单（现算）：${pkgs}"
+  local p ok=0 bad="" nm=""
+  for p in $pkgs; do
+    capture "$GATE_STEP_TIMEOUT" pnpm --filter "./$p" typecheck
+    if [ "$CAP_STATE" = "NOT-MEASURED" ]; then
+      echo "  ◌ ${p} **NOT-MEASURED**（RC=${CAP_RC}）：${CAP_WHY}"
+      nm="${nm} ${p}(没测成)"
+    elif [ "$CAP_RC" -eq 0 ]; then
+      echo "  ✅ ${p}"
+      ok=$((ok + 1))
+    else
+      echo "$CAP_OUT" | grep -E "error TS" | head -10
+      echo "  ❌ ${p} RC=${CAP_RC}"
+      bad="${bad} ${p}"
+    fi
+  done
+  # 金丝雀：**循环一个判决都没产出** ⇒ 量法坏了（枚举出 5 个包却一次都没进循环）。
+  # ⛔ 判据必须**同时**含 `nm` 为空这一条 —— 初版写成 `ok==0 && bad 为空` 就收工，
+  #    于是「五包全部超时」这个**很可能发生**的场景（本机负载 85、frontend-shell 的
+  #    tsc 实测能跑 30 分钟以上）会被误判成「门坏了」并塞进 FAILED。
+  #    那是把「我没查成」说成「门坏了」，方向正好反了（与 preflight 的 RC=2 同一条纪律）。
+  #    实测：初版在「五包全部 NOT-MEASURED」下打出「金丝雀不中 · 1 个包中 0 个通过」——
+  #    连包数都读错了（`${#pkgs[@]}` 那时已是对字符串取长度）。
+  if [ "$ok" -eq 0 ] && [ -z "$bad" ] && [ -z "$nm" ]; then
+    echo "❌ TYPECHECK 金丝雀不中：枚举到 ${n} 个包、循环却一个判决都没产出 —— **量法坏了**（探针/过滤器坏），不是类型干净"
+    FAILED+=("TYPECHECK 金丝雀不中")
+    return
+  fi
+  if [ -n "$bad" ]; then
+    echo "❌ TYPECHECK 判负：${bad# } —— 类型错已在正线上；vitest 只转译不查类型，只有这一段看得见它"
+    FAILED+=("TYPECHECK(${bad# })")
+    return
+  fi
+  if [ -n "$nm" ]; then
+    echo "◌ TYPECHECK 没测全：${nm# }"
+    NOT_MEASURED+=("TYPECHECK(${nm# })")
+    return
+  fi
+  echo "✅ TYPECHECK RC=0（${ok}/${n} 包全部点名）"
+}
+run_typecheck
 run "genuine-sim:check" node scripts/check-genuine-sim.mjs
 # WO-NAV-GATE · 导航归组覆盖门（本体 §8 G-NAV-FALLBACK-BUCKET 的机械门那一半）。
 #

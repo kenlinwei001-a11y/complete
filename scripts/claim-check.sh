@@ -63,12 +63,22 @@ cmd_dist() {
   [ -d "$s" ] || { d="$REPO_ROOT/packages/$pkg/dist"; s="$REPO_ROOT/packages/$pkg/src"; }
   [ -d "$s" ] || { red "⛔ 找不到 $pkg 的 src"; return 2; }
   [ -d "$d" ] || { red "🔴 $pkg 没有 dist —— 先 build"; return 1; }
-  local ns nd
-  ns=$(find "$s" -type f -newer "$d" 2>/dev/null | head -1)
-  nd=$(find "$s" -type f -printf '%T@\n' 2>/dev/null | sort -rn | head -1)
   # 判据：src 里有没有**比 dist 目录任一产物都新**的文件
-  local newest_dist; newest_dist=$(find "$d" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1)
-  local newest_src;  newest_src=$(find "$s" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1)
+  # ⚠ 原写法 `find … -printf '%T@ %p\n' | sort -rn | head -1` 是 GNU 专有：BSD find **没有 -printf**
+  #   （实测 `find: -printf: unknown primary or operator`），配 2>/dev/null ⇒ 两个变量恒空 ⇒
+  #   本命令在 mac 上**恒以 RC=2「工具坏了」收场**（dist 检查从来没跑成过）。
+  #   改用便携 stat（GNU `-c` / BSD `-f`）逐文件取 mtime 再比大小，两平台同一条代码路径。
+  newest() {  # $1=目录 → 打印 "<epoch> <path>"（mtime 最大的那个文件）；读不到就什么都不打印
+    local f t best="" bp=""
+    while IFS= read -r f; do
+      t=$(stat -c%Y "$f" 2>/dev/null || stat -f%m "$f" 2>/dev/null) || continue
+      [ -n "$t" ] || continue
+      if [ -z "$best" ] || [ "$t" -gt "$best" ]; then best="$t"; bp="$f"; fi
+    done < <(find "$1" -type f 2>/dev/null)
+    [ -n "$bp" ] && printf '%s %s\n' "$best" "$bp"
+  }
+  local newest_dist; newest_dist=$(newest "$d")
+  local newest_src;  newest_src=$(newest "$s")
   local td ts; td=${newest_dist%% *}; ts=${newest_src%% *}
   if [ -z "$td" ] || [ -z "$ts" ]; then red "⛔ 读不到时间戳 —— 工具坏了，不许判「新鲜」"; return 2; fi
   if awk "BEGIN{exit !($ts > $td)}"; then
@@ -137,15 +147,25 @@ cmd_has() {
 # 其中一个拿着 12 小时前的 dist ⇒ 我以为「重建没生效，路由真不存在」。
 cmd_port() {
   local p="${1:-}"; [ -z "$p" ] && { red "用法: claim-check.sh port <端口>"; return 2; }
-  local pids
-  pids=$(ps -eo pid,args --no-headers | grep -E 'dist/(server|main)\.js' | grep -v grep | awk '{print $1}')
+  # ⚠ 原写法 `ps … --no-headers` 是 GNU 专有：BSD ps 回 `illegal option -- -`、**一行进程都不回**
+  #   ⇒ pids 恒空 ⇒ 每一次都印「✅ 端口可用」，而实测此刻有 6 个 datacore 服务在跑（假绿，RC=0）。
+  #   这正是本脚本诞生的那个病：探针报「空闲」⇒ 起了新的 ⇒ EADDRINUSE 静默失败 ⇒
+  #   读了别人遗留的旧服务，对**自己的代码**下结论。改用 `tail -n +2` 剥表头。
+  local psn pids
+  psn=$(ps -eo pid,args 2>/dev/null | tail -n +2 | wc -l | tr -d ' ')
+  if [ "${psn:-0}" -lt 2 ]; then
+    red "⛔ 进程表只读到 ${psn:-0} 行 —— **工具坏了**，不是「端口空闲」："
+    red "   这是**没查成**。此刻⛔ 不许起服务（EADDRINUSE 会静默失败，你读到的是别人的旧服务）。"
+    return 2
+  fi
+  pids=$(ps -eo pid,args 2>/dev/null | tail -n +2 | grep -E 'dist/(server|main)\.js' | grep -v grep | awk '{print $1}')
   if [ -n "$pids" ]; then
     red "🔴 有存活的服务进程，起新的会 EADDRINUSE 并**静默失败**（旧的继续答你）："
-    ps -eo pid,lstart,args --no-headers | grep -E 'dist/(server|main)\.js' | grep -v grep | sed 's/^/     /'
+    ps -eo pid,lstart,args 2>/dev/null | tail -n +2 | grep -E 'dist/(server|main)\.js' | grep -v grep | sed 's/^/     /'
     red "   ⇒ 先逐个 kill，再起。起完**必须**查日志有无 EADDRINUSE/errno，别只看进程在不在。"
     return 1
   fi
-  grn "✅ 无存活服务进程，端口 $p 可用"
+  grn "✅ 无存活服务进程，端口 $p 可用（金丝雀：进程表 ${psn} 行 ⇒ 这次不是「没查成」）"
 }
 
 # ── grep：报「零命中」之前 ──────────────────────────────────────────────────

@@ -61,7 +61,7 @@ fi
 if [ "$MODE" = files ]; then
   for f in "${TARGETS[@]}"; do
     git cat-file -e "$BASE:$f" 2>/dev/null || \
-      echo "  ⚠ 基线上不存在此路径：$f（新建文件则正常；拼错的话下面的『无碰撞』不可信）"
+      echo "  ⚠ 基线上不存在此路径：${f}（新建文件则正常；拼错的话下面的『无碰撞』不可信）"
   done
 fi
 

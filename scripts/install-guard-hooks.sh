@@ -109,7 +109,7 @@ selftest() {
 if [ "${1:-}" = "--check" ]; then
   [ -x "$HOOK" ] || { echo "✗ 护栏未安装：$HOOK 不存在或不可执行。跑 bash scripts/install-guard-hooks.sh"; exit 1; }
   selftest || exit 1
-  echo "✅ canonical 护栏已装且有效（$HOOK）"
+  echo "✅ canonical 护栏已装且有效（${HOOK}）"
   exit 0
 fi
 

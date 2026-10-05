@@ -43,7 +43,13 @@ try {
 
   // cockpit P1 经营驾驶舱富 KPI（L4 真后端）：DemandSegment/FinancePlan/MaterialBalance 合成→派生→聚合→widget
   await page.click('a[href="/v/dash"]').catch(() => {});
-  await page.waitForTimeout(1500);
+  // ⚠ 2026-10-05 修（同类）：富 KPI 由 DemandSegment/FinancePlan/MaterialBalance 聚合派生后异步上屏，
+  //   固定等 1.5 秒是赌；改为等 KPI 真的出现（有界 90 秒）。
+  await page.waitForFunction(
+    () => !!document.querySelector("[data-testid=widget-demand-p50]"),
+    null,
+    { timeout: 90000 },
+  ).catch(() => {});
   const demandKpi = await page.locator("[data-testid=widget-demand-p50]").count();
   const marginKpi = await page.locator("[data-testid=widget-gross-margin]").count();
   const matKpi = await page.locator("[data-testid=widget-material-gap]").count();
@@ -52,7 +58,13 @@ try {
     : bad(`cockpit P1 真后端：富 KPI 缺失（demand=${demandKpi} margin=${marginKpi} mat=${matKpi}）`);
 
   // cockpit P2 规划决策推演 · 根因 DAG（L4 真后端）：plan_rootcause 求解器经营 KPI 越线 → 因子 → 取证叶三层真渲染
-  await page.waitForTimeout(1500); // 等 plan_rootcause solver widget 拉取
+  // ⚠ 2026-10-05 修（同类）：plan_rootcause 求解器是异步的（同页 counterfactual 实测 6.93s），
+  //   固定等 1.5 秒 ⇒ 本轮 P2 报 dag=0 而上一轮同一条是绿的 —— 抖动全来自这里，与产品无关。
+  await page.waitForFunction(
+    () => !!document.querySelector("[data-testid=provenance-dag]"),
+    null,
+    { timeout: 90000 },
+  ).catch(() => {});
   const dagRoot = await page.locator("[data-testid=provenance-dag]").count();
   const dagKpi = await page.locator('[data-testid^="dag-node-kpi:"]').count();
   const dagFactor = await page.locator('[data-testid^="dag-node-factor:"]').count();
@@ -61,13 +73,28 @@ try {
     ? ok(`cockpit P2 真后端：根因归因 DAG 真浏览器渲染（${dagKpi} KPI 根 · ${dagFactor} 因子 · ${dagLeaf} 取证叶，结构=活数据算出）`)
     : bad(`cockpit P2 真后端：根因 DAG 缺失（dag=${dagRoot} kpi=${dagKpi} factor=${dagFactor} leaf=${dagLeaf}）`);
   // SPINE.4 经营指标条（视图读 Metric 单一出处）：metric_rollup 驱动的 op 级指标卡真渲染
+  // ⚠ 2026-10-05 修（同类第 9 例，三连测第 1 轮实测抓到）：这一段**原本也没有自己的等待**，
+  //   一直蹭上面 P2 段的等待 —— P2 快它就快、P2 慢它才赶上。本轮 P2 提前返回 ⇒ strip=0。
+  await page.waitForFunction(
+    () => !!document.querySelector("[data-testid=metric-strip]"),
+    null,
+    { timeout: 90000 },
+  ).catch(() => {});
   const mstrip = await page.locator("[data-testid=metric-strip]").count();
   const mcards = await page.locator("[data-testid^=metric-kpi-], [data-testid^=metric-]").count();
   mstrip > 0 && mcards > 0
     ? ok(`SPINE.4 真后端：经营指标条（Metric 单一出处 R-一致）${mcards} 卡真浏览器渲染（metric_rollup 对齐目标树算 delta/miss）`)
     : bad(`SPINE.4 真后端：经营指标条缺失（strip=${mstrip} cards=${mcards}）`);
   // cockpit P5 驾驶舱：V5/V7 版本切换（SopVersionRow）+ 反事实双轨双线图（counterfactual_timeline）
-  await page.waitForTimeout(1200);
+  // ⚠ 2026-10-05 修（同类第 4 例）：`cf-widget` 在 DashboardView.tsx:1005 的
+  //   `if (!data) return <div>加载中…</div>` 之后才渲染，而 data 来自 counterfactual_timeline 求解器。
+  //   实测该端点 **HTTP 200 / 6.93 秒 / 15,927 字节真数据**（直 curl `/a/v1/solvers/counterfactual_timeline/invoke`）
+  //   —— 原写法只等 1200ms ⇒ widget 恒在「加载中」态、`cf=` 恒 0，与产品无关。
+  await page.waitForFunction(
+    () => !!document.querySelector("[data-testid=cf-chart]"),
+    null,
+    { timeout: 120000 },
+  ).catch(() => {});
   const verToggle = await page.locator("[data-testid=version-toggle]").count();
   const cfWidget = await page.locator("[data-testid=cf-widget]").count();
   const cfChart = await page.locator("[data-testid=cf-chart]").count();
@@ -77,10 +104,13 @@ try {
 
   // cockpit P3 风险看板补全 · 对症方案→工单（L4 真后端）：风险卡 → 详情弹窗 → mitigation_select 方案表 + 采纳→工单按钮
   await page.click('a[href="/v/risk"]').catch(() => {});
-  await page.waitForSelector("[data-testid^=risk-card-]", { timeout: 10000 }).catch(() => {});
+  await page.waitForSelector("[data-testid^=risk-card-]", { timeout: 90000 }).catch(() => {});
   await page.locator("[data-testid^=risk-card-]").first().click().catch(() => {});
-  await page.waitForSelector("[data-testid=mitigation-panel]", { timeout: 8000 }).catch(() => {});
-  const mitPanel = await page.locator("[data-testid=mitigation-panel]").count();
+  // ⚠ 2026-10-05 修：原选择器 `mitigation-panel` **全仓 0 处**（对照：同文件的 `mitigation-plan-` /
+  //   `mitigation-adopt-` 都在，`risk-tab-risk` 也在）⇒ 这条断言**永远不可能通过**，与产品无关。
+  //   真容器是下方的跨方案比对矩阵（RiskBoardView.tsx，`plans.length > 0` 才渲染）。
+  await page.waitForSelector("[data-testid=mitigation-matrix]", { timeout: 90000 }).catch(() => {});
+  const mitPanel = await page.locator("[data-testid=mitigation-matrix]").count();
   const mitPlans = await page.locator("[data-testid^=mitigation-plan-]").count();
   const mitAdopt = await page.locator("[data-testid^=mitigation-adopt-]").count();
   mitPanel > 0 && mitPlans > 0 && mitAdopt > 0
@@ -93,7 +123,7 @@ try {
   await page.click('a[href="/v/plan-audit"]').catch(() => {});
   await page.waitForTimeout(1500);
   await page.locator("[data-testid^=tl-toggle-]").first().click().catch(() => {});
-  await page.waitForSelector("[data-testid^=dda-]", { timeout: 8000 }).catch(() => {});
+  await page.waitForSelector("[data-testid^=dda-]", { timeout: 90000 }).catch(() => {});
   const ddaAxis = await page.locator("[data-testid$=-summary][data-testid^=dda-]").count();
   const ddaDots = await page.locator('[data-testid*="-dot-"]').count();
   ddaAxis > 0 && ddaDots > 0
@@ -102,7 +132,7 @@ try {
 
   // ORD 订单全链推演（L4 真后端）：order_fullchain 三判 + 统一结论 + 11 节点建模链 DAG 真渲染
   await page.click('a[href="/v/order-chain"]').catch(() => {});
-  await page.waitForSelector("[data-testid=ofc-verdict]", { timeout: 10000 }).catch(() => {});
+  await page.waitForSelector("[data-testid=ofc-verdict]", { timeout: 90000 }).catch(() => {});
   const ofcVerdict = await page.locator("[data-testid=ofc-verdict]").count();
   const ofcJudges = await page.locator("[data-testid=ofc-judges]").count();
   const ofcDag = await page.locator("[data-testid=ofc-dag]").count();
@@ -112,13 +142,25 @@ try {
 
   // SOP 前端 1:1（L4 真后端）：新建版本 → ③ 供应评审 → 物料线 MRP 表（真 mrp_netting）真渲染
   await page.click('a[href="/v/sop-balance"]').catch(() => {});
-  await page.waitForSelector("[data-testid=sop-create]", { timeout: 10000 }).catch(() => {});
+  await page.waitForSelector("[data-testid=sop-create]", { timeout: 90000 }).catch(() => {});
   await page.click("[data-testid=sop-create]").catch(() => {});
-  await page.waitForSelector("[data-testid=sop-run-1]", { timeout: 8000 }).catch(() => {});
+  await page.waitForSelector("[data-testid=sop-run-1]", { timeout: 90000 }).catch(() => {});
   await page.click("[data-testid=sop-run-1]").catch(() => {});
+  // ⚠ 2026-10-05 修：原剧本 create→run-1→chip3→run3 **跳过了第 2 步**，而后端 step3 的第一行就是
+  //   `if (!v.steps.s2) throw invalidState("run step 2 first")`（409 INVALID_STATE）—— 拒绝得完全正确。
+  //   实测那条路径：MRP 求解器跑了（mrp_netting 200）但 advance 409，第 3 步从未落库，MRP 表自然不在屏上。
+  //   补跑第 2 步后实测：三次 advance 全 200，`sop-mrp-table` 真渲染 **9 行**。
+  await page.waitForTimeout(2500);
+  await page.click("[data-testid=sop-step-chip-2]").catch(() => {});
+  await page.waitForSelector("[data-testid=sop-run-2]", { timeout: 90000 }).catch(() => {});
+  await page.click("[data-testid=sop-run-2]").catch(() => {});
+  await page.waitForTimeout(2500);
   await page.click("[data-testid=sop-step-chip-3]").catch(() => {});
+  await page.waitForSelector("[data-testid=sop-run-3]", { timeout: 90000 }).catch(() => {});
   await page.click("[data-testid=sop-run-3]").catch(() => {});
-  await page.waitForSelector("[data-testid=sop-mrp-table]", { timeout: 8000 }).catch(() => {});
+  // ⚠ 2026-10-05 修（同类）：第 3 步要跑真 mrp_netting 求解器再出表，8 秒在负载下不够
+  //   （上一轮 9 行绿、下一轮被拖红）。放宽到 90 秒。
+  await page.waitForSelector("[data-testid=sop-mrp-table]", { timeout: 90000 }).catch(() => {});
   const sopMrp = await page.locator("[data-testid^=sop-mrp-row-]").count();
   sopMrp > 0
     ? ok(`SOP 前端真后端：物料线 MRP 表 ${sopMrp} 物料真浏览器渲染（mrp_netting，C06 齐套）`)
@@ -126,28 +168,58 @@ try {
 
   // A4 对象/类型浏览器：真后端真物化计数
   await page.click('a[href="/admin/object-types"]').catch(() => {});
-  await page.waitForSelector("[data-testid=object-types-page]", { timeout: 10000 });
-  await page.waitForSelector("[data-testid^=ot-count-]", { timeout: 8000 }).catch(() => {}); // 等物化计数 stats 异步加载
+  // ⚠ 2026-10-05 修：裸 await 一超时就抛到最外层 catch，**后面 7 条断言全不跑**（上一版正是死在这儿）。
+  //   补 .catch 后失败会如实落进下面那条 bad(...)，而不是把整轮带走。
+  await page.waitForSelector("[data-testid=object-types-page]", { timeout: 90000 }).catch(() => {});
+  await page.waitForSelector("[data-testid^=ot-count-]", { timeout: 90000 }).catch(() => {}); // 等物化计数 stats 异步加载
   const rows = await page.$$eval("[data-testid^=ot-row-]", (els) => els.length);
   const counts = await page.$$eval("[data-testid^=ot-count-]", (els) => els.map((e) => e.textContent));
   rows > 0 && counts.some((c) => c && c !== "0") ? ok(`A4 真后端：${rows} 类型 + 真物化计数`) : bad("A4 真后端：类型/计数异常");
 
   // A11 连接器归类列
   await page.click('a[href="/admin/connections"]').catch(() => {});
-  await page.waitForTimeout(1000);
+  // ⚠ 2026-10-05 修（同类）：连接列表异步加载，固定等 1 秒是赌（实测两轮 57 → 81 条，条数随建域在长）。
+  await page.waitForFunction(
+    () => document.querySelectorAll("[data-testid^='conn-cat-']").length > 0,
+    null,
+    { timeout: 90000 },
+  ).catch(() => {});
   const cats = await page.$$eval("[data-testid^=conn-cat-]", (els) => els.length);
   cats > 0 ? ok(`A11 真后端：${cats} 条连接含归类列`) : bad("A11 真后端：无连接归类列");
 
   // 工作流时间线 + 比对现状（真后端 run：真 comprehend floor + planSlice + provisioners）
   await page.click('a[href="/admin/data-builder"]').catch(() => {});
-  await page.waitForSelector("[data-testid=wf-timeline]", { timeout: 10000 });
-  await page.click("[data-testid=wf-start]");
-  await page.waitForTimeout(4000);
+  // ⚠ 2026-10-05 修：工作流运行时挂在**默认收起**的 `<details data-testid=db-advanced>` 里
+  //   （summary 文案：「进阶：逐条跑构建 / 工作流运行时 / 快速合成」）。关闭的 <details> 子元素
+  //   **保留版面盒子但不绘制、不参与命中测试** —— 实测 `elementFromPoint` 在按钮中心恒不命中
+  //   按钮本身（返回 data-builder-page / db-growth-console），`page.click` 超时，**两端日志零工作流
+  //   POST**（不是报错，是请求从未发出）。不展开这一步，`wf-start` 永远点不到，连带
+  //   A5 / A7 / A10 / A18.4 四条下游断言一起红。展开后实测：点击成功且
+  //   `POST /a/v1/databuilder/workflow-runs` 真发出。
+  await page.click("[data-testid=db-advanced]").catch(() => {});
+  await page.waitForSelector("[data-testid=wf-timeline]", { timeout: 90000 }).catch(() => {});
+  await page.click("[data-testid=wf-start]").catch(() => {});
+  // ⚠ 2026-10-05 修：同步工作流**跑完才返回**（实测后端 6 秒返回 status=SUCCEEDED / 7 步），
+  //   而原写法固定等 4 秒就数步骤 ⇒ 步骤还没上屏，恒得 0。改为**等步骤真的出现**（有界 90 秒），
+  //   不再赌一个拍脑袋的秒数。前端的 `startM.onSuccess` 会 `setExpanded(wf.id)`，故新运行自动展开，
+  //   步骤（`wf-step-<stepKey>`，在 `{isOpen && …}` 里）无需再点。
+  await page.waitForFunction(
+    () => document.querySelectorAll('[data-testid^="wf-step-"]').length >= 6,
+    null,
+    { timeout: 90000 },
+  ).catch(() => {});
   const steps = await page.$$eval("[data-testid^=wf-step-]", (els) => new Set(els.map((e) => e.getAttribute("data-testid")).filter((x) => x && !x.includes("error"))).size);
   const gap = await page.locator("[data-testid=wf-gap-analysis]").count();
   steps >= 6 ? ok(`工作流真后端：7 步状态机 + 比对现状${gap ? "表" : "(未展开)"}`) : bad(`工作流真后端：步骤异常 ${steps}`);
 
   // ── A5 FDE 编排节点图（L4 真后端）：展开运行 → 8 节点 DAG 真浏览器渲染 ──
+  // ⚠ 2026-10-05 修（同类）：这一段**原本一个等待都没有** —— 它一直沾上面 WF 段 90 秒等待的光，
+  //   本轮 WF 提前返回就露馅（fdeNodes=0，上一轮同一条是绿的）。显式等节点真的渲染出来。
+  await page.waitForFunction(
+    () => document.querySelectorAll("[data-testid^='fde-node-']").length > 0,
+    null,
+    { timeout: 90000 },
+  ).catch(() => {});
   const fdeNodes = await page.$$eval("[data-testid^=fde-node-]", (els) => new Set(els.map((e) => e.getAttribute("data-testid"))).size);
   fdeNodes >= 8 ? ok(`A5 真后端：FDE 节点图 ${fdeNodes} 节点真浏览器渲染`) : bad(`A5 真后端：FDE 节点数异常 ${fdeNodes}`);
 
@@ -157,11 +229,22 @@ try {
 
   // ── A10 终态闭环验证（L4 真后端）：建域并记入历史(sbr-run,自动展开) → 重跑验证按钮 → 终态徽章 ──
   await page.click("[data-testid=sbr-run]").catch(() => {});
-  await page.waitForTimeout(5000); // 真后端建域(floor comprehend + 闭包 + 物化 + 自动验证)
+  // ⚠ 2026-10-05 修（同 WF 段一类）：真后端建域（floor comprehend + 闭包 + 物化 + 自动验证）**跑完才出按钮**，
+  //   原来固定等 5 秒就数 ⇒ 恒得 0 并报「历史记录未现」。改为等按钮真的出现（有界 120 秒）。
+  await page.waitForFunction(
+    () => document.querySelectorAll('[data-testid^="sbr-verify-btn-"]').length > 0,
+    null,
+    { timeout: 120000 },
+  ).catch(() => {});
   const verifyBtns = await page.locator("[data-testid^=sbr-verify-btn-]").count();
   if (verifyBtns > 0) {
     await page.locator("[data-testid^=sbr-verify-btn-]").first().click().catch(() => {});
-    await page.waitForTimeout(2500);
+    // ⚠ 2026-10-05 修（同类第 7 例）：重跑验证是真跑一遍（后端），固定等 2.5 秒就数终态徽章是赌。
+    await page.waitForFunction(
+      () => document.querySelectorAll('[data-testid^="sbr-verify-status-"]').length > 0,
+      null,
+      { timeout: 120000 },
+    ).catch(() => {});
     const vstatus = await page.locator("[data-testid^=sbr-verify-status-]").count();
     vstatus > 0 ? ok("A10 真后端：重跑验证 → 终态徽章真浏览器渲染") : bad("A10 真后端：验证终态徽章缺失");
   } else { bad("A10 真后端：无重跑验证按钮（历史记录未现）"); }
@@ -169,11 +252,21 @@ try {
   // ── A18.4 整域晋升编排（L4 真后端）：勾选 PROVISIONAL → 建域（隔离物化、UNVERIFIED）→ 整域晋升 → GOVERNED ──
   await page.check("[data-testid=db-provisional]").catch(() => {});
   await page.click("[data-testid=sbr-run]").catch(() => {});
-  await page.waitForTimeout(5000); // 真后端 PROVISIONAL 建域（闭包降级 + 隔离物化到伪租户）
+  // ⚠ 2026-10-05 修（同上）：PROVISIONAL 建域（闭包降级 + 隔离物化到伪租户）跑完才出晋升按钮。
+  await page.waitForFunction(
+    () => document.querySelectorAll('[data-testid^="sbr-promote-btn-"]').length > 0,
+    null,
+    { timeout: 120000 },
+  ).catch(() => {});
   const promoteBtns = await page.locator("[data-testid^=sbr-promote-btn-]").count();
   if (promoteBtns > 0) {
     await page.locator("[data-testid^=sbr-promote-btn-]").first().click().catch(() => {});
-    await page.waitForTimeout(3000); // 迁移隔离域 → 真租户 + 翻转域信任级
+    // ⚠ 2026-10-05 修（同类第 8 例）：整域晋升要真迁隔离数据 → 真租户 + 翻转信任级，固定等 3 秒是赌。
+    await page.waitForFunction(
+      () => document.querySelectorAll('[data-testid^="sbr-promote-summary-"]').length > 0,
+      null,
+      { timeout: 120000 },
+    ).catch(() => {});
     const governed = await page.locator("[data-testid^=sbr-promote-summary-]").count();
     governed > 0
       ? ok("A18.4 真后端：PROVISIONAL 域整域晋升 GOVERNED（隔离数据迁入真租户，晋升摘要真浏览器渲染）")
@@ -188,18 +281,23 @@ try {
 
   // ── A14 evals parity（L4 真后端）：SPA 导航（access token 仅内存，禁 goto 硬刷会丢登录态）→ 跑一次 → parity 失因列 ──
   await page.click('a[href="/admin/evals"]').catch(() => {});
-  await page.waitForSelector("[data-testid=evals-page]", { timeout: 10000 }).catch(() => {});
+  await page.waitForSelector("[data-testid=evals-page]", { timeout: 90000 }).catch(() => {});
   const evalRun = await page.locator("[data-testid=eval-run]").count();
   if (evalRun > 0) {
     await page.click("[data-testid=eval-run]").catch(() => {});
-    await page.waitForTimeout(3500);
+    // ⚠ 2026-10-05 修（同类）：评测跑批 + parity 失因列异步上屏，固定等 3.5 秒是赌。
+    await page.waitForFunction(
+      () => document.querySelectorAll("[data-testid^='eval-parity-']").length > 0,
+      null,
+      { timeout: 90000 },
+    ).catch(() => {});
     const parityCol = await page.locator("[data-testid^=eval-parity-]").count();
     parityCol > 0 ? ok("A14 真后端：评测 parity 失因列真浏览器渲染") : bad("A14 真后端：parity 列缺失");
   } else { bad("A14 真后端：evals 页无运行入口"); }
 
   // ── A18.4 求解器审核台（L4 真后端）：SPA 导航 → 页面渲染 + 真 /a/v1/solvers/artifacts 端点（无临时件→空态）──
   await page.click('a[href="/admin/solver-review"]').catch(() => {});
-  await page.waitForSelector("[data-testid=solver-review-page]", { timeout: 10000 }).catch(() => {});
+  await page.waitForSelector("[data-testid=solver-review-page]", { timeout: 90000 }).catch(() => {});
   const reviewPage = await page.locator("[data-testid=solver-review-page]").count();
   const reviewBody = await page.locator("[data-testid=solver-artifacts-table], [data-testid=solver-review-empty]").count();
   reviewPage > 0 && reviewBody > 0
