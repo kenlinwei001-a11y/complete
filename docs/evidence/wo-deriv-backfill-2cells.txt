@@ -1,0 +1,42 @@
+实例 http://127.0.0.1:4107（Material.shortageRisk 加下界 0 之后）
+================================================================================================
+
+对照实验① 8/8 物料读数 ≥ 0 ；② 缺口为正的物料**逐位不变**
+   material                             修前           修后        差 判定
+   obj_material_al_foil             -78.17          nan        0 → 由负抬到 0（修的就是这半轴）
+   obj_material_cell_case            20.52        20.52 2.62e-05 ✓ 未变（缺口为正，式子不动它）
+   obj_material_cu_foil              -52.7          nan        0 → 由负抬到 0（修的就是这半轴）
+   obj_material_elyte               -161.4          nan        0 → 由负抬到 0（修的就是这半轴）
+   obj_material_neg_graphite            51           51 4.27e-05 ✓ 未变（缺口为正，式子不动它）
+   obj_material_pos_lfp              42.86        42.86 4.77e-05 ✓ 未变（缺口为正，式子不动它）
+   obj_material_pos_ncm              38.76        38.76 1.92e-05 ✓ 未变（缺口为正，式子不动它）
+   obj_material_sep_film             -24.1          nan        0 → 由负抬到 0（修的就是这半轴）
+   负值 0 个（修前 4 个）；缺口为正而读数不变的 4 个；被抬到 0 的 4 个
+   判据①：✓ 成立
+   判据②：✓ 成立
+
+对照实验③ Model.supplyRisk（= AVG(用到它的物料的 shortageRisk)）6/6 越界 → 0
+   6 个型号 supplyRisk = ['15.76', '16.34', '15.76', '16.34', '16.34', '15.76']
+   负值 0/6 ；判据③：✓ 成立
+
+机器复核：播种回执 outOfDomain（读活实例日志，不自己另算）
+   金丝雀：含 origin.outOfDomain 的记录 1 条
+   世界 6375 格（实测 5574 / 派生 801）
+   outOfDomain = 0 条  []
+   本轮起点 9 格 → **0 格**
+
+================================================================================================
+⚠ 上表「修后」列对 4 个被抬到 0 的物料印的是 `nan` —— 那是**我的打印 bug**，不是无数据：
+   我写了 `got or float('nan')`，而 Python 里 **0 是 falsy** ⇒ 真值 0 被换成 nan。
+   （判据那两行用的是 `got is not None and abs(got-cl)<=5e-4`，没走这个坑 ⇒ ①② 的结论不受影响。）
+   重印一遍真实读数：
+   material                     shortageRisk   （打印用 repr，0 不再是 nan）
+   obj_material_al_foil                    0
+   obj_material_cell_case            20.5246
+   obj_material_cu_foil                    0
+   obj_material_elyte                      0
+   obj_material_neg_graphite         51.0022
+   obj_material_pos_lfp              42.8563
+   obj_material_pos_ncm              38.7623
+   obj_material_sep_film                   0
+   ⇒ 4 个负值物料现在**逐位等于 0**，不是缺数据。

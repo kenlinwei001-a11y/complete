@@ -133,7 +133,29 @@ export const DEMO_DERIVATION_SPECS: readonly {
   { specKey: "material_price_shock", targetType: "Material", targetProp: "priceShock", formula: "this.devPct * 100" },
   // Material.shortageRisk：缺料风险 = (日耗×提前期 − 在手 − 在途) / (日耗×提前期) × 100（缺货率，负=超储）。
   //   出处：dailyUse/leadTime/onHand/inTransit。实测 −161~51。COALESCE 兜除零。
-  { specKey: "material_shortage_risk", targetType: "Material", targetProp: "shortageRisk", formula: "COALESCE((this.dailyUse * this.leadTime - this.onHand - this.inTransit) * 100 / (this.dailyUse * this.leadTime), 0)" },
+  // Material.shortageRisk：短缺风险 = 缺口率 = (日耗×提前期 − 在手 − 在途) ÷ (日耗×提前期) × 100。
+  //   🔴 2026-10-06 修（WO-DERIV-BACKFILL，仓主裁决「判式子错」）：原式**无下界**，
+  //     实测 8 个物料里 4 个读出**负的短缺风险**（最小 −161.42，elyte 在手+在途 = 2.6× 需求）。
+  //     式子的算术是对的（8/8 重算逐位相符），错在**它算的不是这一格声明的东西**：
+  //       ① 域表声明 `shortageRisk` 为 `min: 0, restPoint: 0`，出处行原文
+  //          「静息点取下界 0：**无入流即不受阻**」—— 负值违反本格自己的声明；
+  //       ② 本格有一条**负系数**入边 `MaterialAlternative.switchPressure ×(−0.111)`，
+  //          边描述原文「替代料切换压力高 ⇒ Plan B 在启用，主料的短缺风险被**缓解**」
+  //          —— 缓解是朝 0 走，不是朝负走；
+  //       ③ 负值会**沿链传染**：`Model.supplyRisk = AVG(用到它的物料的 shortageRisk)` 实测
+  //          6/6 全为负（−29.44~−28.86），再经 `Order.shortageRisk <= Model.supplyRisk ×0.2775`
+  //          往下 —— 一条「风险」链整条为负，下游全部越界。
+  //     名字是 **Risk**：库存过剩不是「负的短缺风险」，过剩另有 `MaterialBatch.turnoverPressure`
+  //     （呆滞天数，实测 0–121）在管，信息不丢。
+  //   ✅ 修法 = 加下界 0（缺口率 ∈ [0,100]）。
+  //     ⚠ 这两个界不是「内联业务常数」（陷阱 6 禁的是内联**域表**的边界）：它们是**这个比式
+  //     自身的数学端**——可用量 ≥ 0 ⇒ 缺口率 ≤ 100；可用量 ≥ 需求 ⇒ 缺口率 ≤ 0，取 0。
+  //     若域表那两格将来改动，本行必须同步 —— 这是全仓唯一一处二者绑在同一个数上的地方。
+  //   对照实验（修后必须成立，见 docs/evidence/wo-deriv-backfill-2cells.txt）：
+  //     ① 8/8 物料读数 ≥ 0（修前 4 个为负）；
+  //     ② 缺口为正的物料读数**逐位不变**（修的只是负半轴）；
+  //     ③ Model.supplyRisk 的 6/6 越界 → 0。
+  { specKey: "material_shortage_risk", targetType: "Material", targetProp: "shortageRisk", formula: "CLAMP(COALESCE((this.dailyUse * this.leadTime - this.onHand - this.inTransit) * 100 / (this.dailyUse * this.leadTime), 0), 0, 100)" },
   // Model.costPressure：成本压力 = 单位成本 / 单位售价 × 100（成本占售价比，越高越压毛利）。
   //   ⚠ 不用 (1−cost/price)：那是毛利率，seed 实测虚高 96–97（巧合贴 100）。本式实测 2.5–3.9。
   { specKey: "model_cost_pressure", targetType: "Model", targetProp: "costPressure", formula: "COALESCE(this.unitCost * 100 / this.unitPrice, 0)" },
