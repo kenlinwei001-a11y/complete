@@ -64,14 +64,19 @@ interface HostReply {
 }
 
 // ── 模型面回执包装：**逐字镜像**同一条链上已有的生产者，禁漂移 ──────────────────
-// ⚠ 与 ontology server 的关键差别（**刻意的，不是漏抄**）：workflow 的 OK 回执
-// **不带 `<tool_data>` 包络、也没有 tool_call_id** —— 这是 native `loop.ts` 对 WORKFLOW
-// 调用的既有渲染形态（`dsh-engine-tool-bridge.seam.test.ts` C1 明写「native WORKFLOW OK
-// 包装 loop.ts:820 逐字——无 tool_call_id 属性，与 BUILTIN 面 :901 不同形」），
-// 也是被退掉的那条 `hostWorkflowTools` 反向通道的 render 形态。故本 server 只做
-// **一进一出原样透传**：MCP client 侧 `render` 只把 content 的 text 块原样 join，
-// 我们给什么模型就看到什么 —— 给包络就等于在本单里顺手改模型面文案。
-// 非 OK 文案镜像 tool-bridge.mjs / loop.ts（DENIED 两支 / BUDGET / ERROR=JSON）。
+// ① 原生核 loop.ts（`<tool_data tool_call_id="${toolCallId}">${json}</tool_data>${note}`，
+//    BUILTIN 面）
+// ② DSH 反向工具核 platform-world.mjs 的 reverse render —— **WORKFLOW 那一支
+//    `withCallId:false`**：`<tool_data>${payloadJson}</tool_data>${note}`（有包络、**无
+//    tool_call_id 属性**；loop.ts:820 对 WORKFLOW 调用同形，与 BUILTIN 面不同形）
+// ③ 本文件（MCP 核）——第三处。**为什么必须包**：DSH 的 mcp-client-tenant `render` 只是把
+//    MCP content 的 text 块**原样 join**（extractText），不会替我们加包络；不包就会让
+//    「同一次工作流调用」在新旧两条路上的模型面一个是裸 JSON、一个带包络 —— 而「换传输面
+//    不改行为」正是本单的判据（旧路回执形态见 resource-reach B3 的 `② 是成功包络` 断言）。
+// ⚠ 差别只在**属性**：workflow 不带 tool_call_id（模型无法在 final_answer.provenance 里
+//    引用一个多步流程的中间 id），BUILTIN/本体带 —— 这一点与 ①② 逐字对齐，不是漏抄。
+// 非 OK 文案同样镜像 tool-bridge.mjs（它本身是 loop.ts 的逐字镜像）：DENIED 两支 /
+// BUDGET / ERROR=JSON.stringify(payload)。改 loop.ts 或 tool-bridge.mjs 必须同步此处。
 
 const DENIED_SCOPE_TEXT = "AGENT_SCOPE_VIOLATION: 该工具超出本 Agent 的能力声明";
 const DENIED_GENERIC_TEXT = "无权访问";
@@ -81,7 +86,11 @@ function envelopeOf(body: HostReply): { text: string; isError: boolean } {
   if (body.outcome === "OK" && typeof body.payloadJson === "string") {
     // 原样透传 payloadJson（宿主已用单源 truncateToolResultJson 截断）——禁 parse/stringify
     // 往返：JSON 会重排 integer-like 键，逐字等契约会破（tool-bridge.mjs 头注同一纪律）。
-    return { text: `${body.payloadJson}${body.note ? `\n${body.note}` : ""}`, isError: false };
+    // 包络见上：`<tool_data>` 无属性，镜像 platform-world.mjs withCallId:false 那一支。
+    return {
+      text: `<tool_data>${body.payloadJson}</tool_data>${body.note ? `\n${body.note}` : ""}`,
+      isError: false,
+    };
   }
   if (body.outcome === "DENIED") {
     const payload = (body.payload && typeof body.payload === "object") ? body.payload as Record<string, unknown> : {};
