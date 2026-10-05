@@ -39,7 +39,7 @@ import type { AuthCtx } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
 import { STATE_VAR_DOMAINS, stateVarDisplayName, stateVarValueRef } from "../synthetic/battery.js";
 import { buildPropagationInputs } from "./propagation-inputs.js";
-import { saturateToDomain, type PropagationGraph } from "./propagation.js";
+import type { PropagationGraph } from "./propagation.js";
 
 /**
  * tick0 世界态里**落在声明取值域之外**的格子（WO-DERIV-BACKFILL · 双所有者普查）。
@@ -81,8 +81,21 @@ export interface SeedWorldOutOfDomainCell {
   observed: readonly [number, number];
   /** 声明的取值域（`max: null` = 无界声明）。 */
   declared: readonly [number, number | null];
-  /** 引擎把值压到哪（用 `saturateToDomain` **同一个函数**算，不是另写一个截断）。 */
-  saturatedTo: readonly [number, number];
+  /**
+   * ⛔ **刻意不提供「会被压到多少」这个字段**（第一版有，实测证明它会骗人，已删）。
+   *
+   * 第一版叫 `saturatedTo`，用 `saturateToDomain` 算了一遍。看上去很对，但它**只复现了一步**：
+   * 真实的每拍顺序是「传导 → 饱和 → **规格基值还原**」——
+   * `spec-base-synthesis.ts` 随后补一个 `λ·(base − restPoint)` 把值**拉回规格值**。
+   * 实测反例（2026-10-05，`/a/v1/sim/sessions …/tick` n=1）：
+   *   `Model.supplyRisk` 实测范围 `[−29.44, −28.86]`，纯饱和一步给出的是 `[0, 0]`
+   *   —— 看着像"全被抹成 0"；**而 tick1 的真实读数是 `[−10.89, −10.68]`**
+   *   （`0 + λ·(−29.44)`，λ≈0.37）。两者差一个 λ·base。
+   *
+   * ⇒ 静态字段说不出动态终值。**要么给出那一步的名字，要么不给** —— 给一个会被读成终值的
+   *   中间量，就是本仓反复登记的那种「用一个看起来相关的数字当判据」。
+   *   本条只报**能静态说死的事实**：哪一格、归哪条规格、几个对象出界、实测范围、声明范围。
+   */
 }
 
 /**
@@ -670,11 +683,6 @@ function tallyOutOfDomain(
       objects: a.objects,
       observed: [a.lo, a.hi],
       declared: [d.min, d.max],
-      // 压到哪：**用引擎那个函数算**，不另写一个截断 —— 它带压缩带，不是 min/max 直夹。
-      saturatedTo: [
-        saturateToDomain(a.lo, d.min, d.max, d.restPoint),
-        saturateToDomain(a.hi, d.min, d.max, d.restPoint),
-      ],
     });
   }
   return out;
