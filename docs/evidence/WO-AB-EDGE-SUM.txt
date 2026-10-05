@@ -1,0 +1,14 @@
+## 进入 obj_order_SO-3391.costPressure 的全部 amount（精确求和） · session=sims_b1mvx6080hk8jkzr mag=-3 ticks=12
+实测终态读数 = 82.291509049994
+
+命中边 11 条（causal graph edges 总数 2243）
+
+### 按写入方分解
+  demo_model_cost_to_order_cost                  n=11    Σamount=0.073378747
+
+Σamount 合计 = 0.073378747
+实测读数 90.384615 + Σamount = 90.457994   （对照 mag 臂实测 82.291509049994）
+读数实际变化 = -8.093106  ⇒ 未被 amount 解释的余量 = -8.166485
+
+判读：Σamount 若 << 读数变化 ⇒ 该格变化的主项不来自任何传导边 ⇒ 来自派生规格/其他写入方。
+DONE 2026-10-05T16:39:50.869Z
