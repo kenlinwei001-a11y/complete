@@ -1589,10 +1589,11 @@ export function seedRegistry(now = new Date().toISOString()): {
         "【对口能力】优先调用 invoke_solver（毛利/量价本利/CAPEX）；涉及最优/资源分配必须调 solver，不自己算。",
         "【交卷】按 结论/分析/证据/建议/风险 组织，业务数字一律 ⟦ref:N⟧。",
       ].join("\n"),
-      tools: [{ kind: "BUILTIN", name: "query_objects" }, { kind: "BUILTIN", name: "invoke_solver" }],
+      // WO-SOLVERS-MCP-REAL · 裸名授予已退，改挂 MCP 面（与其余六角色同一条路，三面同改）。
+      tools: [{ kind: "BUILTIN", name: "query_objects" }, solverMcpRef(SOLVER_KEYS_FINANCE)],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
-      skills: [], mcpServers: [],
-      scopeDeclaration: { objectTypes: ["FinanceAccount", "FinanceMetric", "FinancePlan"], toolNames: ["query_objects", "invoke_solver"] },
+      skills: [], mcpServers: [{ mcpConfigId: SOLVERS_MCP_CONFIG_ID }],
+      scopeDeclaration: { objectTypes: ["FinanceAccount", "FinanceMetric", "FinancePlan"], toolNames: ["query_objects", ...solverMcpFullNames(SOLVER_KEYS_FINANCE)] },
       budget: { maxIterations: 6, maxToolCalls: 8 },
       status: "DRAFT",
     },
@@ -1606,10 +1607,11 @@ export function seedRegistry(now = new Date().toISOString()): {
         "【对口能力】优先调用 invoke_solver（碳足迹核算）；涉及量化优化必须调 solver，不自己算。",
         "【交卷】按 结论/分析/证据/建议/风险 组织，业务数字一律 ⟦ref:N⟧。",
       ].join("\n"),
-      tools: [{ kind: "BUILTIN", name: "query_objects" }, { kind: "BUILTIN", name: "invoke_solver" }],
+      // WO-SOLVERS-MCP-REAL · 同上（碳足迹核算 → carbon_footprint）。
+      tools: [{ kind: "BUILTIN", name: "query_objects" }, solverMcpRef(SOLVER_KEYS_CARBON)],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
-      skills: [], mcpServers: [],
-      scopeDeclaration: { objectTypes: ["Model", "Material", "CarbonFactor"], toolNames: ["query_objects", "invoke_solver"] },
+      skills: [], mcpServers: [{ mcpConfigId: SOLVERS_MCP_CONFIG_ID }],
+      scopeDeclaration: { objectTypes: ["Model", "Material", "CarbonFactor"], toolNames: ["query_objects", ...solverMcpFullNames(SOLVER_KEYS_CARBON)] },
       budget: { maxIterations: 6, maxToolCalls: 8 },
       status: "DRAFT",
     },
@@ -1625,14 +1627,14 @@ export function seedRegistry(now = new Date().toISOString()): {
       ].join("\n"),
       tools: [
         { kind: "BUILTIN", name: "query_objects" },
-        { kind: "BUILTIN", name: "invoke_solver" },
+        solverMcpRef(SOLVER_KEYS_MARKET),
         { kind: "MCP", mcpConfigId: "mcp_market_data", toolFilter: ["get_commodity_price", "get_policy_update"] },
         { kind: "WORKFLOW", workflowId: "wf_seed_order_track", version: "latest" },
       ] as AgentDefinition["tools"],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
       skills: [{ skillId: "skl_seed_supply_chain", version: "latest" }],
-      mcpServers: [{ mcpConfigId: "mcp_market_data" }],
-      scopeDeclaration: { objectTypes: ["Material", "Supplier", "Order", "Model"], toolNames: ["query_objects", "invoke_solver", "mcp__market_data__get_commodity_price", "mcp__market_data__get_policy_update"] },
+      mcpServers: [{ mcpConfigId: "mcp_market_data" }, { mcpConfigId: SOLVERS_MCP_CONFIG_ID }],
+      scopeDeclaration: { objectTypes: ["Material", "Supplier", "Order", "Model"], toolNames: ["query_objects", ...solverMcpFullNames(SOLVER_KEYS_MARKET), "mcp__market_data__get_commodity_price", "mcp__market_data__get_policy_update"] },
       budget: { maxIterations: 8, maxToolCalls: 12 },
       status: "PUBLISHED",
     },
@@ -1670,10 +1672,11 @@ export function seedRegistry(now = new Date().toISOString()): {
         "【对口能力】优先经 invoke_agent 扇出调对应角色 agent；涉及排产/优化由被调 agent 调 solver，不自己算。",
         "【交卷】按 各角色分栏 + 综合结论/一致或冲突/每角色溯源 组织，业务数字一律 ⟦ref:N⟧。",
       ].join("\n"),
-      tools: [{ kind: "BUILTIN", name: "query_objects" }, { kind: "BUILTIN", name: "invoke_solver" }],
+      // WO-SOLVERS-MCP-REAL · 同上（编排角色的求解器面 = 组合对策 + 指标骨架 + 缺口归因）。
+      tools: [{ kind: "BUILTIN", name: "query_objects" }, solverMcpRef(SOLVER_KEYS_COORD)],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
-      skills: [], mcpServers: [],
-      scopeDeclaration: { objectTypes: ["Base", "Order", "Model", "Line", "Process", "Equipment", "Material", "Supplier"], toolNames: ["query_objects", "invoke_solver"] },
+      skills: [], mcpServers: [{ mcpConfigId: SOLVERS_MCP_CONFIG_ID }],
+      scopeDeclaration: { objectTypes: ["Base", "Order", "Model", "Line", "Process", "Equipment", "Material", "Supplier"], toolNames: ["query_objects", ...solverMcpFullNames(SOLVER_KEYS_COORD)] },
       budget: { maxIterations: 6, maxToolCalls: 12 },
       status: "PUBLISHED",
       role: "coordinator",
@@ -1681,6 +1684,45 @@ export function seedRegistry(now = new Date().toISOString()): {
   ];
   return { agents, workflows, skills };
 }
+
+/**
+ * WO-SOLVERS-MCP-REAL · 各角色的求解器授予集（MCP 全名）。
+ *
+ * **为什么在 seed 里显式列而不能「全给」**：三面同改要求**授予面 == 声明面**。
+ * 求解器目录随租户/entitlement 变，若 ref 不带 toolFilter（= 全量），scopeDeclaration 就
+ * 无法静态记全名 ⇒ 两个面结构上对不齐。故按角色显式收窄，两面用**同一个数组**（单源）。
+ *
+ * ⚠ 键全部取自本文件内**已在使用**的真实求解器 key（工作流步骤 / CEO 能力位），
+ * ⛔ 不许臆造：写一个不存在的 key 不会报错，只会静默少一个工具（最难查的一类）。
+ *
+ * ⚠ **键必须真在 DataCore `SOLVER_KEYS` 里**（照上一条的同一纪律，2026-10-05 实测纠）：曾在此写
+ * `sop_balance` —— 那是 **S1.8 服务 / 场景卡 / 工作流**的名字，**不在 `SOLVER_KEYS`**（63 条里无此键），
+ * 于是 `mcp__solvers__sop_balance` 是一条**幽灵授予**：三面结构上齐全、目录里永远没有这件工具
+ * ⇒ 「有声明、无实体」在本单内部又长了一遍。改用本文件 BP-4 已经用过的登记替身 `mrp_netting`
+ * （`sop_balance` 卡 → `mrp_netting` 求解器的既有重绑，见 `scenarios-catalog` 消费处）。
+ * 守门的是本单接缝测试 C3（逐键核活目录，幽灵授予即红）。
+ */
+const SOLVER_KEYS_ANALYST = [
+  "gap_attribution", "decision_play", "metric_rollup", "credit_exposure", "finance_pnl",
+  "supply_demand_gap_attribution", "atp_check", "bottleneck_matrix", "base_capacity_outlook",
+  "generic_inference", "capacity_forecast", "affected_orders", "kit_readiness",
+  "risk_timeline", "mrp_netting", "yield_diagnosis",
+] as const;
+const SOLVER_KEYS_CAPACITY = ["capacity_forecast", "mrp_netting", "affected_orders", "bottleneck_matrix", "base_capacity_outlook"] as const;
+const SOLVER_KEYS_RISK = ["risk_timeline", "gap_attribution", "affected_orders", "base_capacity_outlook"] as const;
+const SOLVER_KEYS_QUALITY = ["yield_diagnosis"] as const;
+const SOLVER_KEYS_SUPPLY = ["kit_readiness", "mrp_netting"] as const;
+const SOLVER_KEYS_EXPLORE = ["capacity_forecast", "affected_orders", "gap_attribution"] as const;
+// WO-SOLVERS-MCP-REAL · 剩余四角色（按各自 systemPrompt 的「对口能力」域取键，键全部在 DataCore SOLVER_KEYS 内）
+const SOLVER_KEYS_FINANCE = ["finance_pnl", "margin_attribution", "capex_scenario", "credit_exposure"] as const;
+const SOLVER_KEYS_CARBON = ["carbon_footprint"] as const;
+const SOLVER_KEYS_MARKET = ["supply_demand_gap_attribution", "lta_gap", "quote_margin", "concentration_risk"] as const;
+const SOLVER_KEYS_COORD = ["countermeasure_combo", "metric_rollup", "gap_attribution"] as const;
+
+/** 角色求解器授予集 → MCP 授予面 ref（授予面与声明面**共用一个数组**，禁各写一份）。 */
+const solverMcpRef = (keys: readonly string[]) =>
+  ({ kind: "MCP", mcpConfigId: SOLVERS_MCP_CONFIG_ID, toolFilter: keys.map((k) => solverMcpToolName(k)) }) as AgentDefinition["tools"][number];
+const solverMcpFullNames = (keys: readonly string[]) => keys.map((k) => solverMcpToolName(k));
 
 /**
  * WO-FIVE-ROLE-AI-EMPLOYEE P1 · 五角色画像单一来源（激活 CeoAgentProfile·此前 app 侧零消费的死契约）。
@@ -1696,35 +1738,35 @@ export const ROLE_PROFILES: CeoAgentProfile[] = [
     // `ceo-agent.ts:81` 自注：「该角色可用工具（展示·真实约束以绑定 agent scopeDeclaration.toolNames 为准）」，
     // 全仓唯一读 `toolWhitelist` 的地方是 `orchestrator.ts` 读 **package** 那份）。
     // 仍改这一处：状态相反的两份台账正是本仓反复踩的坑（展示面说裸名、真实约束是全名 ⇒ 下一个人照着它查会查错方向）。
-    agentId: "agt_seed_analyst", toolWhitelist: ["query_objects", "aggregate_objects", "get_object", ...ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)), "invoke_solver", "evaluate_rules", "search_knowledge", "query_timeseries_agg"],
+    agentId: "agt_seed_analyst", toolWhitelist: ["query_objects", "aggregate_objects", "get_object", ...ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)), ...solverMcpFullNames(SOLVER_KEYS_ANALYST), "evaluate_rules", "search_knowledge", "query_timeseries_agg"],
     objectTypes: ["Base", "Order", "Model", "Line", "Process", "Equipment", "Shipment", "Segment"], systemKey: "ceo",
   },
   {
     profileId: "role_supply_chain", role: "supply-chain",
     scope: { allBases: true, baseIds: [] },
     focusMetrics: ["kit_readiness", "lta_coverage"],
-    agentId: "agt_supply_chain", toolWhitelist: ["query_objects", "invoke_solver"],
+    agentId: "agt_supply_chain", toolWhitelist: ["query_objects", ...solverMcpFullNames(SOLVER_KEYS_SUPPLY)],
     objectTypes: ["Material", "Supplier", "PurchaseOrder", "Shipment"], systemKey: "supply-chain",
   },
   {
     profileId: "role_production", role: "production",
     scope: { allBases: true, baseIds: [] },
     focusMetrics: ["capacity_util", "bottleneck"],
-    agentId: "agt_capacity_planner", toolWhitelist: ["query_objects", "invoke_solver"],
+    agentId: "agt_capacity_planner", toolWhitelist: ["query_objects", ...solverMcpFullNames(SOLVER_KEYS_CAPACITY)],
     objectTypes: ["Base", "Line", "Model", "Order"], systemKey: "production",
   },
   {
     profileId: "role_quality", role: "quality",
     scope: { allBases: true, baseIds: [] },
     focusMetrics: ["yield", "quality_compliance"],
-    agentId: "agt_quality_inspector", toolWhitelist: ["query_objects", "invoke_solver"],
+    agentId: "agt_quality_inspector", toolWhitelist: ["query_objects", ...solverMcpFullNames(SOLVER_KEYS_QUALITY)],
     objectTypes: ["Process", "Equipment", "QualityStandard"], systemKey: "quality",
   },
   {
     profileId: "role_base_planner", role: "base-planner",
     scope: { allBases: false, baseIds: [] }, // baseIds 运行时由 OBO 身份 baseScope 注入（A6 行级）
     focusMetrics: ["capacity_util", "kit_readiness"],
-    agentId: "agt_seed_analyst", toolWhitelist: ["query_objects", "invoke_solver", ...ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)), "evaluate_rules"],
+    agentId: "agt_seed_analyst", toolWhitelist: ["query_objects", ...solverMcpFullNames(SOLVER_KEYS_ANALYST), ...ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)), "evaluate_rules"],
     objectTypes: ["Base", "Order", "Model", "Line", "Process"], systemKey: "base-planner",
   },
 ];
@@ -1735,32 +1777,6 @@ export function roleProfile(role: string): CeoAgentProfile | undefined {
 }
 
 /** MCP 服务器出厂种子（3 条演示配置，覆盖 streamable_http / stdio 两种传输，使 MCP 库页不为空）。 */
-/**
- * WO-SOLVERS-MCP-REAL · 各角色的求解器授予集（MCP 全名）。
- *
- * **为什么在 seed 里显式列而不能「全给」**：三面同改要求**授予面 == 声明面**。
- * 求解器目录随租户/entitlement 变，若 ref 不带 toolFilter（= 全量），scopeDeclaration 就
- * 无法静态记全名 ⇒ 两个面结构上对不齐。故按角色显式收窄，两面用**同一个数组**（单源）。
- *
- * ⚠ 键全部取自本文件内**已在使用**的真实求解器 key（工作流步骤 / CEO 能力位），
- * ⛔ 不许臆造：写一个不存在的 key 不会报错，只会静默少一个工具（最难查的一类）。
- */
-const SOLVER_KEYS_ANALYST = [
-  "gap_attribution", "decision_play", "metric_rollup", "credit_exposure", "finance_pnl",
-  "supply_demand_gap_attribution", "atp_check", "bottleneck_matrix", "base_capacity_outlook",
-  "generic_inference", "capacity_forecast", "affected_orders", "kit_readiness",
-  "risk_timeline", "sop_balance", "yield_diagnosis",
-] as const;
-const SOLVER_KEYS_CAPACITY = ["capacity_forecast", "sop_balance", "affected_orders", "bottleneck_matrix", "base_capacity_outlook"] as const;
-const SOLVER_KEYS_RISK = ["risk_timeline", "gap_attribution", "affected_orders", "base_capacity_outlook"] as const;
-const SOLVER_KEYS_QUALITY = ["yield_diagnosis"] as const;
-const SOLVER_KEYS_SUPPLY = ["kit_readiness", "sop_balance"] as const;
-const SOLVER_KEYS_EXPLORE = ["capacity_forecast", "affected_orders", "gap_attribution"] as const;
-
-/** 角色求解器授予集 → MCP 授予面 ref（授予面与声明面**共用一个数组**，禁各写一份）。 */
-const solverMcpRef = (keys: readonly string[]) =>
-  ({ kind: "MCP", mcpConfigId: SOLVERS_MCP_CONFIG_ID, toolFilter: keys.map((k) => solverMcpToolName(k)) }) as AgentDefinition["tools"][number];
-const solverMcpFullNames = (keys: readonly string[]) => keys.map((k) => solverMcpToolName(k));
 
 export function seedMcpConfigs(): McpServerConfig[] {
   return [
