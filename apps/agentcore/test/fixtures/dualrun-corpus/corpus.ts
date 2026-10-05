@@ -286,7 +286,8 @@ const skill = (key: string, taskId: string, preRuleKeys?: string[], gov?: { side
   key,
   name: `语料技能 ${key}（${taskId}）`,
   summary: `供 ${taskId} 双跑对账的剧本化技能 ${key}`,
-  body: `## ${key} 正文（${taskId}）\n\n口径铺陈与剧本化材料，供 load_skill 轮次消费。`,
+  // 正文两臂共用（native 经 `load_skill`、dsh 经 `skill` 取到同一份 content）⇒ 措辞不点名任一臂的真名。
+  body: `## ${key} 正文（${taskId}）\n\n口径铺陈与剧本化材料，供技能加载轮次消费。`,
   ...(preRuleKeys ? { preRuleKeys } : {}),
   ...(gov?.sideEffect ? { sideEffect: gov.sideEffect } : {}),
   ...(gov?.approvalGate ? { approvalGate: gov.approvalGate } : {}),
