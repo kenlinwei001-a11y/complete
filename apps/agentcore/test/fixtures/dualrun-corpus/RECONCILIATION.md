@@ -362,7 +362,8 @@ A5 子集（语料声明 8 条：每类至少一 + 长上下文 + 多轮 + prove
 
 ## 4. 语料构成（65 条 + 2 gated）
 - 内容源：20 条 = SCENARIO_CATALOG triggerQuestion（执行通道不借 evals——蓝图 evidence 5）；
-  44 条合成：四维造（长度：短问句 / ≥4KB 长上下文；工具轮：0/1/3 轮 load_skill；
+  44 条合成：四维造（长度：短问句 / ≥4KB 长上下文；工具轮：0/1/3 轮技能加载
+  （native `load_skill` / dsh `skill`）；
   多轮：1/2/5 次 LLM 往返；拒绝混合：deny_pre 前置 / deny_mid 中段 / deny_all 全 deny /
   deny_prefork 分叉前）+ W2 批1 扩面 6 条：G1 EMPTY 空块类 4（dr50-by 空 blocks /
   dr50-bz 空 markdown 块 / dr50-ca 空白软收尾 / dr50-cb 空块混排）+ G4 超长输出 2
