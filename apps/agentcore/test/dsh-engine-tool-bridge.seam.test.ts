@@ -37,6 +37,7 @@
 import { createServer as createHttpServer, type Server } from "node:http";
 import { createServer as createNetServer } from "node:net";
 import type { AddressInfo } from "node:net";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -54,6 +55,7 @@ import { truncateToolResultJson } from "../src/agent/context.js";
 import { enterNesting } from "../src/runtime.js";
 import type { ToolAuthCtx } from "../src/tools/clients.js";
 import { buildSessionSetup } from "../src/dsh-runtime/setup-spec.js";
+import { WORKFLOW_MCP_CONFIG_ID, workflowMcpToolName } from "../src/dsh-runtime/workflow-mcp.js";
 
 // apps/agentcore/test/ → 仓根 = ../../../
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
@@ -816,7 +818,8 @@ describe("W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedTo
 
 const WF_ID = "wf_w85_probe";
 const WF_KEY = "w85_probe";
-const WF_TOOL = `workflow_${WF_KEY}`; // expandAgentTools 命名口径（engine.ts:401）
+// WO-WORKFLOW-MCP：模型可见/调用名改走 **DSH 原生 MCP 面**（单源 dsh-runtime/workflow-mcp.ts）。
+const WF_TOOL = workflowMcpToolName(WF_KEY);
 const WF_RUN_TOKEN = "dshr_w85";
 
 /** 2-step 确定性夹具：query_objects（本体间谍）+ render_answer（marker 块），零 LLM 步。 */
@@ -837,12 +840,40 @@ function workflowDef(): WorkflowDefinition {
   };
 }
 
-/** W8.5 agent：tools 仅 WORKFLOW ref（expand 后名 = workflow_<key>）。 */
+/**
+ * WO-WORKFLOW-MCP agent：工作流经 **MCP ref** 授予（三面齐：授予面 MCP ref / 挂载面 mcpServers /
+ * 声明面全名）—— 旧 `{kind:"WORKFLOW"}` 记法在本 agent 上已退（不留两条授予路）。
+ */
 function workflowAgentDef(): AgentDefinition {
   return agentDef({
-    tools: [{ kind: "WORKFLOW", workflowId: WF_ID, version: 1 }],
+    tools: [{ kind: "MCP", mcpConfigId: WORKFLOW_MCP_CONFIG_ID, toolFilter: [WF_TOOL] }],
+    mcpServers: [{ mcpConfigId: WORKFLOW_MCP_CONFIG_ID }],
     scopeDeclaration: { objectTypes: [], toolNames: [WF_TOOL] },
   } as Partial<AgentDefinition>);
+}
+
+/**
+ * 工作流 MCP server 的配置行（engine 分叉靠 `mcpConfigs.get` 才看得到 serverName="workflow"）。
+ * ⚠ 与本文件其它 MCP 臂不同，本行**不接真子进程**：C 组的执行断言打的是**宿主端点**（app.inject
+ * 到 /b/v1/dsh/tool-execute），不起 harness。**真子进程 + 真 MCP wire 的交付级接缝**在
+ * `dsh-resource-reach.seam.test.ts` 的 B3（真调通）与 B6（把入口移走做对照）。
+ */
+async function insertWorkflowMcpConfig(t: TestApp): Promise<void> {
+  if (await t.repos.mcpConfigs.get(WORKFLOW_MCP_CONFIG_ID)) return;
+  await t.repos.mcpConfigs.insert({
+    id: WORKFLOW_MCP_CONFIG_ID,
+    tenantId: TENANT,
+    name: "工作流 MCP（平台内置）",
+    serverName: "workflow",
+    transport: {
+      type: "stdio",
+      command: process.execPath,
+      args: [fileURLToPath(new URL("../dist/dsh-runtime/workflow-mcp-server.js", import.meta.url))],
+    },
+    status: "ACTIVE",
+    lifecycle: "PUBLISHED",
+    version: 1,
+  } as never);
 }
 
 describe("W8.5 · C workflow 反向化：模型可见 + 同端点反向执行 + 治理/审计/预算同账", () => {
@@ -872,13 +903,14 @@ describe("W8.5 · C workflow 反向化：模型可见 + 同端点反向执行 + 
     try {
       await t.repos.agents.insert(workflowAgentDef());
       await t.repos.workflows.insert(workflowDef());
+      await insertWorkflowMcpConfig(t);
       const qo = spyOntology(t, BASE_PAYLOAD);
       const emitted: Emitted[] = [];
       const result = await runAgent(t, "task_w85_c1", emitted);
 
       expect(result.run.kernel).toBe("EXTERNAL"); // 真走 DSH 分叉
       expect(result.outcome).toBe("ANSWERED");
-      // 可见性：首轮请求 tools 面含 workflow_<key>（hostWorkflowTools 下发注册成反向工具）
+      // 可见性：首轮请求 tools 面含 mcp__workflow__<key>（setup 下发工具名 = 模型面名）
       expect(JSON.stringify(stub.requests[0]!.body)).toContain(`"${WF_TOOL}"`);
       // 真过宿主引擎：nested workflow 的 qo 步本体真调一次
       expect(qo.mock.calls.length).toBe(1);
@@ -931,7 +963,7 @@ describe("W8.5 · C workflow 反向化：模型可见 + 同端点反向执行 + 
         runToken: WF_RUN_TOKEN,
         callId: "c2-1",
         kind: "workflow",
-        toolName: "workflow_evil", // 幻觉名：不在绑定表
+        toolName: workflowMcpToolName("evil"), // 幻觉名：不在绑定表（形态与真工具同 = 只差绑定，变量单一）
         input: {},
         workflowId: WF_ID, // 越权点名材料：实现若从 wire 读 workflowId，本调用会真跑 wf_w85_probe ⇒ 红
       }, SERVICE_TOKEN);
@@ -942,7 +974,7 @@ describe("W8.5 · C workflow 反向化：模型可见 + 同端点反向执行 + 
       const rows = await t.repos.toolCalls.listByTask("task_w85_c2");
       expect(rows).toHaveLength(1);
       expect(rows[0]!.outcome).toBe("ERROR");
-      expect(rows[0]!.toolName).toBe("workflow_evil");
+      expect(rows[0]!.toolName).toBe(workflowMcpToolName("evil"));
       expect(rows[0]!.id).toBe(body.toolCallId); // 回执 tc_ = 审计行主键（与 tool 分支同口径）
     } finally {
       await t.app.close();
@@ -959,6 +991,7 @@ describe("W8.5 · C workflow 反向化：模型可见 + 同端点反向执行 + 
     try {
       await t.repos.agents.insert(workflowAgentDef());
       await t.repos.workflows.insert(workflowDef());
+      await insertWorkflowMcpConfig(t);
       vi.spyOn(t.dataCore.ontology, "listObjectTypeKeys").mockResolvedValue(["Base", "Line", "Material"]);
       vi.spyOn(t.dataCore.ontology, "queryObjects").mockRejectedValue(new Error("w85 ontology down"));
       const emitted: Emitted[] = [];
@@ -980,18 +1013,35 @@ describe("W8.5 · C workflow 反向化：模型可见 + 同端点反向执行 + 
     }
   });
 
-  it("C4 零扰动锚：无 WORKFLOW ref ⇒ setup 键缺席；wire 无 kind ⇒ tool 路逐字节旧；kind 畸形 ⇒ 400", async () => {
-    // 形态B 单元：setup 层键缺席/内容透传（对位 W8副 A6-B 同手法）
-    const agent = agentDef(); // 默认 tools 仅 BUILTIN query_objects，无 WORKFLOW ref
-    const baseInput = { agent, agentSystemCore: "CORE", grantedToolNames: ["query_objects"] };
-    const specWithout = buildSessionSetup(baseInput);
+  it("C4 零扰动锚：专用字段已退净（源码零残留 + 键缺席）；wire 无 kind ⇒ tool 路逐字节旧；kind 畸形 ⇒ 400", async () => {
+    // 形态B 单元（WO-WORKFLOW-MCP 改写）：原判据是「buildSessionSetup 传 hostWorkflowTools 能透传」，
+    // 而该字段**已从 DshSetupSpec 摘除**（setup-spec.ts 同单同改）⇒ 那两条断言的对象不存在了。
+    // 换成**两边都钉**的退场证明：① 源码零残留（带金丝雀：同一条查法必须仍能查到 hostTools）；
+    // ② setup 帧里键恒缺席（不论 agent 有没有工作流授予 —— 后者另有一条正向臂 C1 出工具面）。
+    const srcFiles: string[] = [];
+    const walk = (dir: string): void => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const p = join(dir, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (e.name.endsWith(".ts")) srcFiles.push(p);
+      }
+    };
+    walk(join(REPO_ROOT, "apps/agentcore/src"));
+    // 金丝雀 ⓪：扫描面非空 —— 「遍历坏了」与「零残留」在屏上一模一样（铁律 0.6 判据 5）
+    expect(srcFiles.length, "扫描面文件数（遍历坏了 ⇒ 后面所有 0 命中都是假的）").toBeGreaterThan(50);
+    // 金丝雀 ①：同一个 walk + 同一条查法查**仍在用的兄弟键** hostTools 必须非 0（证明查法是好的）
+    const canaryHits = srcFiles.filter((f) => readFileSync(f, "utf8").includes("hostTools"));
+    expect(canaryHits.length, "金丝雀：同一条查法查 hostTools 必须非 0（否则是工具坏了不是残留为 0）").toBeGreaterThan(0);
+    const staleHits = srcFiles.filter((f) => readFileSync(f, "utf8").includes("hostWorkflowTools"));
+    expect(staleHits, `hostWorkflowTools 必须已从 src 退净，残留：\n${staleHits.join("\n")}`).toEqual([]);
+    // ② setup 帧键恒缺席（退场后它连类型都没有 ⇒ 只能从产物侧验）
+    const agent = agentDef(); // 默认 tools 仅 BUILTIN query_objects，无工作流 ref
+    const specWithout = buildSessionSetup({ agent, agentSystemCore: "CORE", grantedToolNames: ["query_objects"] });
     expect(
       Object.prototype.hasOwnProperty.call(specWithout, "hostWorkflowTools"),
-      "无 WORKFLOW 授予 ⇒ hostWorkflowTools 键必须缺席（setup 帧逐字节旧行为）",
+      "无 WORKFLOW 授予 ⇒ hostWorkflowTools 键必须缺席（字段已摘除）",
     ).toBe(false);
-    const wfTools = [{ name: WF_TOOL, description: "d", inputSchema: { type: "object" } }];
-    const specWith = buildSessionSetup({ ...baseInput, hostWorkflowTools: wfTools });
-    expect(specWith.hostWorkflowTools).toEqual(wfTools);
+    expect(Object.keys(specWithout), "setup 帧里不许再出现任何 workflow 专用键").not.toContain("hostWorkflowTools");
 
     // 端点级：run 条目带 workflow 绑定表，wire 不带 kind ⇒ 仍走 tool 路（旧桥逐字节旧）
     const t = await createTestApp({ env: { SERVICE_TOKEN } });

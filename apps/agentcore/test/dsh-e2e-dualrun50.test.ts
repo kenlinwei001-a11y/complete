@@ -29,6 +29,7 @@ import { BudgetTracker } from "../src/tools/budget.js";
 import { scanBlocks } from "../src/util/numerics.js";
 import { MockMcpClient } from "../src/mcp/mock.js";
 import { encryptSecret } from "../src/crypto.js";
+import { WORKFLOW_MCP_CONFIG_ID, workflowMcpToolName } from "../src/dsh-runtime/workflow-mcp.js";
 import {
   STUB_DCP_SPEC,
   STUB_FAKE_KEY,
@@ -140,19 +141,23 @@ function agentDef(task: DualRunTask): AgentDefinition {
       ...(task.mcp
         ? [{ kind: "MCP" as const, mcpConfigId: task.mcp.configId, ...(task.mcp.toolFilter ? { toolFilter: task.mcp.toolFilter } : {}) }]
         : []),
-      // W8.5：workflow 语料任务的 WORKFLOW ref（条件散布照 mcp 先例；expand 后模型可见名 = workflow_<key>）。
+      // WO-WORKFLOW-MCP：workflow 语料任务的**授予面改挂 MCP**（旧 WORKFLOW 记法退场；
+      // expand 后模型可见名 = mcp__workflow__<key>，两臂同一个串）。
       ...(task.workflow
-        ? [{ kind: "WORKFLOW" as const, workflowId: task.workflow.id, version: task.workflow.version }]
+        ? [{ kind: "MCP" as const, mcpConfigId: WORKFLOW_MCP_CONFIG_ID, toolFilter: [workflowMcpToolName(task.workflow.key)] }]
         : []),
     ],
     ruleBindings: task.ruleBindings,
     skills: task.skills.map((s) => ({ skillId: skillIdOf(task.id, s.key), version: 1 as const })),
-    mcpServers: task.mcp ? [{ mcpConfigId: task.mcp.configId }] : [],
+    mcpServers: [
+      ...(task.mcp ? [{ mcpConfigId: task.mcp.configId }] : []),
+      ...(task.workflow ? [{ mcpConfigId: WORKFLOW_MCP_CONFIG_ID }] : []),
+    ],
     scopeDeclaration: {
       objectTypes: ["Base"],
-      // W8.5：workflow_<key> 须进 scope 允许表——native loop.ts:766 scope 闸与 dsh setup
+      // WO-WORKFLOW-MCP：工作流 MCP 全名须进 scope 允许表——native loop.ts:766 scope 闸与 dsh setup
       // scoped 允许表同源消费（缺 ⇒ native DENIED / dsh 注册期 fail-closed，两臂同红）。
-      toolNames: ["query_objects", ...(task.workflow ? [`workflow_${task.workflow.key}`] : [])],
+      toolNames: ["query_objects", ...(task.workflow ? [workflowMcpToolName(task.workflow.key)] : [])],
     },
     status: "PUBLISHED",
   };
@@ -232,6 +237,18 @@ async function runArm(task: DualRunTask, flag: "off" | "on"): Promise<ArmProduct
   // W8.5：workflow 定义行两臂同 seed（声明驱动；nested 执行两臂同经 runWorkflowAsTool 解析）。
   if (task.workflow) {
     await t.repos.workflows.insert(workflowDef(task, task.workflow));
+    // WO-WORKFLOW-MCP：工作流 MCP server 的配置行（tenantId 必须与 agent 同租户，否则
+    // expandAgentTools 的 `mcpConfigs.get` 取不到 ⇒ 工作流工具面为空 ⇒ 两臂同红）。
+    await t.repos.mcpConfigs.insert({
+      id: WORKFLOW_MCP_CONFIG_ID,
+      tenantId: TENANT,
+      name: "工作流 MCP（平台内置）",
+      serverName: "workflow",
+      transport: { type: "stdio", command: process.execPath, args: [fileURLToPath(new URL("../dist/dsh-runtime/workflow-mcp-server.js", import.meta.url))] },
+      status: "ACTIVE",
+      lifecycle: "PUBLISHED",
+      version: 1,
+    } as never);
     // 本体间谍（镜像 seam spyOntology）：query_objects 步确定性产物，两臂同形。
     vi.spyOn(t.dataCore.ontology, "listObjectTypeKeys").mockResolvedValue(["Base", "Line", "Material"]);
     vi.spyOn(t.dataCore.ontology, "queryObjects").mockResolvedValue({
@@ -393,7 +410,7 @@ function diffItems(a: readonly CapturedEvent[], b: readonly CapturedEvent[]): st
 
 function checkSseFace(task: DualRunTask, x: ArmProducts, y: ArmProducts, flags: { x: "off" | "on"; y: "off" | "on" }): void {
   // W8.5：workflow 语料任务的声明制剥除（REC §3 W8.5 登记项）——dsh 臂帧流 mapper 为
-  // workflow 调用自身发 step.started{type:workflow_<key>} + step.completed{stepId,status}
+  // workflow 调用自身发 step.started{type:mcp__workflow__<key>} + step.completed{stepId,status}
   // 两条（reassemble mapper tool/call·tool/result 分支）；native WORKFLOW 分支无该发射点
   // （step.started/step.completed 发射点 loop.ts:848-849 仅 executor 路径）。nested 步事件
   // （qo/ra）两臂同 executor 码发射（dsh 臂来自宿主端点 workflowCtx.emit 路径——emit 出处差
@@ -401,7 +418,7 @@ function checkSseFace(task: DualRunTask, x: ArmProducts, y: ArmProducts, flags: 
   // native 臂必须不产（发射点漂移即红）。
   const stripWfFrameEvents = (arm: ArmProducts, flag: "off" | "on"): CapturedEvent[] => {
     if (!task.workflow) return arm.events;
-    const wfTool = `workflow_${task.workflow.key}`;
+    const wfTool = workflowMcpToolName(task.workflow.key);
     const started = arm.events.filter((e) => e.event === "step.started" && e.payload?.type === wfTool);
     if (flag === "on") {
       expect(started, `${task.id} A3 反向钉：dsh 臂帧流必须真产 step.started:${wfTool}（反向通道真调用之证）`).toHaveLength(1);
@@ -897,7 +914,7 @@ describe("WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务）", () => {
     { name: "coordinator.planned", family: "coordinator.planned:", status: { kind: "unreachable", reason: "ORCHESTRATOR_LEVEL" } },
     // W8.5 翻锚：dr50-cm 起真工具步族不再不可达——nested workflow 步事件（qo/ra）两臂同
     // executor 码真触发（dsh 臂经宿主端点 workflowCtx.emit 路径，emit 出处差 REC §3 W8.5 登记）。
-    // dsh 臂观测集另含帧流 mapper 为 workflow 调用自身发的两条（step.started:workflow_dr50cm +
+    // dsh 臂观测集另含帧流 mapper 为 workflow 调用自身发的两条（step.started:mcp__workflow__dr50cm +
     // status 形 step.completed:）——native WORKFLOW 分支无该发射点，A3 对账面声明制剥除，
     // 本矩阵按原始观测如实登记。dsh 臂 step.completed:agent_narration 来自末轮 rTx 文本轮（既有族）。
     {
@@ -922,7 +939,7 @@ describe("WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务）", () => {
             "step.completed:render_answer",
             "step.started:query_objects",
             "step.started:render_answer",
-            "step.started:workflow_dr50cm",
+            "step.started:mcp__workflow__dr50cm",
           ],
         },
       },
@@ -949,7 +966,7 @@ describe("WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务）", () => {
             "step.completed:render_answer",
             "step.started:query_objects",
             "step.started:render_answer",
-            "step.started:workflow_dr50cm",
+            "step.started:mcp__workflow__dr50cm",
           ],
         },
       },

@@ -14,6 +14,7 @@
  */
 import type { Answer, AnswerBlock, RuleVerdict } from "@platform/contracts";
 import { SCENARIO_CATALOG } from "../../../src/scenarios-catalog.js";
+import { workflowMcpToolName } from "../../../src/dsh-runtime/workflow-mcp.js";
 import { text, toolUse, type ScriptedTurn } from "../../../src/llm/mock.js";
 import type { StubRound } from "../../helpers-dsh-stub.js";
 
@@ -89,14 +90,14 @@ export interface CorpusMcp {
 }
 
 /**
- * W8.5：workflow 工具双臂对拍声明面（dr50-cm）。声明驱动——driver 两臂同 seed
- * t.repos.workflows（WorkflowDefinition 行由声明映射，同 skillDef 手法），agentDef 条件散布
- * WORKFLOW ref（照 mcp 先例）。模型可见/调用名 = `workflow_${key}`（engine.ts expandAgentTools
- * :397-406 命名口径，单源在宿主）。
- * dsh 臂经 W8.5 反向通道真执行（hostWorkflowTools 下发 ⇒ harness 注册反向工具 ⇒ execute
- * 带 kind:"workflow" 打宿主 tool-execute 端点 ⇒ per-run 绑定表解析 ⇒ runWorkflowAsTool）；
- * driver 对该任务 dsh 臂真 listen（freePort + PORT/SERVICE_TOKEN env 钉死，镜像
- * dsh-engine-tool-bridge.seam startToolExecApp）。native 臂 in-process runWorkflowAsTool，不 listen。
+ * WO-WORKFLOW-MCP（原 W8.5）：workflow 工具双臂对拍声明面（dr50-cm）。声明驱动——driver 两臂
+ * 同 seed t.repos.workflows（WorkflowDefinition 行由声明映射，同 skillDef 手法），agentDef 条件
+ * 散布 **MCP ref**（`mcp_builtin_workflow` + toolFilter 全名）。
+ * 模型可见/调用名 = `mcp__workflow__${key}`（单源 `dsh-runtime/workflow-mcp.ts`，两臂同串）。
+ * dsh 臂走 **DSH 原生 MCP 面**真执行（engine 注入 server + 目录 ⇒ harness dsh-mcp-client 起
+ * stdio 子进程 ⇒ tools/call 转回宿主反向通道 `kind:"workflow"` ⇒ per-run 绑定表解析 ⇒
+ * runWorkflowAsTool）；driver 对该任务 dsh 臂真 listen（freePort + PORT/SERVICE_TOKEN env 钉死，
+ * 镜像 dsh-engine-tool-bridge.seam startToolExecApp）。native 臂 in-process runWorkflowAsTool，不 listen。
  */
 export interface CorpusWorkflow {
   id: string;
@@ -150,7 +151,7 @@ export interface DualRunTask {
      * W8.5（A4b 修订）：审计行双臂真对账声明。在表 ⇒ driver 两臂各行 toolName/outcome/input
      * 逐点深等本声明 + 行 id 钉 tc_ 形态（归一化为形态锚）；不在表 ⇒ 维持旧锚（native 每轮
      * load_skill 一行逐点锚 / dsh 臂 toEqual([]) 反咬）。dr50-cm 预期两臂各 2 行
-     * （内层 query_objects 步 executor 自落行 + 外层 workflow_<key> 行——native loop.ts:805-815
+     * （内层 query_objects 步 executor 自落行 + 外层 mcp__workflow__<key> 行——native loop.ts:805-815
      * 与 dsh 端点 workflow 分支同字段口径）。
      */
     auditRows?: AuditRowAnchor[];
@@ -248,7 +249,7 @@ const nFa = (args: unknown): ScriptedTurn => ({ content: [toolUse("final_answer"
 const nLs = (skillId: string): ScriptedTurn => ({ content: [toolUse("load_skill", { skillId })] });
 const nTx = (t: string): ScriptedTurn => ({ content: [text(t)] });
 
-/** W8.5：泛名工具调用轮（workflow_<key> 等反向工具剧本用；rFa/nFa 的泛化形，meta 两件不动）。 */
+/** W8.5：泛名工具调用轮（mcp__workflow__<key> 等反向工具剧本用；rFa/nFa 的泛化形，meta 两件不动）。 */
 const rCall = (name: string, args: unknown): StubRound => ({
   toolCall: { name, arguments: JSON.stringify(args) }, usage: STUB_USAGE,
 });
@@ -346,19 +347,20 @@ function answerMcpNameSet(o: ClassOpts & { mcp: CorpusMcp }): DualRunTask {
 }
 
 /**
- * W8.5：workflow 工具双臂对拍（dr50-cm）。剧本 = 一轮 tool_use(workflow_<key>) + final_answer
- * 收尾（dsh 臂末轮 rTx 文本轮照 answerImmediate 先例）。锚面同 answerImmediate 全量适用，外加：
- *  - A4b 翻锚：auditRows 声明两臂各 2 行（内层 query_objects 步 + 外层 workflow_<key> 行），
+ * WO-WORKFLOW-MCP（原 W8.5）：workflow 工具双臂对拍（dr50-cm）。剧本 = 一轮
+ * tool_use(mcp__workflow__<key>) + final_answer 收尾（dsh 臂末轮 rTx 文本轮照 answerImmediate 先例）。
+ * 锚面同 answerImmediate 全量适用，外加：
+ *  - A4b 翻锚：auditRows 声明两臂各 2 行（内层 query_objects 步 + 外层 mcp__workflow__<key> 行），
  *    真对账取代「dsh 恒零行」反咬（仅本任务；其余任务旧锚不动）；
  *  - A3 翻锚：nested workflow 步事件（step.started/completed × qo/ra）两臂同 executor 码发射
  *    逐项等；dsh 臂另有帧流 mapper 为 workflow 调用自身发的 step.started/step.completed 两条
  *    （native WORKFLOW 分支无该发射点——loop.ts:848 仅 executor 路径）⇒ 声明制剥除 + 反向钉
  *    （REC §3 W8.5 登记项）。
- * native 迭代锚：首轮 calls=[workflow_<key> OK input=callInput]，次轮空（final_answer 收尾轮，
+ * native 迭代锚：首轮 calls=[mcp__workflow__<key> OK input=callInput]，次轮空（final_answer 收尾轮，
  * 对位 answerSkillRounds 口径）。
  */
 function answerWorkflowReverse(o: ClassOpts & { workflow: CorpusWorkflow; auditRows: AuditRowAnchor[] }): DualRunTask {
-  const wfTool = `workflow_${o.workflow.key}`;
+  const wfTool = workflowMcpToolName(o.workflow.key);
   const blocks = [T(`【${o.id}】workflow 反向对拍：经 workflow 工具真执行后收尾。`)];
   const args = { blocks, provenance: [] };
   return {
@@ -989,7 +991,7 @@ export const DUALRUN_CORPUS: DualRunTask[] = [
   //      BUILTIN 步 objectType:"Base" + render_answer 收尾块，零 LLM 步——形状对位
   //      dsh-engine-tool-bridge.seam C 组 workflowDef 实证形）。dsh 臂真 listen 经
   //      tool-execute 端点 kind:"workflow" 反向执行；native 臂 in-process runWorkflowAsTool。
-  //      auditRows 声明两臂各 2 行（内层 qo 步 executor 自落行 + 外层 workflow_dr50cm 行），
+  //      auditRows 声明两臂各 2 行（内层 qo 步 executor 自落行 + 外层 mcp__workflow__dr50cm 行），
   //      值先跑实证后钉（行数若不是 2 = 实现面问题，停下申报不削断言）。 ----
   answerWorkflowReverse({
     id: "dr50-cm", source: "synthetic",
@@ -1009,7 +1011,7 @@ export const DUALRUN_CORPUS: DualRunTask[] = [
     },
     auditRows: [
       { toolName: "query_objects", outcome: "OK", input: { objectType: "Base", filter: {} } },
-      { toolName: "workflow_dr50cm", outcome: "OK", input: { topic: "dr50-cm" } },
+      { toolName: "mcp__workflow__dr50cm", outcome: "OK", input: { topic: "dr50-cm" } },
     ],
   }),
 ];
