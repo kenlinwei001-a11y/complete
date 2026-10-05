@@ -1,0 +1,30 @@
+=== WO-COSTPRESSURE-IDENTITY 两次方向相反的动作 ===
+6231550d9 WO-COSTPRESSURE-IDENTITY 复核补读数：逐拍序列证明 rest 是钉死的锚（== baseSnapshot），(甲)(乙) 两条都否；零扰动「不恒定」是世界态跨拍位移（#68 树先于本单即已复现）+ 临时探针/REST-PROBE 仪器已删并重跑认证 3 文件 24 测试绿
+6875bbacd WO-COSTPRESSURE-IDENTITY：证据档 §9（3 条新红逐条钉机制 + 判据重写 + 变异反证 + 稀释/可选键提醒）+ 证据 txt/rc 入册 docs/evidence/WO-CP-*
+96c6258bf WO-COSTPRESSURE-IDENTITY：§5 拍数 3→5（Customer→ARInvoice 边 delayTicks=1，3 拍时发票格尚未显形）+ 补 invoiceCarriers 金丝雀；finance:204 注释改正为实测病因（旧断言在 (b) 之前就是红的，红在测试自己两位圆整）
+b27506865 WO-COSTPRESSURE-IDENTITY 落点(b)：披露公式改吃偏离 + 三条红判据按新口径重写 + 接缝门 §5 现金半对照臂
+6b64c9741 WO-COSTPRESSURE-IDENTITY · (b) 交付档 §8：四数/面 A-B-C 逐字节/6 读量/真服务
+df331ec35 WO-COSTPRESSURE-IDENTITY · 落点 (b)：消费端按率读口改吃「偏离」（WIP·未验）
+4a27c3b7a WO-COSTPRESSURE-IDENTITY：实测档（判据1真数 / 铸造影响面 / 金额精度 / 12红逐条定性 / 仪器缺陷自曝 / NOT-MEASURED）+ 探针 zz-probe3·4
+03c4c8391 WO-COSTPRESSURE-IDENTITY 终裁回退：三条退役全部复原（order_cost_pressure / customer_receivable_pressure / model_cost_pressure 规格与 valueRef 逐字复原，仅加回退注）；保留铸造器压力族→restPoint 与金额精度 6 位 WIP·未验
+fde8df997 WO-COSTPRESSURE-IDENTITY：退役 customer_receivable_pressure / model_cost_pressure（水平值当偏离读）；金额精度 2→6 位（亿口径百元级，实测 27.5万/82.7万 原显示 0.00）WIP·未验
+b2e794b36 WO-COSTPRESSURE-IDENTITY #1+#2：铸造器压力族端点支 → restPoint；退役 order_cost_pressure（授信占用率≠成本压力）WIP·未验
+
+=== 03c4c8391（终裁回退）改了什么 ===
+commit 03c4c83915e7b80c9c916de7f823a4ed95268c83
+Author: apple <apple@local>
+Date:   Mon Oct 5 11:35:32 2026 +0800
+
+    WO-COSTPRESSURE-IDENTITY 终裁回退：三条退役全部复原（order_cost_pressure / customer_receivable_pressure / model_cost_pressure 规格与 valueRef 逐字复原，仅加回退注）；保留铸造器压力族→restPoint 与金额精度 6 位 WIP·未验
+
+ apps/datacore/src/seed-derivation-specs.ts | 74 ++++++++++++------------------
+ apps/datacore/src/synthetic/battery.ts     | 23 +++++-----
+ 2 files changed, 41 insertions(+), 56 deletions(-)
+
+=== 当前树 STATE_VAR_VALUE_REFS 里 Order|costPressure 是否已复原 ===
+4078:  "Order|costPressure": { specKey: "order_cost_pressure" },
+
+=== 当前树铸造器端点支 ===
+  return rest;
+}
+
