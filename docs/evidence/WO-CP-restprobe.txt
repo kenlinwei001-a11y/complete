@@ -1,0 +1,149 @@
+# WO-CP-REST-PROBE · 零扰动臂 vs Δ=+12 臂，同一实例同一棵树，t0–t10（原始 stdout，未转述）
+# 取证命令：WO_CP_PROBE_REST=1 npx vitest run apps/datacore/test/zz-probe-rest.test.ts --testTimeout=900000 --maxWorkers=2
+# 探针与 finance-world.ts 里的 REST-PROBE 段均为临时仪器，已按纪律删除（复核方只求一条读数）
+
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/agent-a21bdfa25dce6c509
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[REST-PROBE] var=costPressure carriers=150/500 readAgg=66.867538 restAgg=66.867538 devAgg=0 readSig=ef661c94 restSig=ef661c94
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[ARM 零扰动] t=0 面C水平=23.036662 链上那张单的格=90.384615384615 baseSnapshot(sig)=adb09716 COST=581.1 MARGIN=118.9 静息缺席=0
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[REST-PROBE] var=costPressure carriers=150/500 readAgg=66.261731 restAgg=66.867538 devAgg=-0.605807 readSig=aaea54d0 restSig=ef661c94
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[ARM 零扰动] t=1 面C水平=22.827955 链上那张单的格=84.828868533061 baseSnapshot(sig)=adb09716 COST=579.8872 MARGIN=120.1128 静息缺席=0
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[REST-PROBE] var=costPressure carriers=150/500 readAgg=65.783897 restAgg=66.867538 devAgg=-1.083641 readSig=aa97361d restSig=ef661c94
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[ARM 零扰动] t=2 面C水平=22.663335 链上那张单的格=83.175600318574 baseSnapshot(sig)=adb09716 COST=578.930596 MARGIN=121.069404 静息缺席=0
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[REST-PROBE] var=costPressure carriers=150/500 readAgg=65.493758 restAgg=66.867538 devAgg=-1.37378 readSig=ba466322 restSig=ef661c94
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[ARM 零扰动] t=3 面C水平=22.563379 链上那张单的格=82.619774385678 baseSnapshot(sig)=adb09716 COST=578.34975 MARGIN=121.65025 静息缺席=0
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[REST-PROBE] var=costPressure carriers=150/500 readAgg=65.692726 restAgg=66.867538 devAgg=-1.174812 readSig=cb8f1090 restSig=ef661c94
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[ARM 零扰动] t=4 面C水平=22.631926 链上那张单的格=82.666973797324 baseSnapshot(sig)=adb09716 COST=578.748076 MARGIN=121.251924 静息缺席=0
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[REST-PROBE] var=costPressure carriers=150/500 readAgg=66.323833 restAgg=66.867538 devAgg=-0.543705 readSig=6c534f0e restSig=ef661c94
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[ARM 零扰动] t=5 面C水平=22.849349 链上那张单的格=82.986217431894 baseSnapshot(sig)=adb09716 COST=580.011525 MARGIN=119.988475 静息缺席=0
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[REST-PROBE] var=costPressure carriers=150/500 readAgg=67.188528 restAgg=66.867538 devAgg=0.320991 readSig=b512217a restSig=ef661c94
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[ARM 零扰动] t=6 面C水平=23.147247 链上那张单的格=83.366614948974 baseSnapshot(sig)=adb09716 COST=581.74261 MARGIN=118.25739 静息缺席=0
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[REST-PROBE] var=costPressure carriers=150/500 readAgg=68.111324 restAgg=66.867538 devAgg=1.243786 readSig=a62cc1d7 restSig=ef661c94
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[ARM 零扰动] t=7 面C水平=23.465162 链上那张单的格=83.709155299181 baseSnapshot(sig)=adb09716 COST=583.590009 MARGIN=116.409991 静息缺席=0
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[REST-PROBE] var=costPressure carriers=150/500 readAgg=68.978315 restAgg=66.867538 devAgg=2.110777 readSig=6e758ce9 restSig=ef661c94
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[ARM 零扰动] t=8 面C水平=23.76385 链上那张单的格=83.983322290674 baseSnapshot(sig)=adb09716 COST=585.325688 MARGIN=114.674312 静息缺席=0
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[REST-PROBE] var=costPressure carriers=150/500 readAgg=69.730676 restAgg=66.867538 devAgg=2.863138 readSig=c14841d9 restSig=ef661c94
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[ARM 零扰动] t=9 面C水平=24.023047 链上那张单的格=84.189853780455 baseSnapshot(sig)=adb09716 COST=586.831885 MARGIN=113.168115 静息缺席=0
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[REST-PROBE] var=costPressure carriers=150/500 readAgg=70.348398 restAgg=66.867538 devAgg=3.480861 readSig=854f3f53 restSig=ef661c94
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[ARM 零扰动] t=10 面C水平=24.23586 链上那张单的格=84.339948590802 baseSnapshot(sig)=adb09716 COST=588.068539 MARGIN=111.931461 静息缺席=0
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[REST-PROBE] var=costPressure carriers=150/500 readAgg=66.867538 restAgg=66.867538 devAgg=0 readSig=ef661c94 restSig=ef661c94
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[ARM Δ=+12] t=0 面C水平=23.036662 链上那张单的格=90.384615384615 baseSnapshot(sig)=adb09716 COST=581.1 MARGIN=118.9 静息缺席=0
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[REST-PROBE] var=costPressure carriers=150/500 readAgg=66.261731 restAgg=66.867538 devAgg=-0.605807 readSig=aaea54d0 restSig=ef661c94
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[ARM Δ=+12] t=1 面C水平=22.827955 链上那张单的格=84.828868533061 baseSnapshot(sig)=adb09716 COST=579.8872 MARGIN=120.1128 静息缺席=0
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[REST-PROBE] var=costPressure carriers=150/500 readAgg=65.800295 restAgg=66.867538 devAgg=-1.067242 readSig=27828eb8 restSig=ef661c94
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[ARM Δ=+12] t=2 面C水平=22.668985 链上那张单的格=83.191986045727 baseSnapshot(sig)=adb09716 COST=578.963425 MARGIN=121.036575 静息缺席=0
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[REST-PROBE] var=costPressure carriers=150/500 readAgg=65.522518 restAgg=66.867538 devAgg=-1.345019 readSig=cf13966e restSig=ef661c94
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[ARM Δ=+12] t=3 面C水平=22.573287 链上那张单的格=82.653229554473 baseSnapshot(sig)=adb09716 COST=578.407327 MARGIN=121.592673 静息缺席=0
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[REST-PROBE] var=costPressure carriers=150/500 readAgg=65.738048 restAgg=66.867538 devAgg=-1.129489 readSig=72c385a0 restSig=ef661c94
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[ARM Δ=+12] t=4 面C水平=22.64754 链上那张单的格=82.712271637747 baseSnapshot(sig)=adb09716 COST=578.838809 MARGIN=121.161191 静息缺席=0
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[REST-PROBE] var=costPressure carriers=150/500 readAgg=66.384354 restAgg=66.867538 devAgg=-0.483183 readSig=44b3367e restSig=ef661c94
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[ARM Δ=+12] t=5 面C水平=22.8702 链上那张单的格=83.037471072924 baseSnapshot(sig)=adb09716 COST=580.132687 MARGIN=119.867313 静息缺席=0
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[REST-PROBE] var=costPressure carriers=150/500 readAgg=67.261046 restAgg=66.867538 devAgg=0.393508 readSig=43395212 restSig=ef661c94
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[ARM Δ=+12] t=6 面C水平=23.17223 链上那张单的格=83.419766352803 baseSnapshot(sig)=adb09716 COST=581.887787 MARGIN=118.112213 静息缺席=0
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[REST-PROBE] var=costPressure carriers=150/500 readAgg=68.192368 restAgg=66.867538 devAgg=1.32483 readSig=984d0aff restSig=ef661c94
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[ARM Δ=+12] t=7 面C水平=23.493082 链上那张单的格=83.762164323346 baseSnapshot(sig)=adb09716 COST=583.752255 MARGIN=116.247745 静息缺席=0
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[REST-PROBE] var=costPressure carriers=150/500 readAgg=69.064769 restAgg=66.867538 devAgg=2.197232 readSig=459e8b92 restSig=ef661c94
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[ARM Δ=+12] t=8 面C水平=23.793635 链上那张单的格=84.035451723686 baseSnapshot(sig)=adb09716 COST=585.498768 MARGIN=114.501232 静息缺席=0
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[REST-PROBE] var=costPressure carriers=150/500 readAgg=69.819999 restAgg=66.867538 devAgg=2.952462 readSig=b7e69460 restSig=ef661c94
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[ARM Δ=+12] t=9 面C水平=24.053821 链上那张单的格=84.240996263002 baseSnapshot(sig)=adb09716 COST=587.010707 MARGIN=112.989293 静息缺席=0
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[REST-PROBE] var=costPressure carriers=150/500 readAgg=70.439029 restAgg=66.867538 devAgg=3.571491 readSig=2503b9e4 restSig=ef661c94
+
+stdout | apps/datacore/test/zz-probe-rest.test.ts > WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10
+[ARM Δ=+12] t=10 面C水平=24.267083 链上那张单的格=84.390234135449 baseSnapshot(sig)=adb09716 COST=588.249977 MARGIN=111.750023 静息缺席=0
+
+ ✓ apps/datacore/test/zz-probe-rest.test.ts (1 test) 51832ms
+   ✓ WO-CP-REST-PROBE · 零扰动臂 vs Δ 臂：读数 / 静息值 / 偏离 三条原始序列 > 同一实例、同一棵树，t0–t10  51820ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  13:24:59
+   Duration  77.42s (transform 13.35s, setup 0ms, collect 23.22s, tests 51.83s, environment 0ms, prepare 727ms)
+
+
+CAPTURED_RC=0

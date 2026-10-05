@@ -1,0 +1,83 @@
+# 还原认证：临时探针与 REST-PROBE 仪器删除后，同一批 3 文件接缝门重跑（交付态认证）
+# 命令：npx vitest run apps/datacore/test/{deviation-read,worldstate-surface,finance-worldstate}.seam.test.ts --testTimeout=300000 --maxWorkers=2
+
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/agent-a21bdfa25dce6c509
+
+stdout | apps/datacore/test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 🔴 头号判据 · 对照实验：三个接线求解器 —— 同 (args,scope) 扰动前 vs 扰动+tick4 后，回包必须**真的不同**
+[contrast] solver=risk_timeline before=65b4dfcb85ea37f3 after=624467590752892e equal=false
+
+stdout | apps/datacore/test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 🔴 头号判据 · 对照实验：三个接线求解器 —— 同 (args,scope) 扰动前 vs 扰动+tick4 后，回包必须**真的不同**
+[contrast] solver=capacity_forecast before=aff9dca7d302bbd4 after=5d189fc5fb62ba88 equal=false
+
+stdout | apps/datacore/test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 🔴 头号判据 · 对照实验：三个接线求解器 —— 同 (args,scope) 扰动前 vs 扰动+tick4 后，回包必须**真的不同**
+[contrast] solver=affected_orders before=7b6ddaa378a7db4a after=10d6945c8da14d7a equal=false
+
+stdout | apps/datacore/test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > R6 兼容：不传 worldId ⇒ 无 worldState 键且两跑逐字节相同；零压力世界 ⇒ 剥披露键后与真值口径逐字节相同
+[r6-truth] solver=risk_timeline truth=ce528331f0d1bd04
+
+stdout | apps/datacore/test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > R6 兼容：不传 worldId ⇒ 无 worldState 键且两跑逐字节相同；零压力世界 ⇒ 剥披露键后与真值口径逐字节相同
+[r6-truth] solver=capacity_forecast truth=7dcd0ae3e26c6b1a
+
+stdout | apps/datacore/test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > R6 兼容：不传 worldId ⇒ 无 worldState 键且两跑逐字节相同；零压力世界 ⇒ 剥披露键后与真值口径逐字节相同
+[r6-truth] solver=affected_orders truth=74d4c6f474667cb1
+
+ ✓ apps/datacore/test/worldstate-surface.seam.test.ts (8 tests) 159338ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 金丝雀：种子/传导规则/求解器注册/白名单表四样都在（任一不在 ⇒ 后面读不出坏了还是真没变）  22370ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 🔴 头号判据 · 对照实验：三个接线求解器 —— 同 (args,scope) 扰动前 vs 扰动+tick4 后，回包必须**真的不同**  39042ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > R6 兼容：不传 worldId ⇒ 无 worldState 键且两跑逐字节相同；零压力世界 ⇒ 剥披露键后与真值口径逐字节相同  21279ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 闸① 白名单外：capacity_rollup 传 worldId（含幽灵 id）⇒ 机制够不着它（无 worldState 键·与真值口径逐字节相同）  13623ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 闸③ 不静默回落：幽灵 worldId ⇒ 404；跨租户 worldId ⇒ 404；空串 worldId ⇒ 400（金丝雀：同 key 真世界 200）  12685ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 空世界诚实：worldObjects=0 + note 明说「未发生世界隔离」，数值仍给且等于真值口径  15476ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 披露块可复核：sessionId/tick/source/divisor/rules/applied/unconsumed/agentInvolved 齐全，demandLoad 诚实进 unconsumed  16640ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 世界内 R6：同 (worldId, tick) 两跑逐字节相同（含 worldState 披露键）  18216ms
+stdout | apps/datacore/test/deviation-read.seam.test.ts > 落点 (b) · 消费端按率读口吃「偏离」 > §1 名单封闭：真读点 ⊆ 声明名单 ⊆ 已声明域（双向 + 双向金丝雀）
+§1 真读点（world-read 声明表）：costPressure,demandPressure,loadIndex,utilPressure
+§1 真读点（finance-world 实参字面量）：costPressure,overduePressure,receivablePressure
+§1 声明名单：costPressure,demandPressure,loadIndex,overduePressure,receivablePressure,utilPressure
+
+stdout | apps/datacore/test/deviation-read.seam.test.ts > 落点 (b) · 消费端按率读口吃「偏离」 > §2/§3 零扰动 ⇒ 金额逐字节等于基线；有扰动 ⇒ 金额必须动（对照实验）
+§2 世界态逐字节不变：cells=6375 sha256=e1c50f756f8c535f → e1c50f756f8c535f
+§2 零扰动：REVENUE 700→700 COST 581.1→581.1 MARGIN 118.9→118.9 静息缺席=0
+§2 水平读数（面 C）：costPressure=23.036662 receivablePressure=33.221152 overduePressure=0
+§2 金额实际吃的偏离：cost=0.000000
+
+ ✓ apps/datacore/test/finance-worldstate.seam.test.ts (12 tests) 192210ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 金丝雀：链路/种子/求解器三样都在（任一不在 ⇒ 后面的『没变化』读不出是坏了还是真没变）  17574ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 头号判据 · SEAM：真扰动 → 真 tick → 金额**真的变了**，且方向与压力一致  28536ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 现金半同样真的动：应收压力 → 应收投影↑ / 逾期压力 → 逾期敞口↑（逐张发票用真 amount）  23854ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 反向判据 · R6 确定性：不施加任何扰动 ⇒ 两次调用**逐字节相同**  13051ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 R6 跨 tick 也确定：同一个 tick 上重复跑字节一致，且 tick 推进后金额单调不回头  11677ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 口径常驻：basis / chain / provenance 三样一起下发（缺一样这个金额就不可复核）  11065ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 诚实缺席：世界态为空 ⇒ available:false + 原因（**不给一个不动的 0**）  12792ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 回落分支真被驱动：tick 态行缺失 ⇒ 读 baseSnapshot 并据实标 BASE_SNAPSHOT（不是默默当空世界）  15698ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > R2 隔离 + 入参纪律：别人的世界 404；不给 worldId 显式 400（不静默回落到本体真值口径）  11630ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 本体签名实跑比对：真读到的类型/属性都在 SOLVER_ONTOLOGY_SIGNATURES 声明内（漏声明即红）  15815ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 分层不重复：`finance_pnl` 保持「本体真值口径」（施加扰动它照样不动，这是它的正确行为）  14272ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 SEAM：贵料 vs 边角料涨同样的价 —— 下游压力之比 == 两者在该型号 BOM 里的成本之比  16232ms
+stdout | apps/datacore/test/deviation-read.seam.test.ts > 落点 (b) · 消费端按率读口吃「偏离」 > §2/§3 零扰动 ⇒ 金额逐字节等于基线；有扰动 ⇒ 金额必须动（对照实验）
+§3 Δ+1000：REVENUE 700→700 COST 581.1→588.035892 MARGIN 118.9→111.964108 静息缺席=0
+§3 Δ+1000 水平读数（面 C）：costPressure=24.230242 receivablePressure=55.541746 overduePressure=10.02504
+§3 Δ+1000 金额实际吃的偏离：cost=1.193580
+
+stdout | apps/datacore/test/deviation-read.seam.test.ts > 落点 (b) · 消费端按率读口吃「偏离」 > §2/§3 零扰动 ⇒ 金额逐字节等于基线；有扰动 ⇒ 金额必须动（对照实验）
+§3 Δ-3：REVENUE 700→700 COST 581.1→578.308775 MARGIN 118.9→121.691225 静息缺席=0
+§3 Δ-3 水平读数（面 C）：costPressure=22.556328 receivablePressure=55.075625 overduePressure=10.02504
+§3 Δ-3 金额实际吃的偏离：cost=-0.480335
+
+stdout | apps/datacore/test/deviation-read.seam.test.ts > 落点 (b) · 消费端按率读口吃「偏离」 > §5 现金半对照臂：有静息点 ⇒ 金额真的动；无静息点 ⇒ 金额纹丝不动但逐格点名
+§5 臂①（无静息点）：水平读数 receivablePressure=3.195333（承载 12）· 应收 160802（基线 160802）· 静息缺席 48 格
+
+stdout | apps/datacore/test/deviation-read.seam.test.ts > 落点 (b) · 消费端按率读口吃「偏离」 > §5 现金半对照臂：有静息点 ⇒ 金额真的动；无静息点 ⇒ 金额纹丝不动但逐格点名
+§5 臂②（有静息点）：应收 161209.578106（基线 160802）· 逾期敞口 22.605055（承载发票 36）· 播过静息点的格进缺席表 0
+
+ ✓ apps/datacore/test/deviation-read.seam.test.ts (4 tests) 38232ms
+   ✓ 落点 (b) · 消费端按率读口吃「偏离」 > §2/§3 零扰动 ⇒ 金额逐字节等于基线；有扰动 ⇒ 金额必须动（对照实验）  28132ms
+   ✓ 落点 (b) · 消费端按率读口吃「偏离」 > §5 现金半对照臂：有静息点 ⇒ 金额真的动；无静息点 ⇒ 金额纹丝不动但逐格点名  10074ms
+
+ Test Files  3 passed (3)
+      Tests  24 passed (24)
+   Start at  13:28:28
+   Duration  221.73s (transform 8.16s, setup 0ms, collect 35.33s, tests 389.78s, environment 1ms, prepare 884ms)
+
+CAPTURED_RC=0
