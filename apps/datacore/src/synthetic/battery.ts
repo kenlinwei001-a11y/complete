@@ -4130,6 +4130,11 @@ export const STATE_VAR_VALUE_REFS: Record<string, { specKey: string }> = {
   "Material|priceShock": { specKey: "material_price_shock" },
   "Material|shortageRisk": { specKey: "material_shortage_risk" },
   "Model|costPressure": { specKey: "model_cost_pressure" },
+  // ── WO-DERIV-BACKFILL · B 档第 1 条转 A 档（2026-10-06）─────────────────────────────────
+  // 这一格原先被 B 档收走，理由是「**零个数值属性** ⇒ 无从取值」。**那条判据本身错了**：
+  // 本格的真值在 `ExceptionEvent.status` 这个**分类型**字段里（实测 RESOLVED 277 / OPEN 95），
+  // 不是数 ⇒ 在"找数字"的扫法下整个隐形。形态：**拿「有没有数值字段」当「有没有真值来源」的证据**。
+  "ExceptionEvent|handlingBacklog": { specKey: "exceptionevent_handling_backlog" },
   // ⛔ `"Model|forecastBias": { specKey: "model_forecast_bias" }` 已于 2026-09-20 退役
   //    （WO-FORECASTBIAS-RETIRE）。原式分子两项同源（Σ 减它自己）⇒ 恒 0，病因与实测见
   //    `seed-derivation-specs.ts` 该段。**本行与那条规格必须同生共死**：

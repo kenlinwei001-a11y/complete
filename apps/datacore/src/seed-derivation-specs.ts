@@ -351,9 +351,15 @@ export const DEMO_DERIVATION_SPECS: readonly {
   //    ⚠ 六条的实测依据（2026-10-05 `/a/v1/objects?type=…` 全量读取）：
   //   · `CustomerLocation.deliveryHoldRisk`（n=30）：**只有 lon/lat 两个数值**，其余 province/city/address 是串。
   //     lon/lat 与「收货点被暂停发货的风险」无因果关系 ⇒ 拿它当源就是编。
-  //   · `ExceptionEvent.handlingBacklog`（n=372）：**零个数值属性**。全部是 excId/excType/source/severity/
-  //     status/refType/refId/summary/occurredAt —— 只有 `occurredAt`（时间串）+ `status`。域表 source 也自曝
-  //     「ExceptionEvent 无处置工期属性（只有 occurredAt+status）⇒ 借维修工期 med=1 天，⚠ 暂定档，待仓主定档」。
+  //   · ~~`ExceptionEvent.handlingBacklog`（n=372）：**零个数值属性** ⇒ 无从取值。~~
+  //     ✅ **2026-10-06 收回（WO-DERIV-BACKFILL）—— 这一条的判据本身错了，已补上规格**（见下方
+  //     `exceptionevent_handling_backlog`）。错在**只找数值字段**：本格的真值是 `status` 这个
+  //     **分类型**字段 —— 「未处置」就是这一格的业务事实，不需要先有数值。实测 status **有分布**：
+  //     RESOLVED 277 / **OPEN 95**（不是我原先写的"全处置"）。DSL 的 `IF(x=="OPEN",1,0)` 正好表达它。
+  //     ⚠ 形态：**拿"有没有数值字段"当"有没有真值来源"的证据，而前者并不度量后者** ——
+  //     分类/布尔字段携带的状态信息，在"找数字"的扫法下**整个隐形**。
+  //     域表 source 那句「ExceptionEvent 无处置**工期**属性」说得对（确实没有工期），
+  //     但它不推出"取不到值" —— 本格量纲是**件**不是天。
   //   · `MaintenanceOrder.repairBacklog`（n=193）：**零个数值属性** —— 工期是 `actualStart`/`actualEnd`
   //     **日期串**，DSL 只算数值 ⇒ 算不出差。域表 source 里那句「维修工期 actualEnd−actualStart med=1 天
   //     （n=193，0–2）」**是人工算过一次的**，但那个数**没有落到对象上** ⇒ 补数据的形态 = 把它物化成数值字段。
@@ -368,6 +374,20 @@ export const DEMO_DERIVATION_SPECS: readonly {
   //     已分别归 demandPressure / shortageRisk / costPressure 三个状态量；`leadDays`[−180,178] 是业务真值字段
   //     （交期天数，语义非"变更频度"）、`early` 是布尔、`due`/`dueMonth` 是串 ⇒ **无第 4 个诚实源**（同上方停笔段）。
   // ═══════════════════════════════════════════════════════════════════════════════════════
+  // ── WO-DERIV-BACKFILL · B 档第 1 条转 A 档：真值早就在库里，只是它不是**数** ────────────────
+  // ExceptionEvent.handlingBacklog：异常事件处理积压 = 该事件是否**未处置** ⇒ 未处置计 1 件、已处置计 0 件。
+  //   出处①（业务口径）= 入边 `DefectRecord.defectPressure ×0.6 → ExceptionEvent.handlingBacklog`
+  //     的 description 原文「缺陷变多 ⇒ **异常事件处理积压**（缺陷压力 = 异常处理积压）」。
+  //   出处②（量纲）= 域表 `handlingBacklog` 声明 `unit: "件"`、`min:0 / max:null / restPoint:0`、
+  //     共享 `handlingBacklogDecayPerTick`（λ=0.75，借维修工期 med=1 天——域表自曝是**暂定档**）。
+  //   出处③（真值来源）= 对象自有属性 `ExceptionEvent.status`，实测 n=372：**RESOLVED 277 / OPEN 95**
+  //     （`/a/v1/objects?type=ExceptionEvent` 全量读，见 docs/evidence/wo-deriv-backfill-b6-status.txt）。
+  //   ⚠ `1` / `0` 不是业务常数（R14 禁的是内联业务数）：它们是**一条事件的计数**，
+  //     0/1 由「这一条是否挂着」定义，与 `CLAMP` 那两个界同族 —— 是式子的定义端，不是外部配置。
+  //   对照实验（修后必须成立）：① 95 条 OPEN 读 1、277 条 RESOLVED 读 0，两类**逐位分开**；
+  //     ② 世界态 derived 格 801 → **429**（少掉的正好是 372 格 ExceptionEvent.handlingBacklog）；
+  //     ③ 该格出处章从 "derived"（哈希占位）变 "measured"。
+  { specKey: "exceptionevent_handling_backlog", targetType: "ExceptionEvent", targetProp: "handlingBacklog", formula: 'IF(this.status == "OPEN", 1, 0)' },
 ];
 
 /**

@@ -1,0 +1,25 @@
+实例 http://127.0.0.1:4107
+====================================================================================================
+权威口径：`sim/seed-world.ts:463` `varsByType(rules)` —— 格 = 规则里出现过的 (类型,状态变量)，
+          **source 与 target 都要收**（只收 target 会漏掉「只剩源边」的格，实测漏了 forecastBias 6 格）。
+判据：`typeof o.props[v]==='number' && Number.isFinite` ⇒ 实测支；否则哈希占位支。
+
+⚠ 上一版两个量法错误（都已订正，留档防复发）：
+   ① 把对象上所有数值属性都数了（69414）—— 世界里只有落在**规则图**上的才是格；
+   ② 只数 targetStateVar ⇒ 漏 forecastBias ⇒ 报 795 与回执的 801 差 6，差点读成「有 6 格没算到」。
+
+规则 55 条 ⇒ 类型 32 个 / 格位 51 个
+这些类型在世界上的对象数合计 = 4425（= 回执的 cells？）
+
+实测支 5574 格   哈希占位支 801 格   合计 6375
+播种回执：measuredCells=5574 / derivedCells=801 / cells=6375
+   ⇒ 实测 ✓ ；占位 ✓ ；合计 ✓
+
+**全部剩余的哈希占位格，逐格点名**：
+   ExceptionEvent.handlingBacklog  372 格
+   MaintenanceOrder.repairBacklog  193 格
+   Order.orderChurn              150 格
+   OrderPromise.promiseRisk       50 格
+   CustomerLocation.deliveryHoldRisk   30 格
+   Model.forecastBias              6 格
+   ── 合计 801 格，共 6 个格位
