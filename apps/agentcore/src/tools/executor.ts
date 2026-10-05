@@ -1,4 +1,5 @@
 import { AggregateRequestSchema, ErrorCodes, parseMcpToolFullName, parseSolverMcpToolName, QueryTimeseriesAggInputSchema, type SkillDefinition } from "@platform/contracts";
+import { parseOntologyMcpToolName } from "./ontology-mcp.js";
 import { newId } from "../ids.js";
 import { SKILL_RESOURCE_TEXT_LIMIT } from "../agent/context.js";
 import type { Metrics } from "../metrics.js";
@@ -131,7 +132,7 @@ export class GuardedToolExecutor {
     },
   ): Promise<ToolRunResult> {
     const started = Date.now();
-    const binding = options?.binding ?? { kind: "BUILTIN" as const };
+    let binding = options?.binding ?? { kind: "BUILTIN" as const };
 
     // 0) agent scopeDeclaration gate (platform PRD §6.3 Q2 — independent of user perms)
     if (this.opts.scopeToolNames && !this.opts.scopeToolNames.includes(toolName)) {
@@ -167,6 +168,23 @@ export class GuardedToolExecutor {
       const inp = (input ?? {}) as Record<string, unknown>;
       toolName = "invoke_solver";
       input = { solverKey: solverKeyFromMcp, args: (inp.args as Record<string, unknown>) ?? {} };
+    }
+
+    // WO-DSH-RESOURCE-REACH · 本体切片 MCP 工具：mcp__ontology__{plan_slice|resolve_slice} →
+    // 归一回既有 BUILTIN 执行路径（同形于上方 solvers shim·零重写）。原生臂与 DSH 臂**同**走这里：
+    // DSH 臂的 MCP server 也把调用转回本执行体（dsh-runtime/ontology-mcp-server.ts → 宿主
+    // /b/v1/dsh/tool-execute → 本 run 的同一只 executor），故两臂同源（接缝 C 组咬这条）。
+    // 入参**不做形状改名**——本体两件的 MCP 入参与 BUILTIN 入参逐键同名（同源于 registry.ts）。
+    // ⚠ 每次调用是**单条 MCP 路**：可执行性由本条归一兑现，而不是让 `binding.kind === "MCP"` 去走
+    //    McpRuntime —— 那条路对平台内置 server 是死路（MCP_STDIO_ENABLED 缺省关，真连必失败），
+    //    且会更糟：一旦有人在 engine 的 hostTools 过滤里把它算成 BUILTIN，同一个公开名
+    //    `mcp__ontology__*` 会**同时**被 mcp-client 与反向工具注册（子进程注册冲突 ⇒ 该 server 工具全丢）。
+    //    故 binding 仍留在 MCP（供 hostTools 过滤排除、供 Phase6C router 归类），**执行**在此归一到 BUILTIN。
+    //    收敛论证见报告③：唯一可执行落点是本 executor 的 BUILTIN 分发，MCP 面只是它的协议门。
+    const ontologyRaw = parseOntologyMcpToolName(toolName);
+    if (ontologyRaw) {
+      toolName = ontologyRaw;
+      binding = { kind: "BUILTIN" as const };
     }
 
     // 1) coarse-grained IAM check

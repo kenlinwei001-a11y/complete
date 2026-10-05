@@ -29,6 +29,26 @@ import type { DataCoreClient, ToolAuthCtx } from "./tools/clients.js";
 import { GuardedToolExecutor } from "./tools/executor.js";
 import type { SkillResourceReader } from "./tools/skill-resources.js";
 import { BUILTIN_TOOLS } from "./tools/registry.js";
+import { buildOntologyMcpTools, ONTOLOGY_MCP_SERVER } from "./tools/ontology-mcp.js";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+/**
+ * WO-DSH-RESOURCE-REACH · 本体 MCP server 的**入口文件**定位（stdio 子进程的真身）。
+ *
+ * 为什么不能直接 `new URL("./dsh-runtime/ontology-mcp-server.js", import.meta.url)`：
+ * 本模块在**两种载体**下被加载 —— 生产 = `dist/engine.js`（同级真有 .js），
+ * 接缝测试 = vitest 里的 `src/engine.ts`（同级只有 .ts，子进程 `node` 起不来）。
+ * 判据落在**文件是否存在**上，而不是猜运行环境（`process.env.VITEST` 之类的开关会在
+ * 打包/降级/自建 harness 下静默选错，且那种错只表现为「工具莫名不可见」——最难查的一类）。
+ * 两条候选都缺 ⇒ 返回 dist 形态路径（子进程起不来时 mcp-client 侧 fail-closed 得 ERROR，
+ * 不编一个能跑的空壳）。**该路径不落任何模型可见面**（R-UI-4）。
+ */
+function resolveOntologyMcpServerPath(): string {
+  const sibling = fileURLToPath(new URL("./dsh-runtime/ontology-mcp-server.js", import.meta.url));
+  if (existsSync(sibling)) return sibling;
+  return fileURLToPath(new URL("../dist/dsh-runtime/ontology-mcp-server.js", import.meta.url));
+}
 import type { FeatureGate } from "./features/gate.js";
 import { ResourceRegistryService } from "./dril/resource-registry.js";
 import { runWorkflow, type ExtendedPlanStep, type WorkflowResult } from "./workflow/executor.js";
@@ -421,12 +441,31 @@ export class ExecutionEngine {
           binding: { kind: "BUILTIN" },
         });
       } else if (ref.kind === "MCP") {
-        if (!this.deps.mcp) continue;
         const config = await this.deps.repos.mcpConfigs.get(ref.mcpConfigId);
         if (!config) continue;
         // 增量 §4.2 命名空间：模型可见名 = mcp__{serverName}__{toolName}（防重名冲突）；
         // serverName = config.serverName（创建时校验）/ 旧数据按 name 推导。
         const serverName = config.serverName ?? mcpServerNameSlug(config.name);
+        // WO-DSH-RESOURCE-REACH · 平台内置本体 MCP server：工具集平台固定（切片两件套），
+        // 走**静态投影**而非连一次 server —— 理由两条：① 宿主侧连接会踩 MCP_STDIO_ENABLED
+        // 白名单策略（默认关），部署态一改 env 才能列工具，是把配置面绑死在运维参数上；
+        // ② 每次 agent run 为「知道有哪些工具」多付一次子进程冷启动。工具清单的单一来源
+        // 仍是 BUILTIN 注册表（tools/ontology-mcp.ts 直取），不重抄 schema。
+        if (serverName === ONTOLOGY_MCP_SERVER) {
+          for (const t of buildOntologyMcpTools()) {
+            if (ref.toolFilter && !ref.toolFilter.includes(t.rawName) && !ref.toolFilter.includes(t.name)) continue;
+            specs.push({
+              name: t.name,
+              // 描述逐字取 t.description（内含 ONTOLOGY_MCP_DESC_PREFIX）——DSH 臂同一段文字
+              // 经 MCP wire 到达模型面，两内核文本逐字同（前缀禁在本处再拼一次）。
+              description: t.description,
+              inputSchema: t.inputSchema,
+              binding: { kind: "MCP", mcpConfigId: ref.mcpConfigId },
+            });
+          }
+          continue;
+        }
+        if (!this.deps.mcp) continue;
         let tools: { name: string; description: string; inputSchema: Record<string, unknown> }[];
         try {
           tools = await this.deps.mcp.listTools(ref.mcpConfigId);
@@ -657,6 +696,13 @@ export class ExecutionEngine {
     // 「条件里提到 process.env.DSH_HARNESS」的包裹块（cfg 转发/间接变量会被判裸入口，门红·mut14 血账）。
     if (agent.kernel === "EXTERNAL" || (agent.kernel === undefined && process.env.DSH_HARNESS === "1")) {
       const { buildSessionSetup, mapMcpConfig, mapSkill, runDshAgent } = await import("./dsh-runtime/index.js");
+      // W8主：反向通道登记——runToken = per-run 一次性随机 token（newId 加密随机源），
+      // wire 上唯一凭证；登记 executor 用上方 :491 同一实例（scope/预算/readCache 同账本）。
+      // try/finally 保证 run 终（含异常路径）即注销——迟到的反向调用一律 401。
+      // ⚠ 位置在 mcpServers 映射**之前**（WO-DSH-RESOURCE-REACH）：本体 MCP server 的 stdio env
+      // 要在 spawn 前注入 DSH_RUN_TOKEN，若铸在下方原位则此处引用未初始化（TS2448 实测）。
+      // 铸点前移不改变任何语义——它仍是「本 run 一次」，只是早了几十行。
+      const runToken = newId("dshr");
       // WO-MCP-FORWARD · additive 转发（静默丢字段同族病第四例）：agent.mcpServers 非空时
       // 经 mapMcpConfig 逐个映射进 setup——serverName 白名单校验 + 映射期解密注入（安全注记
       // 同 setup-spec.ts mapMcpConfig：明文仅过本机父子进程 stdio wire，不落日志）；凭据行缺失/
@@ -672,6 +718,27 @@ export class ExecutionEngine {
           const credRow = mcpConfig.credentialRef ? await this.deps.repos.credentials.get(mcpConfig.credentialRef) : undefined;
           const secret = credRow ? decryptSecret(credRow.ciphertext, cfg.CREDENTIAL_KEY) : undefined;
           const spec = mapMcpConfig(mcpConfig, () => secret);
+          // WO-DSH-RESOURCE-REACH · 平台内置本体 MCP server：**运行期注入** command/args/env。
+          // 三样都不能写死在 seed 里 —— ① 绝对路径随机器/工作树变；② runToken 是 per-run 一次性量；
+          // ③ 端点 URL 要跟 cfg.PORT 走。故 seed 只声明「有这个 server + 它是 stdio + 工具过滤」，
+          // 落到真进程的形态由本处兑现（seed 里那份 command/args 是 cwd=仓根 时的可用回落，非唯一真相）。
+          // 执行仍归一回宿主反向通道（server 侧见 dsh-runtime/ontology-mcp-server.ts 头注），
+          // 因此本路径**不新增第二条执行路**：MCP wire 只是进同一只 executor 的另一种协议门。
+          const serverName = mcpConfig.serverName ?? mcpServerNameSlug(mcpConfig.name);
+          if (serverName === ONTOLOGY_MCP_SERVER) {
+            const serverPath = resolveOntologyMcpServerPath();
+            Object.assign(spec, {
+              transport: "stdio" as const,
+              command: process.execPath,
+              args: [serverPath],
+              cwd: process.cwd(),
+              env: {
+                PLATFORM_TOOL_EXEC_URL: cfg.DSH_TOOL_EXEC_URL ?? `http://127.0.0.1:${cfg.PORT}/b/v1/dsh/tool-execute`,
+                DSH_RUN_TOKEN: runToken,
+                ...(cfg.SERVICE_TOKEN ? { PLATFORM_TOOL_EXEC_TOKEN: cfg.SERVICE_TOKEN } : {}),
+              },
+            });
+          }
           // WO-DSH-PROD-READY · W8副（可见性 parity）：toolFilter 真源 = agent.tools 的 MCP ref
           // （contracts AgentToolRefSchema；mcpServers 挂载行本身只有 mcpConfigId 不带 filter）。
           // 同 config 首个带 filter 的 tools-ref 决定允许表——派生源 = expandAgentTools **收窄后**
@@ -721,10 +788,6 @@ export class ExecutionEngine {
       // provider 路由取 cfg.DSH_HARNESS_PROVIDER（生产值单源 = PRODUCTION_DSH_HARNESS_PROVIDER，
       // 无 mock 回退）。非 dcp / custom_http ⇒ resolveConnectionFacts 诚实抛错。
       const facts = await this.deps.llmSettings.resolveConnectionFacts(model, agent.tenantId);
-      // W8主：反向通道登记——runToken = per-run 一次性随机 token（newId 加密随机源），
-      // wire 上唯一凭证；登记 executor 用上方 :491 同一实例（scope/预算/readCache 同账本）。
-      // try/finally 保证 run 终（含异常路径）即注销——迟到的反向调用一律 401。
-      const runToken = newId("dshr");
       // W9-full：侧表 Map 先铸——reassemble opts（下方 :657 区）持同一引用，端点 run 期间
       // 累积，runner 在 run 终后才 fold（runner.ts:112 reassembleDshRun 在收束循环后）⇒ 时序自洽。
       const hostToolCalls: DshToolExecuteRun["hostToolCalls"] = new Map();

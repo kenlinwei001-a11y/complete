@@ -1481,26 +1481,31 @@ export function seedRegistry(now = new Date().toISOString()): {
         "【对口能力】优先调用 invoke_solver（产能校核/可行性）；涉及排产/优化必须调 solver，不自己算。",
         "【交卷】按 结论/分析/证据/建议/风险 组织，业务数字一律 ⟦ref:N⟧。",
       ].join("\n"),
-      // WO-DSH-RESOURCE-REACH · 切片两件套授予面：此前本 agent 的授予集只有 query_objects/
-      // invoke_solver/wf_seed_capacity ⇒ plan_slice/resolve_slice 在两个内核上都**不可见**，
-      // 不是通道缺口是没授予（反向通道对切片无特殊分支，见 engine.ts hostTools 通用筛）。
-      // 语义对口：需求增量评估要先跨 Model→Line→Base→Order 取证（plan_slice 动态规划），
-      // 或直接吃预置视图（resolve_slice）；两者互为上下游（plan_slice 产出的 sliceKey 供
-      // resolve_slice 消费，registry.ts:46/:63 同族 descriptionForLLM 自述）。
+      // WO-DSH-RESOURCE-REACH · 本体切片改走 **MCP 原生面**（仓主 2026-10-05：每类资源都要落到
+      // DSH 三种原生模式之一）。语义对口不变：需求增量评估要先跨 Model→Line→Base→Order 取证
+      // （plan_slice 动态规划），或直接吃预置视图（resolve_slice）；两者互为上下游
+      // （plan_slice 产出的 sliceKey 供 resolve_slice 消费，registry.ts:46/:63 同族 descriptionForLLM 自述）。
+      //
+      // ⚠ 收敛（⛔ 同一能力不许两条授予路并存）：本 agent 上**只留 MCP 一条** —— 原先那两条
+      // `{kind:"BUILTIN", name:"plan_slice"/"resolve_slice"}` 反向工具授予**已退掉**。
+      // 留 MCP 的理由：DSH 自己知道有这个资源（可发现/可配/命名空间隔离/租户进池键）。
+      // 残差：BUILTIN 注册表里两件仍在（供未迁移的消费者），治理建议见报告③「退旧路」栏。
       tools: [
         { kind: "BUILTIN", name: "query_objects" },
         { kind: "BUILTIN", name: "invoke_solver" },
-        { kind: "BUILTIN", name: "plan_slice" },
-        { kind: "BUILTIN", name: "resolve_slice" },
+        { kind: "MCP", mcpConfigId: "mcp_builtin_ontology", toolFilter: ["plan_slice", "resolve_slice"] },
         { kind: "WORKFLOW", workflowId: "wf_seed_capacity", version: "latest" },
       ],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
       skills: [{ skillId: "skl_seed_capacity", version: "latest" }],
-      mcpServers: [],
+      // 挂载本体 MCP server（DSH 侧经 dsh-mcp-client 起 stdio 连接；运行期 command/args/env
+      // 由 engine.ts DSH 分叉注入 —— 绝对路径与 per-run runToken 都不能写死在 seed 里）。
+      mcpServers: [{ mcpConfigId: "mcp_builtin_ontology" }],
       // scopeDeclaration 是**声明面**（治理网桥 scopeObjectTypes + DRIL 投影读它），
       // 与授予面同步改——engine.ts「显式配置的工具绝不应被自身 scope 门拒」的并集规则
       // 虽已兜底，但声明面漏列会让对外能力画像少报这两件。
-      scopeDeclaration: { objectTypes: ["Base", "Line", "Model", "Order"], toolNames: ["query_objects", "invoke_solver", "plan_slice", "resolve_slice"] },
+      // MCP 面按契约惯例记**全名**（mcpToolFullName：scopeDeclaration 与审计一律用全名）。
+      scopeDeclaration: { objectTypes: ["Base", "Line", "Model", "Order"], toolNames: ["query_objects", "invoke_solver", "mcp__ontology__plan_slice", "mcp__ontology__resolve_slice"] },
       budget: { maxIterations: 8, maxToolCalls: 10 },
       status: "DRAFT",
       role: "production", // WO-FIVE-ROLE P1：生产角色 agent（产能/产线/工序·Line/Process/Model 域）。
@@ -1695,6 +1700,20 @@ export function roleProfile(role: string): CeoAgentProfile | undefined {
 /** MCP 服务器出厂种子（3 条演示配置，覆盖 streamable_http / stdio 两种传输，使 MCP 库页不为空）。 */
 export function seedMcpConfigs(): McpServerConfig[] {
   return [
+    {
+      // WO-DSH-RESOURCE-REACH · 平台内置本体 MCP server（DSH 原生 MCP 模式的载荷）。
+      // 工具面 = mcp__ontology__{plan_slice, resolve_slice}，工具清单的单一来源是 BUILTIN
+      // 注册表（tools/ontology-mcp.ts 静态投影，不连 server）。**执行**不落在本进程的 MCP
+      // server 里，而是它把 tools/call 转回宿主反向通道 → 同一只 GuardedToolExecutor
+      // （dsh-runtime/ontology-mcp-server.ts 头注有完整链路）。故本行只是「DSH 可发现/可配」的
+      // 登记项，不是第二套执行体。
+      // transport 里的 command/args 是 **cwd=仓根 时的可用回落**；真进程形态（node 绝对路径、
+      // 服务树绝对路径、per-run env）由 engine.ts DSH 分叉在 run 期注入 —— 绝对路径与
+      // 一次性 runToken 都写不进静态种子。
+      id: "mcp_builtin_ontology", tenantId: SEED_TENANT, name: "本体切片 MCP（平台内置）", serverName: "ontology",
+      transport: { type: "stdio", command: "node", args: ["apps/agentcore/dist/dsh-runtime/ontology-mcp-server.js"] },
+      status: "ACTIVE", lifecycle: "PUBLISHED", version: 1,
+    },
     {
       id: "mcp_seed_demo", tenantId: SEED_TENANT, name: "示例 MCP 服务器", serverName: "demo_server",
       transport: { type: "streamable_http", url: "https://mcp.example.com" },
