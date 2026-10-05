@@ -32,7 +32,7 @@ export interface DshSetupSpec {
   tools?: { name: string }[];
   /** dsh mcp-client Config 直通（secret 已在映射期解密注入——见 mapMcpConfig 安全注记）。 */
   mcpServers?: DshMcpServerSpec[];
-  /** 技能全文spec（S2 注册 scoped SkillProvider；load_skill 语义见 mapSkill）。 */
+  /** 技能全文 spec（P2A：harness 侧注册平台自有 SkillProvider，模型面目录 + `skill` 加载器见 mapSkill）。 */
   skills?: DshSkillSpec[];
   /** 治理线（S2 answerer 网桥消费；fail-closed 方向对我方有利）。 */
   governance?: DshGovernanceSpec;
@@ -83,12 +83,42 @@ export interface DshMcpServerSpec {
   toolAllowlist?: string[];
 }
 
+/**
+ * dsh-skill `SKILL_NAME` 正则逐字复刻（dsh-skill/lib/index.js `const SKILL_NAME`）：
+ * kebab-case，只允许 [a-z0-9]，段间单连字符。**下划线/大写/连续连字符都不合法** ——
+ * 违规名不会当场报错，而是被 dsh-skill 的 `validateCandidate` 抛出后由注册表
+ * **吞成 warn 并跳过整个 provider**（目录静默变空），故必须在本侧映射期 fail-closed。
+ */
+const DSH_SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/** 我方 `SkillDefinition.key` → dsh 面技能名（下划线→连字符）。 */
+export function dshSkillName(key: string): string {
+  return key.replace(/_/g, "-");
+}
+
 export interface DshSkillSpec {
+  /** 我方业务键（审计/归因/重组装用；**不直接给模型** —— 模型面名是 dshName）。 */
   key: string;
   version: number;
+  /** 我方显示名（人读；dsh 目录不渲染它）。 */
   name: string;
-  summary: string;
-  body: string;
+  /**
+   * dsh 面技能名（= key 下划线换连字符）。模型在目录里看到、在 `skill({name})` 里回传的
+   * 就是它；也是 SkillRegistry 层内去重键。
+   */
+  dshName: string;
+  /**
+   * 目录描述 = `SkillDefinition.summary`（**同一个量**，不是"语义相当"）：触发器短句，
+   * 契约上限 200（contracts/agentcore.ts `SkillDefinitionSchema.summary` .max(200)）。
+   * 逐条进模型面目录，是运行期 token 成本字段 —— 故 cordis.yml 把 dsh 侧
+   * `catalogDescriptionMaxLength` 显式钉 200（上游默认 500 会把两端口径撬开）。
+   */
+  description: string;
+  /**
+   * 技能全文 = `SkillDefinition.body` 逐字节（dsh `SkillDefinition.content` 位，
+   * 由 `<skill_instructions>` 包裹后给模型）。
+   */
+  content: string;
   resources: { name: string; blobKey: string; mime?: string; description?: string }[];
   /** skillGovernance(skill) 同口径三件套（loop.ts:451 单源；治理位不进 tool_result 字节）。 */
   governance: { writeMode: boolean; provenancePolicy: "required" | "best_effort" | "none" };
@@ -195,7 +225,7 @@ export function mapMcpConfig(
 }
 
 // ---------------------------------------------------------------------------
-// ③ mapSkill：SkillDefinition(PUBLISHED) → DshSkillSpec（load_skill 全文按需取的载体）
+// ③ mapSkill：SkillDefinition(PUBLISHED) → DshSkillSpec（P2A：模型面目录 + `skill` 全文加载）
 // ---------------------------------------------------------------------------
 
 export function mapSkill(
@@ -205,12 +235,24 @@ export function mapSkill(
   if (skill.status !== "PUBLISHED") {
     throw new Error(`mapSkill: skill ${skill.key}@${skill.version} is ${skill.status}, only PUBLISHED is mappable`);
   }
+  const dshName = dshSkillName(skill.key);
+  // 映射期 fail-closed（两处都是"违规不会当场报错、只会让目录静默变空"的形态）：
+  // ① 名字不合 SKILL_NAME ⇒ dsh-skill validateCandidate 抛 → 注册表吞成 warn 跳过整个 provider；
+  // ② description 空串 ⇒ 同上（validateCandidate 要求非空）。
+  // 两者都必须在这里炸，否则模型面会得到**一份空目录而无人报错**。
+  if (!DSH_SKILL_NAME.test(dshName)) {
+    throw new Error(`mapSkill: skill key "${skill.key}" → dsh name "${dshName}" violates dsh SKILL_NAME (kebab-case ^[a-z0-9]+(-[a-z0-9]+)*$)`);
+  }
+  if (skill.summary.length === 0) {
+    throw new Error(`mapSkill: skill ${skill.key}@${skill.version} has an empty summary; dsh requires a non-empty description`);
+  }
   return {
     key: skill.key,
     version: skill.version,
     name: skill.name,
-    summary: skill.summary,
-    body: skill.body,
+    dshName,
+    description: skill.summary, // 同一个量（见 DshSkillSpec.description 注）
+    content: skill.body, // 逐字节
     resources: skill.resources.map((r) => ({
       name: r.name,
       blobKey: r.blobKey,
@@ -233,9 +275,11 @@ export function mapSkill(
 /**
  * persona 组装对齐 engine.ts:460 现状：`${agent.systemPrompt}\n\n${AGENT_SYSTEM_CORE}${skillSection}`。
  * S1 骨架不做 Phase5C skill 语义路由（top-k 摘要注入）与导航切片/语义锚定（那是 userContent 侧的
- * 投影，属 S3 提示词装配）；skill 全文经 DshSkillSpec 走 load_skill 机制，summary 列表由
- * harness 侧 SkillProvider 目录自然呈现（S2）。故 S1 persona = agent.systemPrompt 原文 +
- * AGENT_SYSTEM_CORE（由调用方传入，本函数不 import engine 私有常量——避免反向依赖）。
+ * 投影，属 S3 提示词装配）；skill 全文经 DshSkillSpec → harness 侧平台自有 SkillProvider
+ * （P2A 已落地），目录与 `skill` 加载器由 dsh-tool-skill 从 ctx.skills 现取 —— 故 persona 里
+ * **不写技能段**（旧 native 路的 buildSkillSection 是另一条臂，本函数不 import）。
+ * 故 persona = agent.systemPrompt 原文 + AGENT_SYSTEM_CORE（由调用方传入，
+ * 本函数不 import engine 私有常量——避免反向依赖）。
  *
  * tools 允许表 = scopeDeclaration.toolNames ∪ 实际授予工具名（engine.ts 「显式配置的工具
  * 绝不应被自身 scope 门拒」并集规则，只加不减）。实际授予集由调用方传入（expandAgentTools
@@ -256,9 +300,20 @@ export function buildSessionSetup(input: {
   hostWorkflowTools?: { name: string; description: string; inputSchema: Record<string, unknown> }[];
 }): DshSetupSpec {
   const { agent } = input;
-  // final_answer/load_skill 是循环自加的元工具（AgentLoopOpts 契约：调用方 tools 不得含，
-  // 循环自加）——dsh 路的允许表同理在适配层自加，否则治理闸会把收尾工具一并拒掉。
-  const loopMetaTools = ["final_answer", ...(input.skills?.length ? ["load_skill"] : [])];
+  // P2A：dsh 面技能名层内唯一（SkillRegistry 层内同名后到者静默忽略）—— 映射期 fail-closed，
+  // 否则两个不同 key 折成同一个 dshName 时会**静默少一个技能**。
+  if (input.skills?.length) {
+    const seen = new Set<string>();
+    for (const s of input.skills) {
+      if (seen.has(s.dshName)) throw new Error(`buildSessionSetup: duplicate dsh skill name "${s.dshName}" (keys collide after "-" mapping)`);
+      seen.add(s.dshName);
+    }
+  }
+  // final_answer/skill 是循环自加的元工具（AgentLoopOpts 契约：调用方 tools 不得含，循环自加）
+  // ——dsh 路的允许表同理在适配层自加，否则治理闸（platform-world 白名单）会把它们一并拒掉。
+  // P2A 换名：hand-rolled `load_skill` 已摘除，模型面加载器 = dsh-tool-skill 注册的 `skill`
+  // （工具名是上游常量，不可配）；不并进允许表 ⇒ 治理闸 deny，模型面看得到目录但取不到全文。
+  const loopMetaTools = ["final_answer", ...(input.skills?.length ? ["skill"] : [])];
   const effectiveToolNames = [...new Set([...agent.scopeDeclaration.toolNames, ...input.grantedToolNames, ...loopMetaTools])];
   return {
     tenantId: agent.tenantId, // N4：harness 侧 mcp namespace 池键的唯一来源（A11 机器核）

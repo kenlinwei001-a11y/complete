@@ -85,7 +85,7 @@ function literalArray(name: string): string[] {
   return out;
 }
 const ALLOWED_PSEUDO_TYPES = literalArray("ALLOWED_PSEUDO_TYPES");
-const SHRUNK_PSEUDO_TYPES = ALLOWED_PSEUDO_TYPES.filter((t) => t !== "final_answer" && t !== "load_skill");
+const SHRUNK_PSEUDO_TYPES = ALLOWED_PSEUDO_TYPES.filter((t) => t !== "final_answer" && t !== "skill");
 const KNOWN_EVENTS = literalArray("KNOWN_EVENTS");
 
 // ---------------------------------------------------------------------------
@@ -989,7 +989,12 @@ describe("WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务）", () => {
     },
     { name: "compaction", family: "step.started:compaction|step.completed:compaction", status: { kind: "unreachable", reason: "HARNESS_INTERNAL" } },
     { name: "final_answer", family: "step.started:final_answer|step.completed:final_answer", status: { kind: "unreachable", reason: "META_SKIP_GREEN_ABSENT" } },
-    { name: "load_skill", family: "step.started:load_skill|step.completed:load_skill", status: { kind: "unreachable", reason: "META_SKIP_GREEN_ABSENT" } },
+    // P2A 换名（2026-10-05）：技能加载器帧流真名 = dsh 臂 `skill`（上游常量，不可配）。旧行名
+    // `load_skill` 是已摘除的 hand-rolled dsh 工具名 —— 改名后**该族仍不可达**，但守它的东西
+    // 换了名字：reassemble.ts `META_TOOL_NAMES` 装 `skill` ⇒ tool/call 帧 skip（不产 step.started）。
+    // 若那条再写回 `load_skill`，本族**立刻可达**：帧流泄漏 step.started:skill + step.completed:，
+    // 差集项断言因白名单含 skill 而放行，但收缩过滤（skill ∉ SHRUNK）滤不掉 ⇒ 序列不等红（M10）。
+    { name: "skill", family: "step.started:skill|step.completed:skill", status: { kind: "unreachable", reason: "META_SKIP_GREEN_ABSENT" } },
   ];
 
   it("A3c 事件族覆盖矩阵：15 族每族真触发或登记不可达，不冒充覆盖", { timeout: 300_000 }, async () => {
@@ -1039,9 +1044,10 @@ describe("WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务）", () => {
       ).toBe(true);
     }
 
-    // ④ META_SKIP 反咬机制锚（静态）：final_answer/load_skill 恒在全量白名单但恒不在收缩集——
+    // ④ META_SKIP 反咬机制锚（静态）：final_answer/skill 恒在全量白名单但恒不在收缩集——
     //    skip 破损时它们以差集出现（白名单内可过 diff 断言）但收缩过滤滤不掉 ⇒ 序列不等红（M10 咬点不动）。
-    for (const meta of ["final_answer", "load_skill"]) {
+    //    名字 = 帧流侧真名（dsh 臂 `skill`）；native 的 `load_skill` 不产伪步，不在本表。
+    for (const meta of ["final_answer", "skill"]) {
       expect(ALLOWED_PSEUDO_TYPES).toContain(meta);
       expect(SHRUNK_PSEUDO_TYPES).not.toContain(meta);
     }

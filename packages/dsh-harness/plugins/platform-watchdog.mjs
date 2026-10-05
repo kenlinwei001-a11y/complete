@@ -43,8 +43,13 @@ function canonicalize(argumentsValue) {
 // stock :193 GENTLE_REMINDER 逐字引（advisory 档文案与 stock 同一来源，防措辞漂移）。
 const GENTLE_REMINDER = "You are repeating the exact same tool call with identical arguments. Carefully analyze the previous result before calling again: if the task is not complete, try a different approach or different arguments instead of repeating the call.";
 
-// meta 工具 skip（loop.ts:1171 同口径：final_answer/load_skill 元操作不计入环检测）。
-const META_TOOLS = new Set(['final_answer', 'load_skill'])
+// meta 工具 skip（native loop.ts:1171 同口径：final_answer 元操作不计入环检测）。
+// ⚠ 技能加载器的名字**两臂不同**，此处必须写 dsh 臂真名：
+//   · native 臂 = `load_skill`（apps/agentcore/src/tools/registry.ts:481，我方常量）；
+//   · dsh  臂 = `skill`（@deepseek-ai/dsh-tool-skill@0.1.0-rc.6 的上游常量，不可配）。
+// P2A 换名前这里写的是 `load_skill` ⇒ 改名后守卫失配、技能加载开始计入环检测预算，
+// 合法重复加载会被判死循环（行为回归，不是记账问题）。本行按 dsh 臂写真名。
+const META_TOOLS = new Set(['final_answer', 'skill'])
 
 /**
  * cap 解析：Number() → 整数且 >=1 启用；缺失/非整数/<=0 禁用。

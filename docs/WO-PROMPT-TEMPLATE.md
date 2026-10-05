@@ -30,20 +30,48 @@
 
 > 本仓真发生过：判某道门今天做不了，实际那个函数**早已存在且接了两处** ⇒ 把工作量从「接一条线」错报成「造一道门」，**直接歪掉排期**。
 
-## 2 · 自证你的树在 PIN 上
+## 2 · 自证你的树在 PIN 上（第一条命令就是它）
 
-⚠ **本仓 agent worktree 一律从旧树起步**（实测落后数千提交，连续 10 个 agent 全部撞上）。**别信我写的 PIN，自己测：**
+⚠ **本仓 agent worktree 一律从旧树起步**（实测落后数千提交，连续 10 个 agent 全部撞上）。**别信我写的 PIN，自己测。**
+
+**第一条命令：rebase/对齐 + 树龄金丝雀**（`<基>` = 本单的基线分支，**逐单填，不许写死**）：
+
+```bash
+git fetch origin
+git rev-list --count HEAD..origin/<基>     # ★树龄金丝雀
+```
+
+> **判据（2026-10-05 实测数）**：站在正线上时这个数**恒为 0**；而站在 `main` 上时是 **3223**
+> （实测 `git rev-list --count origin/main..origin/claude/inspiring-gates-aqczjg` = 3223）。
+> **≈3220 ⇒ 你站在 main 上，停手，先对齐再干活。** 几千 ⇒ 你的 worktree 是从旧树切的。
+> ⚠ 这条比 `merge-base --is-ancestor` 好在**它给数**：祖先关系只回真假，回不了「差多少」，
+> 而差 3 个提交（同代）与差 3223 个（另一棵树）处置完全不同。
+
+然后是精度复核（两个数一起看才算自证）：
 
 ```bash
 git rev-parse --short HEAD
-git merge-base --is-ancestor HEAD <PIN> && echo "落后⇒必须 detach" || echo "不落后"
 wc -l <树龄探针文件>        # 旧树 ≈<N> 行；PIN ≈<M> 行
 ```
 
 落后就 `git checkout --detach <PIN>`（**只准 detach 到 PIN**，不切命名分支）。树龄探针对上才算移过去。
-**报告头回显这三个数。**
+**报告头回显这几个数**（base commit · 树龄两个数 · 取证时刻）。
 
 > 不纠正的后果是实的：本仓出过同一个问题在两棵树上得到「20 单」与「500 单」两个都正确、**差 25 倍**的答案。
+
+### ⛔ 工单里**不许**写 `cd <共享工作目录>`
+
+本仓有 50+ 个 agent worktree 共用同一份 `.git`。工单正文若写 `cd /Users/apple/deploy/wo-edge-wire`，
+dev 就会在**别人的工作目录**里 checkout、改文件 —— 而那时可能有另一个 agent 正在那里跑 gate，
+两边互不知情。**一律 `git -C <你自己的 worktree 绝对路径> …`**，一条命令都不许离开自己的树：
+
+```bash
+git -C "$WT" status --porcelain
+git -C "$WT" rev-parse --short HEAD
+```
+
+> 形态：「我用『我把工作目录写在工单里』当作『dev 会在自己的树里干活』的证据 ——
+> 而 `cd` 的目标是本单**不该碰**的那棵树。」
 
 ## 3 · 第一条命令：建分支 + 空提交 + push
 
@@ -158,7 +186,19 @@ cmd > out.log 2>&1; RC=$?
   唯一可靠判法是**真去 bind**。起服务后必须**自证「我连的是我自己起的那一个」**（回显端口 + 一个只有自己新代码才有的字段）。
   > 本仓真发生过：探针报「空闲」，实际端口被别的 agent 占着，于是**读了别人遗留的旧服务**，对**自己的代码**下了错误结论。
 - ⛔ **杀进程别用会自匹的 `pkill -f`** —— 命令行里含该字串会把探针自己也匹进去（本会话已自杀 4 次）。
-  用 `ps -eo pid,args --no-headers | grep -F '<key>' | grep -v grep` 取确切 pid。
+  用下面这条取确切 pid（**下面这行 2026-10-05 订正过，别再用旧版**）：
+
+  ```bash
+  ps -eo pid,args | tail -n +2 | grep -F -- '<key>' | grep -v grep
+  ```
+
+  ⚠ 旧版写的是 `ps … --no-headers` —— 那是 **GNU 写法**；本机 `bash` 里的 `ps` 是 `/bin/ps`（BSD），
+  回 `ps: illegal option -- -` 并**一行进程都不回**，配上 `2>/dev/null` 就是安静的空输出
+  ⇒ 探针报「没有这个进程」，而它其实是**没查成**（实测：BSD 形 5 行全是报错文本 vs 真进程表 540 行）。
+  剥表头一律用 `tail -n +2`（GNU/BSD 都成立）。
+  ⚠ `grep -v grep` 是**自滤**：key 里若含 `grep` 字样，真命中会被连着滤掉 ⇒ 那种 key 要显式告警，不许静默。
+  ⚠ 还要剔掉**调用方自己的 argv**：`zsh -c '…<key>…'` 这类包装进程整条命令行里就带 key
+  ⇒ 判据恒真。剔法见 `scripts/killby.sh`（整行含本脚本自身路径的一律不看）。
 
 ## 11 · 📤 产出
 

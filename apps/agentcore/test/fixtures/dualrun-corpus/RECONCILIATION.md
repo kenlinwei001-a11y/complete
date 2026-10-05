@@ -12,7 +12,10 @@
   + `dcp:llmp_stub:kimi-k3` spec）；native 臂 = ScriptedLlmClient 队列剧本。
   **mock-llm 剧本外置化（蓝图 changes #1）已裁决撤销**，本层零 product 改动。
 - dsh 臂 **meta-tools only**（裁决）：生产档零真工具插件，scoped 世界可用 =
-  final_answer（恒）+ load_skill（挂技能时）。语料剧本只用这两件 + 纯文本轮。
+  final_answer（恒）+ **`skill`**（挂技能时）。语料剧本只用这两件 + 纯文本轮。
+  **（P2A 换名 2026-10-05：旧 hand-rolled `load_skill` 已摘除，dsh 臂加载器 = 上游
+  `@deepseek-ai/dsh-tool-skill` 的 `skill`，工具名不可配、入参 `{name}` = setup-spec 的
+  `dshName`（key 下划线换横线）；native 臂仍是我方 `load_skill`/`{skillId}` —— 两臂名不同。）**
   **（W8.5 加注 2026-08-24：dr50-cm 起例外——该任务 agent 挂 WORKFLOW ref，dsh 臂经
   W8.5 反向通道（hostWorkflowTools 下发 ⇒ harness 注册反向工具 ⇒ tool-execute 端点
   kind:"workflow" ⇒ 宿主 runWorkflowAsTool）真调 workflow 工具，driver 对该任务 dsh 臂
@@ -89,9 +92,9 @@ rejects 同通道，engine 出口 FAILED + 「dsh 重组装拒绝：…」既有
 
 ### A3 · SSE 事件名序列
 N2 形态继承：双臂 emit 序列（测试镜像 orchestrator:2187 补 answer.final）→ 剥 answer.final
-stats 键 → 滤收缩白名单（ALLOWED_PSEUDO_TYPES 去 final_answer/load_skill）→ 逐项相等；
+stats 键 → 滤收缩白名单（ALLOWED_PSEUDO_TYPES 去 final_answer/skill）→ 逐项相等；
 差集实际项 ⊆ ALLOWED_PSEUDO_TYPES（反向咬白名单不膨胀）；事件名 ⊆ KNOWN_EVENTS 十名。
-meta-only 语料下两臂非伪步序列均空（load_skill/final_answer 两臂同不产 step 事件）——
+meta-only 语料下两臂非伪步序列均空（skill/final_answer 两臂同不产 step 事件）——
 本面价值 = 50 任务扫频下零意外事件泄漏 + 白名单反咬；真工具 SSE parity 物理不可达
 （dsh 臂无真工具），登记为固有不对称 #3 的推论。
 **（W8.5 加注 2026-08-24：dr50-cm 起真工具 SSE 进入对账——nested workflow 步事件
@@ -122,7 +125,7 @@ native 必不产），剥除面锁死 workflow 语料任务。）**
 | agent_think（step.completed 伪步族） | **真触发**：dr50-ck（dsh 臂 reasoning-delta 流式透传，stub reasoning 通道确定性触发；白名单差集项；native 臂 loop.ts 无 agent_think 发射点） |
 | compaction（step.started/step.completed 伪步族） | harness 内部决策·剧本面无确定性触发通道（压缩由子进程上下文压力触发；mapper 三分支由 N2 A6b + N2-A3/A4 黄金帧单测钉死） |
 | final_answer（meta 伪步族） | meta-skip 销账项·绿态恒不出现（D-7 双臂同不产 meta 步事件；出现即差集反咬 + 收缩过滤后序列不等 ⇒ M10 咬点） |
-| load_skill（meta 伪步族） | meta-skip 销账项·绿态恒不出现（同上行口径） |
+| skill（meta 伪步族） | meta-skip 销账项·绿态恒不出现（同上行口径）。**P2A 换名 2026-10-05**：本行名 = 帧流侧真名（dsh 臂 `skill`，上游常量）；旧行名 `load_skill` 是已摘除的 hand-rolled dsh 工具名。守它的东西一并换名 = `reassemble.ts` `META_TOOL_NAMES`（写回旧名 ⇒ 本族立刻可达：帧流泄漏 step.started:skill + step.completed:，差集白名单含 `skill` 放行、收缩过滤滤不掉 ⇒ 序列不等红） |
 
 ### A4 · 审计逐字段（重定义口径）
 逐字段对账 AgentRunRecord：
@@ -321,10 +324,15 @@ A5 子集（语料声明 8 条：每类至少一 + 长上下文 + 多轮 + prove
    生产 cordis.yml 无、native 臂无——预存档差，非本 WO 面。
    ② **load_skill（native 臂固有额外面，dr50-cl 首跑实证红出）**：native 注册 agent 路
    engine.ts:811 `loadSkillEnabled: true` **无条件**把 load_skill 挂上模型面（零技能
-   也挂，调用期 resolveSkill 才落空）；dsh 路 setup-spec.ts:251 仅在 skills 非空时把
-   load_skill 进 scoped 允许表 ⇒ 零技能任务两臂差一件。属元工具策略预存不对称，
+   也挂，调用期 resolveSkill 才落空）；dsh 路 setup-spec.ts:316 仅在 skills 非空时把
+   技能加载器进 scoped 允许表 ⇒ 零技能任务两臂差一件。属元工具策略预存不对称，
    不在 W8副 toolFilter 映射范围；修 dsh 侧（loopMetaTools 无条件加）会破 A6 形态B
    「ref 无 toolFilter ⇒ setup 帧逐字节旧行为」锚，登记不修（若评审裁定对齐，另立 WO）。
+   ⚠ **P2A 换名后回写（2026-10-05）**：dsh 臂技能加载器真名 = 上游常量 `skill`
+   （@deepseek-ai/dsh-tool-skill，cordis*.yml 三档均作插件挂载 ⇒ **模型面恒可见**，
+   与 native 恒挂 load_skill 同形；允许表侧仍条件含，见 setup-spec.ts:316）。故本档
+   dshExtraTools 由 `["echo_tool"]` 扩为 `["echo_tool","skill"]`：两臂各登记各的**真名**，
+   不是并集、不是旧名兼容——写回旧名 `load_skill` 则反向钉当场红（该名不在 dsh 原始集）。
    ③ **exotic 裸名（含 `.` 等非法字符）剔除同向不咬**：toolFilter 未含 exotic 名时，
    native 臂由宿主 expandAgentTools 收窄剔除、dsh 臂由 mcp-client-tenant 注册期
    fail-closed 丢弃（publicToolName 规范化名 ≠ contracts 裸拼接表项）——剔除发生在
@@ -359,7 +367,8 @@ A5 子集（语料声明 8 条：每类至少一 + 长上下文 + 多轮 + prove
 
 ## 4. 语料构成（65 条 + 2 gated）
 - 内容源：20 条 = SCENARIO_CATALOG triggerQuestion（执行通道不借 evals——蓝图 evidence 5）；
-  44 条合成：四维造（长度：短问句 / ≥4KB 长上下文；工具轮：0/1/3 轮 load_skill；
+  44 条合成：四维造（长度：短问句 / ≥4KB 长上下文；工具轮：0/1/3 轮技能加载
+  （native `load_skill` / dsh `skill`）；
   多轮：1/2/5 次 LLM 往返；拒绝混合：deny_pre 前置 / deny_mid 中段 / deny_all 全 deny /
   deny_prefork 分叉前）+ W2 批1 扩面 6 条：G1 EMPTY 空块类 4（dr50-by 空 blocks /
   dr50-bz 空 markdown 块 / dr50-ca 空白软收尾 / dr50-cb 空块混排）+ G4 超长输出 2

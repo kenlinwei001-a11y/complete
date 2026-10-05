@@ -4,10 +4,10 @@
  * 对账口径单源 = 同目录 RECONCILIATION.md（team-lead 2026-08-19 重定义：
  * scalar + kernel 唯一白名单 + native 迭代锚 + dsh stats 对齐）。摘要：
  * - 每条任务 = {native 臂 mock 队列剧本, dsh 臂 stub 剧本(+PLATFORM_GOV_DENY), 期望声明}；
- * - dsh 臂 meta-tools only（生产档 cordis.yml 零真工具插件）：final_answer / load_skill / 纯文本轮；
+ * - dsh 臂 meta-tools only（生产档 cordis.yml 零真工具插件）：final_answer / skill / 纯文本轮；
  * - 答案块零裸数（生产 scanBlocks 语义：token 内嵌数字如 dr50-xx 不算，孤立数字算；
  *   两臂同算，保 unverifiedNumerics:false 锚简洁）；
- * - native load_skill 入参键 = skillId，dsh = key（声明映射，RECONCILIATION §2-A4）。
+ * - native load_skill 入参键 = skillId，dsh `skill` 入参键 = name（声明映射，RECONCILIATION §2-A4）。
  *
  * 跨单回执（蓝图末行）：角色路/场景路 STALL_LOOP 各一槽 → GATED_SLOTS（缝已落线；
  * 缺口 = 编排层驱动级 + STALL_LOOP 确定性触发通道缺，REC §3 #7；driver 鸣报 skipped，不冒充覆盖）。
@@ -68,7 +68,11 @@ export interface CorpusMcp {
   /** agent.tools MCP ref 的 toolFilter（裸名/全名皆可——host expandAgentTools 同口径收窄）。 */
   toolFilter?: string[];
   /**
-   * dsh 臂 poc 档固有夹具件（cordis.poc.yml echo-tool 插件，生产档无——预存不对称，非本 WO 面）。
+   * dsh 臂固有额外面（方向与 nativeExtraTools 相反），两类都在 dsh 帧/子进程世界里生效：
+   *   ① poc 档夹具件（cordis.poc.yml echo-tool 插件，生产档无——预存不对称，非本 WO 面）；
+   *   ② 技能加载元工具 = 上游常量 `skill`（@deepseek-ai/dsh-tool-skill **恒挂**，零技能也挂上模型面
+   *      ——调用期才因不在 scoped 允许表被 platform-world deny）。对位 native 臂的 `load_skill`
+   *      （见 nativeExtraTools）：P2A 换名后两臂**同形不同名**，各自登记各自的真名。
    * 声明后 driver 比对时从 dsh 原始集剥除此列名，且反向钉「该列名必须真在 dsh 原始集」
    * （豁免名单消失即红，防豁免掩盖真实漂移）。
    */
@@ -76,8 +80,9 @@ export interface CorpusMcp {
   /**
    * native 臂固有额外面（方向与 dshExtraTools 相反）：注册 agent 路 engine.ts:811
    * `loadSkillEnabled: true` **无条件**把 load_skill 挂上模型面（零技能也挂，调用期才
-   * resolveSkill 落空）；dsh 路 setup-spec.ts:251 仅在 skills 非空时进 scoped 允许表
-   * ——预存不对称（本 WO 范围=toolFilter 映射，不动 load_skill 元工具策略），REC 登记。
+   * resolveSkill 落空）；dsh 路 setup-spec.ts 的 `loopMetaTools` 仅在 skills 非空时把技能
+   * 加载器进 scoped 允许表（行号会漂，按符号锚）——预存不对称（本 WO 范围=toolFilter 映射，
+   * 不动 load_skill 元工具策略），REC 登记。
    * 声明后 driver 比对时从 native 原始集剥除此列名，且反向钉「该列名必须真在 native 原始集」。
    */
   nativeExtraTools?: string[];
@@ -227,8 +232,15 @@ const stats = (r: number): DshStatsAnchor => ({
 const rFa = (args: unknown): StubRound => ({
   toolCall: { name: "final_answer", arguments: JSON.stringify(args) }, usage: STUB_USAGE,
 });
+/**
+ * dsh 臂技能加载轮。⚠ 工具名/入参键**两臂不同**（P2A 换名后）：
+ *   · native 臂 = `load_skill`（我方常量，tools/registry.ts:481），入参 `{skillId}` —— 见下方 nLs；
+ *   · dsh 臂 = `skill`（上游常量 @deepseek-ai/dsh-tool-skill，**不可配**），入参 `{name}`，
+ *     取的是 setup-spec `dshName`（= key.replace(/_/g,"-")；本语料 SKILL_KEYS 全 kebab ⇒ 逐字同 key）。
+ * 写错任一项 ⇒ dsh 臂落到 platform-world 允许表白名单外 ⇒ deny（不是「工具不存在」——同一处 deny）。
+ */
 const rLs = (key: string): StubRound => ({
-  toolCall: { name: "load_skill", arguments: JSON.stringify({ key }) }, usage: STUB_USAGE,
+  toolCall: { name: "skill", arguments: JSON.stringify({ name: key }) }, usage: STUB_USAGE,
 });
 const rTx = (t: string): StubRound => ({ text: t, usage: STUB_USAGE });
 
@@ -418,7 +430,7 @@ function answerLengthTruncated(o: ClassOpts): DualRunTask {
 
 const CN_NUM = "零一二三四五";
 
-/** answer · n 轮 load_skill + final_answer（n = 工具轮数；LLM 往返 = n+1）。 */
+/** answer · n 轮技能加载（native `load_skill` / dsh `skill`）+ final_answer（n = 工具轮数；LLM 往返 = n+1）。 */
 function answerSkillRounds(o: ClassOpts & { n: number; blocks?: AnswerBlock[]; provenance?: { toolCallId: string; outputPath: string }[] }): DualRunTask {
   const skills = SKILL_KEYS.slice(0, o.n).map((k) => skill(k, o.id));
   const blocks = o.blocks ?? [T(`【${o.id}】剧本化回答：经${CN_NUM[o.n]}轮技能加载后收尾。`)];
@@ -733,7 +745,7 @@ function denyPre(o: ClassOpts & { ruleId: string }): DualRunTask {
   };
 }
 
-/** deny_mid · 中段 deny：dsh 臂 load_skill 成功后 final_answer 被拒；双臂终答 = POST_CHECK 替换（W1 起同码）。 */
+/** deny_mid · 中段 deny：dsh 臂 `skill` 加载成功后 final_answer 被拒；双臂终答 = POST_CHECK 替换（W1 起同码）。 */
 function denyMid(o: ClassOpts & { ruleId: string }): DualRunTask {
   const explanation = `拒绝口径（${o.id}）：命中出厂规则中段拦截，按声明口径拒绝。`;
   const blocks = [RV(o.ruleId, explanation, "prov_post_check")];
@@ -771,7 +783,7 @@ function denyAll(o: ClassOpts & { ruleIds: [string, string] }): DualRunTask {
     skills: [sk], ruleBindings: { ruleKeys: [...o.ruleIds], mode: "POST_CHECK" },
     dsh: {
       rounds: [rLs(sk.key), rFa(args), rFa(args), rTx(`已被规则拒绝 ${o.id}`)],
-      govDeny: ["load_skill", "final_answer"],
+      govDeny: ["skill", "final_answer"],
     },
     native: {
       turns: [nLs(skillIdOf(o.id, sk.key)), nFa({ blocks: [T(`实质回答占位 ${o.id}`)], provenance: [] })],
@@ -789,7 +801,7 @@ function denyAll(o: ClassOpts & { ruleIds: [string, string] }): DualRunTask {
       nativeTokens: { input: 200, output: 100 },
       dshStats: stats(4),
       denyWire: [
-        { requestIndex: 1, reason: govDenyReason("load_skill") },
+        { requestIndex: 1, reason: govDenyReason("skill") },
         { requestIndex: 2, reason: govDenyReason("final_answer") },
       ],
     },
@@ -951,7 +963,9 @@ export const DUALRUN_CORPUS: DualRunTask[] = [
   //      mock-mcp-stdio-server-multi.mjs（echo/echo2/util.calc）；toolFilter 裸名滤一留一：
   //      echo 留、echo2 两臂同剔；exotic util.calc 未含于 filter（native 宿主剔除 /
   //      dsh 注册期 fail-closed 同向），不咬 name-set。dshExtraTools = poc 档 echo_tool
-  //      夹具件（cordis.poc.yml echo-tool 插件；生产档无，预存不对称登记在 REC §2 家族）。
+  //      夹具件（cordis.poc.yml echo-tool 插件；生产档无，预存不对称登记在 REC §2 家族）
+  //      **+ `skill`**（P2A 后 dsh 臂技能加载元工具真名，上游 dsh-tool-skill 恒挂模型面；
+  //      零技能也可见，与 native 臂恒挂 load_skill 同形——两臂各登记各的真名，不是并集）。
   //      nativeExtraTools = load_skill（engine.ts:811 无条件挂模型面 vs setup-spec.ts:251
   //      仅 skills 非空才进允许表——预存不对称，REC 登记，本 WO 不动元工具策略）。 ----
   answerMcpNameSet({
@@ -967,7 +981,7 @@ export const DUALRUN_CORPUS: DualRunTask[] = [
         { name: "util.calc", description: "Exotic bare name with a dot (normalization seam)", inputSchema: { type: "object", properties: { expr: { type: "string" } } } },
       ],
       toolFilter: ["echo"],
-      dshExtraTools: ["echo_tool"],
+      dshExtraTools: ["echo_tool", "skill"],
       nativeExtraTools: ["load_skill"],
     },
   }),

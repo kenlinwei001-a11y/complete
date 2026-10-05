@@ -7,8 +7,8 @@
  * 本文件降级臂用 maxTokens ⇒ BUDGET_EXHAUSTED（reassemble 同一条 degraded 通道）。
  *
  * 五组断言：
- *   P1 provenance 溯源到真对象：load_skill 真调用 → final_answer provenance 引用其 callId
- *      ⇒ answer.provenance 解析 toolName=load_skill 且 callId 在帧流可回查（不溯源到空气）；
+ *   P1 provenance 溯源到真对象：技能加载器真调用（本臂 = dsh 帧流真名 `skill`）→ final_answer
+ *      provenance 引用其 callId ⇒ answer.provenance 解析 toolName=skill 且 callId 在帧流可回查（不溯源到空气）；
  *      ⟦ref:1⟧ 标记过重组装逐字保真（后端半；上标渲染是前端半）。
  *   P2 governance 负向（engine 级，engine.ts:520 锚）：skill provenancePolicy=required 而剧本
  *      缺 provenance ⇒ reassemble 拒绝 ⇒ engine 返回 FAILED + 「dsh 重组装拒绝：…」诚实文案
@@ -161,7 +161,7 @@ async function runScripted(
 const eventsJson = (run: DshRunOutput): string => JSON.stringify(run.events);
 
 describe("WO-DSH-E2E · L5 诚实层穿透", () => {
-  it("L5.P1 provenance 溯源到真对象（load_skill 实调可回查）+ ⟦ref:1⟧ 标记逐字保真", { timeout: INTEGRATION_TIMEOUT }, async () => {
+  it("L5.P1 provenance 溯源到真对象（dsh 臂 `skill` 实调可回查）+ ⟦ref:1⟧ 标记逐字保真", { timeout: INTEGRATION_TIMEOUT }, async () => {
     const setup = buildSessionSetup({
       agent: agentDef(),
       agentSystemCore: "L5-CORE",
@@ -169,7 +169,9 @@ describe("WO-DSH-E2E · L5 诚实层穿透", () => {
       skills: [mapSkill(skillDef())],
     });
     const { run } = await runScripted([
-      { toolCall: { name: "load_skill", arguments: JSON.stringify({ key: "l5_honesty" }), callId: "call_ls1" }, usage: USAGE },
+      // P2A：dsh 臂技能加载器 = `skill`（上游常量），入参 `{name}` = setup-spec 的 dshName
+      //（skillDef.key "l5_honesty" → dshName "l5-honesty"，下划线换横线）。
+      { toolCall: { name: "skill", arguments: JSON.stringify({ name: "l5-honesty" }), callId: "call_ls1" }, usage: USAGE },
       {
         toolCall: {
           name: "final_answer",
@@ -197,14 +199,14 @@ describe("WO-DSH-E2E · L5 诚实层穿透", () => {
     expect(run.result.answer.provenance).toHaveLength(1);
     const prov = run.result.answer.provenance[0]!;
     expect(prov.toolCallId).toBe("call_ls1");
-    expect(prov.toolName).toBe("load_skill");
+    expect(prov.toolName).toBe("skill");
     expect(prov.source).toBe("TOOL_RESULT");
     // 回查：call_ls1 的 tool/call 与 tool/result 都在帧流，result 携技能正文标记（真对象内容）。
     const callFrame = run.events.find(
       (e) => e.type === "tool/call" && JSON.stringify(e.data).includes('"call_ls1"'),
     );
     expect(callFrame, "provenance 引用的 callId 必须在帧流可回查").toBeDefined();
-    expect(JSON.stringify(callFrame!.data)).toContain('"load_skill"');
+    expect(JSON.stringify(callFrame!.data)).toContain('"skill"');
     const resultFrame = run.events.find(
       (e) => e.type === "tool/result" && JSON.stringify(e.data).includes('"call_ls1"'),
     );

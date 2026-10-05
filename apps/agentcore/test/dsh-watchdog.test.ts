@@ -110,7 +110,8 @@ describe("N3 · runner 级 stall_loop 剧本（B1-B4）", () => {
 
   it("B5 meta 守卫（M2 补咬）：stall_loop_meta + cap=3 → 8 轮同参 final_answer **不触发** stall-loop ∧ ANSWERED", { timeout: INTEGRATION_TIMEOUT }, async () => {
     // 断言形态说明（先读 platform-watchdog.mjs:93 真实语义再定）：
-    //   META_TOOLS 守卫 = 「final_answer/load_skill 元操作不计入环检测」（对位 loop.ts:1171）。
+    //   META_TOOLS 守卫 = 「final_answer/skill 元操作不计入环检测」（对位 loop.ts:1171；帧流侧真名
+    //   = dsh 臂 `skill`，native 的 `load_skill` 不流经本插件）。
     //   本臂喂 8 轮**同参** final_answer：守卫在 ⇒ 零计数，8 轮烧满无 stall-loop、无 advisory；
     //   守卫 neuter（META_TOOLS.has 摘除）⇒ 同参 final_answer 累加，第 3 轮 n>=cap=3 ⇒
     //   watchdog cancel ⇒ tool/call 帧停 3、turn/end 落 stall-loop、本测红 —— 咬的是变异本身。

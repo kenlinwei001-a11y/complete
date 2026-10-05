@@ -49,6 +49,16 @@
 - id: agent
   name: '@deepseek-ai/dsh-agent'
 
+# P2A · 模型面技能目录 + `skill` 加载工具（dsh 原生缝）。inject = agents/tools/skills；
+# 目录与工具都只经 ctx.skills 读，技能来源由 platform-world 的平台自有 SkillProvider
+# 逐 run 注册（来源 = setup.spec.skills，不是文件系统 —— 故不挂 dsh-skill-filesystem）。
+# catalogDescriptionMaxLength 显式钉 200 = SkillDefinitionSchema.summary 上限
+# （packages/contracts/src/agentcore.ts，两侧同一个量）；不设 = 吃上游默认 500。
+- id: tool-skill
+  name: '@deepseek-ai/dsh-tool-skill'
+  config:
+    catalogDescriptionMaxLength: 200
+
 - id: agent-loop
   name: '@deepseek-ai/dsh-agent-loop'
   config:
