@@ -1345,7 +1345,7 @@ export function counterfactualTimeline(c: SolverContext, args: Record<string, un
   if (!mitKey) throw validationError(`counterfactual_timeline 因子 ${factor} 无对症方案`);
   const run = riskTimeline(c, { base, factor, horizon, mitigation: { base, factor, planKey: mitKey } }) as {
     threshold: number;
-    cards: { base: string; factor: string; series: number[]; peak: number; crossDay: number | null; events: unknown[]; mitigated?: { series: number[]; appliedPlan: string; peak: number; crossDay: number | null } }[];
+    cards: { base: string; factor: string; series: number[]; peak: number; crossDay: number | null; events: unknown[]; mitigated?: { series: number[]; appliedPlan: string; peak: number; crossDay: number | null; effectiveFrom: number } }[];
   };
   const card = run.cards[0];
   if (!card?.mitigated) throw validationError("counterfactual_timeline 处置曲线生成失败");
@@ -1356,6 +1356,23 @@ export function counterfactualTimeline(c: SolverContext, args: Record<string, un
   const bCross = card.crossDay;
   const mCross = card.mitigated.crossDay;
   const crossDelayDays = bCross === null ? 0 : mCross === null ? baselineSeries.length - bCross : mCross - bCross;
+  // ⚠ 2026-10-05 修（LOOP3-coo-screen.md 对本题材记的【改写·内容极重要】，至今未执行）：
+  //   原 `peakCut = card.peak - card.mitigated.peak`，两侧都是**全窗口** `Math.max(...series)`。
+  //   而处置有生效延迟（`tn`：debottleneck=6 / outsource_step=4 / reroute=3），**生效前那几天根本没被处置**
+  //   ⇒ 全窗口 max 常落在生效前，`peakCut` 退化成 ≈0，且**与处置强弱无关**。
+  //   实测（demo·常州·瓶颈工序，horizon=30）：基线 30 天全在 [97.5614, 98.0000]（饱和），
+  //   生效前第 4 天 97.9949、真峰值 98.0000 ⇒ 全窗口 peakCut 报 **0.0051**；
+  //   而**生效窗口内**是 98 → 85 ⇒ 真削峰 **13.0**。
+  //   用户读到「峰值 98 → 98（削 0）」会把这个对策划掉，而它实际把 24/30 天从越线压回不越线。
+  //   改法：峰值削减一律取**生效窗口**（第 `tn` 天起）—— 两条曲线同窗口，可比。
+  //   ⚠ `crossDelayDays` **不动**：它比的是「首次越线日」，而基线在生效前就已越线时该日不变，
+  //   恒为 0 是**事实**不是算错（改成生效窗口口径会变成另一个指标，属另一笔账）。
+  const effFrom = Math.max(0, (card.mitigated.effectiveFrom ?? 1) - 1); // effectiveFrom 是 1 基
+  const peakFrom = (s: number[]) => (effFrom >= s.length ? Math.max(...s) : Math.max(...s.slice(effFrom)));
+  const basePeakEff = peakFrom(baselineSeries);
+  const mitPeakEff = peakFrom(mitigatedSeries);
+  const peakCut = round(basePeakEff - mitPeakEff, 4);
+  const ordersSaved = Math.max(0, overDays(baselineSeries) - overDays(mitigatedSeries));
   return {
     baselineSeries,
     mitigatedSeries,
@@ -1364,12 +1381,12 @@ export function counterfactualTimeline(c: SolverContext, args: Record<string, un
     base: card.base,
     mitigation: card.mitigated.appliedPlan,
     delta: {
-      peakCut: round(card.peak - card.mitigated.peak, 4),
+      peakCut,
       crossDelayDays,
-      ordersSaved: Math.max(0, overDays(baselineSeries) - overDays(mitigatedSeries)),
+      ordersSaved,
     },
     events: card.events,
-    summary: `如不解决「${card.base}·${factor}」：峰值 ${Math.round(card.peak)} → 处置后 ${Math.round(card.mitigated.peak)}（削 ${Math.round(card.peak - card.mitigated.peak)}）、越线日推迟 ${crossDelayDays} 天`,
+    summary: `如不解决「${card.base}·${factor}」：峰值 ${Math.round(basePeakEff)} → ${Math.round(mitPeakEff)}（削 ${Math.round(peakCut)}）、越线日推迟 ${crossDelayDays} 天、少越线 ${ordersSaved} 日`,
   };
 }
 
