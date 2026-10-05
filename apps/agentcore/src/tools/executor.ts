@@ -166,8 +166,22 @@ export class GuardedToolExecutor {
     const solverKeyFromMcp = parseSolverMcpToolName(toolName);
     if (solverKeyFromMcp) {
       const inp = (input ?? {}) as Record<string, unknown>;
+      // ⚠ 入参形态必须认**声明面真正宣告的那一种**（WO-SOLVERS-MCP-REAL 修）：
+      // `mcp__solvers__{key}` 的 inputSchema 是 `solverInputSchema(key)` —— **扁平**求解器入参
+      // （如 capacity_forecast 的 {modelId, demandDelta, weeks}），模型照它传参。
+      // 这条 ref 被真的接上 MCP 面之前（DSH 臂原先无 server 可挂 ⇒ 工具对模型不可达），
+      // 下面的 `inp.args` 永远读不到东西 —— 一旦可达，扁平入参会被静默读成 `{}`：
+      // 求解器收到空参数、返回一个"参数错误"或默认口径的结果，而屏上看起来「调用成功了」。
+      // 故此处两种形态都收：既有的 `{args:{...}}`（BUILTIN 口径 / 老调用方）优先，
+      // 否则把**除 solverKey 外的顶层键**当作扁平求解器入参（= 声明面口径）。
+      const wrapped = inp.args;
+      const flat: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(inp)) if (k !== "solverKey" && k !== "args") flat[k] = v;
       toolName = "invoke_solver";
-      input = { solverKey: solverKeyFromMcp, args: (inp.args as Record<string, unknown>) ?? {} };
+      input = {
+        solverKey: solverKeyFromMcp,
+        args: wrapped && typeof wrapped === "object" ? (wrapped as Record<string, unknown>) : flat,
+      };
     }
 
     // WO-DSH-RESOURCE-REACH · 本体切片 MCP 工具：mcp__ontology__{plan_slice|resolve_slice} →
