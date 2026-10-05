@@ -1,0 +1,36 @@
+## WO-AB-HOPTRACE · 6.67 倍在哪一跳塌掉
+> BASE=http://127.0.0.1:4051 · TICKS=12 · 幅度 -3 vs -20 · solver=finance_world_projection
+
+会话 mag-3=sims_f7f5t0qmypthn3s0（tick=12） · mag-20=sims_na4zmq764pnyjrxj（tick=12）
+
+**输入比 |-20/-3| = 6.6667** —— 读数比值越接近它，这一跳越「还在传」；越接近 1，这一跳越「死了」。
+
+跳 / 格                                       幅度-3               幅度-20              比值 B/A       衰减                  
+obj_order_SO-3391.leadDays                  11.000000          -6.000000          -0.545455    保留 127.273%         
+obj_model_4680-NCM.costPressure             2.954598           3.114954           1.054273     保留 99.042%          
+obj_customer_cust_14.receivablePressure     14.550561          14.603999          1.003673     保留 99.935%          
+obj_order_SO-3391.costPressure              82.291509          82.323918          1.000394     保留 99.993%          
+H4 MARGIN.projected                         120.894611         120.852777         0.999654     保留 100.006%         
+H3 costPressure.value                       22.693415          22.700614          1.000317     保留 99.994%          
+H4 COST.projected                           579.105389         579.147223         1.000072     保留 99.999%          
+
+── 幅度变化下**纹丝不动**的格（比值恒 1）共 16 个 ──
+   obj_material_pos_ncm.priceShock              8.000000  (=8.000000)
+   obj_material_pos_ncm.shortageRisk            26.268678  (=26.268678)
+   obj_model_4680-NCM.backlogPriceTop           75.000000  (=75.000000)
+   obj_model_4680-NCM.backlogQtyTop             10.000000  (=10.000000)
+   obj_model_4680-NCM.demandLoad                31.000000  (=31.000000)
+   obj_model_4680-NCM.forecastBias              1.000000  (=1.000000)
+   obj_model_4680-NCM.supplyRisk                0.000000  (=0.000000)
+   obj_order_SO-3391.demandPressure             60.000000  (=60.000000)
+   obj_order_SO-3391.orderChurn                 0.000000  (=0.000000)
+   obj_order_SO-3391.qty                        7259.000000  (=7259.000000)
+   obj_order_SO-3391.shortageRisk               35.000000  (=35.000000)
+   obj_order_SO-3391.unitPrice                  22198.000000  (=22198.000000)
+   H3 costPressure.carriers                     150.000000  (=150.000000)
+   H3 costPressure.universe                     500.000000  (=500.000000)
+   H4 COST.rolling                              581.100000  (=581.100000)
+   H4 MARGIN.rolling                            118.900000  (=118.900000)
+
+NOT-MEASURED 说明：凡本报告未给出数字的项，一律按 NOT-MEASURED 读。
+DONE 2026-10-05T12:46:19.678Z
