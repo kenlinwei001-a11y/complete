@@ -30,6 +30,14 @@ import { GuardedToolExecutor } from "./tools/executor.js";
 import type { SkillResourceReader } from "./tools/skill-resources.js";
 import { BUILTIN_TOOLS } from "./tools/registry.js";
 import { buildOntologyMcpTools, ONTOLOGY_MCP_SERVER } from "./tools/ontology-mcp.js";
+import {
+  WORKFLOW_MCP_CONFIG_ID,
+  WORKFLOW_MCP_SERVER,
+  WORKFLOW_MCP_TOOLS_ENV,
+  parseWorkflowMcpToolName,
+  workflowMcpTool,
+  type WorkflowMcpToolSpec,
+} from "./dsh-runtime/workflow-mcp.js";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -48,6 +56,18 @@ function resolveOntologyMcpServerPath(): string {
   const sibling = fileURLToPath(new URL("./dsh-runtime/ontology-mcp-server.js", import.meta.url));
   if (existsSync(sibling)) return sibling;
   return fileURLToPath(new URL("../dist/dsh-runtime/ontology-mcp-server.js", import.meta.url));
+}
+
+/**
+ * WO-WORKFLOW-MCP · 工作流 MCP server 的入口文件定位 —— 与上方 `resolveOntologyMcpServerPath`
+ * **同一实现、同一条论证**（两种载体：生产 dist / 接缝测试 src；判据落文件存在性；
+ * 两条候选都缺 ⇒ 返回 dist 形态路径，子进程起不来时 mcp-client 侧 fail-closed 得 ERROR）。
+ * 合并成一个带参函数会让调用点看不出「哪条链用哪个 server」，故保持两份显式常量路径。
+ */
+function resolveWorkflowMcpServerPath(): string {
+  const sibling = fileURLToPath(new URL("./dsh-runtime/workflow-mcp-server.js", import.meta.url));
+  if (existsSync(sibling)) return sibling;
+  return fileURLToPath(new URL("../dist/dsh-runtime/workflow-mcp-server.js", import.meta.url));
 }
 import type { FeatureGate } from "./features/gate.js";
 import { ResourceRegistryService } from "./dril/resource-registry.js";
@@ -465,6 +485,24 @@ export class ExecutionEngine {
           }
           continue;
         }
+        // WO-WORKFLOW-MCP · 平台内置工作流 MCP server：工具集是**租户数据**（随工作流发布变），
+        // 故不能像本体那样静态投影 —— 逐 run 从仓储现算，并按 `toolFilter`（全名）收窄。
+        // 产出**恒为 MCP 全名形态**，binding 仍记 WORKFLOW（workflowId/version 是执行期真需要
+        // 的东西；绑定表 = 端点上的唯一解析权威，wire 永远带不了它）。
+        if (serverName === WORKFLOW_MCP_SERVER) {
+          const wfs = await this.deps.repos.workflows.listByTenant(agent.tenantId);
+          for (const wf of wfs) {
+            const spec = workflowMcpTool(wf);
+            if (ref.toolFilter && !ref.toolFilter.includes(wf.key) && !ref.toolFilter.includes(spec.name)) continue;
+            specs.push({
+              name: spec.name,
+              description: spec.description,
+              inputSchema: spec.inputSchema,
+              binding: { kind: "WORKFLOW", workflowId: wf.id, version: wf.version },
+            });
+          }
+          continue;
+        }
         if (!this.deps.mcp) continue;
         let tools: { name: string; description: string; inputSchema: Record<string, unknown> }[];
         try {
@@ -484,12 +522,19 @@ export class ExecutionEngine {
           });
         }
       } else {
+        // WO-WORKFLOW-MCP · 旧记法（`{kind:"WORKFLOW", workflowId, version}`）**仍认**，
+        // 但产出与上面 MCP ref **同为 MCP 全名形态** —— 一条面、两种记法。这不是「两条路」：
+        // 契约 `AgentToolRefSchema` 里 WORKFLOW 分支仍在（`packages/**` 不在本单范围，改不掉），
+        // 存量/租户自建 agent 还会用它；若这里不产出 MCP 形态，那些 agent 的工具会在
+        // hostWorkflowTools 退场后**静默消失**（最坏的一类：不报错、少东西）。
+        // 先例：`buildExploratoryTools` 对切片白名单「全名/裸名两种记法都认，产出恒为 MCP 形态」。
         const wf = await this.deps.repos.workflows.get(ref.workflowId);
         if (!wf) continue;
+        const spec = workflowMcpTool(wf);
         specs.push({
-          name: `workflow_${wf.key}`,
-          description: `${wf.name}（这是一个多步流程，将按声明式步骤执行并返回结果）${wf.description ?? ""}`,
-          inputSchema: wf.inputs,
+          name: spec.name,
+          description: spec.description,
+          inputSchema: spec.inputSchema,
           binding: { kind: "WORKFLOW", workflowId: ref.workflowId, version: ref.version },
         });
       }
