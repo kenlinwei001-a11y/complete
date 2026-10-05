@@ -200,10 +200,15 @@ describe("WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影", () 
     expect(gmAfter.projected).toBeLessThan(gmBefore.projected);
     expect(gmAfter.delta).toBeLessThan(0);
     // ④ 金额与**它实际吃的那个读数**同一条算式（落点 (b) 之后吃的是**偏离**）。
-    //    写成恒等式而不是写死一个数 —— 写死等于赌种子不变，种子一改这条测试就在测别的东西。
-    //    ⚠ 旧写法拿 `pressureAfter.value`（面 C 的**水平**读数）去算：改前两边口径恰好相同所以它绿，
-    //    改后**复算不出** projected（实测 581.102238 vs 581.21），却仍然会绿 —— 那就是装饰品。
-    //    今天从世界态复算本用例唯一播了静息点的那张单的偏离，再咬「金额吃的是它、且被全域权重稀释」。
+    //    ⚠ 旧写法（实测两跑，都不是猜的）：
+    //      `const expectCogs = Math.round(rolling × (1 + pressureAfter.value / divisor) × 100) / 100;`
+    //      —— 拿面 C 的**水平**读数去复算，而且测试自己圆整到 **2 位**（生产已改六位 `money()`）。
+    //      **落点 (b) 之前它就是红的**（581.21 vs 581.214705 —— 差的是那两位圆整），
+    //      所以这不是 (b) 引入的红；落点 (b) 之后它照样红（581.21 vs 581.102238），
+    //      但它红的原因是**测试写错了口径**：金额吃的是偏离，不是那个水平读数。
+    //    今天改为从世界态复算本用例唯一播了静息点的那张单的偏离，
+    //    再咬「金额吃的是它、且被全域权重稀释」—— 断言 ④-末 在改前应当红（改前金额吃水平 ⇒ 隐含值 == 水平读数）；
+    //    ⚠ 那是**预言**，不是实测（本单只跑了改后一侧）；变异反证见证据档 §9。
     const cellDev = await worldCellOf(t, sid, orderId, "costPressure"); // 本用例给这张单播的静息值 = 0
     const impliedDev = (cogsAfter.projected / cogsAfter.rolling - 1) * after.basis.divisor;
     expect(cellDev, "金丝雀：扰动必须让这一格真的偏离静息值，否则下面的复算无从谈起").toBeGreaterThan(0);

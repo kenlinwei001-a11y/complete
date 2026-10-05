@@ -325,7 +325,10 @@ describe("落点 (b) · 消费端按率读口吃「偏离」", () => {
       expect(r.statusCode, `建会话失败：${r.body}`).toBe(201);
       const sid = r.json().id as string;
       await perturbDelta(t, sid, mubm!.fromId, 1000);
-      await tick(t, sid, 3);
+      // 5 拍不是随手拍的：`demo_customer_receivable_to_invoice_overdue` 这条边 `delayTicks: 1`
+      // （seed.ts「逾期是账期到了才显形」），且它上游还隔着 Material→Model→Order→Customer 三跳 ⇒
+      // 3 拍时世界态里**还没有**发票的 overduePressure 格，逾期敞口恒 0 会读出假红。
+      await tick(t, sid, 5);
       return { sid, d: await project(t, sid) };
     };
 
@@ -358,12 +361,19 @@ describe("落点 (b) · 消费端按率读口吃「偏离」", () => {
     const bMiss = (b.d.unresolvedRestPoints ?? []).filter((u: any) => seeded.has(`${u.objectId}|${u.stateVar}`));
     console.log(
       `§5 臂②（有静息点）：应收 ${b.d.cash.arProjected}（基线 ${b.d.cash.arBaseline}）·` +
-        ` 逾期敞口 ${b.d.cash.overdueExposure} · 播过静息点的格进缺席表 ${bMiss.length}`,
+        ` 逾期敞口 ${b.d.cash.overdueExposure}（承载发票 ${b.d.cash.invoiceCarriers}）·` +
+        ` 播过静息点的格进缺席表 ${bMiss.length}`,
     );
     expect(bMiss, "播过静息点的格不许进诚实缺席表（否则「金额动了」读不出是偏离驱动还是别的路）").toHaveLength(0);
     expect(b.d.cash.arProjected, "有静息点 ⇒ 应收投影必须真的动（否则 (b) 把现金半改死了）").toBeGreaterThan(
       b.d.cash.arBaseline,
     );
+    // 金丝雀先于结论：世界态里得真有带 overduePressure 的发票格 ——
+    // 否则「逾期敞口 = 0」读不出是「压根没这格」还是「偏离恰好为 0」。
+    expect(
+      b.d.cash.invoiceCarriers,
+      "金丝雀：世界态里必须有带 overduePressure 的发票格（⛔ 没有就说明是拍数不够/链路没通，不是金额算对了）",
+    ).toBeGreaterThan(0);
     expect(b.d.cash.overdueExposure, "有静息点 ⇒ 逾期敞口必须 > 0").toBeGreaterThan(0);
     // 两臂**同源同扰动**，唯一差别是「静息点在不在」—— 这才叫对照实验。
     expect(a.d.cash.invoiceUniverse, "两臂的发票全域必须相同（否则比的是两个世界）").toBe(b.d.cash.invoiceUniverse);
