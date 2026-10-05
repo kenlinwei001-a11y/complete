@@ -67,7 +67,15 @@ try {
     ? ok(`SPINE.4 真后端：经营指标条（Metric 单一出处 R-一致）${mcards} 卡真浏览器渲染（metric_rollup 对齐目标树算 delta/miss）`)
     : bad(`SPINE.4 真后端：经营指标条缺失（strip=${mstrip} cards=${mcards}）`);
   // cockpit P5 驾驶舱：V5/V7 版本切换（SopVersionRow）+ 反事实双轨双线图（counterfactual_timeline）
-  await page.waitForTimeout(1200);
+  // ⚠ 2026-10-05 修（同类第 4 例）：`cf-widget` 在 DashboardView.tsx:1005 的
+  //   `if (!data) return <div>加载中…</div>` 之后才渲染，而 data 来自 counterfactual_timeline 求解器。
+  //   实测该端点 **HTTP 200 / 6.93 秒 / 15,927 字节真数据**（直 curl `/a/v1/solvers/counterfactual_timeline/invoke`）
+  //   —— 原写法只等 1200ms ⇒ widget 恒在「加载中」态、`cf=` 恒 0，与产品无关。
+  await page.waitForFunction(
+    () => !!document.querySelector("[data-testid=cf-chart]"),
+    null,
+    { timeout: 120000 },
+  ).catch(() => {});
   const verToggle = await page.locator("[data-testid=version-toggle]").count();
   const cfWidget = await page.locator("[data-testid=cf-widget]").count();
   const cfChart = await page.locator("[data-testid=cf-chart]").count();
