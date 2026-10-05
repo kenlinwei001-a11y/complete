@@ -20,6 +20,14 @@ import { builtinTool } from "./registry.js";
 /** DSH 侧命名空间标识（进 `mcp__{server}__{tool}` 公开名；须过 ^[a-z0-9_]{2,24}$）。 */
 export const ONTOLOGY_MCP_SERVER = "ontology";
 
+/**
+ * 平台内置本体 MCP server 的**配置行 id**（`seedMcpConfigs()` 的主键 / `agent.tools[].mcpConfigId` /
+ * `agent.mcpServers[].mcpConfigId` 三处同值）。**单源放这里**：授予面、挂载面、以及通用 path-B 的
+ * 工具装配（`router/orchestrator.ts` 的 `buildExploratoryTools`）都要写它 ——
+ * 各写各的字面量就是会漂的第二来源（改一处漏一处 ⇒ 静默零工具）。
+ */
+export const ONTOLOGY_MCP_CONFIG_ID = "mcp_builtin_ontology";
+
 /** 挂在本体 MCP server 上的工具（裸名 = BUILTIN 注册表里的同名工具）。 */
 export const ONTOLOGY_MCP_TOOL_NAMES = ["plan_slice", "resolve_slice"] as const;
 export type OntologyMcpToolName = (typeof ONTOLOGY_MCP_TOOL_NAMES)[number];

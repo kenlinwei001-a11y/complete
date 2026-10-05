@@ -68,6 +68,8 @@ import type { Metrics } from "../metrics.js";
 import type { Repos } from "../persistence/repos.js";
 import { BudgetTracker } from "../tools/budget.js";
 import { BUILTIN_TOOLS, SIM_COMMANDER_TOOLS } from "../tools/registry.js";
+// WO-DSH-RESOURCE-REACH · 本体切片走 DSH 原生 MCP 模式：工具名/描述/入参模式单一来源（本模块只消费）。
+import { ONTOLOGY_MCP_CONFIG_ID, ONTOLOGY_MCP_TOOL_NAMES, buildOntologyMcpTools } from "../tools/ontology-mcp.js";
 import { pseudoEmbed } from "../util/embedding.js";
 import { clarifyPromptFor, fillSlots } from "./slots.js";
 import { resolveCeoRoute, isCeoQuestion, ceoIntentKeyForRoute, isCeoIntentKey, resolveBlockRoute, hasBlockContext, decisionCommitIntent, shouldUseFreeLLM } from "./ceo-route.js"; // WO-CEO-6 · CEO 深问确定性路由（闭 G-3）· WO-BLOCK-DIALOGUE 块级定向路由（闭 G-3 块级）· WO-DECISION-KERNEL-WIRE 成决策意图分档 · WO-REAL-LLM-FREE-QUERY 真 LLM 自由多跳判定
@@ -433,6 +435,59 @@ export function computeResidualBudget(config: {
   if (config.QOS_AGENT_MAX_ROUND_TRIPS !== undefined) b.maxRoundTrips = config.QOS_AGENT_MAX_ROUND_TRIPS;
   if (config.QOS_AGENT_MAX_DISCOVER_CALLS !== undefined) b.maxDiscoverCalls = config.QOS_AGENT_MAX_DISCOVER_CALLS;
   return b;
+}
+
+/**
+ * 通用 path-B（**没有 agent 定义**的那条路）的工具面装配 —— 抽成纯函数，才能把「退裸名之前 /
+ * 退裸名之后」两态钉在同一条断言上（接缝门 D 组），不然要起整条 QOS 才能观测这个面。
+ *
+ * 【为什么切片在这条路上也走 MCP 形态】仓主 2026-10-05 令：每一类资源都要落到 DSH 三种原生模式
+ * 之一（plugin / MCP / skill）。通用 path-B 没有 `AgentDefinition`、也没有 `mcpServers` 挂载面，
+ * 但它**吃的是同一只 GuardedToolExecutor**：`tools/executor.ts` 的 `parseOntologyMcpToolName`
+ * 把 `mcp__ontology__{raw}` 归一成裸名后再走 IAM / 预算 / 缓存 / 分发 ⇒ 这条路对 MCP 形态的工具
+ * 与 BUILTIN 形态**逐字节同权**（同一行审计、同一份 readCache），故本单只改**工具面的产出形态**，
+ * 不另接执行通道。
+ *
+ * 【为什么不再产出裸 BUILTIN 切片】那正是本单要退的旧路（同一能力两条授予路 = 两条真相源）。
+ * 本函数**结构上**不再产出 `{kind:"BUILTIN", name:"plan_slice"|"resolve_slice"}`：
+ * 这两个裸名被无条件踢出反向工具面（哪怕白名单里仍写着它们），收敛靠代码，不靠「记得别写裸名」。
+ *
+ * 【白名单两种记法都认】`pkg.toolWhitelist` 里写**全名**（新种子）或**裸名**（升级前已播种的场景包行）
+ * 都认，**产出恒为 MCP 形态** ⇒ 存量租户升级不丢切片能力，而模型面只有一条路。
+ */
+export function buildExploratoryTools(
+  pkg: { toolWhitelist: string[] },
+  opts: { simCommanderOn: boolean },
+): AgentToolSpec[] {
+  const simNames = SIM_COMMANDER_TOOLS as readonly string[];
+  // 本体切片：授予信号 = 白名单含全名或裸名；产出恒为 MCP 绑定（binding 留在 MCP：供 hostTools
+  // 过滤排除、供 loop 的 sideEffect 归类 —— 与 engine 的静态投影同口径）。
+  const ontologyTools: AgentToolSpec[] = buildOntologyMcpTools()
+    .filter((t) => pkg.toolWhitelist.includes(t.name) || pkg.toolWhitelist.includes(t.rawName))
+    .map((t) => ({
+      name: t.name,
+      description: t.description,
+      inputSchema: t.inputSchema,
+      binding: { kind: "MCP" as const, mcpConfigId: ONTOLOGY_MCP_CONFIG_ID },
+    }));
+  const ontologyRawNames = new Set<string>(ONTOLOGY_MCP_TOOL_NAMES);
+  const builtinTools: AgentToolSpec[] = BUILTIN_TOOLS.filter(
+    (t) =>
+      // ⛔ 旧路（裸 BUILTIN 切片）在这里被结构性关掉：不受白名单内容影响。
+      !ontologyRawNames.has(t.name) &&
+      ((!simNames.includes(t.name) && pkg.toolWhitelist.includes(t.name) && (t.sideEffect === "READ" || t.sideEffect === "COMPUTE")) ||
+        t.name === "create_action_draft" ||
+        // 能力发现 §1：discover 是元工具，始终可用（不受 package 白名单约束）
+        t.name === "discover" ||
+        // 增量4 §5：sim 指挥台工具——entitlement 开则可用（关则不存在），权威门，先于 package 白名单
+        (opts.simCommanderOn && simNames.includes(t.name))),
+  ).map((t) => ({
+    name: t.name,
+    description: t.descriptionForLLM,
+    inputSchema: t.inputSchema,
+    binding: { kind: "BUILTIN" as const },
+  }));
+  return [...builtinTools, ...ontologyTools];
 }
 
 export class Orchestrator {
@@ -1896,21 +1951,11 @@ export class Orchestrator {
     // 工具集：whitelist ∩ {READ, COMPUTE} + create_action_draft（写降级出口）；final_answer 由循环追加。
     // 增量4 §5：sim 工具的可见性由 entitlement 权威决定（关→不存在，R3 暗发）——即便 package 白名单含它，
     // entitlement 关也必须剔除；故先把 sim 工具从通用白名单分支排除，仅经 simCommanderOn 分支放行。
-    const simNames = SIM_COMMANDER_TOOLS as readonly string[];
-    const tools: AgentToolSpec[] = BUILTIN_TOOLS.filter(
-      (t) =>
-        (!simNames.includes(t.name) && pkg.toolWhitelist.includes(t.name) && (t.sideEffect === "READ" || t.sideEffect === "COMPUTE")) ||
-        t.name === "create_action_draft" ||
-        // 能力发现 §1：discover 是元工具，始终可用（不受 package 白名单约束）
-        t.name === "discover" ||
-        // 增量4 §5：sim 指挥台工具——entitlement 开则可用（关则不存在），权威门，先于 package 白名单
-        (simCommanderOn && simNames.includes(t.name)),
-    ).map((t) => ({
-      name: t.name,
-      description: t.descriptionForLLM,
-      inputSchema: t.inputSchema,
-      binding: { kind: "BUILTIN" as const },
-    }));
+    // WO-DSH-RESOURCE-REACH · 收敛：装配逻辑搬到 `buildExploratoryTools`（纯函数·可单测），
+    // 本处只剩调用。两点与本单前不同：① 本体切片在这条路上改由 **MCP 形态**产出
+    // （mcp__ontology__{plan_slice,resolve_slice}，与 DSH 臂同一条授予面）；
+    // ② 裸 BUILTIN 切片在本函数里被**结构性**剔除（不管 package 白名单写的是什么）。
+    const tools: AgentToolSpec[] = buildExploratoryTools(pkg, { simCommanderOn });
 
     // WO-Phase4：residual path-B（真开放深问·Phase1–3 都没接住的题）套用硬预算——收紧 round-trip / discover 盲扫上界，
     // 超即优雅降级（BUDGET_EXHAUSTED）。只约束这条 residual ReAct，不动确定性 path-A / 组合路径 / 角色 agent。
