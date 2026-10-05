@@ -1,7 +1,7 @@
 /**
  * WO-DSH-N2 · A5/A6 双跑对账：DSH_HARNESS flag off（native runAgentLoop）/ on（dsh 路B）
  * 同剧本（首轮 final_answer 收尾）产生的 SSE 事件序列，在「滤白名单伪步 + 删 answer.final stats 键」
- * 后必须逐项相等；差集实际项 ⊆ ALLOWED_PSEUDO_TYPES（反向咬白名单不膨胀——final_answer/load_skill
+ * 后必须逐项相等；差集实际项 ⊆ ALLOWED_PSEUDO_TYPES（反向咬白名单不膨胀——final_answer/skill
  * 是 D-7 meta skip 的销账项，若 mapper 不 skip，收缩白名单过滤后序列不等 → 红（M10））。
  *
  * 驱动级：engine.runRegisteredAgent（真 fork 分叉 + 真 mapper + 真 stats 并入），
@@ -36,17 +36,22 @@ const INTEGRATION_TIMEOUT = 60_000;
 
 /**
  * 允许差集白名单（单源常量）：agent_narration（POC 既有差集·evidence 12）+ N2 新增 agent_think/compaction
- * + final_answer/load_skill（D-7 meta skip 销账项·N3 前残差）。加项须评审，不擅自。
+ * + final_answer / **`skill`**（D-7 meta skip 销账项·N3 前残差）。
+ * ⚠ 技能加载器**两臂名字不同**，本表装的是**帧流侧真名** = dsh 臂 `skill`
+ *   （上游常量 @deepseek-ai/dsh-tool-skill，不可配）；native 的 `load_skill` 不经帧流
+ *   （loop.ts:778 内联分支在 :911 发射点之前 return ⇒ 原生臂根本不产该伪步）。
+ *   P2A 换名前这里写的是 `load_skill`（= 旧 hand-rolled dsh 工具名），按 dsh 真名订正。
+ * 加项须评审，不擅自。
  */
 export const ALLOWED_PSEUDO_TYPES: readonly string[] = [
   "agent_narration",
   "agent_think",
   "compaction",
   "final_answer",
-  "load_skill",
+  "skill",
 ];
-/** 收缩白名单：去掉 final_answer/load_skill 销账项——序列在此过滤后即须相等（M10 的咬点）。 */
-const SHRUNK_PSEUDO_TYPES = ALLOWED_PSEUDO_TYPES.filter((t) => t !== "final_answer" && t !== "load_skill");
+/** 收缩白名单：去掉 final_answer/skill 销账项——序列在此过滤后即须相等（M10 的咬点）。 */
+const SHRUNK_PSEUDO_TYPES = ALLOWED_PSEUDO_TYPES.filter((t) => t !== "final_answer" && t !== "skill");
 
 /** useTaskStream.ts:29-38 的 KNOWN_EVENTS 十名（前端不订阅=浏览器整条丢弃）；单源在前端，此处硬锚对账。 */
 const KNOWN_EVENTS = [
