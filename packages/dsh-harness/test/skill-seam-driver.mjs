@@ -68,6 +68,27 @@ export async function mountSetupSpec(agentCtx, spec) {
   await applySetupSpec(agentCtx, validateSetupSpec(spec))
 }
 
+/**
+ * 模型面目录的**字面字节**：真跑 dsh-tool-skill 挂在 `agent/pre-step` 上的监听，
+ * 返回它注入的 `<system-reminder>` 消息文本数组。
+ *
+ * pre-step 的载荷形状照抄真 dsh-agent-loop（lib/index.js 的
+ * `{messages: claimed, ...position, signal}`；agent 在 position 里），不是自造 ——
+ * 少了 messages/agent 任一，挂在同事件上的既有监听会当场抛。
+ *
+ * 与 `catalogOf()` 的关系：后者读的是目录**来源数组**（provider.list 的产物），
+ * 前者读的是**渲染后的模型面字节**。两个数各是一条独立来源 ⇒ 可用于互校。
+ */
+export async function prestepTexts(app, agent, extra = {}) {
+  const ac = new AbortController()
+  const decision = await app.waterfall(app, 'agent/pre-step',
+    { agent, messages: [], turn: 1, step: 1, signal: ac.signal, ...extra },
+    async () => ({ kind: 'enter', messages: [] }))
+  const texts = []
+  for (const m of decision.messages ?? []) for (const c of m.content ?? []) if (c.type === 'text') texts.push(c.text)
+  return texts
+}
+
 /** 模型面目录的**来源数组**：dsh-tool-skill 的 pre-step 监听逐拍读的就是它。 */
 export async function catalogOf(app, agent) {
   const snap = await app.get('skills').snapshot({ scope: agent })
