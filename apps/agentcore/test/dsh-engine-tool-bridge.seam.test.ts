@@ -1029,11 +1029,49 @@ describe("W8.5 · C workflow 反向化：模型可见 + 同端点反向执行 + 
     walk(join(REPO_ROOT, "apps/agentcore/src"));
     // 金丝雀 ⓪：扫描面非空 —— 「遍历坏了」与「零残留」在屏上一模一样（铁律 0.6 判据 5）
     expect(srcFiles.length, "扫描面文件数（遍历坏了 ⇒ 后面所有 0 命中都是假的）").toBeGreaterThan(50);
-    // 金丝雀 ①：同一个 walk + 同一条查法查**仍在用的兄弟键** hostTools 必须非 0（证明查法是好的）
-    const canaryHits = srcFiles.filter((f) => readFileSync(f, "utf8").includes("hostTools"));
-    expect(canaryHits.length, "金丝雀：同一条查法查 hostTools 必须非 0（否则是工具坏了不是残留为 0）").toBeGreaterThan(0);
-    const staleHits = srcFiles.filter((f) => readFileSync(f, "utf8").includes("hostWorkflowTools"));
-    expect(staleHits, `hostWorkflowTools 必须已从 src 退净，残留：\n${staleHits.join("\n")}`).toEqual([]);
+    // ⚠ **必须剥注释**（铁律 0.6 第 6 条：「那个串出现过」不度量「那是它的赋值」）：
+    // 本单的退场说明**就写在注释里**（engine.ts / setup-spec.ts / workflow-mcp.ts 都引用了旧字段名），
+    // 不剥注释的扫描器会把**说明**读成**残留**。字符串字面量保留（作数据键的旧名是真残留）。
+    const stripComments = (src: string): string => {
+      let out = "";
+      let mode: "code" | "line" | "block" | "dquote" | "squote" | "tpl" = "code";
+      for (let i = 0; i < src.length; i++) {
+        const c = src[i]!;
+        const c2 = src[i + 1];
+        if (mode === "code") {
+          if (c === "/" && c2 === "/") { out += "  "; i++; mode = "line"; continue; }
+          if (c === "/" && c2 === "*") { out += "  "; i++; mode = "block"; continue; }
+          if (c === '"') mode = "dquote";
+          else if (c === "'") mode = "squote";
+          else if (c === "`") mode = "tpl";
+          out += c;
+          continue;
+        }
+        if (mode === "line") { out += c === "\n" ? "\n" : " "; if (c === "\n") mode = "code"; continue; }
+        if (mode === "block") {
+          if (c === "*" && c2 === "/") { out += "  "; i++; mode = "code"; continue; }
+          out += c === "\n" ? "\n" : " ";
+          continue;
+        }
+        out += c;
+        if (c === "\\" && i + 1 < src.length) { out += src[i + 1]!; i++; continue; }
+        if ((mode === "dquote" && c === '"') || (mode === "squote" && c === "'") || (mode === "tpl" && c === "`")) mode = "code";
+      }
+      return out;
+    };
+    const codeOf = new Map<string, string>();
+    for (const f of srcFiles) codeOf.set(f, stripComments(readFileSync(f, "utf8")));
+    const hitsOf = (needle: string): string[] => [...codeOf].filter(([, code]) => code.includes(needle)).map(([f]) => f);
+    // 剥注释自证（与扫描器共用同一份实现，不是各抄一份）：全部注释引用都该消失
+    expect(hitsOf("hostWorkflowTools"), "剥注释后 fetch 旧字段名（注释里的说明必须被剥掉）").toEqual([]);
+    // 金丝雀 ①：同一条查法查**仍在用的兄弟键** hostTools 必须非 0（否则是工具坏了不是残留为 0）
+    expect(hitsOf("hostTools").length, "金丝雀：同一条查法查 hostTools 必须非 0").toBeGreaterThan(0);
+    // 金丝雀 ②（**反向**·本条最要紧的一条）：把旧名塞进注释 ⇒ 不许被数到；
+    // 塞进代码 ⇒ 必须被数到。②③ 一起才证明扫描器分得清「说明」与「赋值」。
+    const probe = (code: string) => stripComments(code).includes("hostWorkflowTools");
+    expect(probe("// 这里解释 hostWorkflowTools 为什么退场\nconst x = 1;"), "注释里的旧名不许被数到").toBe(false);
+    expect(probe("const hostWorkflowTools = 1;"), "代码里的旧名必须被数到").toBe(true);
+    expect(probe('{ hostWorkflowTools: [] }'), "作数据键的旧名必须被数到").toBe(true);
     // ② setup 帧键恒缺席（退场后它连类型都没有 ⇒ 只能从产物侧验）
     const agent = agentDef(); // 默认 tools 仅 BUILTIN query_objects，无工作流 ref
     const specWithout = buildSessionSetup({ agent, agentSystemCore: "CORE", grantedToolNames: ["query_objects"] });

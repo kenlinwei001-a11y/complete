@@ -830,7 +830,19 @@ describe("RESOURCE-REACH · B e2e：DSH 臂经 MCP 真调切片（真 fork + 真
       expect(wfRows[0]!.id).toMatch(/^tc_/);
       const iterCalls = result.run.iterations.flatMap((it) => it.toolCalls).filter((c) => c.toolName === SEED_WF_TOOL);
       expect(iterCalls.map((c) => c.outcome), "两次调用的结局").toEqual(["ERROR", "OK"]);
-      expect(iterCalls[1]!.toolCallId, "OK 那次对上端点审计行").toBe(wfRows[0]!.id);
+      // 差异 [B3-D1]（**登记，不是缺陷**；与 B1 的 [B1-D1] 是**同一条结构性原因**在 workflow 面的观测点）：
+      // MCP 路的 `iterations.toolCallId` 是 **DSH 帧 id**，不是宿主审计行主键 `tc_`。
+      // 迁前那条反向工具路是 `hostToolCalls.get(call.callId)` 命中的 —— 因为桥把**帧 callId 直通**上了
+      // 反向通道；MCP wire 不带 DSH 帧 id（`tools/call` 的 JSON-RPC id 由 SDK 自铸），故本 server 只能按
+      // `{全名}@{自增}` 自铸 callId（见 workflow-mcp-server.ts 头注），侧表**必然 miss** ⇒ 回落成帧 id。
+      // ⚠ 这不是「关联丢了」：① 模型面**本就没有** workflow 的 tool_call_id 可引用（包络刻意不带该属性，
+      //    与迁前 `withCallId:false` 同形 —— 上一条断言已咬）；② 帧 id ↔ `tc_` 审计行的对应由**端点回执**
+      //    承担（bridge C 组断言 `rows[0].id === body.toolCallId`，全名逐字可追）。
+      // 下面两条**钉死该差异**，漂了就红：帧 id 必须**真能在模型面回执里寻址**（同一份证据两处读到），
+      // 且**不是**审计行主键 —— 只写 `.not.toBe` 是纯否定，没有鉴别力，故后一条是值校验。
+      const frameId = iterCalls[1]!.toolCallId;
+      expect(frameId, "[B3-D1] 非宿主审计行主键").not.toBe(wfRows[0]!.id);
+      expect(toolResultText(stub.requests[2]?.body, frameId), "[B3-D1] 帧 id 在模型面可寻址且载荷 = ② 那份").toBe(receipt2);
     } finally {
       await close();
       await stub.close();
