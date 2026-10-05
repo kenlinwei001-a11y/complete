@@ -213,32 +213,53 @@ describe("落点 (b) · 消费端按率读口吃「偏离」", () => {
     );
     console.log(`§2 水平读数（面 C）：${levels(zd)}`);
     console.log(`§2 金额实际吃的偏离：cost=${((zc.projected / zc.rolling - 1) * 100).toFixed(6)}`);
+
+    /**
+     * 一条**对照实验臂**（铁律 1.5 判据一）：三元正极 priceShock 相对扰动 `mag`，走真传导链 2 跳。
+     * 三元正极 —— demo 世界里 `priceShock` 有下游成本链的物料（同 `turn-loop.seam.test.ts`）。
+     */
+    const arm = async (mag: number) => {
+      const sid = await newSession(t);
+      await perturbDelta(t, sid, MAT_ID, mag);
+      await tick(t, sid, 3);
+      const d = await project(t, sid);
+      const c = lineOf(d, "COST");
+      const m = lineOf(d, "MARGIN");
+      const r = lineOf(d, "REVENUE");
+      console.log(
+        `§3 Δ${mag > 0 ? "+" : ""}${mag}：REVENUE ${r.rolling}→${r.projected} ` +
+          `COST ${c.rolling}→${c.projected} MARGIN ${m.rolling}→${m.projected} ` +
+          `静息缺席=${(d.unresolvedRestPoints ?? []).length}`,
+      );
+      console.log(`§3 Δ${mag > 0 ? "+" : ""}${mag} 水平读数（面 C）：${levels(d)}`);
+      console.log(
+        `§3 Δ${mag > 0 ? "+" : ""}${mag} 金额实际吃的偏离：cost=${((c.projected / c.rolling - 1) * 100).toFixed(6)}`,
+      );
+      return { d, c, m };
+    };
+
+    // 臂 B①：**正向**相对扰动（源涨 ⇒ 成本压力偏离 > 0 ⇒ 成本必须涨、毛利必须跌）。
+    const { d: ad, c: ac, m: am } = await arm(1000);
+    // 臂 B②：**反向**相对扰动 Δ=−3（终裁点名的那条臂）。
+    // 它比正向臂更硬：水平口径下 23.0367−1.755 = 21.28 仍**远大于 0** ⇒ 「拿水平当偏离」照样把成本**顶高**
+    // （改前成本会涨到 700 量级），而正解的成本必须**降到基线以下**。**两臂符号相反**，
+    // 于是「金额有没有真的吃偏离」在两臂上都被咬住，不是靠一个方向的巧合。
+    const { d: bd, c: bc, m: bm } = await arm(-3);
+
+    // ⚠ 三臂**全部测完、打完**才下断言 —— 这样变异反证（把三处金额改回水平）一次就能拿到
+    // 「改前 × 三臂」的全部读数，不必为了看数去放宽某条断言。
     // 偏离为 0 ⇒ 因子 1 ⇒ 金额**逐字节**等于基线（这就是病：修前是 118.9 → −20.72）
     expect(zc.projected, "零扰动下成本偏离必须为 0（成本不许自己涨）").toBe(zc.rolling);
     expect(zm.projected, "零扰动下毛利必须等于基线（修前 118.9 → −20.72 就是它）").toBe(zm.rolling);
-
-    // ── 臂 B：**相对扰动**（三元正极 priceShock delta +1000，走真传导链 2 跳）──────────
-    const a = await newSession(t);
-    await perturbDelta(t, a, MAT_ID, 1000);
-    await tick(t, a, 3);
-    const ad = await project(t, a);
-    const ac = lineOf(ad, "COST");
-    const am = lineOf(ad, "MARGIN");
-    console.log(
-      `§3 Δ+1000：REVENUE ${lineOf(ad, "REVENUE").rolling}→${lineOf(ad, "REVENUE").projected} ` +
-        `COST ${ac.rolling}→${ac.projected} MARGIN ${am.rolling}→${am.projected} ` +
-        `静息缺席=${(ad.unresolvedRestPoints ?? []).length}`,
-    );
-    console.log(`§3 水平读数（面 C）：${levels(ad)}`);
-    console.log(`§3 金额实际吃的偏离：cost=${((ac.projected / ac.rolling - 1) * 100).toFixed(6)}`);
-    // 对照实验（铁律 1.5 判据一）：源涨 ⇒ 成本压力偏离 > 0 ⇒ 成本**必须**涨、毛利**必须**跌。
-    // ⛔ 这条是防 (b) 把金额投影改死：只用 §2 的话，「恒等于基线」也能全绿。
+    // ⛔ 下面这条是防 (b) 把金额投影改死：只用 §2 的话，「恒等于基线」也能全绿。
     expect(ac.projected, "扰动后成本必须高于基线（否则 (b) 把金额投影改死了）").toBeGreaterThan(ac.rolling);
     expect(am.projected, "扰动后毛利必须低于基线").toBeLessThan(am.rolling);
+    expect(bc.projected, "源跌 ⇒ 成本必须低于基线（水平口径下它会反向涨）").toBeLessThan(bc.rolling);
+    expect(bm.projected, "源跌 ⇒ 毛利必须高于基线").toBeGreaterThan(bm.rolling);
 
-    // 逐字节不变性：两臂的**压力披露**（面 C）各自是水平口径，与金额口径不是一回事 ——
+    // 逐字节不变性：三臂的**压力披露**（面 C）各自是水平口径，与金额口径不是一回事 ——
     // 这条不断言数值，只断言「披露里带了静息缺席的账」这一形状（没有缺席就不该有这个键）。
-    for (const d of [zd, ad]) {
+    for (const d of [zd, ad, bd]) {
       const u = d.unresolvedRestPoints;
       if (u !== undefined) {
         expect(Array.isArray(u)).toBe(true);
