@@ -48,3 +48,49 @@ export function buildSolverMcpTools(items: SolverCatalogItem[]): SolverMcpTool[]
     })
     .sort((a, b) => a.name.localeCompare(b.name));
 }
+
+// ---------------------------------------------------------------------------
+// WO-SOLVERS-MCP-REAL · MCP wire 面（真 stdio server 的工具清单）
+// ---------------------------------------------------------------------------
+
+/**
+ * 工具描述的来源标注前缀（模型面可见）。**单源放这里**，因为同一段描述有两条出线：
+ * ① 宿主静态投影（`expandAgentTools`，原生臂的模型面）② MCP wire（`tools/list`，DSH 臂的模型面）。
+ * 各写各的前缀 = 两内核模型面文本漂移，而「两内核同源」是本仓的既有判据（照本体那件的先例）。
+ */
+export const SOLVERS_MCP_DESC_PREFIX = "[MCP·求解器] ";
+
+/** MCP wire 上的一条工具（rawName = 求解器 key：harness 侧自己拼 `mcp__{serverName}__{rawName}`）。 */
+export interface SolverMcpWireTool {
+  /** 裸名（wire 上 `tools/call` 用这个；= 求解器 key） */
+  rawName: string;
+  /** 模型可见全名 mcp__solvers__{key} */
+  name: string;
+  description: string;
+  /** 声明面入参模式（扁平求解器入参）。**没有登记就不发空壳**——诚实缺席 > 静默错答。 */
+  inputSchema?: SolverJsonSchema;
+  /** 人读入参提示（无 inputSchema 时的唯一线索，随 wire 一起下发）。 */
+  argHints: Record<string, string>;
+}
+
+/**
+ * 由求解器目录构建 **MCP wire 工具**清单（确定性 R6：按 key 排序，无 IO / 无时钟 / 无随机）。
+ *
+ * ⚠ 与 `buildSolverMcpTools` 的分工：那份是**治理面**（MCP 页显示/治理，带 domain/sideEffect 等
+ * 治理字段）；本份是**模型面**（进 `tools/list`，只带模型需要的最小三件）。两者同源于入参 `items`，
+ * 不构成第二套真值源；差异只在本函数多拼一个描述前缀。
+ *
+ * ⚠ **声明面与执行面必须同形**：`inputSchema` 是**扁平**求解器入参（`solverInputSchema(key)`），
+ * 执行侧 `executor.ts` 的 A1 shim 已按同一形态收（扁平键 + 兼容既有 `{args}` 包裹）。
+ * 两处若有一处改成包裹形态，模型照声明传的参数会被静默丢成 `{}` —— 那是「跑得起来」但不度量
+ * 「算得对」的典型形态（铁律 1.5）。改任一侧请同步改另一侧。
+ */
+export function buildSolverMcpWireTools(items: SolverCatalogItem[]): SolverMcpWireTool[] {
+  return buildSolverMcpTools(items).map((t) => ({
+    rawName: t.solverKey,
+    name: t.name,
+    description: `${SOLVERS_MCP_DESC_PREFIX}${t.description}`,
+    ...(t.inputSchema ? { inputSchema: t.inputSchema } : {}),
+    argHints: t.argHints,
+  }));
+}
