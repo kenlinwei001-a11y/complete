@@ -24,7 +24,7 @@
 import { createServer as createNetServer } from "node:net";
 import type { AddressInfo } from "node:net";
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, renameSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, renameSync, type Dirent } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join, relative, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -427,7 +427,7 @@ function loadSources(): SourceFile[] {
   if (sourceCache.files) return sourceCache.files;
   const files: SourceFile[] = [];
   const walk = (dir: string): void => {
-    let entries: ReturnType<typeof readdirSync>;
+    let entries: Dirent<string>[];
     try {
       entries = readdirSync(dir, { withFileTypes: true });
     } catch {
