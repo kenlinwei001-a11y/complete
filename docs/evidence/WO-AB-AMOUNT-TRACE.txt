@@ -1,0 +1,29 @@
+## 这条边的 trace · session=sims_kgebjxr4tc767xy6 mag=-3 ticks=12
+RAW_KEYS=graphId,tenantId,source,nodes,edges,segmentCounts,segmentGaps,caveats
+
+### 命中 3040 处（ruleKey=demo_model_cost_to_order_cost）
+--- #0 ---
+ail":"传导规则 demo_material_shortage_to_po_expedite：Material.shortageRisk --material_supplied_by_po--> PurchaseOrder.expeditePressure，系数 0.185（引用 C36.params.demo_material_shortage_to_po_expedite），延迟 0 tick ⇒ 本次搬运 -2.163235020155（tick 9 → 10）"}},{"edgeId":"e:prop:demo_model_cost_to_order_cost:imp:obj_model_4680-NCM.costPressure@t1->imp:obj_order_SO-3391.costPressure@t2","fromNodeId":"imp:obj_model_4680-NCM.costPressure@t1","toNodeId":"imp:obj_order_SO-3391.costPressure@t2","kind":"IMPACT_TO_IMPACT","amount":0.002916903
+
+--- #1 ---
+rder_SO-3391.costPressure@t2","fromNodeId":"imp:obj_model_4680-NCM.costPressure@t1","toNodeId":"imp:obj_order_SO-3391.costPressure@t2","kind":"IMPACT_TO_IMPACT","amount":0.002916903406,"provenance":{"kind":"propagation_trace","refId":"sims_kgebjxr4tc767xy6@t2:demo_model_cost_to_order_cost:obj_model_4680-NCM->obj_order_SO-3391","producedBy":"demo_model_cost_to_order_cost","detail":"传导规则 demo_model_cost_to_order_cost：Model.costPressure --model_demanded_by_order--> Order.costPressure，系数 0.2775（引用 C36.params.demo_model
+
+--- #2 ---
+,"toNodeId":"imp:obj_order_SO-3391.costPressure@t2","kind":"IMPACT_TO_IMPACT","amount":0.002916903406,"provenance":{"kind":"propagation_trace","refId":"sims_kgebjxr4tc767xy6@t2:demo_model_cost_to_order_cost:obj_model_4680-NCM->obj_order_SO-3391","producedBy":"demo_model_cost_to_order_cost","detail":"传导规则 demo_model_cost_to_order_cost：Model.costPressure --model_demanded_by_order--> Order.costPressure，系数 0.2775（引用 C36.params.demo_model_cost_to_order_cost），延迟 0 tick ⇒ 本次搬运 0.002916903406（tick 1 → 2）"}},{"edgeId":"e:pr
+
+--- #3 ---
+e@t2","kind":"IMPACT_TO_IMPACT","amount":0.002916903406,"provenance":{"kind":"propagation_trace","refId":"sims_kgebjxr4tc767xy6@t2:demo_model_cost_to_order_cost:obj_model_4680-NCM->obj_order_SO-3391","producedBy":"demo_model_cost_to_order_cost","detail":"传导规则 demo_model_cost_to_order_cost：Model.costPressure --model_demanded_by_order--> Order.costPressure，系数 0.2775（引用 C36.params.demo_model_cost_to_order_cost），延迟 0 tick ⇒ 本次搬运 0.002916903406（tick 1 → 2）"}},{"edgeId":"e:prop:demo_model_cost_to_order_cost:imp:obj_model
+
+--- #4 ---
+767xy6@t2:demo_model_cost_to_order_cost:obj_model_4680-NCM->obj_order_SO-3391","producedBy":"demo_model_cost_to_order_cost","detail":"传导规则 demo_model_cost_to_order_cost：Model.costPressure --model_demanded_by_order--> Order.costPressure，系数 0.2775（引用 C36.params.demo_model_cost_to_order_cost），延迟 0 tick ⇒ 本次搬运 0.002916903406（tick 1 → 2）"}},{"edgeId":"e:prop:demo_model_cost_to_order_cost:imp:obj_model_4680-NCM.costPressure@t1->imp:obj_order_SO-3402.costPressure@t2","fromNodeId":"imp:obj_model_4680-NCM.costPressure@t1","
+
+--- #5 ---
+o_model_cost_to_order_cost","detail":"传导规则 demo_model_cost_to_order_cost：Model.costPressure --model_demanded_by_order--> Order.costPressure，系数 0.2775（引用 C36.params.demo_model_cost_to_order_cost），延迟 0 tick ⇒ 本次搬运 0.002916903406（tick 1 → 2）"}},{"edgeId":"e:prop:demo_model_cost_to_order_cost:imp:obj_model_4680-NCM.costPressure@t1->imp:obj_order_SO-3402.costPressure@t2","fromNodeId":"imp:obj_model_4680-NCM.costPressure@t1","toNodeId":"imp:obj_order_SO-3402.costPressure@t2","kind":"IMPACT_TO_IMPACT","amount":0.002916903
+
+--- #6 ---
+rder_SO-3402.costPressure@t2","fromNodeId":"imp:obj_model_4680-NCM.costPressure@t1","toNodeId":"imp:obj_order_SO-3402.costPressure@t2","kind":"IMPACT_TO_IMPACT","amount":0.002916903406,"provenance":{"kind":"propagation_trace","refId":"sims_kgebjxr4tc767xy6@t2:demo_model_cost_to_order_cost:obj_model_4680-NCM->obj_order_SO-3402","producedBy":"demo_model_cost_to_order_cost","detail":"传导规则 demo_model_cost_to_order_cost：Model.costPressure --model_demanded_by_order--> Order.costPressure，系数 0.2775（引用 C36.params.demo_model
+
+--- #7 ---
+,"toNodeId":"imp:obj_order_SO-3402.costPressure@t2","kind":"IMPACT_TO_IMPACT","amount":0.002916903406,"provenance":{"kind":"propagation_trace","refId":"sims_kgebjxr4tc767xy6@t2:demo_model_cost_to_order_cost:obj_model_4680-NCM->obj_order_SO-3402","producedBy":"demo_model_cost_to_order_cost","detail":"传导规则 demo_model_cost_to_order_cost：Model.costPressure --model_demanded_by_order--> Order.costPressure，系数 0.2775（引用 C36.params.demo_model_cost_to_order_cost），延迟 0 tick ⇒ 本次搬运 0.002916903406（tick 1 → 2）"}},{"edgeId":"e:pr
+
+DONE 2026-10-05T16:27:06.738Z

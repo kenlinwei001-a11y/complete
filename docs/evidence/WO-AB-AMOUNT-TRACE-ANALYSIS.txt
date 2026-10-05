@@ -1,0 +1,15 @@
+=== 系数真值 vs seed 描述 ===
+351:  // ⚠ **订单量加权落在这条边上，不是落在 `demo_model_cost_to_order_cost` 上**（WO-COEF-FROM-BOM）。
+664:    id: "simpr_demo_model_cost_to_order_cost",
+665:    key: "demo_model_cost_to_order_cost",
+691:  // 为什么权重加在**这一跳**而不是上一跳 `demo_model_cost_to_order_cost`：
+--- 描述写死的值 ---
+    description: "型号成本上抬 ⇒ 订这个型号的单子毛利被吃掉（型号成本 × 0.75 = 订单成本压力）",
+--- RuleParam 里的真值 0.2775 出处 ---
+apps/datacore/src/synthetic/battery.ts:792:  "demo_model_cost_to_order_cost": 0.2775,
+
+=== 搬运量与格变化的量级对照（手算）===
+edge amount(t1->t2) = 0.002916903406 ; coeff = 0.2775 ; drive = Model偏离 = 0.010511
+吻合: 0.010511 * 0.2775 = 0.0029168025
+12 拍搬运总量 ~ 0.2775 * Σdrive ≈ 0.2775 * 0.28 = 0.0777
+Order.costPressure 实测变化 = -8.093106  ⇒ 传导占 1%
