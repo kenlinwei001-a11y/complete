@@ -47,7 +47,12 @@ NOW=$(date +%s)
 # 机器运行时长：Linux 读 /proc/uptime；macOS **没有 /proc**，用 kern.boottime 反算。
 UP_SEC=$(awk '{print int($1)}' /proc/uptime 2>/dev/null)
 if [ -z "$UP_SEC" ]; then
-  _BOOT=$(sysctl -n kern.boottime 2>/dev/null | sed -n 's/.*sec = \([0-9][0-9]*\).*/\1/p')
+  # ⚠ 正则必须锚 `[ ,{]sec = `：kern.boottime 原文是 `{ sec = <epoch>, usec = <usec> } ...`，
+  #   写成 `.*sec = \([0-9]*\)` 时**贪婪的 `.*` 会去匹 `usec =`**（`usec` 里含 `sec`）⇒ 取到的是 **usec**（微秒余数）。
+  #   实测（2026-10-05）：`_BOOT=109907` ⇒ `UP_SEC ≈ now`（≈1791061815，不是运行时长）⇒ 两个后果都坏：
+  #     ① 横幅印「机器已运行 29851030 分钟」（≈57 年）；② 下面的 `-mmin -$((UP_SEC/60+1))` 变成**三千万分钟窗口**
+  #        ⇒ 时间闸形同虚设，21 小时前的陈旧日志又会被探成「任务」（正是本文件注释里说已经修掉的那类噪音）。
+  _BOOT=$(sysctl -n kern.boottime 2>/dev/null | sed -n 's/.*[ ,{]sec = \([0-9][0-9]*\).*/\1/p')
   [ -n "$_BOOT" ] && UP_SEC=$(( NOW - _BOOT ))
 fi
 [ -z "$UP_SEC" ] && echo "⚠️  读不到机器运行时长（/proc/uptime 与 kern.boottime 都不行）—— **机器重启判据未判定**，本节不据此断言任何任务「阵亡」。"
@@ -111,6 +116,15 @@ for f in "${TARGETS[@]}"; do
   fi
   FILES+=("$f"); SZ1+=("$_sz"); MT1+=("$_mt")
 done
+
+# ⚠ 假绿口（2026-10-05 实测）：`task-probe.sh <写错的路径>` 时上面那行 `[ -f "$f" ] || continue` 把
+#   不存在的目标全跳过 ⇒ FILES 空 ⇒ SUSPECT 空 ⇒ 印「✅ 所有目标在 Ns 内都有写入 —— 无可疑任务」+ RC=0。
+#   路径写错与「真的一切健康」在屏上一模一样 —— 又是否定结论冒充肯定结论。
+if [ ${#FILES[@]} -eq 0 ]; then
+  echo "⛔ 一个可探的目标都没有：你给的 ${#TARGETS[@]} 个路径**都不存在**（或都不可读）。"
+  echo "   ⇒ 这不是「全部健康」，是**没探成**。路径拼错时，本探针的 ✅ 一个字都不作数。"
+  exit 2
+fi
 
 SUSPECT=()   # 存**下标**（不是文件名），下面靠它回查 FILES/SZ1/MT1
 for i in "${!FILES[@]}"; do
