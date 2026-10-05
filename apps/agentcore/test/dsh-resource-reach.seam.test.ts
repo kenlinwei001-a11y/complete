@@ -17,17 +17,19 @@
  *   B = e2e（freePort 真 listen + stub LLM + per-agent kernel=EXTERNAL，真 fork harness
  *       + 真 spawn MCP server 子进程 + 真 HTTP 回环；agent 取自 `seedRegistry()` 出厂定义）
  *   C = 两内核一致（同一 query 同剧本，NATIVE 臂 vs EXTERNAL 臂，逐条比）
- *   D = 变异/对照（把 MCP 授予拿掉 ⇒ 红；把 MCP server 入口移走 ⇒ 红）
+ *   D = 收敛判据（① 全仓扫描：裸名授予 = 0 ∧ 白名单裸名 = 0，配双向金丝雀；
+ *       ② 通用 path-B 的工具面只产出 MCP 形态；③ path-B 真跑：退裸名之后仍调得到切片）
+ *   E = 变异/对照（把 MCP 授予拿掉 ⇒ 红；把 MCP server 入口移走 ⇒ 红）
  */
 import { createServer as createNetServer } from "node:net";
 import type { AddressInfo } from "node:net";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, renameSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, renameSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { join } from "node:path";
+import { join, relative, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mcpServerNameSlug, type AgentDefinition } from "@platform/contracts";
-import { createTestApp, TENANT, type TestApp } from "./helpers.js";
+import { PLANNER, createTestApp, submitQuery, waitForTask, TENANT, type TestApp } from "./helpers.js";
 import {
   STUB_DCP_SPEC,
   startStubOpenAi,
@@ -35,13 +37,14 @@ import {
   stubProvider,
   type StubRound,
 } from "./helpers-dsh-stub.js";
-import { seedRegistry, seedMcpConfigs } from "../src/mocks/seed.js";
+import { seedRegistry, seedMcpConfigs, seedScenarioPackage } from "../src/mocks/seed.js";
 import { toolUse } from "../src/llm/mock.js";
 import { BudgetTracker } from "../src/tools/budget.js";
 import { enterNesting } from "../src/runtime.js";
 import type { ToolAuthCtx } from "../src/tools/clients.js";
 import { buildSessionSetup } from "../src/dsh-runtime/setup-spec.js";
 import { buildOntologyMcpTools, ONTOLOGY_MCP_DESC_PREFIX } from "../src/tools/ontology-mcp.js";
+import { buildExploratoryTools } from "../src/router/orchestrator.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const HARNESS_DIR = join(REPO_ROOT, "packages/dsh-harness");
@@ -244,6 +247,223 @@ async function setupFromSeedAgent(agent: AgentDefinition) {
   } finally {
     await t.app.close();
   }
+}
+
+// ---------------------------------------------------------------------------
+// D 组的扫描器（**金丝雀与主查法共用同一份实现** —— 铁律 0.6 第 3 条：各抄一份正则的
+// 金丝雀是装饰品，改主正则时它拿旧的去测、照样绿）。
+
+/**
+ * 剥注释（字符串/模板字面量**原样保留**，含引号 —— 正则要靠引号锚定），长度与行号 1:1 保持。
+ *
+ * 为什么必须剥：本仓刚因「`toContain("weightRef: {...}")` 匹到注释里的同串」立过一条机制
+ * （CLAUDE.md 铁律 0.6 第 6 条）——「那个字符串出现过」不度量「那是它的赋值」。
+ * 本文件自己的注释里就引用了旧路原文，不剥注释的扫描器会把**说明**当**违规**。
+ *
+ * 【参考实现·逐字符】语义权威，慢（21MB 语料实测 16.5s）。D0 用它给下面的快版做等价反证。
+ */
+function stripCommentsNaive(src: string): string {
+  let out = "";
+  let mode: "code" | "line" | "block" | "dquote" | "squote" | "tpl" = "code";
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i]!;
+    const c2 = src[i + 1];
+    if (mode === "code") {
+      if (c === "/" && c2 === "/") { out += "  "; i++; mode = "line"; continue; }
+      if (c === "/" && c2 === "*") { out += "  "; i++; mode = "block"; continue; }
+      if (c === '"') mode = "dquote";
+      else if (c === "'") mode = "squote";
+      else if (c === "`") mode = "tpl";
+      out += c;
+      continue;
+    }
+    if (mode === "line") { out += c === "\n" ? "\n" : " "; if (c === "\n") mode = "code"; continue; }
+    if (mode === "block") {
+      if (c === "*" && c2 === "/") { out += "  "; i++; mode = "code"; continue; }
+      out += c === "\n" ? "\n" : " ";
+      continue;
+    }
+    // 字符串态：原样保留（转义 2 字符整体搬，保持偏移与行号）
+    out += c;
+    if (c === "\\" && i + 1 < src.length) { out += src[i + 1]!; i++; continue; }
+    if ((mode === "dquote" && c === '"') || (mode === "squote" && c === "'") || (mode === "tpl" && c === "`")) mode = "code";
+  }
+  return out;
+}
+
+/** 找字符串字面量的结束位置（含收尾引号；未闭合则到文件尾）。语义与参考实现同。 */
+function findStringEnd(src: string, start: number, quote: string): number {
+  for (let i = start + 1; i < src.length; i++) {
+    const c = src[i]!;
+    if (c === "\\") { i++; continue; }
+    if (c === quote) return i + 1;
+  }
+  return src.length;
+}
+
+/** `"` `'` `` ` `` `/` 中任意一个的位置（其余字符整段搬，避免逐字符拼接的 O(n) 常数）。 */
+const INTERESTING = /["'`/]/g;
+
+/** 剥注释·**快版**（与参考实现逐字节等价 —— D0 有反证；21MB 语料 16.5s → <1s）。 */
+function stripComments(src: string): string {
+  let out = "";
+  let mode: "code" | "line" | "block" = "code";
+  for (let i = 0; i < src.length; ) {
+    if (mode === "line") {
+      const nl = src.indexOf("\n", i);
+      const end = nl === -1 ? src.length : nl;
+      out += " ".repeat(end - i);
+      i = end;
+      mode = "code";
+      continue;
+    }
+    if (mode === "block") {
+      const close = src.indexOf("*/", i);
+      const end = close === -1 ? src.length : close + 2;
+      out += src.slice(i, end).replace(/[^\n]/g, " ");
+      i = end;
+      mode = "code";
+      continue;
+    }
+    INTERESTING.lastIndex = i;
+    const m = INTERESTING.exec(src);
+    if (!m) { out += src.slice(i); break; }
+    const j = m.index;
+    const c = src[j]!;
+    const c2 = src[j + 1];
+    if (c === "/" && c2 === "/") { out += `${src.slice(i, j)}  `; i = j + 2; mode = "line"; continue; }
+    if (c === "/" && c2 === "*") { out += `${src.slice(i, j)}  `; i = j + 2; mode = "block"; continue; }
+    if (c === "/") { out += src.slice(i, j + 1); i = j + 1; continue; } // 除号 / 正则字面量：原样过
+    const end = findStringEnd(src, j, c);
+    out += src.slice(i, end);
+    i = end;
+  }
+  return out;
+}
+
+interface ScanHit { line: number; text: string }
+
+/**
+ * 查法 ①·**授予形状**：`{kind:"BUILTIN", name:"<tool>"}`（两种键序都算，允许键间 ≤60 字符）。
+ * 判据是**两个键在同一个对象字面量里**，不是「这两个串在文件里出现过」。
+ * ⚠ 入参必须是**已剥注释**的文本（`stripComments` 的输出）—— 扫描器只做一件事，剥离由调用方一次做完。
+ */
+function scanGrantShapeText(clean: string, toolNames: readonly string[]): ScanHit[] {
+  const hits: ScanHit[] = [];
+  const name = `(?:${toolNames.join("|")})`;
+  const patterns = [
+    new RegExp(`kind\\s*:\\s*["']BUILTIN["'][\\s\\S]{0,60}?name\\s*:\\s*["']${name}["']`, "g"),
+    new RegExp(`name\\s*:\\s*["']${name}["'][\\s\\S]{0,60}?kind\\s*:\\s*["']BUILTIN["']`, "g"),
+  ];
+  for (const re of patterns) {
+    for (const m of clean.matchAll(re)) {
+      const idx = m.index ?? 0;
+      hits.push({ line: clean.slice(0, idx).split("\n").length, text: m[0].replace(/\s+/g, " ").slice(0, 90) });
+    }
+  }
+  return hits;
+}
+
+/**
+ * 查法 ②·**白名单裸名**：`toolWhitelist|toolNames|toolFilter: [ … "<裸名>" … ]`。
+ * 引号锚定是关键 —— `"mcp__ontology__resolve_slice"` 里含 `resolve_slice` 子串，
+ * 但它**不是**旧路（MCP 全名正是收敛后的形态），子串匹配会把收敛结果误报成违规。
+ * ⚠ 入参同样是**已剥注释**的文本。
+ */
+function scanWhitelistText(clean: string, toolNames: readonly string[]): ScanHit[] {
+  const hits: ScanHit[] = [];
+  // ⚠ 数组正文必须**按方括号配对**取，不能 `[\s\S]{0,600}?\]`（非贪婪取到**第一个** `]`）：
+  //    本仓真实白名单里就嵌着 `(X as readonly string[]).includes(n)` —— 一刀切在第一个 `]` 处
+  //    会把正文截在裸名之前 ⇒ **假阴性**（这个 bug 是变异反证 M-D2 当场咬出来的：
+  //    往 package 白名单里塞回 `"resolve_slice"`，门照样绿）。
+  const keyRe = /\b(?:toolWhitelist|toolNames|toolFilter)\s*:\s*\[/g;
+  for (const m of clean.matchAll(keyRe)) {
+    const openIdx = (m.index ?? 0) + m[0].length - 1;
+    const body = arrayBodyAt(clean, openIdx);
+    for (const t of toolNames) {
+      if (new RegExp(`["']${t}["']`).test(body)) {
+        const idx = m.index ?? 0;
+        hits.push({ line: clean.slice(0, idx).split("\n").length, text: `${m[0].slice(0, 40)}… 含 "${t}"` });
+      }
+    }
+  }
+  return hits;
+}
+
+/** `openIdx` 指向 `[`；返回配对 `]` 之间的正文（跳过字符串字面量里的方括号）。 */
+function arrayBodyAt(clean: string, openIdx: number): string {
+  let depth = 0;
+  for (let i = openIdx; i < clean.length; i++) {
+    const c = clean[i]!;
+    if (c === '"' || c === "'" || c === "`") { i = findStringEnd(clean, i, c) - 1; continue; }
+    if (c === "[") depth++;
+    else if (c === "]") { depth--; if (depth === 0) return clean.slice(openIdx + 1, i); }
+  }
+  // 未配对（文件被截断）→ 一直取到文件尾：**宁可多扫不可少扫**（门的假阴性比假阳性贵得多）
+  return clean.slice(openIdx + 1);
+}
+
+const SCAN_EXT = /\.(?:ts|tsx|mjs|cjs|js)$/;
+const SCAN_SKIP_DIR = new Set(["node_modules", "dist", ".git", ".claude", "coverage", ".turbo"]);
+
+/** 全仓**源码面**（不含构建产物）：四包的 src/test + harness 的 .mjs。 */
+function scanRoots(): string[] {
+  return [
+    join(REPO_ROOT, "apps/agentcore/src"),
+    join(REPO_ROOT, "apps/agentcore/test"),
+    join(REPO_ROOT, "apps/datacore/src"),
+    join(REPO_ROOT, "apps/datacore/test"),
+    join(REPO_ROOT, "apps/frontend-shell/src"),
+    join(REPO_ROOT, "apps/frontend-shell/test"),
+    join(REPO_ROOT, "packages/contracts/src"),
+    join(REPO_ROOT, "packages/llm-adapters/src"),
+    join(REPO_ROOT, "packages/dsh-harness"),
+  ];
+}
+
+interface SourceFile { rel: string; clean: string }
+const sourceCache: { files?: SourceFile[] } = {};
+function loadSources(): SourceFile[] {
+  if (sourceCache.files) return sourceCache.files;
+  const files: SourceFile[] = [];
+  const walk = (dir: string): void => {
+    let entries: ReturnType<typeof readdirSync>;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return; // 目录不存在（如某个包没有 test/）→ 跳过，不算「扫过了」
+    }
+    for (const e of entries) {
+      if (e.isDirectory()) {
+        if (!SCAN_SKIP_DIR.has(e.name)) walk(join(dir, e.name));
+        continue;
+      }
+      if (!SCAN_EXT.test(e.name)) continue;
+      const abs = join(dir, e.name);
+      const raw = readFileSync(abs, "utf8");
+      const clean = stripComments(raw);
+      // 剥注释的**自证**（逐文件·便宜）：长度与换行数必须 1:1 —— 剥歪了（例如把 `"` 当字符串起点
+      // 一路吞掉半份代码）会当场自曝，而不是静默给出「0 命中」这个否定结论。
+      if (clean.length !== raw.length || (clean.match(/\n/g)?.length ?? 0) !== (raw.match(/\n/g)?.length ?? 0)) {
+        throw new Error(`剥注释自证失败（长度/换行不一致）：${relative(REPO_ROOT, abs)}`);
+      }
+      files.push({ rel: relative(REPO_ROOT, abs).split(sep).join("/"), clean });
+    }
+  };
+  for (const r of scanRoots()) walk(r);
+  sourceCache.files = files;
+  return files;
+}
+
+function scanAll(
+  textHit: (clean: string, names: readonly string[]) => ScanHit[],
+  names: readonly string[],
+): string[] {
+  const out: string[] = [];
+  for (const f of loadSources()) {
+    for (const h of textHit(f.clean, names)) out.push(`${f.rel}:${h.line} :: ${h.text}`);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -777,5 +997,166 @@ describe("RESOURCE-REACH · C 两内核一致：同一 query 同剧本，逐条�
         await stub.close();
       }
     }
+  });
+});
+
+describe("RESOURCE-REACH · D 收敛判据：切片只剩 MCP 一条授予路（全仓扫描 + path-B 真跑）", () => {
+  /** 出厂场景包里曾以裸名授予的两件（path-B 的工具面 = 它 + BUILTIN 注册表当场算出来的）。 */
+  const PROD_RAW_SLICES = ["plan_slice", "resolve_slice"];
+  const OUT_OF_CATALOG = { candidates: [], outOfCatalog: true, extractedSlots: {} };
+
+  it("D0 扫描器金丝雀（合成样例·与 D1 共用同一实现）：正样例必中 ∧ 全名形态必不中 ∧ 注释里的同串必不中", () => {
+    // ⚠ 本文件自己要被 D1 扫到 ⇒ 合成样例一律**拼装**，不在源码里写出裸名字面量
+    //   （否则「测试文件的样例」会被判成「仓库里的违规」——这个门第一版就是这么自咬的）。
+    const bare = "plan" + "_slice";
+    const full = `mcp__${ONTOLOGY_SERVER_NAME}__` + "plan" + "_slice";
+    const scan = (s: string) => stripComments(s);
+    // ⓪ 剥注释快版的**等价反证**：与逐字符参考实现在同一份刁钻语料上逐字节同
+    //   （含：`//` 出现在字符串里、转义引号、块注释、模板字面量、正则字面量、注释里的同串）
+    const corpus = [
+      `const a = "http://x//y"; // 真注释\n`,
+      `const b = 'it\\'s //not-comment'; /* 块\n注释 */ const c = \`tpl // ${bare}\`;\n`,
+      `// { kind: "BUILTIN", name: "${bare}" }\nconst d = /["']/g;\n`,
+      `const e = 1 / 2; // 除号\n`,
+    ].join("");
+    expect(stripComments(corpus), "快版剥注释 = 逐字符参考实现（逐字节）").toBe(stripCommentsNaive(corpus));
+    // ① 正样例：授予形状必中
+    expect(scanGrantShapeText(scan(`tools: [{ kind: "BUILTIN", name: "${bare}" }]`), ["plan_slice"]).length, "① 授予形状正样例必中").toBe(1);
+    // ② 全名形态**不是**旧路（它是收敛后的目标形态）
+    expect(
+      scanGrantShapeText(scan(`tools: [{ kind: "BUILTIN", name: "${full}" }]`), ["plan_slice"]).length,
+      "② 全名形态不得命中",
+    ).toBe(0);
+    // ③ 反向金丝雀（铁律 0.6 第 6 条）：**只出现在注释里**的同串不许被数到
+    expect(
+      scanGrantShapeText(scan(`// 旧路长这样：{ kind: "BUILTIN", name: "${bare}" }`), ["plan_slice"]).length,
+      "③ 注释里的同串不许算（证明工具在数语法位置，不是数字符串出现）",
+    ).toBe(0);
+    // ④ 白名单查法：正样例必中
+    expect(scanWhitelistText(scan(`toolWhitelist: ["query_objects", "${bare}"]`), ["plan_slice"]).length, "④ 白名单正样例必中").toBe(1);
+    // ⑤ 白名单查法：全名形态必不中（子串匹配会把收敛结果误报成违规 ⇒ 这条是这道门的命门）
+    expect(scanWhitelistText(scan(`toolWhitelist: ["${full}"]`), ["plan_slice"]).length, "⑤ 全名形态不得命中（引号锚定）").toBe(0);
+    // ⑥ 嵌套方括号金丝雀（**M-D2 变异咬出来的那个假阴性**）：白名单里嵌着 `string[]` 时，
+    //    裸名仍必须被数到 —— 非贪婪取到第一个 `]` 的实现会在这里漏掉。
+    expect(
+      scanWhitelistText(
+        scan(`toolWhitelist: [...X.filter((n) => !(Y as readonly string[]).includes(n)), "${bare}"]`),
+        ["plan_slice"],
+      ).length,
+      "⑥ 数组里嵌 `string[]` 时裸名仍必中（括号配对，不是取第一个 `]`）",
+    ).toBe(1);
+    // ⑦ 长数组金丝雀：裸名出现在数组第 700 字符之后仍必中（证明没有 600 字符窗口截断）
+    expect(
+      scanWhitelistText(scan(`toolWhitelist: [${'"pad", '.repeat(120)}"${bare}"]`), ["plan_slice"]).length,
+      "⑦ 裸名在长数组尾部仍必中（无长度窗口）",
+    ).toBe(1);
+    // ⑧ 结构性反向：同样嵌套结构里换成全名 ⇒ 不许中
+    expect(
+      scanWhitelistText(
+        scan(`toolWhitelist: [...X.filter((n) => !(Y as readonly string[]).includes(n)), "${full}"]`),
+        ["plan_slice"],
+      ).length,
+      "⑧ 嵌套结构里的全名形态不得命中",
+    ).toBe(0);
+  });
+
+  it("D1 全仓收敛：`{kind:\"BUILTIN\", name:切片裸名}` = 0 ∧ 白名单裸名 = 0（金丝雀 query_objects 必须非 0）", { timeout: 120_000 }, () => {
+    const files = loadSources();
+    // 金丝雀 ⓪：扫描面本身非空 —— 「遍历坏了」与「全仓干净」在屏上一模一样（铁律 0.6 判据 5）
+    expect(files.length, "扫描面文件数（遍历坏了会得到空集 ⇒ 后面所有 0 命中都是假的）").toBeGreaterThan(100);
+    console.log(`\n  ── D1 扫描面 ${files.length} 个源码文件（四包 src/test + harness .mjs，不含 dist）──\n`);
+
+    const grantCanary = scanAll(scanGrantShapeText, ["query_objects"]);
+    const grantViolations = scanAll(scanGrantShapeText, PROD_RAW_SLICES);
+    const wlCanary = scanAll(scanWhitelistText, ["query_objects"]);
+    const wlViolations = scanAll(scanWhitelistText, PROD_RAW_SLICES);
+    console.log(
+      `  ── D1 读数 ──\n` +
+        `  授予形状: 切片裸名命中 ${grantViolations.length} / 金丝雀 query_objects 命中 ${grantCanary.length}\n` +
+        `  白名单  : 切片裸名命中 ${wlViolations.length} / 金丝雀 query_objects 命中 ${wlCanary.length}\n` +
+        (grantViolations.length ? `  ① 违规：\n  ${grantViolations.join("\n  ")}\n` : "") +
+        (wlViolations.length ? `  ② 违规：\n  ${wlViolations.join("\n  ")}\n` : ""),
+    );
+    // 金丝雀**先**断言（与主判据同一查法）：为 0 ⇒ 报「工具坏了」，不许报「仓库干净」
+    expect(grantCanary.length, "金丝雀①：同一条查法查 query_objects 必须非 0").toBeGreaterThan(0);
+    expect(wlCanary.length, "金丝雀②：白名单查法查 query_objects 必须非 0").toBeGreaterThan(0);
+    expect(grantViolations, "全仓 BUILTIN 裸名授予必须为 0").toEqual([]);
+    expect(wlViolations, "全仓白名单裸名必须为 0").toEqual([]);
+  });
+
+  it("D2 通用 path-B 的工具装配：切片只以 MCP 形态产出（白名单不给 ⇒ 一件没有；旧记法仍认 ⇒ 不丢能力）", () => {
+    const tools = buildExploratoryTools(seedScenarioPackage(), { simCommanderOn: false });
+    // ① 裸 BUILTIN 切片不许再产出（「退旧路」在 path-B 上的落点）
+    expect(
+      tools.filter((t) => (PROD_RAW_SLICES as readonly string[]).includes(t.name)).map((t) => t.name),
+      "path-B 工具面不许出现裸切片名",
+    ).toEqual([]);
+    // ② 两件切片以 MCP 形态在，且绑定指向本体 MCP 配置行
+    const mcpSlices = tools.filter((t) => t.binding.kind === "MCP" && t.name.startsWith(`mcp__${ONTOLOGY_SERVER_NAME}__`));
+    expect(mcpSlices.map((t) => t.name), "path-B 的切片工具").toEqual([SLICE_PLAN_MCP, SLICE_RESOLVE_MCP]);
+    expect(
+      mcpSlices.map((t) => (t.binding.kind === "MCP" ? t.binding.mcpConfigId : "")),
+      "绑定指向本体 MCP 配置行",
+    ).toEqual([ONTOLOGY_MCP_CONFIG_ID, ONTOLOGY_MCP_CONFIG_ID]);
+    // ③ 描述逐字 = MCP server 广告文本（模型面单一来源）
+    const advertised = buildOntologyMcpTools();
+    for (const t of mcpSlices) {
+      expect(t.description, `${t.name} 描述 = MCP 广告`).toBe(advertised.find((a) => a.name === t.name)!.description);
+    }
+    // ④ fail-closed 方向：白名单不给切片 ⇒ 一件都没有（授予由白名单驱动，不是无条件放行）
+    const none = buildExploratoryTools({ toolWhitelist: ["query_objects"] }, { simCommanderOn: false });
+    expect(none.filter((t) => t.name.startsWith(`mcp__${ONTOLOGY_SERVER_NAME}__`))).toEqual([]);
+    // ⑤ 旧记法（升级前播种的场景包行里仍是裸名）仍认 ⇒ 存量租户不丢能力，但产出**恒为 MCP 形态**
+    const legacyRaw = "resolve" + "_slice";
+    const legacy = buildExploratoryTools({ toolWhitelist: ["query_objects", legacyRaw] }, { simCommanderOn: false });
+    expect(legacy.map((t) => t.name), "旧记法仍授出（MCP 形态）").toContain(SLICE_RESOLVE_MCP);
+    expect(legacy.some((t) => t.name === legacyRaw), "旧记法也不产出裸名").toBe(false);
+    // 金丝雀：整表没空掉（否则上面所有 not.toContain 对空实现恒真）
+    expect(tools.map((t) => t.name)).toContain("query_objects");
+    expect(tools.map((t) => t.name)).toContain("invoke_solver");
+  });
+
+  it("D3 path-B e2e（真跑）：退裸名之后模型仍能真调切片 —— 走 MCP 授予面、回到同一只执行体", { timeout: SEAM_TIMEOUT }, async () => {
+    const t = await createTestApp();
+    t.llm.queueClassification(OUT_OF_CATALOG);
+    t.llm.queueAgentTurn({ content: [toolUse(SLICE_RESOLVE_MCP, { sliceKey: "biz.Order.Base", args: {} })] });
+    t.llm.queueAgentTurn({
+      content: [toolUse("final_answer", { blocks: [{ type: "text", markdown: "切片已消费，结论见下。" }], provenance: [] })],
+    });
+    const resolveSpy = vi.spyOn(t.dataCore.ontology, "resolveSlice");
+    const { taskId } = await submitQuery(t, PLANNER, "把所有能查的都翻一遍并给我一个综合自由结论", { view: "dash" });
+    const task = await waitForTask(t, taskId, (x) => x.status === "COMPLETED", 30_000);
+
+    // 金丝雀 ⓪：真走通用 path-B（没有 agent 定义那条路），不是 path-A / 组合路径
+    expect(task.path, "真走通用 path-B").toBe("AGENT");
+    expect(task.status).toBe("COMPLETED");
+
+    // ① 模型面：切片只有 MCP 形态（裸名不许出现 —— 有 = 两条路都还在）
+    const visible = nativeVisibleTools(t).map((x) => x.name);
+    console.log(
+      `\n  ── D3 path-B 模型面（共 ${visible.length} 件，切片相关列出）──\n  ${visible
+        .filter((n) => /ontology|slice/.test(n))
+        .join("\n  ")}\n`,
+    );
+    expect(visible, "path-B 模型面").toContain(SLICE_RESOLVE_MCP);
+    expect(visible, "裸切片名不许出现在模型面").not.toContain(SLICE_RESOLVE_RAW);
+    expect(visible, "裸切片名不许出现在模型面").not.toContain(SLICE_PLAN_RAW);
+
+    // ② 能力不减：切片真被执行体打到，入参逐字 = 模型给的
+    expect(resolveSpy.mock.calls.length, "resolveSlice 真调一次").toBe(1);
+    expect(resolveSpy.mock.calls[0]![1]).toBe("biz.Order.Base");
+
+    // ③ 同一只执行体：审计行落在**裸名**上（executor 的归一形态，与 DSH 臂 / 注册 agent 臂同口径）
+    const rows = await t.repos.toolCalls.listByTask(taskId);
+    const row = rows.find((r) => r.toolName === SLICE_RESOLVE_RAW);
+    expect(row?.outcome, "审计行（裸名归一口径）").toBe("OK");
+    expect(rows.find((r) => r.toolName === SLICE_RESOLVE_MCP), "审计面不许有全名行").toBeUndefined();
+    expect(rows.length, "金丝雀：审计面确实有行（否则上面的 find 是空集合上的 find）").toBeGreaterThan(0);
+
+    // ④ 切片数据真回模型面（下一轮请求体里可见）
+    const req1 = JSON.stringify(t.llm.agentRequests[1] ?? {});
+    expect(req1, "切片节点数据真回灌").toContain("Order_to_Base");
+    console.log(`\n  ── D3 审计行 ──\n  ${JSON.stringify(rows.map((r) => `${r.toolName}/${r.outcome}`))}\n`);
+    await t.app.close();
   });
 });
