@@ -23,7 +23,9 @@
  *   compaction/summary     → step.completed{同 stepId, type:compaction, text:已压缩 N 条/约 M tokens}
  *   compaction/end         → step.completed{同 stepId, type:compaction, outcome:OK|ERROR(error 时 text=原文)}
  *   usage/finish/block-start/block-end/tool-call-delta/turn/end/assistant/message/command/* → 不逐帧映射
- *   meta 工具（final_answer/load_skill）：tool/call skip 并记 callId 集，tool/result 查集 skip（D-7·对齐 loop.ts:1146 口径）
+ *   meta 工具（final_answer/`skill`）：tool/call skip 并记 callId 集，tool/result 查集 skip（D-7·对齐 loop.ts:1146 口径）。
+ *     ⚠ 技能加载器**两臂名字不同**：native = `load_skill`（我方常量，tools/registry.ts:481），
+ *     dsh = `skill`（上游常量，@deepseek-ai/dsh-tool-skill@0.1.0-rc.6，不可配）。本文件只处理 dsh 帧流 ⇒ 写真名 `skill`。
  * 红线：finish 帧的 replayState（adapter-private）**绝不外发**——finish 不映射，stats 不含其任何字段。
  * N2·D-2：统计走 reassembleDshRun 的 additive stats 键（纯 fold，口径=dsh-session-stats/token-meter
  * 投影语义）；零 usage 帧 ⇒ stats 键整体不出（诚实缺省）。projectedTokens/contextWindow 帧流无源，不自封。
@@ -438,7 +440,9 @@ export function foldDshRunStats(events: readonly DshSessionEvent[]): DshRunStats
  *     （native 未执行调用 durationMs:0 同约定，loop.ts:780），不产负值/NaN 的面由帧流自带
  *     时间单调性担保（同一主机打戳）。
  *   - meta 口径对位 native 审计：final_answer 不进（native 在派发前拦截、audit 无记录；
- *     其轮次仍留空迭代）；load_skill 进（native runToolBlock 有 audit 条目，loop.ts:734-746）
+ *     其轮次仍留空迭代）；技能加载器进（native runToolBlock 有 audit 条目，loop.ts:734-746）
+ *     —— 审计判据是**「谁在派发前被拦截」**不是名字，故本处**不写工具名**：native 叫 `load_skill`、
+ *     dsh 叫 `skill`（上游常量），两侧同名与否与审计口径无关。
  *     ——与 sketch/SSE 桥的「meta 双剔」不同，审计面只剔 final_answer。
  *   - 未配对 tool/call（abort 撕票等帧不全）不进 toolCalls——帧不全不造 outcome；
  *     调用轨迹仍由 sketch 承载（诚实缺省，信号不丢）。W9-full 起 hostToolCalls 侧表
@@ -529,9 +533,11 @@ export function reassembleDshRun(events: readonly DshSessionEvent[], opts: Reass
   const newProvId = opts.newProvId ?? (() => newId("prov")); // 与 loop.ts 同一生成器（ids.ts 单源）
   const calls = collectToolCalls(events);
   const toolNameByCallId = new Map(calls.map((c) => [c.toolCallId, c.name]));
-  // sketch：loop.ts:1146 同口径 —— 元工具（final_answer/load_skill）不进 sketch。
+  // sketch：loop.ts:1146 同口径 —— 元工具（final_answer/技能加载器）不进 sketch。
+  // 技能加载器名 = dsh 臂真名 `skill`（上游常量，@deepseek-ai/dsh-tool-skill，不可配）；
+  // native 的 `load_skill` 不流经本函数（本函数只吃 dsh 帧流）。
   const sketch = calls
-    .filter((c) => c.name !== "final_answer" && c.name !== "load_skill")
+    .filter((c) => c.name !== "final_answer" && c.name !== "skill")
     .map((c) => ({ toolName: c.name, inputSummary: JSON.stringify(c.input ?? {}).slice(0, 200) }));
 
   const reason = turnEndReason(events);
@@ -790,12 +796,18 @@ export interface SseEmission {
   payload: Record<string, unknown>;
 }
 
-/** loop.ts:1146 同口径：元工具不进 sketch，也不进 SSE 桥（D-7）。 */
-const META_TOOL_NAMES = new Set(["final_answer", "load_skill"]);
+/**
+ * loop.ts:1146 同口径：元工具不进 sketch，也不进 SSE 桥（D-7）。
+ * ⚠ 技能加载器**两臂名字不同**，本集只装 dsh 帧流里出现的真名：
+ *   · native `load_skill`（我方常量，tools/registry.ts:481）—— 不进本函数；
+ *   · dsh `skill`（上游常量，@deepseek-ai/dsh-tool-skill@0.1.0-rc.6，不可配）—— P2A 换名后就是它。
+ * 写错名字 = meta 帧不再被 skip ⇒ 技能加载会以 `type:"skill"` 上 SSE 面（native 不发这步）。
+ */
+const META_TOOL_NAMES = new Set(["final_answer", "skill"]);
 
 /**
  * N2·D-7 · SSE 桥工厂（原 mapDshEventToSse 纯函数 → 工厂持态版）。
- * 内持 meta callId 集：tool/call 遇 meta 工具（final_answer/load_skill）skip 并记集，
+ * 内持 meta callId 集：tool/call 遇 meta 工具（final_answer/`skill`）skip 并记集，
  * tool/result 查集 skip——meta 帧不上 SSE 面（native loop 也不为它们发 step 事件）。
  * 既有三映射分支（tool/call·tool/result·text-delta）逐字节不动（POC toEqual 锚定即闸）。
  */
