@@ -80,4 +80,4 @@ cd /tmp/wo-console-e2e/driver
 FE_BASE=http://127.0.0.1:5283 WANT_LIST=due-change HOWMANY=1 \
   RUN_TAG=d3 WANT_MAG=3 EV_DIR=<dir> node drive-3pert-joint.mjs
 ```
-原始日志：`WO-SCREEN-BASELINE-run-pre-20pt.log` · `WO-SCREEN-BASELINE-run-d3-3day.log`（同目录）
+原始日志：`WO-SCREEN-BASELINE-run-pre-20pt`.txt` · `WO-SCREEN-BASELINE-run-d3-3day`.txt`（同目录）
