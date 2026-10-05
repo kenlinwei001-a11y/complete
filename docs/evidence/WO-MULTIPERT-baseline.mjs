@@ -54,6 +54,26 @@ const CFG = {
   provenanceSidecar:
     process.env.PROVENANCE_SIDECAR || "docs/evidence/WO-MULTIPERT-baseline.provenance.tsv",
   provenanceInlineLimit: Number(process.env.PROVENANCE_INLINE_LIMIT ?? 20000),
+  // 链条实测格：逐拍记原值 —— 光记 MARGIN 三个数看不出「是不是撞了 saturateToDomain 边界」。
+  // 默认 = A/B 两条扰动汇到的同一格（`Model.costPressure`）+ 两侧源格。
+  // 拓扑实测（2026-10-05 · 本基线）：SO-3391 --order_for_model--> obj_model_4680-NCM；
+  //   obj_material_pos_ncm --material_used_by_model--> obj_model_4680-NCM（8 个 Material 之一）。
+  chainCells: (process.env.CHAIN_CELLS ||
+    "obj_order_SO-3391|leadDays,obj_order_SO-3391|costPressure,obj_model_4680-NCM|costPressure," +
+    "obj_customer_cust_14|receivablePressure,obj_material_pos_ncm|priceShock")
+    .split(",").map((s) => s.trim()).filter(Boolean).map((s) => {
+      const [o, v] = s.split("|");
+      return { objectId: o, stateVar: v };
+    }),
+  // 「基值是否被加了两次」判别列：逐拍 `读数 / 该格 baseSnapshot`。
+  // 比值 == 1 ⇒ 正常；比值 → 2 ⇒ 基值被加了两次（`x' = (1−λ)x + λ·base + c` 的 c 里又带了一份 base）。
+  // ⚠ 只给 MARGIN 三个数定不了这件事，必须落到具体格（app.ts:2406 specBase / 2619 C2 合成层）。
+  baseRatioCells: (process.env.BASE_RATIO_CELLS ||
+    "obj_model_4680-NCM|costPressure,obj_order_SO-3391|costPressure,obj_customer_cust_14|receivablePressure")
+    .split(",").map((s) => s.trim()).filter(Boolean).map((s) => {
+      const [o, v] = s.split("|");
+      return { objectId: o, stateVar: v };
+    }),
 };
 const DEBUG_USER = `${CFG.tenant}:${CFG.userId}:${CFG.roles}`;
 
@@ -159,13 +179,15 @@ function armPerturbations(name) {
   };
   const B = {
     kind: process.env.B_KIND || "cost_shock",
-    targetObjectId: process.env.B_OBJECT || "UNSET_B_OBJECT",
+    // 落点拓扑（实测，2026-10-05）：obj_material_pos_ncm --material_used_by_model--> obj_model_4680-NCM
+    //   ⇒ 与 A 汇到**同一格** `obj_model_4680-NCM.costPressure`（combine:"sum"），是真正的组合。
+    targetObjectId: process.env.B_OBJECT || "obj_material_pos_ncm",
     targetStateVar: process.env.B_VAR || "priceShock",
     mode: process.env.B_MODE || "delta",
     magnitude: Number(process.env.B_MAG ?? 15),
     startTick: 0,
     durationTicks: null,
-    label: process.env.B_LABEL || "B · 物料涨价（Material.priceShock +15）",
+    label: process.env.B_LABEL || "B · NCM 正极涨价（Material.priceShock +15）",
   };
   if (name === "zero") return [];
   if (name === "A") return [A];
@@ -201,17 +223,33 @@ async function runArm(name, { perturbations = null, durationTicks = undefined, t
     startTick: p.startTick, mode: p.mode, magnitude: p.magnitude,
   }));
 
+  // 该会话的 `baseSnapshot`（tick0 起点的**基值**）—— 判「基值是否被加了两次」的分母
+  const detail = await must(await api("GET", `/a/v1/sim/sessions/${id}`), "sessionDetail");
+  const baseSnap = detail?.baseSnapshot ?? {};
+
+  const chainOf = (state) => {
+    const o = {};
+    for (const c of CFG.chainCells) o[`${c.objectId}.${c.stateVar}`] = state?.[c.objectId]?.[c.stateVar] ?? null;
+    return o;
+  };
+  const baseOf = (state) => {
+    const o = {};
+    for (const c of CFG.baseRatioCells) o[`${c.objectId}.${c.stateVar}`] = state?.[c.objectId]?.[c.stateVar] ?? null;
+    return o;
+  };
+  const baseVals = baseOf(baseSnap);
+
   const series = [];
   // t0 = 播种快照，**一次 tick 都别发**
   const w0 = await readWorld(id);
   const p0 = await projection(id);
-  series.push({ t: w0.tick, worldTick: w0.tick, stateCells: countCells(w0.state), ...reading(p0, w0), proj: p0?.data ?? p0 });
+  series.push({ t: w0.tick, worldTick: w0.tick, stateCells: countCells(w0.state), chain: chainOf(w0.state), baseV: baseOf(w0.state), ...reading(p0, w0), proj: p0?.data ?? p0 });
 
   for (let i = 1; i <= CFG.ticks; i++) {
     await tick(id, 1);
     const w = await readWorld(id);
     const p = await projection(id);
-    series.push({ t: w.tick, worldTick: w.tick, stateCells: countCells(w.state), ...reading(p, w), proj: p?.data ?? p });
+    series.push({ t: w.tick, worldTick: w.tick, stateCells: countCells(w.state), chain: chainOf(w.state), baseV: baseOf(w.state), ...reading(p, w), proj: p?.data ?? p });
   }
 
   return {
@@ -219,6 +257,7 @@ async function runArm(name, { perturbations = null, durationTicks = undefined, t
     status: session.status ?? null,
     perturbations: listedSeq,
     pertReceipts, series,
+    baseSnapshotChain: baseVals,
     worldT0: { tick: w0.tick, topKeys: Object.keys(w0).sort(), baseProvenance: w0.baseProvenance ?? {}, baseStateVarReport: w0.baseStateVarReport ?? null },
     elapsedMs: Date.now() - t0,
   };
@@ -227,13 +266,20 @@ async function runArm(name, { perturbations = null, durationTicks = undefined, t
 // ── provenance：origin × 格数（口径**唯一出处** = 契约 `tallyCellProvenance`）──
 // ⚠ 缺键 = **未知**（第三态），⛔ 不许并进 derived。
 async function provenanceTally(state, provenance) {
-  let contract = null, contractErr = null;
-  try {
-    const c = await import("@platform/contracts");
-    contract = typeof c.tallyCellProvenance === "function" ? c.tallyCellProvenance(state, provenance) : null;
-    if (!contract) contractErr = "契约无 tallyCellProvenance 导出";
-  } catch (e) {
-    contractErr = e instanceof Error ? e.message : String(e);
+  let contract = null, contractErr = null, contractSrc = null;
+  // 口径的**唯一出处**是契约的 `tallyCellProvenance`。包名在外层目录解析不到（pnpm 的
+  // node_modules 不在 docs/evidence 下），故回落**同一个包的构建产物**相对路径 ——
+  // 仍然是那一份实现，不是本地另写一套。两条都失败才退回本地复算并如实标注。
+  const cands = [
+    ["@platform/contracts", "@platform/contracts"],
+    ["../../packages/contracts/dist/index.js", "packages/contracts/dist/index.js"],
+  ];
+  for (const [spec, label] of cands) {
+    try {
+      const c = await import(spec);
+      if (typeof c.tallyCellProvenance === "function") { contract = c.tallyCellProvenance(state, provenance); contractSrc = label; break; }
+      contractErr = `${label} 无 tallyCellProvenance 导出`;
+    } catch (e) { contractErr = `${label}: ${e instanceof Error ? e.message : String(e)}`; }
   }
   // 本地独立复算（交叉核对；两者不一致即报错，不静默取一个）
   const local = { measured: 0, derived: 0, unknown: 0 };
@@ -247,7 +293,7 @@ async function provenanceTally(state, provenance) {
   }
   const agree = contract === null ? null
     : contract.measured === local.measured && contract.derived === local.derived && contract.unknown === local.unknown;
-  return { contract, contractErr, local, agree };
+  return { contract, contractErr, contractSrc, local, agree };
 }
 
 function provenanceListing(state, provenance) {
@@ -267,6 +313,32 @@ const pad = (v, w) => String(v ?? "—").padEnd(w);
 const num = (v, d = 4) => (typeof v === "number" && Number.isFinite(v) ? v.toFixed(d) : String(v ?? "—"));
 const uniq = (a) => [...new Set(a)];
 const isConst = (a) => uniq(a).length === 1;
+
+function chainTable(a) {
+  const keys = Object.keys(a.series[0]?.chain ?? {});
+  if (keys.length === 0) return;
+  say(`── 链条实测格 · 臂 ${a.tag}（逐拍原值；看「是不是撞了 saturateToDomain 边界」）──`);
+  say(["t", ...keys].map((h, i) => pad(h, i === 0 ? 4 : 30)).join(" "));
+  for (const r of a.series) say([pad(r.t, 4), ...keys.map((k) => pad(num(r.chain?.[k], 6), 30))].join(" "));
+}
+
+/**
+ * 基值比值表：逐拍 `读数 / baseSnapshot`。
+ * 判据：比值 == 1 ⇒ 正常；比值 → 2 ⇒ **基值被加了两次**。
+ */
+function ratioTable(a) {
+  const keys = Object.keys(a.baseSnapshotChain ?? {});
+  if (keys.length === 0) return;
+  say(`── 基值比值表 · 臂 ${a.tag}（逐拍 = 读数 ÷ baseSnapshot 值；1=正常，→2=基值加两次）──`);
+  say(["t", ...keys.map((k) => `${k}[base=${num(a.baseSnapshotChain[k], 6)}]`)].map((h, i) => pad(h, i === 0 ? 4 : 34)).join(" "));
+  for (const r of a.series) {
+    say([pad(r.t, 4), ...keys.map((k) => {
+      const b = a.baseSnapshotChain[k], v = r.baseV?.[k];
+      const ratio = typeof b === "number" && b !== 0 && typeof v === "number" ? (v / b).toFixed(6) : "—";
+      return pad(`${num(v, 6)} (×${ratio})`, 34);
+    })].join(" "));
+  }
+}
 
 function armTable(a) {
   say(`\n── 逐拍读数表 · 臂 ${a.tag}（session=${a.sessionId}）──`);
@@ -306,6 +378,20 @@ async function main() {
     say(`扰动回执形状 = ${JSON.stringify(a.pertReceipts.map((r) => r.keys))}（线索说裸对象 {perturbation,curTick,state}）`);
     say(`扰动定序（listPerturbations）= ${JSON.stringify(a.perturbations.map((p) => `${p.obj}.${p.var}@${p.startTick}/${p.mode}${p.magnitude}`))}`);
     armTable(a);
+    chainTable(a);
+    ratioTable(a);
+  }
+
+  // ── 跨臂链条对照（汇合格 `Model.costPressure` 逐拍，四臂并排）────────────────
+  {
+    const ks = Object.keys(arms[CFG.arms[0]]?.series[0]?.chain ?? {});
+    const ts = arms[CFG.arms[0]]?.series.map((r) => r.t) ?? [];
+    if (ks.length && ts.length) {
+      say("\n══ 跨臂链条对照（逐拍 · 四臂并排）══");
+      say(["t", ...CFG.arms.flatMap((n) => ks.map((k) => `${n}:${k}`))].join("\t"));
+      for (const t of ts)
+        say([t, ...CFG.arms.flatMap((n) => ks.map((k) => num(arms[n]?.series.find((r) => r.t === t)?.chain?.[k], 6)))].join("\t"));
+    }
   }
 
   // ── ① 零扰动 ⇒ 静息 ──────────────────────────────────────────────────────
@@ -324,6 +410,27 @@ async function main() {
     say(`逐拍 projected == rolling ? ${eq ? "是" : "**否**"}`);
     say(`逐拍 (projected − rolling) = ${JSON.stringify(proj.map((v, i) => round(v - roll[i], 6)))}`);
     say(`⇒ 静息判据（恒定 ∧ ==rolling）：${isConst(proj) && eq ? "**PASS**" : "**FAIL**（派单说基线应当复现「在漂」）"}`);
+    say(`⚠ 判据升级版（审核方 2026-10-05）：① 每格逐拍恒定；② 该值 == 该格 baseSnapshot（⛔ 不许是它的两倍）。`);
+    say(`   ② 的逐格比值见上方「基值比值表」；零扰动臂的比值序列汇于下方 ①b 节。`);
+  }
+
+  // ── ①b 基值是否被加两次（读数 ÷ baseSnapshot）────────────────────────────
+  say("\n══ 判据①b 基值是否被加两次（逐拍 读数 ÷ baseSnapshot 值）══");
+  for (const nm of CFG.arms) {
+    const a = arms[nm];
+    if (!a) continue;
+    for (const k of Object.keys(a.baseSnapshotChain ?? {})) {
+      const b = a.baseSnapshotChain[k];
+      const vals = a.series.map((r) => r.baseV?.[k] ?? null);
+      const ratios = vals.map((v) => (typeof b === "number" && b !== 0 && typeof v === "number" ? round(v / b, 6) : null));
+      const constV = isConst(vals);
+      say(`[${nm}] ${k}  base=${num(b, 6)}`);
+      say(`   读数逐拍 = ${JSON.stringify(vals.map((v) => round(v, 6)))}  恒定? ${constV ? "是" : "否"}`);
+      say(`   比值逐拍 = ${JSON.stringify(ratios)}`);
+      const anyDouble = ratios.some((r) => r !== null && Math.abs(r - 2) < 0.02);
+      const allOne = ratios.every((r) => r !== null && Math.abs(r - 1) < 1e-9);
+      say(`   ⇒ ${allOne ? "恒 == base（比值恒 1）" : anyDouble ? "**出现 ≈2 ⇒ 基值疑似被加两次**" : "既非恒 1 也非 ≈2（见比值序列）"}`);
+    }
   }
 
   // ── ② 金丝雀：A / B 必须真的推动读数 ──────────────────────────────────────
@@ -396,7 +503,7 @@ async function main() {
     say(`/world 顶层键 = ${JSON.stringify(wz.topKeys)}（线索说 tick,state,baseProvenance —— 以实测为准）`);
     const w0 = await readWorld(firstArm.sessionId);
     const tally = await provenanceTally(w0.state ?? {}, wz.baseProvenance);
-    say(`契约 tallyCellProvenance 可用? ${tally.contract ? "是" : `**否**（${tally.contractErr}）`}`);
+    say(`契约 tallyCellProvenance 可用? ${tally.contract ? `是（来自 ${tally.contractSrc}）` : `**否**（${tally.contractErr}）`}`);
     if (tally.contract) say(`  契约口径  = ${JSON.stringify(tally.contract)}`);
     say(`  本地复算  = ${JSON.stringify(tally.local)}`);
     say(`  两者一致? = ${tally.agree === null ? "NOT-MEASURED" : tally.agree ? "**是**" : "**否（探针坏了，先别下结论）**"}`);
