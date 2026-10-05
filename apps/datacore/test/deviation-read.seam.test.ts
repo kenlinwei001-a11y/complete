@@ -1,0 +1,281 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
+import { ADMIN, invokeSolver, makeApp, seedBattery, type TestApp } from "./helpers.js";
+import { seedDemoPropagationRules } from "../src/seed.js";
+import { recomputeDemoDerivationsAtSeed, seedDemoDerivationSpecs } from "../src/seed-derivation-specs.js";
+import { DEVIATION_READ_STATE_VARS, DeviationReader } from "../src/sim/deviation-read.js";
+import { SIM_WORLD_PROJECTION_RULES } from "../src/sim/world-read.js";
+import { stateVarDomains } from "../src/synthetic/battery.js";
+
+/**
+ * WO-COSTPRESSURE-IDENTITY · 落点 (b) 的**接缝门**（普通 vitest，⛔ 非新门脚本、⛔ 非基线 JSON —— 禁令 3）。
+ *
+ * ── 这道门守的是什么 ─────────────────────────────────────────────────────────
+ * 病：`Order.costPressure` 的生产端播的是**水平**（`creditUsedRatio × 100`），
+ * 消费端读的是**偏离**（`金额 = 基线 ×（1 + 压力 ÷ 100）`），**全仓没有东西守着两者一致**。
+ * (b) 的治法：消费端不再假设「静息 = 0」，而是**取 `baseSnapshot` 同一格**（与生产端同源）。
+ *
+ * 于是要守的就不再是「某个数等于 24.03」，而是四条**结构性**判据：
+ *   §1 消费端真读到的 stateVar 集合 ⊆ 声明名单 ⊆ 已声明域的 stateVar（两向都咬，带双向金丝雀）
+ *   §2 零扰动 ⇒ 金额投影**逐字节等于**基线（这就是病本身：偏离为 0 才叫没偏）
+ *   §3 真有扰动 ⇒ 金额**必须动**（对照实验：⛔ 防 (b) 把金额投影改死成恒等于基线）
+ *   §4 取不到静息值 ⇒ **不退回 0**，逐格进 `unresolvedRestPoints`（单元级，直喂 TickState）
+ *
+ * §2 与 §3 缺一条都不成立：只有 §2 ⇒ 把金额锁死也能全绿；只有 §3 ⇒ 病还在。
+ *
+ * ── 为什么必须接缝驱动 ───────────────────────────────────────────────────────
+ * 各半 unit 都能绿而功能是坏的：`DeviationReader` 纯函数当然对，但求解器可能压根没调它
+ * （本仓假绿第 9 形态：测试咬的是**函数**不是**链路**）。故 §2/§3 一律走
+ * **真种子 → 真规则 → 真会话 → 真扰动 → 真 tick → 真 invoke 求解器**。
+ */
+
+const HERE = fileURLToPath(new URL(".", import.meta.url));
+
+/**
+ * 剥注释（**铁律 0.6 第 6 条**：数符号之前先剥注释、再定语法位置）。
+ * 两向金丝雀见 §1：正样例必须被数到，**只出现在注释里的同名串必须不被数到**。
+ */
+function stripComments(src: string): string {
+  return src.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, " ");
+}
+
+/** 取 `open(...)` 的**整段实参文本**（按括号配平，跨行安全）。 */
+function callArgs(src: string, callee: string): string[] {
+  const out: string[] = [];
+  const needle = `${callee}(`;
+  let i = src.indexOf(needle);
+  while (i >= 0) {
+    let depth = 0;
+    let j = i + needle.length - 1;
+    for (; j < src.length; j++) {
+      const c = src[j];
+      if (c === "(") depth += 1;
+      else if (c === ")") {
+        depth -= 1;
+        if (depth === 0) break;
+      }
+    }
+    out.push(src.slice(i + needle.length, j));
+    i = src.indexOf(needle, j);
+  }
+  return out;
+}
+
+/** 从一段文本里取「是已声明域的键」的字符串字面量（`stateVarDomains()` 的键集）。 */
+function stateVarLiterals(text: string, declared: readonly string[]): string[] {
+  const found: string[] = [];
+  for (const m of text.matchAll(/"([A-Za-z][A-Za-z0-9_]*)"/g)) {
+    if (declared.includes(m[1]) && !found.includes(m[1])) found.push(m[1]);
+  }
+  return found;
+}
+
+const enableSim = async (t: TestApp) =>
+  t.app.inject({
+    method: "PUT",
+    url: "/a/v1/tenants/demo/features",
+    headers: ADMIN,
+    payload: { overrides: { "sim.sandbox": true, "sim.propagation": true } },
+  });
+
+/** 三元正极 —— demo 世界里 `priceShock` 有下游成本链的物料（同 `turn-loop.seam.test.ts`，不另选一个）。 */
+const MAT_ID = "obj_material_pos_ncm";
+
+async function seededApp(): Promise<TestApp> {
+  const t = await makeApp();
+  await seedBattery(t);
+  await seedDemoPropagationRules(t.repos);
+  /**
+   * ⛔ **必须带派生规格**（`zz-probe*` 的仪器缺陷就是这么来的，已入册）：
+   * 不跑这两步，`Order.costPressure` / `Customer.receivablePressure` 在开局快照里恒为静息值，
+   * 于是「水平」与「偏离」**数值上恰好相等** ⇒ 这条门对金额侧**没有鉴别力**（mutation 反证会当场抖出来）。
+   * 带上之后快照才是真部署那条路播出来的，静息值 ≠ 水平值，门才咬得住。
+   */
+  await seedDemoDerivationSpecs(t.repos, t.services.ontologyCore, t.services.governance, t.adminCtx);
+  await recomputeDemoDerivationsAtSeed(t.repos, t.services.ontologyCore, t.adminCtx);
+  await enableSim(t);
+  return t;
+}
+
+/** 披露里的**水平**读数（面 C 口径）—— 用来把「水平」与「金额实际吃的偏离」并排摆出来。 */
+const levels = (d: any) =>
+  (d.pressures as any[])
+    .map((p) => `${p.stateVar}=${p.value}`)
+    .join(" ");
+
+async function newSession(t: TestApp): Promise<string> {
+  const r = await t.app.inject({
+    method: "POST",
+    url: "/a/v1/sim/sessions",
+    headers: ADMIN,
+    payload: { scope: { mode: "GLOBAL" } },
+  });
+  expect(r.statusCode, `建会话失败：${r.body}`).toBe(201);
+  return r.json().id as string;
+}
+
+/** **相对**扰动（`mode:"delta"`）：真实强度 = magnitude（`set` 模式下强度是 `magnitude − 起点值`，两件事别混）。 */
+async function perturbDelta(t: TestApp, sid: string, objectId: string, magnitude: number): Promise<void> {
+  const r = await t.app.inject({
+    method: "POST",
+    url: `/a/v1/sim/sessions/${sid}/perturbations`,
+    headers: ADMIN,
+    payload: {
+      kind: "cost_shock",
+      targetObjectId: objectId,
+      targetStateVar: "priceShock",
+      magnitude,
+      mode: "delta",
+      startTick: 0,
+      durationTicks: null,
+      label: `${objectId} delta+${magnitude}`,
+    },
+  });
+  expect(r.statusCode, `扰动写入必须 2xx：code=${r.statusCode} ${r.body}`).toBe(201);
+}
+
+async function tick(t: TestApp, sid: string, n: number): Promise<void> {
+  const r = await t.app.inject({
+    method: "POST",
+    url: `/a/v1/sim/sessions/${sid}/tick`,
+    headers: ADMIN,
+    payload: { n },
+  });
+  expect([200, 201], `tick 失败：${r.statusCode} ${r.body}`).toContain(r.statusCode);
+}
+
+const project = async (t: TestApp, sid: string) => {
+  const r = await invokeSolver(t, "finance_world_projection", { worldId: sid });
+  expect(r.statusCode, `求解器失败：${r.body}`).toBe(200);
+  return (r.json() as { data: any }).data;
+};
+
+const lineOf = (d: any, role: string) => (d.lines as any[]).find((l) => l.role === role);
+
+describe("落点 (b) · 消费端按率读口吃「偏离」", () => {
+  it("§1 名单封闭：真读点 ⊆ 声明名单 ⊆ 已声明域（双向 + 双向金丝雀）", () => {
+    const declared = Object.keys(stateVarDomains());
+    expect(declared.length, "金丝雀：域表非空（空了说明读错文件/域表改名）").toBeGreaterThan(20);
+
+    const financeSrc = stripComments(readFileSync(`${HERE}../src/solvers/finance-world.ts`, "utf8"));
+    const rulesSrc = stripComments(readFileSync(`${HERE}../src/sim/world-read.ts`, "utf8"));
+
+    /**
+     * ① **真读点**（不是手写台账）：
+     *   · `sim/world-read.ts` 的投影声明表（**结构性来源**，直接读那张表）
+     *   · `finance-world.ts` 里 `deviationOf(...)` / `aggregatePressure(...)` 调用实参中的 stateVar 字面量
+     */
+    const fromRules = [...new Set(SIM_WORLD_PROJECTION_RULES.map((r) => r.stateVar))].sort();
+    const sites = [...callArgs(financeSrc, "deviationOf"), ...callArgs(financeSrc, "aggregatePressure")];
+    const fromFinance = [...new Set(sites.flatMap((s) => stateVarLiterals(s, declared)))].sort();
+    const readPoints = [...new Set([...fromRules, ...fromFinance])].sort();
+
+    console.log(`§1 真读点（world-read 声明表）：${fromRules.join(",")}`);
+    console.log(`§1 真读点（finance-world 实参字面量）：${fromFinance.join(",")}`);
+    console.log(`§1 声明名单：${[...DEVIATION_READ_STATE_VARS].sort().join(",")}`);
+
+    // 正向金丝雀：扫描器必须能从一个**必然命中**的样例里取到值
+    expect(stateVarLiterals(`deviationOf(x, "T", "overduePressure")`, declared)).toEqual(["overduePressure"]);
+    // ⛔ 反向金丝雀：只出现在注释里的同名串**必须不被数到**（证明剥注释真的生效，不是装饰）
+    expect(stateVarLiterals(stripComments(`// deviationOf(x, "T", "loadIndex")`), declared)).toEqual([]);
+    // 金丝雀 2：域表过滤不许把真键也滤掉
+    expect(declared).toContain("overduePressure");
+
+    // 正向：消费端真读到的每一个，都必须在声明名单里（新增读点而不入名单 ⇒ 红）
+    expect(readPoints, "有读点没进 DEVIATION_READ_STATE_VARS（新增读点要同步改名单与域表）").toEqual(
+      [...DEVIATION_READ_STATE_VARS].sort(),
+    );
+
+    // 反向：名单里每一个都必须真的有读点（名单不许长出「没人读的条目」）
+    for (const v of DEVIATION_READ_STATE_VARS) {
+      expect(readPoints, `${v} 在名单里但全仓没有读点 ⇒ 名单在骗人`).toContain(v);
+      // (a) 已声明域：没有声明就没有域、没有静息点，消费端无从取静息值
+      expect(declared, `${v} 被按率消费，却没有声明域`).toContain(v);
+      // (b) 静息点必须是个真数（(b) 之后静息值取 `baseSnapshot`，但生产者仍要有**声明的**锚）
+      const d = stateVarDomains()[v];
+      expect(Number.isFinite(d.restPoint), `${v} 的域没声明静息点`).toBe(true);
+    }
+  });
+
+  it("§2/§3 零扰动 ⇒ 金额逐字节等于基线；有扰动 ⇒ 金额必须动（对照实验）", async () => {
+    const t = await seededApp();
+
+    // ── 臂 A：**零扰动**（不推任何 tick，世界态 = 开局快照）────────────────────────
+    const z = await newSession(t);
+    const zd = await project(t, z);
+    const zc = lineOf(zd, "COST");
+    const zm = lineOf(zd, "MARGIN");
+    const zr = lineOf(zd, "REVENUE");
+    console.log(
+      `§2 零扰动：REVENUE ${zr.rolling}→${zr.projected} COST ${zc.rolling}→${zc.projected} ` +
+        `MARGIN ${zm.rolling}→${zm.projected} 静息缺席=${(zd.unresolvedRestPoints ?? []).length}`,
+    );
+    console.log(`§2 水平读数（面 C）：${levels(zd)}`);
+    console.log(`§2 金额实际吃的偏离：cost=${((zc.projected / zc.rolling - 1) * 100).toFixed(6)}`);
+    // 偏离为 0 ⇒ 因子 1 ⇒ 金额**逐字节**等于基线（这就是病：修前是 118.9 → −20.72）
+    expect(zc.projected, "零扰动下成本偏离必须为 0（成本不许自己涨）").toBe(zc.rolling);
+    expect(zm.projected, "零扰动下毛利必须等于基线（修前 118.9 → −20.72 就是它）").toBe(zm.rolling);
+
+    // ── 臂 B：**相对扰动**（三元正极 priceShock delta +1000，走真传导链 2 跳）──────────
+    const a = await newSession(t);
+    await perturbDelta(t, a, MAT_ID, 1000);
+    await tick(t, a, 3);
+    const ad = await project(t, a);
+    const ac = lineOf(ad, "COST");
+    const am = lineOf(ad, "MARGIN");
+    console.log(
+      `§3 Δ+1000：REVENUE ${lineOf(ad, "REVENUE").rolling}→${lineOf(ad, "REVENUE").projected} ` +
+        `COST ${ac.rolling}→${ac.projected} MARGIN ${am.rolling}→${am.projected} ` +
+        `静息缺席=${(ad.unresolvedRestPoints ?? []).length}`,
+    );
+    console.log(`§3 水平读数（面 C）：${levels(ad)}`);
+    console.log(`§3 金额实际吃的偏离：cost=${((ac.projected / ac.rolling - 1) * 100).toFixed(6)}`);
+    // 对照实验（铁律 1.5 判据一）：源涨 ⇒ 成本压力偏离 > 0 ⇒ 成本**必须**涨、毛利**必须**跌。
+    // ⛔ 这条是防 (b) 把金额投影改死：只用 §2 的话，「恒等于基线」也能全绿。
+    expect(ac.projected, "扰动后成本必须高于基线（否则 (b) 把金额投影改死了）").toBeGreaterThan(ac.rolling);
+    expect(am.projected, "扰动后毛利必须低于基线").toBeLessThan(am.rolling);
+
+    // 逐字节不变性：两臂的**压力披露**（面 C）各自是水平口径，与金额口径不是一回事 ——
+    // 这条不断言数值，只断言「披露里带了静息缺席的账」这一形状（没有缺席就不该有这个键）。
+    for (const d of [zd, ad]) {
+      const u = d.unresolvedRestPoints;
+      if (u !== undefined) {
+        expect(Array.isArray(u)).toBe(true);
+        expect(d.notes.join("\n")).toContain("unresolvedRestPoints");
+      }
+    }
+  }, 300_000);
+
+  it("§4 静息值取不到 ⇒ 不退回 0，逐格点名（单元级）", () => {
+    // (i) 世界态有格、快照里连对象都没有 ⇒ 记一条，返回 undefined（⛔ 不是 0）
+    const r1 = new DeviationReader({ o1: { costPressure: 24 } }, {});
+    expect(r1.deviationOf("o1", "Order", "costPressure")).toBeUndefined();
+    expect(r1.unresolvedRestPoints()).toHaveLength(1);
+    expect(r1.unresolvedRestPoints()[0].reason).toContain("开局快照里没有对象");
+
+    // (ii) 世界态有格、快照有对象但没有那一格 ⇒ 记一条，返回 undefined
+    const r2 = new DeviationReader({ o1: { costPressure: 24 } }, { o1: {} });
+    expect(r2.deviationOf("o1", "Order", "costPressure")).toBeUndefined();
+    expect(r2.unresolvedRestPoints()[0].reason).toContain("没有 costPressure 这一格");
+
+    // (iii) 两格都在 ⇒ **偏离**，且**不是**水平本身
+    const r3 = new DeviationReader({ o1: { costPressure: 24 } }, { o1: { costPressure: 21.24 } });
+    expect(r3.deviationOf("o1", "Order", "costPressure")).toBeCloseTo(2.76, 10);
+    expect(r3.unresolvedRestPoints()).toHaveLength(0);
+
+    // (iv) 「世界态里没这格」= **不消费**，与「静息值取不到」是两件事：⛔ 不许记账、不许混
+    const r4 = new DeviationReader({}, {});
+    expect(r4.deviationOf("o1", "Order", "costPressure")).toBeUndefined();
+    expect(r4.carried("o1", "costPressure")).toBe(false);
+    expect(r4.unresolvedRestPoints(), "「不承载」不是「静息值取不到」——两件事不许混").toHaveLength(0);
+
+    // (v) 同一格被多条规则读到 ⇒ 只记一条账（去重），且按稳定键排序（R6）
+    const r5 = new DeviationReader({ o2: { overduePressure: 1 }, o1: { costPressure: 2 } }, {});
+    r5.deviationOf("o2", "ARInvoice", "overduePressure");
+    r5.deviationOf("o2", "ARInvoice", "overduePressure");
+    r5.deviationOf("o1", "Order", "costPressure");
+    expect(r5.unresolvedRestPoints()).toHaveLength(2);
+    expect(r5.unresolvedRestPoints().map((u) => u.stateVar)).toEqual(["costPressure", "overduePressure"]);
+  });
+});
