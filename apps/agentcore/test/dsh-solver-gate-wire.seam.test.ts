@@ -134,6 +134,26 @@ describe("WO-DSH-SOLVER-GATE · wire 面（声明上 wire / 畸形拒绝 / 无�
     await expect(driver.mountSetupSpec(world.ctx, spec)).rejects.toThrow(/platform-tool-bridge/);
   });
 
+  it("⑤ 核实失败也不下发正文（fail-closed）：探针抛错 ⇒ 模型面拿「无法核实」而不是正文，也不是门禁说明", async () => {
+    const app = await driver.makeSkillWorld();
+    const world = driver.makeSkillAgent(app, "t1", "ag-probe-boom");
+    const spec = specFor([mapSkill(skillDef("capacity_check", "SECRET-BODY-MARK"), undefined, ["capacity_forecast"])]);
+    try {
+      toolBridge.setSkillPrecondProbe(async () => {
+        throw new Error("endpoint unreachable (seam test)");
+      });
+      await expect(driver.mountSetupSpec(world.ctx, spec)).resolves.toBeUndefined();
+      const hit = await driver.callSkillTool(app, world.agent, "capacity-check");
+      expect(hit.isError).toBe(false); // 返回正文串（不抛）——dsh 的 pre-step 监听 await get() 无 try/catch，抛会毁掉整轮
+      expect(hit.text).toContain("前置条件无法核实");
+      expect(hit.text).not.toContain("SECRET-BODY-MARK");
+      // 与「前置未满足」文案必须**可区分**：说成未满足会让模型去白跑求解器，运维也看不到真因。
+      expect(hit.text).not.toContain("前置条件尚未满足");
+    } finally {
+      toolBridge.setSkillPrecondProbe(null);
+    }
+  });
+
   it("④-反向金丝雀：同一个未 arm 的世界，没声明的技能照常可用（咬「世界本来就坏」这个替代解释）", async () => {
     const app = await driver.makeSkillWorld();
     const world = driver.makeSkillAgent(app, "t1", "ag-plain");
