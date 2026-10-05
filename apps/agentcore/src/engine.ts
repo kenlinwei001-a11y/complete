@@ -106,6 +106,17 @@ export function isEnforcedSkillRefSlot(kind: string, role: string): boolean {
 }
 
 /**
+ * WO-DSH-SOLVER-GATE · 两臂技能加载器**各自的真名**。
+ * 门禁说明（`unmetPreconditionBody`）末句要告诉模型「怎么把正文取回来」，而两臂的加载器不是同一个：
+ *   · native 臂 = loop 侧 `load_skill`（`SKILL_TOOL_NAMES` 那份工具面）；
+ *   · dsh 臂 = 上游 dsh-tool-skill 的 `skill` 工具（名称/参数/渲染都是上游常量，不可配）。
+ * 故`unmetPreconditionBody` 收**形参**、由各臂调用点传自己的真名注入——⛔ 不许在文案里写死任一臂的
+ * 名字：写死 `load_skill` 则 dsh 臂模型读到「去调一个不存在的工具」（P2A 换名后该工具已摘除）。
+ * 两份都从**本表**取，不各抄一份字符串（铁律 0.6「金丝雀必须与主逻辑共用同一份实现」）。
+ */
+export const SKILL_LOADER_TOOL = { native: "load_skill", dsh: "skill" } as const;
+
+/**
  * 按 (kind, role) 抽取 skill 引用的 key 集合。
  *
  * 原 `skillRuleRefs` 把 `kind === "rule"` 硬编码在判据里，于是 `kind==="solver"` 的 precondition
@@ -160,8 +171,12 @@ async function unmetSolverPreconditions(
  * 为何不直接返回 undefined：loop 侧会把它渲染成 `skill not found`（`agent/loop.ts:579`）——
  * 那是**假信息**，模型会以为技能不存在而放弃，而不是「先去跑推演」。本文案照该技能 body 自己写的
  * 失败处理（「无结论则先跑推演」）给出可执行的下一步。
+ *
+ * WO-DSH-SOLVER-GATE：`loaderTool` 是**形参**——两臂的加载器真名不同（native `load_skill` /
+ * dsh `skill`，见 `SKILL_LOADER_TOOL`），由调用点注入。本函数是这份文案的**唯一**实现，
+ * 两臂共用（dsh 臂经反向通道端点取本函数的产物，不在 harness 侧另抄一份）。
  */
-function unmetPreconditionBody(skillKey: string, missingSolverKeys: string[]): string {
+function unmetPreconditionBody(skillKey: string, missingSolverKeys: string[], loaderTool: string): string {
   const list = missingSolverKeys.map((k) => `\`${k}\``).join("、");
   return [
     `## 技能「${skillKey}」的前置条件尚未满足（平台门禁）`,
@@ -171,7 +186,7 @@ function unmetPreconditionBody(skillKey: string, missingSolverKeys: string[]): s
     "",
     "## 下一步",
     `1. 先调 \`invoke_solver\`（${list}）并拿到结果；`,
-    "2. 再次 `load_skill` 加载本技能，届时会下发正文。",
+    `2. 再次 \`${loaderTool}\` 加载本技能，届时会下发正文。`,
     "",
     "不要在缺推演结论的情况下臆造数字或直接拟稿。",
   ].join("\n");
@@ -336,6 +351,14 @@ export interface DshToolExecuteRun {
     emit: (event: string, payload: unknown) => Promise<void>;
     onResolvedRef?: (ref: ResolvedRef) => void;
   };
+  /**
+   * WO-DSH-SOLVER-GATE · solver 类 skill precondition 的 dsh 臂求值上下文。
+   * 与 `workflowCtx` **分开一个字段**（不是从它派生）：workflowCtx 只在授予面含 WORKFLOW 工具时才铸，
+   * 而求解器前置门对「只有 BUILTIN 工具 + 一条带 precondition 的技能」的 agent 同样必须生效——
+   * 挂在 workflowCtx 上会让这类 agent 的门静默失效（形态：门在、条件永不成立）。
+   * 只放 taskId：判据唯一出处仍是 `unmetSolverPreconditions(repos, taskId, keys)`（native 臂同一个函数）。
+   */
+  skillPrecondCtx?: { taskId: string };
 }
 
 /** Cross-wires the agent loop and the workflow executor (mutual nesting, shared budget). */
@@ -366,6 +389,35 @@ export class ExecutionEngine {
    */
   capabilityMapSource(): CapabilityMapSource | undefined {
     return this.resourceRegistry;
+  }
+
+  /**
+   * WO-DSH-SOLVER-GATE · dsh 臂 solver 前置门的**宿主判据**（server.ts 反向通道端点 `POST
+   * /b/v1/dsh/skill-precondition` 的执行体）。
+   *
+   * 为何这门要回宿主问、而不是在 harness 侧自己记账：判据是「本任务里这个求解器**成功跑过没有**」，
+   * 事实源是 `repos.toolCalls`（native 臂读的同一份）。harness 自己记一份 = 第二套真相源：
+   * 至少两条会漂 —— ① MCP 形态求解器（`mcp__solvers__{key}`）不过反向桥，只有宿主归一；
+   * ② native 臂判的是 outcome==="OK"，harness 侧的桥包络与宿主审计行并非同一个量。
+   * 故这里直接调 native 臂那个函数（**同一个 `unmetSolverPreconditions`**），两臂判据逐位一致。
+   *
+   * 门禁说明的**文案**也在这里生成（`unmetPreconditionBody` 唯一实现），加载器真名按臂传
+   * dsh 的 `skill`——harness 只负责把这段文本当作 content 下发，不在 .mjs 里另抄一份文案。
+   *
+   * @returns undefined = runToken 不识/已注销（端点映射 401）；否则 missing 为尚未满足的 key，
+   *          非空时附 gateBody（模型面要读到的门禁说明）。
+   */
+  async dshSkillPrecondition(
+    runToken: string,
+    skillKey: string,
+    solverKeys: string[],
+  ): Promise<{ missing: string[]; gateBody?: string } | undefined> {
+    const entry = this.dshToolExecuteRuns.get(runToken);
+    if (!entry?.skillPrecondCtx) return undefined;
+    const missing = await unmetSolverPreconditions(this.deps.repos, entry.skillPrecondCtx.taskId, solverKeys);
+    return missing.length > 0
+      ? { missing, gateBody: unmetPreconditionBody(skillKey, missing, SKILL_LOADER_TOOL.dsh) }
+      : { missing };
   }
 
   makeExecutor(
@@ -761,7 +813,11 @@ export class ExecutionEngine {
         agent,
         agentSystemCore: AGENT_SYSTEM_CORE,
         grantedToolNames: tools.map((t) => t.name),
-        skills: skills.map((s) => mapSkill(s)),
+        // WO-DSH-SOLVER-GATE：逐条把 solver 类 precondition 的 key 带给 harness（空清单 ⇒ 该键
+        // 不出，逐字节旧行为）。抽取用的是 native 臂 loadSkill 门同一个 `skillRefKeys`——
+        // 两臂的**声明面**由此同源；**状态面**（跑没跑过）两边都问宿主的
+        // `unmetSolverPreconditions`（同一个 repos.toolCalls 事实源），故两臂判据逐位一致。
+        skills: skills.map((s) => mapSkill(s, undefined, skillRefKeys([s], "solver", "precondition"))),
         ...(mcpServers.length ? { mcpServers } : {}),
         ...(opts.expectsSchema ? { expectsSchema: opts.expectsSchema } : {}),
         // W8主：BUILTIN 授予面下发（harness 侧注册成反向工具，execute = fetch 宿主
@@ -816,6 +872,8 @@ export class ExecutionEngine {
           emit: opts.emit,
           onResolvedRef: opts.onResolvedRef,
         },
+        // WO-DSH-SOLVER-GATE：恒铸（不是从 workflowCtx 派生）—— 见 DshToolExecuteRun.skillPrecondCtx 注。
+        skillPrecondCtx: { taskId: opts.taskId },
       });
       let dsh: Awaited<ReturnType<typeof runDshAgent>>;
       try {
@@ -868,6 +926,12 @@ export class ExecutionEngine {
             // fail-closed）；DSH_RUN_TOKEN = 上方铸的 per-run 一次性 token。
             PLATFORM_TOOL_EXEC_URL: cfg.DSH_TOOL_EXEC_URL ?? `http://127.0.0.1:${cfg.PORT}/b/v1/dsh/tool-execute`,
             ...(cfg.SERVICE_TOKEN ? { PLATFORM_TOOL_EXEC_TOKEN: cfg.SERVICE_TOKEN } : {}),
+            // WO-DSH-SOLVER-GATE：solver 前置门反向通道。**另起一键、不复用 TOOL_EXEC_URL 的路径推导**
+            // ——端点不同（/skill-precondition），复用会让 harness 把门查询 POST 到 tool-execute 上，
+            // 那会以「模型调了一个未授予的工具」形态被 executor 的 scope 门拒（门恒关，且原因看不清）。
+            // 凭据/runToken 与 tool-execute 同源（同一枚 SERVICE_TOKEN、同一个 per-run token）。
+            // 与 GOV/TOOL_EXEC 两键同款：URL 缺省由本进程推导（zod default 引不了 PORT，故在此推导）。
+            PLATFORM_SKILL_PRECOND_URL: `http://127.0.0.1:${cfg.PORT}/b/v1/dsh/skill-precondition`,
             DSH_RUN_TOKEN: runToken,
           },
         },
@@ -1019,7 +1083,7 @@ export class ExecutionEngine {
         if (missingSolvers.length > 0) {
           // 下发的是门禁说明而非技能正文；治理位仍按**该技能真实声明**回报（只收紧不放宽的方向），
           // 不因「这次没给正文」而放松闸门。
-          return { body: unmetPreconditionBody(skill.key, missingSolvers), resources: [], ...skillGovernance(skill) };
+          return { body: unmetPreconditionBody(skill.key, missingSolvers, SKILL_LOADER_TOOL.native), resources: [], ...skillGovernance(skill) };
         }
         return {
           // 增量 §3：body 中的 {{resource:name}} 标注引用原样保留——资源清单（含 mime/description）

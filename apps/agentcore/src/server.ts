@@ -2371,6 +2371,35 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     return { outcome: r.outcome, payload: r.payload, toolCallId: r.toolCallId, durationMs: r.durationMs };
   });
 
+  /**
+   * WO-DSH-SOLVER-GATE · solver 类 skill precondition 的反向查询端点（**dsh 臂专用**）。
+   *
+   * 为什么需要它：native 臂的门在 `loadSkill` 回调里、直接读本进程 `repos.toolCalls`；dsh 臂的技能
+   * 正文由**子进程**的 SkillProvider 下发，子进程看不到宿主仓储 ⇒ 门要生效就必须有一条回宿主的通道。
+   * 本端点即该通道的宿主端，判据执行体 = `engine.dshSkillPrecondition`，内部调 native 臂**同一个**
+   * `unmetSolverPreconditions`（同一个 toolCalls 事实源）⇒ 两臂判据逐位一致，不产生第二套真相源。
+   *
+   * 与 `/b/v1/dsh/tool-execute` 的**关键差别：这不是工具调用**——不进 GuardedToolExecutor，
+   * 不占预算、不落审计行、无 callId 重放概念（纯查询，幂等，可重复）。故 kind 词表、scope 门、
+   * seenCallIds 一概不适用；复用那条路会让查询以「模型调了个未授予的工具」被 scope 门拒。
+   *
+   * fail-closed 次序与 tool-execute 同款：服务间凭据 401 → 载荷形态 400 → runToken 不识/已注销 401。
+   * 门禁说明的**文案在宿主渲染**（`unmetPreconditionBody` 唯一实现，加载器真名按 dsh 臂取 `skill`），
+   * harness 只原样当 content 下发——两臂文案同源，不在 .mjs 里另抄一份。
+   */
+  app.post("/b/v1/dsh/skill-precondition", async (req) => {
+    requireServiceToken(req);
+    const body = (req.body ?? {}) as { runToken?: unknown; skillKey?: unknown; solverKeys?: unknown };
+    if (typeof body.runToken !== "string" || typeof body.skillKey !== "string"
+      || !Array.isArray(body.solverKeys) || body.solverKeys.some((k) => typeof k !== "string")) {
+      throw new HttpError(400, "VALIDATION_ERROR", "skill-precondition 载荷需 {runToken, skillKey: string, solverKeys: string[]}");
+    }
+    const verdict = await deps.engine.dshSkillPrecondition(body.runToken, body.skillKey, body.solverKeys as string[]);
+    if (!verdict) throw new HttpError(401, "UNAUTHORIZED", "unknown or expired runToken");
+    // missing 空 ⇒ 只回 {missing:[]}（键出与否稳定；gateBody 缺席即"无门"这一态本身）。
+    return verdict;
+  });
+
   app.put("/b/v1/llm/bindings", async (req) => {
     const a = await auth(req);
     requireRole(a, "catalog_admin");

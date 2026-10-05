@@ -44,6 +44,25 @@ let executor = null
 export function setToolExecutor(fn) { executor = fn }
 export function getToolExecutor() { return executor }
 
+/**
+ * WO-DSH-SOLVER-GATE · solver 类 skill precondition 的反向查询单例（与上方 tool-execute 桥同族：
+ * 同一条带外 HTTP 通道、同一枚 per-run runToken、同一枚服务间凭据）。
+ *
+ * 与 tool-execute 桥的**关键差别：这不是工具调用**。它由平台自有 SkillProvider 的 `get()`
+ * 在模型取技能正文那一刻调用，`toolName`/`callId`/预算/审计一概不参与——所以它走**自己的端点**
+ * （/b/v1/dsh/skill-precondition），不复用 tool-execute：复用会让查询以「模型调了个未授予的工具」
+ * 的形态撞上宿主 executor 的 scope 门（结果：门恒关，且日志里的原因指向 scope 而不是门）。
+ *
+ * 契约：成功 ⇒ `{missing: string[], gateBody?: string}`（missing 非空时 gateBody 是**宿主渲染好的**
+ * 门禁说明——文案唯一实现在 agentcore `unmetPreconditionBody`，本包只负责原样当 content 下发，
+ * ⛔ 不在 .mjs 里另抄一份，否则两臂文案会后漂）。
+ * 失败（不可达/超时/非 200/畸形）⇒ **抛**。调用方（platform-world）一律 fail-closed 处理。
+ */
+let skillPrecondProbe = null
+
+export function setSkillPrecondProbe(fn) { skillPrecondProbe = fn }
+export function getSkillPrecondProbe() { return skillPrecondProbe }
+
 export const name = 'platform-tool-bridge'
 
 // native loop.ts 回执文案（逐字镜像，单源注释锚；改 loop.ts 必须同步此处——eam 测试会咬）。
@@ -54,13 +73,44 @@ const BUDGET_RECEIPT_TEXT = '预算已尽，请基于已有结果调用 final_an
 export function apply(ctx, config = {}) {
   const url = config.url ?? process.env.PLATFORM_TOOL_EXEC_URL
   const runToken = process.env.DSH_RUN_TOKEN
+  const skillPrecondUrl = config.skillPrecondUrl ?? process.env.PLATFORM_SKILL_PRECOND_URL
   if (!url || !runToken) {
     setToolExecutor(null) // 休眠（见头注部署形态）；hostTools 到达时 platform-world fail-closed
+    setSkillPrecondProbe(null) // 同理：带声明了 solver 前置的技能到达时 platform-world fail-closed
     return
   }
   const serviceToken = config.serviceToken ?? process.env.PLATFORM_TOOL_EXEC_TOKEN
   const callTimeoutMs = Number(process.env.DSH_TOOL_EXEC_TIMEOUT_MS ?? 20000)
   const fetchTimeoutMs = Number(process.env.DSH_TOOL_EXEC_FETCH_TIMEOUT_MS ?? (callTimeoutMs + 5000))
+
+  // WO-DSH-SOLVER-GATE：门查询另起一键判休眠（**不与 tool-execute 绑死**）——两者端点不同，
+  // 生产 engine 分叉两键恒同注（故恒同 armed）；分开判是为了「只有一键盘了」这件事**看得见**
+  // （若共用 `url` 判据，缺 PRECOND 键时会静默不装探针 ⇒ 门恒开且无人报错）。
+  if (skillPrecondUrl) {
+    const precondTimeoutMs = Number(process.env.DSH_SKILL_PRECOND_TIMEOUT_MS ?? 10000)
+    setSkillPrecondProbe(async ({ skillKey, solverKeys }) => {
+      const res = await fetch(skillPrecondUrl, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(serviceToken ? { 'x-service-token': serviceToken } : {}),
+        },
+        body: JSON.stringify({ runToken, skillKey, solverKeys }),
+        signal: AbortSignal.timeout(precondTimeoutMs),
+      })
+      if (!res.ok) throw new Error(`skill-precondition endpoint HTTP ${res.status}`)
+      const body = await res.json()
+      if (!Array.isArray(body?.missing) || body.missing.some((k) => typeof k !== 'string')) {
+        throw new Error('skill-precondition endpoint returned malformed response')
+      }
+      return {
+        missing: body.missing,
+        ...(typeof body.gateBody === 'string' ? { gateBody: body.gateBody } : {}),
+      }
+    })
+  } else {
+    setSkillPrecondProbe(null)
+  }
 
   setToolExecutor(async ({ toolName, input, callId, kind }) => {
     const envelope = (out) => ({ __w8bridge: true, ...out })

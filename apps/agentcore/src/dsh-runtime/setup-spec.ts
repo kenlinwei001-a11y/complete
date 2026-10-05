@@ -119,7 +119,18 @@ export interface DshSkillSpec {
    * 由 `<skill_instructions>` 包裹后给模型）。
    */
   content: string;
-  resources: { name: string; blobKey: string; mime?: string; description?: string }[];
+  /**
+   * WO-DSH-SOLVER-GATE · 本技能声明的 `{kind:"solver", role:"precondition"}` 求解器 key
+   * （required 缺省视为 true，与 native 臂 `skillRefKeys` 同判据；抽取由调用方经该函数完成，
+   * 本字段只承载结果——⛔ 不在这里另写一份过滤条件）。
+   *
+   * 语义：模型来取正文时，这些 key 里若还有没成功跑过的，下发门禁说明而非 content。
+   * 判据（跑过没有）**不在 harness**：harness 只是把这份清单经反向通道问宿主，宿主用
+   * `unmetSolverPreconditions` 答 —— 与 native 臂同一个函数、同一份 toolCalls 事实源。
+   *
+   * 空数组/缺省 ⇒ 键不出（逐字节旧行为）；这也是「无 precondition 的技能」走的那条路。
+   */
+  solverPreconditions?: string[];
   /** skillGovernance(skill) 同口径三件套（loop.ts:451 单源；治理位不进 tool_result 字节）。 */
   governance: { writeMode: boolean; provenancePolicy: "required" | "best_effort" | "none" };
   inputSchema?: Record<string, unknown>;
@@ -231,6 +242,11 @@ export function mapMcpConfig(
 export function mapSkill(
   skill: SkillDefinition,
   binding?: { arguments?: Record<string, unknown> },
+  // WO-DSH-SOLVER-GATE：solver 类 precondition 的 key 清单。**由调用方传**而不是本函数自己扫
+  // `skill.references` —— 抽取判据的唯一出处是 engine.ts `skillRefKeys`（native 臂 loadSkill 门
+  // 用的是同一个函数）。在这里再写一份 `kind==="solver" && role==="precondition"` 过滤，
+  // 就是「同一个量两套真相源」：两处哪天判据漂了，两臂会静默给出不同的门。
+  solverPreconditions?: string[],
 ): DshSkillSpec {
   if (skill.status !== "PUBLISHED") {
     throw new Error(`mapSkill: skill ${skill.key}@${skill.version} is ${skill.status}, only PUBLISHED is mappable`);
@@ -265,6 +281,8 @@ export function mapSkill(
     },
     ...(skill.inputSchema !== undefined ? { inputSchema: skill.inputSchema as Record<string, unknown> } : {}),
     ...(binding?.arguments !== undefined ? { defaultArguments: binding.arguments } : {}),
+    // 空/缺省 ⇒ 键不出（无 precondition 的技能 setup 帧逐字节旧行为）。
+    ...(solverPreconditions !== undefined && solverPreconditions.length > 0 ? { solverPreconditions } : {}),
   };
 }
 
