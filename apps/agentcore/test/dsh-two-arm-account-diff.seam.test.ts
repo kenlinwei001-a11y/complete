@@ -49,10 +49,11 @@
  * # ① stub（默认，无凭据；本机唯一可验证形态）
  * cd apps/agentcore && npx vitest run test/dsh-two-arm-account-diff.seam.test.ts
  *
- * # ② 真供应商（凭据到位时）—— **换这两个 env 即跑同一套判据**
+ * # ② 真供应商（凭据到位时）—— **换这两个 env 即跑同一套判据**（env 名沿用 dsh-e2e-real-triad 既有门控）
  * DSH_REAL_BASE_URL='https://<供应商>/v1' DSH_REAL_API_KEY='<真 key>' \
- * DSH_REAL_MODEL='<模型 id，缺省 deepseek-chat>' \
+ * DSH_REAL_MODEL='<模型 id，缺省 kimi-k3>' DSH_REAL_KIND='openai_compatible|anthropic' \
  *   npx vitest run test/dsh-two-arm-account-diff.seam.test.ts -t '真供应商'
+ * # （旧名 KIMI_BASE_URL / KIMI_API_KEY 同样接受）
  * ```
  * ⚠️ **本机（2026-10-06）没有 `DSH_REAL_API_KEY` / `DSH_REAL_BASE_URL` ⇒ ② 一路恒为
  * NOT-MEASURED（`it.skipIf` 显式 skip，不是绿）**。真供应商臂**不**复用 §2 的预言值 ——
@@ -64,7 +65,14 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AgentDefinition, LlmProvider } from "@platform/contracts";
 import { createTestApp, TENANT, type TestApp } from "./helpers.js";
-import { STUB_DCP_SPEC, STUB_FAKE_KEY, startStubOpenAi, stubDirectory, stubProvider } from "./helpers-dsh-stub.js";
+import {
+  STUB_DCP_SPEC,
+  STUB_FAKE_KEY,
+  STUB_MODEL_ID,
+  startStubOpenAi,
+  stubDirectory,
+  stubProvider,
+} from "./helpers-dsh-stub.js";
 import { BudgetTracker } from "../src/tools/budget.js";
 import { enterNesting } from "../src/runtime.js";
 import { LlmProviderRegistry, RoutingLlmClient } from "../src/llm/providers.js";
@@ -77,12 +85,22 @@ const HARNESS_DIR = join(ROOT, "packages/dsh-harness");
 const ENV_KEYS = ["DSH_HARNESS", "DSH_HARNESS_DIR", "MOCK_SCENARIO", "DSH_HARNESS_CORDIS_FILE"] as const;
 const PROMPT = "看一下基地情况";
 
-/** 真供应商一跳的输入（缺任一 ⇒ 该臂 skip，绝不用 stub 冒充）。 */
+/**
+ * 真供应商一跳的输入（缺任一 ⇒ 该臂 skip，绝不用 stub 冒充）。
+ * ⚠ env 名**不另立一套**：逐字沿用 `dsh-e2e-real-triad.test.ts` 的既有门控（`WO-DSH-REAL-PROVIDER`
+ * 2026-09-08 厂商中立化）—— 通用名优先、旧 `KIMI_*` 向后兼容、模型名可配。
+ * 两处口径不同的后果是「持别家 key 的人跑不了这条臂」，那正是那次改动要消灭的病。
+ */
+const REAL_KEY = process.env.DSH_REAL_API_KEY ?? process.env.KIMI_API_KEY;
+const REAL_BASE = process.env.DSH_REAL_BASE_URL ?? process.env.KIMI_BASE_URL;
+const REAL_MODEL = process.env.DSH_REAL_MODEL ?? "kimi-k3";
+const REAL_KIND = process.env.DSH_REAL_KIND === "anthropic" ? "anthropic" : "openai_compatible";
 const REAL = {
-  baseUrl: process.env.DSH_REAL_BASE_URL,
-  apiKey: process.env.DSH_REAL_API_KEY,
-  model: process.env.DSH_REAL_MODEL ?? "deepseek-chat",
-  enabled: Boolean(process.env.DSH_REAL_BASE_URL && process.env.DSH_REAL_API_KEY),
+  baseUrl: REAL_BASE,
+  apiKey: REAL_KEY,
+  model: REAL_MODEL,
+  kind: REAL_KIND,
+  enabled: typeof REAL_KEY === "string" && REAL_KEY.length > 0 && typeof REAL_BASE === "string" && REAL_BASE.length > 0,
 };
 
 /** §1-b 的账差区间（初值 50%），此处只取上界做判据。 */
@@ -257,7 +275,7 @@ describe("WO-TWO-ARM-ACCOUNT-DIFF · §1-a③ 同 task 双臂 token 账对照（
           expect(stub.requests.length, "两臂合计未走满 4 轮 ⇒ 有臂没真发车").toBe(4);
           // 每发都是本场景的（不是旁路/别人的）：同一 model + 同一 bearer
           for (const [i, req] of stub.requests.entries()) {
-            expect(req.model, `第 ${i} 发 model 不是本 stub 的 ⇒ 观测面被别的东西污染`).toBe("kimi-k3");
+            expect(req.model, `第 ${i} 发 model 不是本 stub 的 ⇒ 观测面被别的东西污染`).toBe(STUB_MODEL_ID);
             expect(req.authorization, `第 ${i} 发未带本 stub 的假 key ⇒ 不是本场景的流量`).toBe(`Bearer ${STUB_FAKE_KEY}`);
           }
 
@@ -335,7 +353,7 @@ describe("WO-TWO-ARM-ACCOUNT-DIFF · §1-a③ 同 task 双臂 token 账对照（
         id: "llmp_real",
         tenantId: "platform",
         name: "真供应商（env 注入）",
-        kind: "openai_compatible",
+        kind: REAL.kind,
         baseUrl: REAL.baseUrl ?? "",
         models: [
           {
