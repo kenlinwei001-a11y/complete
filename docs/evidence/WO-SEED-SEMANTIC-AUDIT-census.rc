@@ -77,4 +77,18 @@ OVERALL_RC=0   （[8] 的 rc=1 是 git grep「无匹配」约定，属预期，�
      apps/datacore/src/sim/world-read.ts:97:    stateVar: "costPressure",
 
 OVERALL_RC=0
+
+-- [22..27] S10 新增断言的复算 --
+[22] CANARY_POS qty@frontend = 387   rc=0  (>0 才算查法活着)
+[23] CANARY 审核方指定 backlogQtyTop = 1   rc=0
+[24] 面 A 渲染点（决定 (c) 的那一行）  rc=0
+     apps/frontend-shell/src/views/sim/SandboxView.tsx:2337:                      {lab.text} <b data-testid={`sandbox-kpi-${r.v}-val`}>{r.avg.toFixed(1)}</b>
+[25] 屏上口径原文（0–100 指数）  rc=0
+     apps/frontend-shell/src/locales/zh.ts:1418:        kpiUnitVar: "每个状态变量的读数，是该变量在全部已建对象上的均值，是 0–100 的指数（不是百分比）。",
+[26] 落库证据串（面 B）  rc=0
+     apps/frontend-shell/src/views/sim/SandboxView.tsx:1326:          globalKpi: Number(globalKpi.toFixed(2)),
+[27] NOISE_FLOOR 施加在增量上  rc=0
+     apps/frontend-shell/src/views/sim/unified/console0828/console0828Model.ts:341:  const NOISE_FLOOR = 0.01;
+
+OVERALL_RC=0
 CAPTURED_RC=0
