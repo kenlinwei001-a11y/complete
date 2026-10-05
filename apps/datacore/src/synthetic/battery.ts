@@ -4037,10 +4037,9 @@ export function stateVarDisplayNames(stateVars: readonly string[]): Record<strin
 export const STATE_VAR_VALUE_REFS: Record<string, { specKey: string }> = {
   // ── §2 落地一条登记一条；本单先行交付的是**机制**（引用 + 变红 + 屏上出处），
   //    32 条式子的登记随 §2 的规格一起进。下面这条是 A 档第一条，也是机制的活样本。
-  // ⛔ `"Customer|receivablePressure": { specKey: "customer_receivable_pressure" }` 已于 2026-10-05
-  //    退役（WO-COSTPRESSURE-IDENTITY），**与 `seed-derivation-specs.ts` 那条规格同生共死**。
-  //    退役理由 = 水平值被消费端当偏离读（授信占用率 ≠ 应收压力增量），全文见该文件该段。
-  //    ⚠ 本条原是 valueRef 机制的**活样本**；机制本身不动，活样本改由 `order_demand_pressure` 承担。
+  // ⚠ `Customer|receivablePressure` 2026-10-05 曾退役，**终裁否掉并已回退**（WO-COSTPRESSURE-IDENTITY）。
+  //    理由同上一行；本条同时是 valueRef 机制的**活样本**，退役会连带拆掉机制的在场样本。
+  "Customer|receivablePressure": { specKey: "customer_receivable_pressure" },
   // ── §2 A 档第 2–19 条（specKey 与 seed-derivation-specs.ts 逐一对齐；量纲实测见
   //    docs/evidence/WO-REAL-CELL-notes-20260916.md §2 段）。登记即绑定：specKey 断 ⇒ 播种抛错变红。
   "Equipment|equipmentFailure": { specKey: "equipment_failure_rate" },
@@ -4059,9 +4058,10 @@ export const STATE_VAR_VALUE_REFS: Record<string, { specKey: string }> = {
   "MaterialBalance|gapPressure": { specKey: "materialbalance_gap_pressure" },
   "Material|priceShock": { specKey: "material_price_shock" },
   "Material|shortageRisk": { specKey: "material_shortage_risk" },
-  // ⛔ `"Model|costPressure": { specKey: "model_cost_pressure" }` 已于 2026-10-05 退役
-  //    （WO-COSTPRESSURE-IDENTITY），**与 `seed-derivation-specs.ts` 那条规格同生共死**。
-  //    退役理由 = 成本占售价比（水平值）被消费端 `SIM_WORLD_PROJECTION_RULES` 按偏离读。
+  // ⚠ `Model|costPressure` 2026-10-05 曾退役，**终裁否掉并已回退**（WO-COSTPRESSURE-IDENTITY）。
+  //    本格有外部偏离读点 `sim/world-read.ts` 的 `SIM_WORLD_PROJECTION_RULES`，退役会与
+  //    另一张单的「零扰动稳在 2.926292」判据正面冲突。理由全文见 `seed-derivation-specs.ts` 该段。
+  "Model|costPressure": { specKey: "model_cost_pressure" },
   // ⛔ `"Model|forecastBias": { specKey: "model_forecast_bias" }` 已于 2026-09-20 退役
   //    （WO-FORECASTBIAS-RETIRE）。原式分子两项同源（Σ 减它自己）⇒ 恒 0，病因与实测见
   //    `seed-derivation-specs.ts` 该段。**本行与那条规格必须同生共死**：
@@ -4072,11 +4072,10 @@ export const STATE_VAR_VALUE_REFS: Record<string, { specKey: string }> = {
   "Model|supplyRisk": { specKey: "model_supply_risk" },
   // ── A⚠ 档 5 条（仓主 2026-09-16 ③全批落 5；orderChurn 无诚实源停笔，理由见
   //    seed-derivation-specs.ts 该段尾注）。specKey 与规格表逐一对齐。
-  // ⛔ `"Order|costPressure": { specKey: "order_cost_pressure" }` 已于 2026-10-05 退役
-  //    （WO-COSTPRESSURE-IDENTITY），**与 `seed-derivation-specs.ts` 那条规格同生共死**。
-  //    退役理由 = 语义身份错：该式实测 150/150 格逐位 ≡ 授信占用率×100，而本格自报身份是成本压力，
-  //    且 `Order` 上无任何数值字段是成本压力的诚实来源。全文见 `seed-derivation-specs.ts` 该段。
-  //    退役后本格回到「没有显式绑定」那一档，出处章 = `derived`，值 = 该格声明的 `restPoint` = 0。
+  // ⚠ `Order|costPressure` 2026-10-05 曾退役，**终裁否掉并已回退**（WO-COSTPRESSURE-IDENTITY）。
+  //    退役 = 删掉两个互斥口径里的一个来消灭矛盾，而两个口径各有消费端在守 ⇒ 属 A 类不许抹。
+  //    正解走 (b) 消费端减静息点 / (c) 规格直接产出偏离。理由全文见 `seed-derivation-specs.ts` 该段。
+  "Order|costPressure": { specKey: "order_cost_pressure" },
   "Order|demandPressure": { specKey: "order_demand_pressure" },
   "Order|shortageRisk": { specKey: "order_shortage_risk" },
   "MaterialBatch|procurementDelay": { specKey: "materialbatch_procurement_delay" },
