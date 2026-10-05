@@ -14,7 +14,7 @@
 // 不是自造 —— 少了 messages/agent 任一，挂在同事件上的既有监听会当场抛。
 
 import '../runtime-compat.mjs'
-import { makeSkillWorld, makeSkillAgent, mountSetupSpec, callSkillTool, catalogOf } from './skill-seam-driver.mjs'
+import { makeSkillWorld, makeSkillAgent, mountSetupSpec, callSkillTool, catalogOf, prestepTexts } from './skill-seam-driver.mjs'
 
 const skill = (key, description, content) => ({
   key,
@@ -36,15 +36,8 @@ async function world(id, skills) {
   await mountSetupSpec(w.ctx, { skills, tools: [{ name: 'skill' }] })
   return w
 }
-async function prestep(w) {
-  const ac = new AbortController()
-  const d = await app.waterfall(app, 'agent/pre-step',
-    { agent: w.agent, messages: [], turn: 1, step: 1, signal: ac.signal },
-    async () => ({ kind: 'enter', messages: [] }))
-  const texts = []
-  for (const m of d.messages ?? []) for (const c of m.content ?? []) if (c.type === 'text') texts.push(c.text)
-  return texts
-}
+// pre-step 驱动已收进 skill-seam-driver.prestepTexts（单一实现 —— 两份抄件迟早不同步）
+const prestep = (w) => prestepTexts(app, w.agent)
 
 const w2 = await world('n2', SRC)
 console.log('=== ①-a skill 工具命中（tool_result 原文）===')
