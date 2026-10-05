@@ -165,7 +165,15 @@ try {
   await page.click("[data-testid=db-advanced]").catch(() => {});
   await page.waitForSelector("[data-testid=wf-timeline]", { timeout: 20000 }).catch(() => {});
   await page.click("[data-testid=wf-start]").catch(() => {});
-  await page.waitForTimeout(4000);
+  // ⚠ 2026-10-05 修：同步工作流**跑完才返回**（实测后端 6 秒返回 status=SUCCEEDED / 7 步），
+  //   而原写法固定等 4 秒就数步骤 ⇒ 步骤还没上屏，恒得 0。改为**等步骤真的出现**（有界 90 秒），
+  //   不再赌一个拍脑袋的秒数。前端的 `startM.onSuccess` 会 `setExpanded(wf.id)`，故新运行自动展开，
+  //   步骤（`wf-step-<stepKey>`，在 `{isOpen && …}` 里）无需再点。
+  await page.waitForFunction(
+    () => document.querySelectorAll('[data-testid^="wf-step-"]').length >= 6,
+    null,
+    { timeout: 90000 },
+  ).catch(() => {});
   const steps = await page.$$eval("[data-testid^=wf-step-]", (els) => new Set(els.map((e) => e.getAttribute("data-testid")).filter((x) => x && !x.includes("error"))).size);
   const gap = await page.locator("[data-testid=wf-gap-analysis]").count();
   steps >= 6 ? ok(`工作流真后端：7 步状态机 + 比对现状${gap ? "表" : "(未展开)"}`) : bad(`工作流真后端：步骤异常 ${steps}`);
