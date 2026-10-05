@@ -427,6 +427,27 @@ describe("P2B · L3 附件面", () => {
 });
 
 // ---------------------------------------------------------------------------
+// §5 逐条对比表（人可读，`P2B_DUMP=1` 时打印；默认静默，不给常规跑加噪声）
+//   `P2B_DUMP=1 pnpm exec vitest run test/dsh-skill-routing-parity.seam.test.ts -t 逐条对比表`
+// ---------------------------------------------------------------------------
+
+describe("P2B · 逐条对比表", () => {
+  it.runIf(process.env.P2B_DUMP === "1")("打印两臂技能可见面（真实租户集 + N=7 合成集）", async () => {
+    const { skills: seedSkills } = seedRegistry("2026-01-01T00:00:00.000Z");
+    for (const [title, batch, query] of [
+      ["真实租户集（seed 5 条 PUBLISHED）", selectTenantSkills(seedSkills), "4680-NCM 还能接多少量？"],
+      ["合成集 N=7 > topK=6", synthSkills(7), synthSkills(7)[2]!.summary],
+    ] as const) {
+      const { rows, nf, df } = await compareRows(batch as SkillDefinition[], query as string);
+      console.log(`\n=== ${title} · query="${query}" ===`);
+      console.log(`native 字节长=${nf.text.length}  full=${nf.full.length} nameOnly=${nf.nameOnly.length} invisible=${nf.invisible.length}`);
+      console.log(`DSH    目录字节长=${df.catalogText.length}  条目=${df.entries.length}  可加载=${df.loadable.length}`);
+      for (const r of rows) console.log(`  ${r.key.padEnd(24)} native=${r.native.padEnd(10)} dsh=${r.dsh.padEnd(10)} descExact=${r.descExact} 一次调用取正文=${r.dshBodyViaOneCall}`);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 合成批次：7 条、key 合规、summary 短且互不重复
 // ---------------------------------------------------------------------------
 
