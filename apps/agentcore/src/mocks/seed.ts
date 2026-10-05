@@ -14,6 +14,7 @@ import {
 import { BUILTIN_TOOLS } from "../tools/registry.js";
 // WO-DSH-RESOURCE-REACH · 本体切片的两件套（裸名清单 / MCP 全名拼接 / 配置行 id）单一来源。
 import { ONTOLOGY_MCP_CONFIG_ID, ONTOLOGY_MCP_TOOL_NAMES, ontologyMcpToolName } from "../tools/ontology-mcp.js";
+import { WORKFLOW_MCP_CONFIG_ID, workflowMcpToolName } from "../dsh-runtime/workflow-mcp.js";
 // DF.13 外协红线单一来源（C08）：场景建议问句里的红线百分数派生，禁手写。
 import { OUTSOURCE_REDLINE, outsourceRedlinePct } from "@platform/contracts";
 import { SCENARIO_CATALOG } from "../scenarios-catalog.js";
@@ -1434,13 +1435,17 @@ export function seedRegistry(now = new Date().toISOString()): {
         { kind: "BUILTIN", name: "search_knowledge" },
         { kind: "BUILTIN", name: "query_timeseries_agg" },
         { kind: "BUILTIN", name: "search_experience" },
-        { kind: "WORKFLOW", workflowId: "wf_seed_capacity", version: "latest" },
+        // WO-WORKFLOW-MCP · 工作流从 **旧 WORKFLOW 记法**（`{kind:"WORKFLOW", workflowId, version}`）
+        // 改挂 **MCP 面**（三面同改之一：授予面）。⛔ 不是两条路并存 —— 旧写法在本 agent 上已退掉，
+        // 同一条产能校核流程现在只有 MCP 这一条授予路（执行体仍是 runWorkflowAsTool，没换）。
+        { kind: "MCP", mcpConfigId: WORKFLOW_MCP_CONFIG_ID, toolFilter: [workflowMcpToolName("capacity_check")] },
       ] as AgentDefinition["tools"],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
       skills: [{ skillId: "skl_seed_capacity", version: "latest" }],
-      // DSH 挂载面：本体 MCP server（运行期 command/args/env 由 engine.ts DSH 分叉注入，
-      // runToken 不能写死在 seed 里）。与上方 MCP ref 成对 —— 只有 ref 没有它 = 模型面拿不到工具。
-      mcpServers: [{ mcpConfigId: ONTOLOGY_MCP_CONFIG_ID }],
+      // DSH 挂载面（三面同改之二）：两个内置 MCP server 都挂上（运行期 command/args/env 由
+      // engine.ts DSH 分叉注入，runToken 与工具目录都不能写死在 seed 里）。
+      // 与上方 MCP ref 成对 —— 只有 ref 没有它 = 模型面拿不到工具。
+      mcpServers: [{ mcpConfigId: ONTOLOGY_MCP_CONFIG_ID }, { mcpConfigId: WORKFLOW_MCP_CONFIG_ID }],
       scopeDeclaration: {
         objectTypes: ["Base", "Order", "Model", "Line", "Process", "Equipment", "Shipment", "Segment"],
         // 声明面按契约惯例记**全名**（scope 门在 `executor.ts`:138 用**调用原名**校验 —— 模型面是
@@ -1448,6 +1453,7 @@ export function seedRegistry(now = new Date().toISOString()): {
         toolNames: [
           "query_objects", "aggregate_objects", "get_object", ...ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)), "invoke_solver", "evaluate_rules",
           "search_knowledge", "query_timeseries_agg", "search_experience", "create_action_draft",
+          workflowMcpToolName("capacity_check"),
         ],
       },
       budget: { maxIterations: 8, maxToolCalls: 12 },
@@ -1468,12 +1474,13 @@ export function seedRegistry(now = new Date().toISOString()): {
       tools: [
         { kind: "BUILTIN", name: "query_objects" },
         { kind: "BUILTIN", name: "invoke_solver" },
-        { kind: "WORKFLOW", workflowId: "wf_seed_capacity", version: "latest" },
+        // WO-WORKFLOW-MCP · 工作流改挂 MCP 面（三面同改：授予/挂载/声明）。
+        { kind: "MCP", mcpConfigId: WORKFLOW_MCP_CONFIG_ID, toolFilter: [workflowMcpToolName("capacity_check")] },
       ] as AgentDefinition["tools"],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
       skills: [{ skillId: "skl_seed_capacity", version: "latest" }],
-      mcpServers: [],
-      scopeDeclaration: { objectTypes: ["Base", "Order", "Model", "Line"], toolNames: ["query_objects", "invoke_solver"] },
+      mcpServers: [{ mcpConfigId: WORKFLOW_MCP_CONFIG_ID }],
+      scopeDeclaration: { objectTypes: ["Base", "Order", "Model", "Line"], toolNames: ["query_objects", "invoke_solver", workflowMcpToolName("capacity_check")] },
       budget: { maxIterations: 8, maxToolCalls: 10 },
       status: "PUBLISHED",
     },
@@ -1487,11 +1494,11 @@ export function seedRegistry(now = new Date().toISOString()): {
         "【对口能力】优先调用 invoke_solver 归因、evaluate_rules 核规则；涉及产能约束/可行性必须调 solver，不自己算。",
         "【交卷】按 结论/分析/证据/建议/风险 组织，业务数字一律 ⟦ref:N⟧。",
       ].join("\n"),
-      tools: [{ kind: "BUILTIN", name: "query_objects" }, { kind: "BUILTIN", name: "invoke_solver" }, { kind: "BUILTIN", name: "evaluate_rules" }, { kind: "WORKFLOW", workflowId: "wf_seed_risk_digest", version: "latest" }],
+      tools: [{ kind: "BUILTIN", name: "query_objects" }, { kind: "BUILTIN", name: "invoke_solver" }, { kind: "BUILTIN", name: "evaluate_rules" }, { kind: "MCP", mcpConfigId: WORKFLOW_MCP_CONFIG_ID, toolFilter: [workflowMcpToolName("risk_digest")] }],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
       skills: [{ skillId: "skl_seed_capacity", version: "latest" }],
-      mcpServers: [],
-      scopeDeclaration: { objectTypes: ["Base", "Order", "Model", "Line", "Process"], toolNames: ["query_objects", "invoke_solver", "evaluate_rules"] },
+      mcpServers: [{ mcpConfigId: WORKFLOW_MCP_CONFIG_ID }],
+      scopeDeclaration: { objectTypes: ["Base", "Order", "Model", "Line", "Process"], toolNames: ["query_objects", "invoke_solver", "evaluate_rules", workflowMcpToolName("risk_digest")] },
       budget: { maxIterations: 8, maxToolCalls: 10 },
       status: "DRAFT",
     },
@@ -1520,18 +1527,19 @@ export function seedRegistry(now = new Date().toISOString()): {
         // toolFilter 记**全名**（与声明面同口径；engine.ts:456 两种形态都认，但全名能让
         // 「这条 ref 指的是 MCP 面上的哪个工具」在授予面自证，不再和 BUILTIN 裸名撞脸）。
         { kind: "MCP", mcpConfigId: ONTOLOGY_MCP_CONFIG_ID, toolFilter: ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)) },
-        { kind: "WORKFLOW", workflowId: "wf_seed_capacity", version: "latest" },
+        // WO-WORKFLOW-MCP · 工作流改挂 MCP 面（同本体切片一条纪律：只留 MCP 这一条授予路）。
+        { kind: "MCP", mcpConfigId: WORKFLOW_MCP_CONFIG_ID, toolFilter: [workflowMcpToolName("capacity_check")] },
       ],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
       skills: [{ skillId: "skl_seed_capacity", version: "latest" }],
-      // 挂载本体 MCP server（DSH 侧经 dsh-mcp-client 起 stdio 连接；运行期 command/args/env
-      // 由 engine.ts DSH 分叉注入 —— 绝对路径与 per-run runToken 都不能写死在 seed 里）。
-      mcpServers: [{ mcpConfigId: ONTOLOGY_MCP_CONFIG_ID }],
+      // 挂载两个内置 MCP server（DSH 侧经 dsh-mcp-client 起 stdio 连接；运行期 command/args/env
+      // 由 engine.ts DSH 分叉注入 —— 绝对路径、per-run runToken、工作流工具目录都不能写死在 seed 里）。
+      mcpServers: [{ mcpConfigId: ONTOLOGY_MCP_CONFIG_ID }, { mcpConfigId: WORKFLOW_MCP_CONFIG_ID }],
       // scopeDeclaration 是**声明面**（治理网桥 scopeObjectTypes + DRIL 投影读它），
       // 与授予面同步改——engine.ts「显式配置的工具绝不应被自身 scope 门拒」的并集规则
       // 虽已兜底，但声明面漏列会让对外能力画像少报这两件。
       // MCP 面按契约惯例记**全名**（mcpToolFullName：scopeDeclaration 与审计一律用全名）。
-      scopeDeclaration: { objectTypes: ["Base", "Line", "Model", "Order"], toolNames: ["query_objects", "invoke_solver", "mcp__ontology__plan_slice", "mcp__ontology__resolve_slice"] },
+      scopeDeclaration: { objectTypes: ["Base", "Line", "Model", "Order"], toolNames: ["query_objects", "invoke_solver", "mcp__ontology__plan_slice", "mcp__ontology__resolve_slice", workflowMcpToolName("capacity_check")] },
       budget: { maxIterations: 8, maxToolCalls: 10 },
       status: "DRAFT",
       role: "production", // WO-FIVE-ROLE P1：生产角色 agent（产能/产线/工序·Line/Process/Model 域）。
@@ -1620,12 +1628,13 @@ export function seedRegistry(now = new Date().toISOString()): {
         { kind: "BUILTIN", name: "query_objects" },
         { kind: "BUILTIN", name: "invoke_solver" },
         { kind: "MCP", mcpConfigId: "mcp_market_data", toolFilter: ["get_commodity_price", "get_policy_update"] },
-        { kind: "WORKFLOW", workflowId: "wf_seed_order_track", version: "latest" },
+        // WO-WORKFLOW-MCP · 工作流改挂 MCP 面（三面同改；旧 WORKFLOW 记法已退，不留两条授予路）。
+        { kind: "MCP", mcpConfigId: WORKFLOW_MCP_CONFIG_ID, toolFilter: [workflowMcpToolName("order_tracking")] },
       ] as AgentDefinition["tools"],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
       skills: [{ skillId: "skl_seed_supply_chain", version: "latest" }],
-      mcpServers: [{ mcpConfigId: "mcp_market_data" }],
-      scopeDeclaration: { objectTypes: ["Material", "Supplier", "Order", "Model"], toolNames: ["query_objects", "invoke_solver", "mcp__market_data__get_commodity_price", "mcp__market_data__get_policy_update"] },
+      mcpServers: [{ mcpConfigId: "mcp_market_data" }, { mcpConfigId: WORKFLOW_MCP_CONFIG_ID }],
+      scopeDeclaration: { objectTypes: ["Material", "Supplier", "Order", "Model"], toolNames: ["query_objects", "invoke_solver", "mcp__market_data__get_commodity_price", "mcp__market_data__get_policy_update", workflowMcpToolName("order_tracking")] },
       budget: { maxIterations: 8, maxToolCalls: 12 },
       status: "PUBLISHED",
     },
@@ -1742,6 +1751,19 @@ export function seedMcpConfigs(): McpServerConfig[] {
       // 一次性 runToken 都写不进静态种子。
       id: ONTOLOGY_MCP_CONFIG_ID, tenantId: SEED_TENANT, name: "本体切片 MCP（平台内置）", serverName: "ontology",
       transport: { type: "stdio", command: "node", args: ["apps/agentcore/dist/dsh-runtime/ontology-mcp-server.js"] },
+      status: "ACTIVE", lifecycle: "PUBLISHED", version: 1,
+    },
+    {
+      // WO-WORKFLOW-MCP · 平台内置工作流 MCP server（DSH 原生 MCP 模式的载荷，与上一行同型）。
+      // 工具面 = `mcp__workflow__{workflowKey}`，**工具清单是租户数据**（随工作流发布变），
+      // 故不像本体那样静态投影 —— 由 engine.ts DSH 分叉按本 run 的授予面现算，
+      // 经 `PLATFORM_WORKFLOW_MCP_TOOLS` env 注入子进程（dsh-runtime/workflow-mcp.ts 头注）。
+      // 执行同样不落在子进程里：tools/call 转回宿主反向通道 `kind:"workflow"` → 既有
+      // `engine.runWorkflowAsTool`（零重写、零第二套执行体）。
+      // transport 里的 command/args 与上一行同理，只是 **cwd=仓根 时的可用回落**；
+      // 真进程形态（node 绝对路径 / 服务树绝对路径 / per-run env 与目录）由 engine 运行期注入。
+      id: WORKFLOW_MCP_CONFIG_ID, tenantId: SEED_TENANT, name: "工作流 MCP（平台内置）", serverName: "workflow",
+      transport: { type: "stdio", command: "node", args: ["apps/agentcore/dist/dsh-runtime/workflow-mcp-server.js"] },
       status: "ACTIVE", lifecycle: "PUBLISHED", version: 1,
     },
     {
