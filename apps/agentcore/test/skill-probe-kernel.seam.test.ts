@@ -111,7 +111,9 @@ async function runPersistedAgentOnce(t: TestApp, agent: AgentDefinition, suffix:
     packageId: PKG,
     conversationId: taskId,
     query: "这个技能怎么用",
-    context: {},
+    // context 形状照 `EvalCase.input.context`（tasks 仓储的 context 是同一套必填面，
+    // 传 `{}` 会被 tsc 挡下：TS2739 缺 view/selectedObjects/filters）。
+    context: { view: "dash", selectedObjects: [], filters: {} },
     status: "ROUTING",
     clarificationRounds: 0,
     createdAt: new Date().toISOString(),
