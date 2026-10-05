@@ -14,7 +14,7 @@
 
 import * as McpClient from './mcp-client-tenant.mjs'
 import { getAdjudicator } from './platform-governance.mjs'
-import { getToolExecutor } from './tool-bridge.mjs'
+import { getToolExecutor, getSkillPrecondProbe } from './tool-bridge.mjs'
 import { installDenyBudget, installStallLoopWatchdog } from './platform-watchdog.mjs'
 
 /** agent 级 system prompt section 的固定名/序（root persona 是 order 0，agent 追加其后）。 */
@@ -40,7 +40,59 @@ export const PLATFORM_SKILL_SOURCE = 'platform:setup.skills'
  * `registerProvider` 契约）。**同步工厂**（注册是同步的；这里没有远端初始化，
  * 技能全文就在 spec 里，所以 list/get 都是纯查找，恒 complete）。
  */
-function makePlatformSkillProvider(skills) {
+/**
+ * WO-DSH-SOLVER-GATE · 求解器前置门（dsh 臂）——**落点在 `get()`，不在 setup 期**。
+ *
+ * 为何不能在 applySetupSpec 里拦：开跑那一刻求解器**必然还没跑**（模型要在循环里先调
+ * `invoke_solver` 才拿得到结论），setup 即拦 = 该技能整轮永远用不了。前置条件是在循环内由
+ * unmet 翻成 met 的，所以门必须落在「模型来取正文」这一刻 —— 与 native 臂 loadSkill 门同时机
+ * （engine.ts `loadSkill` 注释原文）。
+ *
+ * 白名单：只有声明了 solverPreconditions 的技能过门。**没有声明的技能 `get()` 恒返回正文**
+ * —— 这条是门自己的金丝雀：若门写成「一律查一次」，宿主一挂就全体技能不可用，
+ * 而「门永远关着」会在验收里被读成「门生效了」。
+ *
+ * @returns 门禁说明文本（替代正文）；undefined = 放行正文。
+ */
+async function skillPreconditionGate(s, probe) {
+  const keys = s.solverPreconditions
+  if (!Array.isArray(keys) || keys.length === 0) return undefined // 未声明 ⇒ 零门
+  if (typeof probe !== 'function') {
+    // 声明了却无探针：创建期已 fail-closed（见 applySetupSpec），走到这里只能是 run 中途
+    // 桥被拆。仍按 fail-closed —— 绝不因为「问不到」就静默下发正文。
+    return unverifiableBody(s.key, 'skill-precondition probe is not armed in this session')
+  }
+  let res
+  try {
+    res = await probe({ skillKey: s.key, solverKeys: keys })
+  } catch (e) {
+    // 传输层失败与「前置未满足」是**两件事**，文案分开：把查询失败说成「前置未满足」会让模型
+    // 去重复跑求解器（徒劳），也会让运维看不到真因。两者都不下发正文（fail-closed 方向一致）。
+    return unverifiableBody(s.key, `skill-precondition query failed: ${e?.message ?? e}`)
+  }
+  if (res.missing.length === 0) return undefined // unmet → met：正文照常下发
+  // 文案由宿主渲染（unmetPreconditionBody 唯一实现，加载器名按臂取 dsh 真名 `skill`）——
+  // harness 只原样下发，不在本包另抄一份（两臂文案同源）。
+  // 宿主说「有未满足项」却没给文案 = 畸形（探针侧已校验，此处兜底）⇒ 仍 fail-closed，且
+  // 不拿一个空 content 冒充门禁说明（空串会被渲染成"技能正文是空的"，比拒发更容易误导）。
+  return typeof res.gateBody === 'string' && res.gateBody.length > 0
+    ? res.gateBody
+    : unverifiableBody(s.key, 'skill-precondition endpoint reported missing keys without a gate body')
+}
+
+function unverifiableBody(skillKey, reason) {
+  return [
+    `## 技能「${skillKey}」的前置条件无法核实（平台门禁）`,
+    '',
+    '本技能声明了 solver 类前置条件，但本次核实失败，无法确认条件是否已满足，因此技能正文暂不下发。',
+    `原因：${reason}`,
+    '',
+    '## 下一步',
+    '稍后重试加载本技能；若持续失败，按平台故障上报，不要凭猜测继续。',
+  ].join('\n')
+}
+
+function makePlatformSkillProvider(skills, probe) {
   const byName = new Map(skills.map((s) => [s.dshName, s]))
   const summaries = new Map(skills.map((s) => [s.dshName, {
     name: s.dshName,
@@ -60,13 +112,17 @@ function makePlatformSkillProvider(skills) {
     get: async (candidate) => {
       const s = byName.get(candidate?.name)
       if (s === undefined) return undefined // 找不到 ⇒ dsh 侧 get() 返 undefined ⇒ 工具 fail-closed 报 unknown
+      // WO-DSH-SOLVER-GATE：门在**这一刻**求值（每次加载都重新问宿主 —— dsh-skill 只缓存
+      // 目录候选、get 恒走 provider，故 unmet 翻 met 后同一条技能立刻能取到正文）。
+      // 技能**仍在目录里可见**：目录走 list()/summary，本条只改 content，可见性≠可用性。
+      const gate = await skillPreconditionGate(s, probe)
       return {
         name: s.dshName,
         description: s.description,
         invocation: { modelInvocable: true, userInvocable: true },
         source: PLATFORM_SKILL_SOURCE,
         provider: PLATFORM_SKILL_PROVIDER,
-        content: s.content,
+        content: gate ?? s.content,
       }
     },
   }
@@ -122,6 +178,16 @@ export function validateSetupSpec(spec) {
       || typeof s?.description !== 'string' || s.description.length === 0
       || typeof s?.content !== 'string')) {
       throw new TypeError('setup.skills entries require {key, dshName(kebab-case), description(non-empty), content} strings')
+    }
+    // WO-DSH-SOLVER-GATE：solverPreconditions 可选；在则必须是非空字符串数组。
+    // 拒空数组（而不是当"无声明"放行）：agentcore 侧 mapSkill 对空清单**不写这个键**，
+    // 所以 `[]` 只可能来自手搓 spec —— 静默把它读成"无前置"会让一个畸形 spec 悄悄绕过门。
+    for (const s of spec.skills) {
+      if (s.solverPreconditions === undefined) continue
+      if (!Array.isArray(s.solverPreconditions) || s.solverPreconditions.length === 0
+        || s.solverPreconditions.some((k) => typeof k !== 'string' || k.length === 0)) {
+        throw new TypeError('setup.skills[].solverPreconditions must be a non-empty array of non-empty strings when present')
+      }
     }
     out.skills = spec.skills
   }
@@ -196,7 +262,15 @@ export async function applySetupSpec(agentCtx, spec) {
     const skills = agentCtx.get('skills')
     // 有技能却没挂 dsh-skill = 配置错误，fail-closed 创建期抛（与下方 finalAnswer 同口径）。
     if (!skills) throw new Error('setup.skills requires the skill plugin in cordis.yml')
-    skills.registerProvider(() => makePlatformSkillProvider(spec.skills))
+    // WO-DSH-SOLVER-GATE · 配置错误 fail-closed（与上方 hostTools「桥未 armed 即抛」同口径）：
+    // 有技能声明了 solver 前置、而门查询桥没挂 ⇒ 该技能会被**恒关**且无人报错。
+    // 与其静默恒关（那会被验收读成"门生效了"），不如让带这种 spec 的会话根本不许出生。
+    // ⛔ 注意这条只对**声明了前置**的技能生效：普通技能在无桥会话里照常可用（休眠路径零影响）。
+    if (typeof getSkillPrecondProbe() !== 'function'
+      && spec.skills.some((s) => s.solverPreconditions !== undefined)) {
+      throw new Error('setup.skills[].solverPreconditions requires the platform-tool-bridge plugin armed with PLATFORM_SKILL_PRECOND_URL + DSH_RUN_TOKEN')
+    }
+    skills.registerProvider(() => makePlatformSkillProvider(spec.skills, getSkillPrecondProbe()))
   }
 
   // --- S3 · final_answer scoped 注册（Answer 结构化载体） ---
