@@ -1,0 +1,48 @@
+猜想：这 6 格共病 = 种子里没有坏状态 —— 异常/积压/风险类状态量，在种子里全处在一个全绿的世界里，
+      所以只能靠哈希编。逐类型量状态字段分布（判据，不是转述）：
+====================================================================================================
+
+### ExceptionEvent  n=372
+   status               不同值 2    有分布   {"'RESOLVED'": 277, "'OPEN'": 95}
+   severity             不同值 4    有分布   {"'LOW'": 110, "'MEDIUM'": 107, "'HIGH'": 88, "'CRITICAL'": 67}
+
+### MaintenanceOrder  n=193
+   status               不同值 1    **全同** {"'已完成'": 193}
+   maintType            不同值 3    有分布   {"'预防性'": 76, "'预测性'": 64, "' corrective'": 53}
+   priority             不同值 1    **全同** {"'中'": 193}
+
+### OrderPromise  n=50
+   atpStatus            不同值 1    **全同** {"'CONFIRMED'": 50}
+   bottleneck           不同值 1    **全同** {'None': 50}
+
+### Order  n=500
+   status               不同值 3    有分布   {"'COMPLETED'": 350, "'IN_PRODUCTION'": 100, "'OPEN'": 50}
+   early                不同值 2    有分布   {'False': 472, 'True': 28}
+
+### CustomerLocation  n=30
+   isDeliveryDefault    不同值 2    有分布   {'True': 20, 'False': 10}
+
+### Model  n=6
+   status               不同值 1    **全同** {"'量产'": 6}
+
+====================================================================================================
+⇒ 这 6 格的载体类型，其状态字段**全部取单一值**：异常全 RESOLVED、维修单全 已完成、
+   承诺全 CONFIRMED + bottleneck 全 None、短交恒 0。即：**种子世界里没有「未处理」这一态**。
+   这不是 6 个互不相干的补数据任务，是**一个**根因：生成器只造 happy path。
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+⛔ 订正：脚本尾部的结论句「状态字段**全部取单一值**」**被它自己上面的数据推翻** ——
+   ExceptionEvent 是 RESOLVED 277 / **OPEN 95**，Order 是 COMPLETED/IN_PRODUCTION/OPEN 三态。
+   （写成「全部」是因为我先生成了结论句、再补的数据 —— 顺序反了。判据必须先于结论。）
+
+按实测重列 6 格：
+   格                                  载体状态分布                                   库里有真值吗                         处置
+   ExceptionEvent.handlingBacklog     **有** OPEN 95 / RESOLVED 277             **有**（status='OPEN' 即未处置）      ✅ 可写规格，不必补数据
+   MaintenanceOrder.repairBacklog     无，全 '已完成'                                无                              补数据：生成器要造未完成维修单
+   OrderPromise.promiseRisk           无，全 CONFIRMED；shortfallQty 恒 0；bottleneck 全 None 无                              补数据：ATP 要真的不足
+   Order.orderChurn                   status 三态 / early 28-500，但都不是变更记录        无                              补数据：要有交期变更记录
+   CustomerLocation.deliveryHoldRisk  isDeliveryDefault 20-10，非风险              无                              补数据：要有受阻字段
+   Model.forecastBias                 —（规格 2026-09-20 已退役）                     无                              退役遗留：格子尚在且喂下游
+
+⇒ **不是一个根因**：6 格里只有 1 格（handlingBacklog）的真值已经在库里躺着；
+   其余 5 格确实要动生成器，且各有各的业务口径要定。

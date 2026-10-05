@@ -1,0 +1,21 @@
+实例 http://127.0.0.1:4108（ExceptionEvent.handlingBacklog 已绑规格）
+================================================================================================
+
+预言① 95 条 OPEN 读 1 / 277 条 RESOLVED 读 0，两类逐位分开
+   status=OPEN       handlingBacklog=1          95 条
+   status=RESOLVED   handlingBacklog=0         277 条
+   判据：✓ 成立（status==OPEN <=> 值==1，无一例外）
+   值域 [0, 1] ；条数 372
+
+预言② 世界态 derived 格 801 -> 429（少掉 372 = ExceptionEvent 对象数）
+   金丝雀：含 origin.cells 的记录 1 条
+   cells=6375 measured=5946 derived=429  => 实测 ✓ / 占位 ✓ / 合计 ✓
+   outOfDomain = 0 条 []
+   => 预言② ✓ 成立（801-372=429）
+
+预言③ 该格出处章 = measured（不再是 derived 哈希占位）
+   判据：哈希占位是 round(hash01(objectId|stateVar)*100) ∈ [0,100] 的整数，
+         取值与 status 一一对应（OPEN<->1 / RESOLVED<->0）在哈希下不可能成立 =>
+         status 与读数的双向一致本身就是「值来自 status」的证据。
+
+剩余 5 格（仍是哈希占位）：repairBacklog / orderChurn / promiseRisk / deliveryHoldRisk / forecastBias

@@ -1513,11 +1513,27 @@ describe("§6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算", () => {
       kneeless,
       "无上拐点（`max: null`）的格子集合变了 —— 它们会衰减故有稳态增益，但 `0.75 × max` 在它们身上不存在",
     ).toEqual([
+      // ⚠ 2026-10-06 WO-DERIV-BACKFILL：5 → **15**。本单把 9 格从压力族**名字名单**里拆出来单列
+      //   `max: null`（原一律盖 `max: 100`）⇒ 它们合法地移出「受 0.75 拐点约束」那一档。
+      //   移出的理由与逐格实测见 `synthetic/battery.ts` 那两段单列声明的头注
+      //   （判据 = **式子的分母是产能/额度**，分子超过分母是业务上真实存在的状态，不是病）。
+      //   ⚠ 这一条**必须**跟着变，不许为了让门绿而把 max 改回去 —— 改回去就是把真值夹掉，
+      //     正是本单要治的病（实测 `Base.loadIndex` 74–552 被夹成 100，落点天生哑）。
+      "Base.loadIndex",
       "Certification.qualificationQueue",
+      "ChangeoverMatrix.changeoverPressure",
+      "Customer.receivablePressure",
       "ExceptionEvent.handlingBacklog",
       "IncomingInspection.queueDays",
+      "Line.blockedPressure",
       "MaintenanceOrder.repairBacklog",
+      "MaterialBatch.turnoverPressure",
+      "Model.costPressure",
+      "Model.demandLoad",
+      "Order.costPressure",
+      "OrderLine.splitPressure",
       "QualityLot.inspectBacklog",
+      "WIPLot.feedPressure",
     ]);
 
     // ── 判据⓪：这 5 格的**稳态增益** = 在册意图增益（WO-COEF-LAMBDA 方向②）────────────────
@@ -1531,6 +1547,20 @@ describe("§6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算", () => {
       ["MaintenanceOrder.repairBacklog", 0.6],
       ["ExceptionEvent.handlingBacklog", 0.8],
       ["Certification.qualificationQueue", 0.3],
+      // ── WO-DERIV-BACKFILL（2026-10-06）新移入 kneeless 的**单入边** 7 格 ──────────────────
+      // 在册意图 = 本单落地时**由机器报出的** `gain = eff/λ`（临时探针打印逐边增益，
+      // ⛔ 不手抄系数表 —— `eff` 是解析后的有效系数，手算＝第二套真相源）。
+      // 实测它们全落在 **0.085–0.75**，与原 5 格同一套标定词表（0.3/0.5/0.6/0.8）
+      // ⇒ 「移出 0.75 预算约束」**没有造出失控增益**，这一点是量出来的、不是推的。
+      // 这几格原先被 `max:100` 的拐点挡着；改 `max:null` 后 0.75 咬不住它们，
+      // 故由本条接管（正是上面那段头注要求的「另有一条机器」）。
+      ["Base.loadIndex", 0.6],
+      ["ChangeoverMatrix.changeoverPressure", 0.4],
+      ["Customer.receivablePressure", 0.084999],
+      ["Line.blockedPressure", 0.55],
+      ["MaterialBatch.turnoverPressure", 0.5],
+      ["Order.costPressure", 0.75],
+      ["WIPLot.feedPressure", 0.7],
     ] as const) {
       const c = cells.get(cell)!;
       expect(c.edges.length, `${cell} 入边条数变了 ⇒ 下面那个增益不再是单边增益`).toBe(1);
@@ -1541,6 +1571,27 @@ describe("§6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算", () => {
           `⛔ 不许改这个期望值来让它绿 —— 该改的是系数。`,
       ).toBeCloseTo(intent, 9);
     }
+    // ⚠ 多入边的 kneeless 格不能塞进上面那个循环（它断言 `edges.length === 1`）。
+    //   下面两个各记**两个**数：`Σ|gain|` 与**带符号** Σgain —— 只用前者会漏掉方向，
+    //   而 2026-09-11 就是这么漏过一次（判据①b 头注：整格达标而四条边净和 −0.92575）。
+    for (const [cell, n, absIntent, signedIntent] of [
+      ["Model.costPressure", 3, 0.7499993, 0.29545385],
+      ["OrderLine.splitPressure", 2, 0.75, 0.75],
+    ] as const) {
+      const c = cells.get(cell)!;
+      expect(c.edges.length, `${cell} 入边条数变了 ⇒ 预算得重新分配，先解释再改这个数`).toBe(n);
+      expect(
+        c.edges.reduce((s, e) => s + Math.abs(e.gain), 0),
+        `${cell} 的 Σ|稳态增益| ≠ 在册意图 ${absIntent}（WO-DERIV-BACKFILL 移入 kneeless 时机器实测）`,
+      ).toBeCloseTo(absIntent, 6);
+      expect(
+        c.edges.reduce((s, e) => s + e.gain, 0),
+        `${cell} 的**带符号**净增益 ≠ 在册意图 ${signedIntent}。⛔ 本条与上一条都要看：` +
+          `Σ|增益| 达标**不度量方向**，一格可以又达标又净和为负（＝方向反了）。`,
+      ).toBeCloseTo(signedIntent, 6);
+    }
+    // ⚠ `Model.demandLoad` 虽也是 kneeless，但**不在此重复登记**：判据①（`sum ≈ 0.749961`）
+    //   与判据①b（带符号净增益 > 0）已经把它守住了，再记一遍就是两套真相源。
 
     // ── 判据①：`Model.demandLoad` 的现值（本单的落点）──────────────────────────────
     // 3.0550（4.07×）→ 1.8550（2.47×，归一 Σw）→ **0.749961（1.00×，本单整格重跑 f_g）**。
@@ -1626,11 +1677,24 @@ describe("§6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算", () => {
       //   ⇒ 引擎按「入度 0 = 外生输入」处理它：**不衰减**，`decayApplied` 里查无此项（回执实测）。
       //   没有入边就没有稳态增益，0.75 这把尺子量的是一条**不参与推演**的边。
       //   开关打开后它才成立，届时 1.12× 是真的（W=2.3995 × 意图 0.35）。
-      "Customer.receivablePressure",        // 1.15x · 【真超标·口径】单边 `source_value_relative`，
-      // W=10.1327 是**金额加权的扇入数**（150 单 / 17 客户 ≈ 8.8，按金额加权到 10.13）。
+      // ── ⚠ `Customer.receivablePressure` 已移出本集合（2026-10-06 WO-DERIV-BACKFILL）────────
+      // 它原在此列，理由是 **1.15× ·【真超标·口径】**：单边 `source_value_relative`，
+      // W=10.1327 是**金额加权的扇入数**（150 单 / 17 客户 ≈ 8.8，按金额加权到 10.13）；
       // 意图增益 0.085 显然是**按某个假设的扇入数**反算的（0.085 × 8.82 ≈ 0.75 恰好配满）——
-      // 真实扇入 10.13 ⇒ 超 15%。成因是「标定时假设的 W ≠ 实测 W」，属**口径错**这一类，
-      // 合格修法 = 按实测 W 重算这一条的意图增益，⛔ 不是全表缩系数。
+      // 真实扇入 10.13 ⇒ 超 15%。成因是「标定时假设的 W ≠ 实测 W」，属**口径错**这一类。
+      //
+      // **它掉出本集合，不是因为那个口径错被修了**（没修），而是因为**这把尺子对它不再适用**：
+      // 本单把它的域从 `[0,100]` 改成 `max: null` —— 判据是式子的**分母是授信额度、不是占比**
+      // ⇒ 占用率本就无上界（`receivablePressure = 应收账款 ÷ 授信额度 × 100`，超额度是业务真实状态）。
+      // 无上界 ⇒ 无拐点 ⇒ 判据③ 的 `0.75` 这条线**量不到它** ⇒ 它不再满足 `v.knee`。
+      //
+      // ⛔ 三条不许读错：
+      //   ① 它**没变好**：合计仍是 0.8613（1.15×），超预算这件事**照旧**；
+      //   ② 它**仍被钉着两处** —— 意图增益见**判据⓪**在册的 `0.084999`，
+      //      合计值**继续钉在下面判据③b 的表里**（我已手工把它加进去）；
+      //   ③ ⛔ 别把「掉出集合」当成「它的数可以随便动」—— **判据③ 的减少同样要解释**，
+      //      上面这段就是那个解释；下次它若自己长回来（有人把它改回 `max:100`），
+      //      本集合会**新增**这一条，届时同样要先解释。
       "Material.shortageRisk",              // 1.67x · 【真超标】6 条边**全是 `equal_share`(Σw=1)**
       // ⇒ W 恒 1 ⇒ ΣA = Σ|g| = 1.25 是个**有意义的和**，预算对它成立，就是没人算总账。
       // 业务理由（指向正确的修法，而不是一律缩小）：这 6 个源是**同一件事的六种测法**
@@ -1666,9 +1730,17 @@ describe("§6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算", () => {
     //
     // 判据落在**每格的数**上（6 位小数），任何一条入边的 basis / 归一方向 / 系数被改动，
     // 只要挪动了这几格的合计就当场红。⛔ 别用「都变了」这种一锅断言 —— 那读不出是哪一格。
-    const overValues = Object.fromEntries(
-      over.map((k) => [k, Number((cells.get(k)!.sum).toFixed(6))]),
-    );
+    // ⚠ 2026-10-06（WO-DERIV-BACKFILL）：本表的键**不再等于**判据③ 的集合 ——
+    //   `Customer.receivablePressure` 移出 `knee` 后不再属于 `over`，但**数值照钉**，
+    //   故手工补在下面（理由见判据③ 里那段「已移出本集合」）。
+    //   ⛔ 判据是「掉出集合只是拐点尺子不适用」≠「它的数可以动」—— 本表就是这后半句的机器。
+    const overValues = Object.fromEntries([
+      ...over.map((k) => [k, Number((cells.get(k)!.sum).toFixed(6))] as const),
+      [
+        "Customer.receivablePressure",
+        Number((cells.get("Customer.receivablePressure")!.sum).toFixed(6)),
+      ] as const,
+    ]);
     expect(
       overValues,
       "超预算格子的**合计值**变了。集合没变不代表没变坏：已在集合里的格子再坏 N 倍，集合是看不出来的。\n" +

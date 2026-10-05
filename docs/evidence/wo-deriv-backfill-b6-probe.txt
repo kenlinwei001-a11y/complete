@@ -1,0 +1,110 @@
+实例 http://127.0.0.1:4107   B 档 6 条逐条读现状（原文，不转述）
+====================================================================================================
+
+### CustomerLocation.deliveryHoldRisk   n=30
+   全部属性（出现次数/对象数）：
+     address                串       30/30                                     广东广州广汽埃安交付点1
+     city                   串       30/30                                     广州
+     customerRef            串       30/30                                     cust_0
+     isDeliveryDefault      混合      30/30                                     True
+     lat                    数       30/30  [23.13, 39.9] 不同值8                 23.13
+     locId                  串       30/30                                     LOC-cust_0-0
+     lon                    数       30/30  [106.55, 121.47] 不同值8              113.26
+     province               串       30/30                                     广东
+   ★ 本格现值：None
+
+### ExceptionEvent.handlingBacklog   n=372
+   全部属性（出现次数/对象数）：
+     excId                  串      372/372                                     EXC-AL-ALM-LINE-WS-changzh
+     excType                串      372/372                                     EQUIPMENT
+     occurredAt             串      372/372                                     2026-06-10T10:00:00Z
+     refId                  串      372/372                                     ALM-LINE-WS-changzhou-asse
+     refType                串      372/372                                     EquipmentAlarm
+     severity               串      372/372                                     LOW
+     source                 串      372/372                                     alarm
+     status                 串      372/372                                     RESOLVED
+     summary                串      372/372                                     设备 LINE-WS-changzhou-assem
+   ★ 本格现值：None
+
+### MaintenanceOrder.repairBacklog   n=193
+   全部属性（出现次数/对象数）：
+     actualEnd              串      193/193                                     2026-06-16
+     actualStart            串      193/193                                     2026-06-15
+     baseId                 串      193/193                                     changzhou
+     equipId                串      193/193                                     LINE-WS-changzhou-assembly
+     lineId                 串      193/193                                     LINE-WS-changzhou-assembly
+     maintType              串      193/193                                     预测性
+     moId                   串      193/193                                     MO-LINE-WS-changzhou-assem
+     plannedEnd             串      193/193                                     2026-06-17
+     plannedStart           串      193/193                                     2026-06-15
+     priority               串      193/193                                     中
+     status                 串      193/193                                     已完成
+   ★ 本格现值：None
+
+### Model.forecastBias   n=6
+   全部属性（出现次数/对象数）：
+     applicationDomain      串        6/6                                     乘用车
+     backlogPriceTop        数        6/6  [14420, 22660] 不同值2                22660
+     backlogQtyTop          数        6/6  [7624, 21777] 不同值6                 10727
+     bases                  混合       6/6                                     ['wuhan', 'xiamen', 'zigon
+     capacity               数        6/6  [50, 314] 不同值6                     50
+     carbonFootprint        数        6/6  [58, 76] 不同值2                      76
+     chem                   串        6/6                                     NCM
+     costPressure           数        6/6  [2.4653, 3.8858] 不同值6              2.9085
+     demandLoad             数        6/6  [23.5669, 138] 不同值6                138
+     dimension              串        6/6                                     21×70
+     energy                 数        6/6  [180, 1110] 不同值6                   180
+     modelId                串        6/6                                     2170-NCM
+     name                   串        6/6                                     2170 三元圆柱
+     orderCount             数        6/6  [68, 116] 不同值6                     69
+     pos                    串        6/6                                     动力
+     productCode            串        6/6                                     P-2170-NCM-050
+     seriesId               串        6/6                                     FAM-004
+     status                 串        6/6                                     量产
+     supplyRisk             数        6/6  [15.7556, 16.3404] 不同值2            15.7556
+     totalDemand            数        6/6  [302813, 558109] 不同值6              315606
+     unitCost               数        6/6  [540.2, 632.84] 不同值2               632.84
+     unitPrice              数        6/6  [13902, 22022] 不同值6                21758
+     voltage                数        6/6  [3.2, 3.7] 不同值3                    3.6
+     weight                 数        6/6  [70, 5200] 不同值6                    70
+   ★ 本格现值：None
+
+### OrderPromise.promiseRisk   n=50
+   全部属性（出现次数/对象数）：
+     asOf                   串       50/50                                     2026-06-10
+     atpStatus              串       50/50                                     CONFIRMED
+     bottleneck             混合      50/50                                     None
+     committableQty         数       50/50  [1454, 21777] 不同值40                7259
+     model                  串       50/50                                     4680-NCM
+     orderRef               串       50/50                                     SO-3391
+     promiseDate            串       50/50                                     2026-06-10
+     promiseId              串       50/50                                     AP-SO-3391
+     requestedQty           数       50/50  [1454, 21777] 不同值40                7259
+     shortfallQty           数       50/50  [0, 0] 不同值1                        0
+   ★ 本格现值：None
+
+### Order.orderChurn   n=500
+   全部属性（出现次数/对象数）：
+     bases                  混合     500/500                                     ['hefei', 'jinhua']
+     businessType           串      500/500                                     passenger
+     costPressure           数      500/500  [40, 115] 不同值51                    115
+     creditUsedRatio        数      500/500  [0.4, 1.15] 不同值51                  1.15
+     cust                   串      500/500                                     广汽集团
+     customerId             串      500/500                                     cust_14
+     demandDelta            数      500/500  [0, 0.6] 不同值51                     0.6
+     demandPressure         数      500/500  [0, 60] 不同值51                      60
+     due                    串      500/500                                     2026-06-24
+     dueMonth               串      500/500                                     2026-06
+     early                  混合     500/500                                     False
+     earlyDue               混合      28/500                                     None
+     leadDays               数      500/500  [-180, 178] 不同值212                 14
+     model                  串      500/500                                     4680-NCM
+     outsourceRatio         数      500/500  [0, 0.35] 不同值19                    0.35
+     pri                    串      500/500                                     高
+     qty                    数      500/500  [648, 21777] 不同值478                7259
+     shortageRisk           数      500/500  [0, 35] 不同值19                      35
+     so                     串      500/500                                     SO-3391
+     status                 串      500/500                                     OPEN
+     unitPrice              数      500/500  [13580, 22660] 不同值142              22198
+     value                  数      500/500  [1.15824e+07, 3.52398e+08] 不同值500  161135282
+   ★ 本格现值：None
