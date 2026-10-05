@@ -16,7 +16,7 @@
 import { describe, expect, it } from "vitest";
 import { fileURLToPath } from "node:url";
 import type { SkillDefinition } from "@platform/contracts";
-import { buildSessionSetup, mapSkill } from "../src/dsh-runtime/index.js";
+import { buildSessionSetup, mapSkill, type DshSkillSpec } from "../src/dsh-runtime/index.js";
 import { seedRegistry } from "../src/mocks/seed.js";
 
 const HARNESS_DIR = fileURLToPath(new URL("../../../packages/dsh-harness", import.meta.url));
@@ -53,7 +53,9 @@ const agentDef = () => ({
   status: "PUBLISHED" as const,
 });
 
-function specFor(skills: SkillDefinition[]) {
+// ⚠ 收编方订正：原写 `SkillDefinition[]`，而 4 个调用点传的都是 `mapSkill(...)` 的产物
+// `DshSkillSpec[]`（`buildSessionSetup` 要的也是后者）⇒ `pnpm -r typecheck` 5 错。
+function specFor(skills: DshSkillSpec[]) {
   return buildSessionSetup({
     agent: agentDef(),
     agentSystemCore: "CORE",

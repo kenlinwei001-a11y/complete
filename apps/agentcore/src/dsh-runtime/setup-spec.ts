@@ -120,6 +120,12 @@ export interface DshSkillSpec {
    */
   content: string;
   /**
+   * 附件清单（`read_skill_resource` 的元信息来源）。⚠ 本字段于 WO-DSH-SOLVER-GATE 合并时
+   * 被误删（`mapSkill` 一直在发它、消费方一直在读，只是接口不再声明）⇒ `pnpm -r typecheck`
+   * 7 错。收编方补回，别无他改。
+   */
+  resources: { name: string; blobKey: string; mime?: string; description?: string }[];
+  /**
    * WO-DSH-SOLVER-GATE · 本技能声明的 `{kind:"solver", role:"precondition"}` 求解器 key
    * （required 缺省视为 true，与 native 臂 `skillRefKeys` 同判据；抽取由调用方经该函数完成，
    * 本字段只承载结果——⛔ 不在这里另写一份过滤条件）。
