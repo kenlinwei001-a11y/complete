@@ -255,14 +255,16 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
   {
     // 增量 §3：技能附件可消费（渐进披露第三级：summary → body → resource）。
     // 文本类（md/txt/csv/json）返回内容（≤64KB 截断+提示）；二进制类仅返回元信息。
+    // ⛔ 本描述两臂共用，**不得点名加载器**：两臂真名不同（native `load_skill` / dsh `skill`），
+    //    写任一臂的名字都会让另一臂的模型看到一个该臂不存在的工具。
     name: "read_skill_resource",
     descriptionForLLM:
-      "读取技能附件资源：按 skillId + resourceName 读取。文本类（md/txt/csv/json）返回内容（超 64KB 截断）；二进制类只返回元信息（无法直接读取）。load_skill 返回的资源清单告诉你有哪些附件可读。",
+      "读取技能附件资源：按 skillId + resourceName 读取。文本类（md/txt/csv/json）返回内容（超 64KB 截断）；二进制类只返回元信息（无法直接读取）。技能加载时返回的资源清单告诉你有哪些附件可读。",
     inputSchema: {
       type: "object",
       properties: {
         skillId: { type: "string" },
-        resourceName: { type: "string", description: "load_skill 资源清单中的附件名" },
+        resourceName: { type: "string", description: "技能加载时返回的资源清单中的附件名" },
       },
       required: ["skillId", "resourceName"],
     },
