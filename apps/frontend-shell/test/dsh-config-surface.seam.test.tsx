@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
-import { screen } from "@testing-library/react";
+import { cleanup, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { mcpServerNameSlug, mcpToolFullName, parseMcpToolFullName, type AgentDefinition, type McpServerConfig } from "@platform/contracts";
 import { loginAs, renderApp } from "./utils";
 import { server } from "./setup";
+import { queryClient } from "@/store/queryClient";
 import { MCP_ORIGIN_BASIS, mcpNamespaceOf, mcpOriginOf } from "@/api/mcpNamespace";
 
 /**
@@ -50,6 +51,17 @@ const agentWith = (over: Partial<AgentDefinition>): AgentDefinition =>
     ...over,
   }) as AgentDefinition;
 
+/**
+ * 卸载 + 清缓存再重挂。
+ * ⚠ 只 `cleanup()` 不够：`@/store/queryClient` 是模块级单例（测试间才在 afterEach 清），
+ * 同一用例里重挂会命中上一臂的缓存 ⇒ 拿旧数据「验」出新结论。对照实验两臂之间必须清。
+ */
+async function remount() {
+  cleanup();
+  await queryClient.cancelQueries();
+  queryClient.clear();
+}
+
 /** 只跑 MCP 页：列表行 + 选中后的 DSH 原生面。 */
 async function renderMcpPage(configs: McpServerConfig[], user: ReturnType<typeof userEvent.setup>) {
   server.use(http.get("*/b/v1/mcp-configs", () => HttpResponse.json(configs)));
@@ -93,8 +105,8 @@ describe("WO-DSH-CONFIG-SURFACE · MCP 配置的 DSH 命名空间面", () => {
     await screen.findByText("市场行情 MCP");
     expect(screen.getByTestId("mcp-row-namespace-mcp_01JMARKET").textContent).toBe("mcp__market_data__*");
 
-    // 同一棵树、只换 serverName 这一个值：先卸载再重挂
-    document.body.innerHTML = "";
+    // 同一棵树、只换 serverName 这一个值：卸载 + 清缓存后按同一路径重挂
+    await remount();
     await renderMcpPage(after, user);
     await screen.findByText("市场行情 MCP");
     const row = screen.getByTestId("mcp-row-namespace-mcp_01JMARKET");
@@ -114,7 +126,7 @@ describe("WO-DSH-CONFIG-SURFACE · MCP 配置的 DSH 命名空间面", () => {
     await screen.findByText("本体切片 MCP");
     expect(screen.getByTestId("mcp-row-origin-mcp_builtin_ontology").textContent).toBe("平台内置");
 
-    document.body.innerHTML = "";
+    await remount();
     await renderMcpPage([tenantOwned], user);
     await screen.findByText("本体切片 MCP");
     expect(screen.getByTestId("mcp-row-origin-mcp_01JCOPY").textContent).toBe("租户自建");
