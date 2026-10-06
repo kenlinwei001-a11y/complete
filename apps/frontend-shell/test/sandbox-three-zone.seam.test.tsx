@@ -105,8 +105,38 @@ function loadImp(): Record<string, unknown> {
 const IMP = loadImp();
 const IMP_ROWS = IMP.impediments as { impedimentId: string }[];
 
-/** 建会话时后端回的那份 baseSnapshot（= 下区差分的左端）。桩里捕获，测试据此现算期望值。 */
+/**
+ * ══ 🔄 F0 重锚（WO-M0-GROUND-TRUTH，2026-09-19 路B裁决落地）═══════════════════════════
+ *
+ * **改之前（X）**：`createSimSession` 的桩里写 `capturedBase = body.baseSnapshot` ——
+ * 捕获的是**前端自己用 `hash01` 现编**的那份世界，`init` 把它塞进建会话 body 里。
+ *
+ * **为什么它今天红**：F0 之后 `init` **不传 `baseSnapshot`**（`SandboxView.tsx` 里的
+ * `const s = await createSimSession({ scope });`），前端没有对象、一格都不造，
+ * 世界由服务端 `deriveSeedBaseSnapshot` 现派生随 **201 回包**下发。
+ * 于是 `body.baseSnapshot === undefined` ⇒ `capturedBase = undefined` ⇒ `baseWorld = null`
+ * ⇒ `deriveStateVarDeltas` 直接返回 `null` ⇒ 差分带**整条不出**（屏上是
+ * `sandbox-impact-delta-missing`）——**4 条用例红在一个与它们各自判据毫不相干的地方**，
+ * 报错还是 `Cannot read properties of undefined (reading 'mb_001')`。
+ *
+ * **改之后（Y = 现在）**：世界从**回包**这一份来（与真后端同形状），测试据此现算期望值。
+ * 这才是本门原本要判的那个形态：下区差分的左端 = 服务端派生的 tick0，不是前端编的。
+ *
+ * ⚠ 值**刻意避开 50 附近那一族**（`hash01` 派生值按大数定律收敛到 50）——
+ *   屏上若出现 50 附近，说明前端自造数据回潮，而不是服务端下发的这一份。
+ * R6 确定性：定值表，无时钟、无随机。
+ */
+const SERVER_BASE: TickState = Object.fromEntries(
+  (Object.values(CFG.nodeObjectIds).flat() as string[]).map((id, i) => [
+    id,
+    Object.fromEntries(STATE_VARS.map((v, j) => [v, 12 + i * 7 + j * 3])),
+  ]),
+) as TickState;
+
+/** 建会话**回包**里那份 baseSnapshot（= 下区差分的左端）。桩里捕获，测试据此现算期望值。 */
 let capturedBase: TickState = {};
+/** 建会话请求的 body **原文**（未经回填）—— 用来咬「`baseSnapshot` 这个键压根不在」。 */
+const createBodies: Record<string, unknown>[] = [];
 /** 施加扰动后后端回的世界态。默认 = 基线（"一项都没动"那一档），单条用例里再改。 */
 let perturbedState: TickState | null = null;
 
@@ -120,12 +150,13 @@ vi.mock("@/api/endpoints", () => ({
       ? { data: IMP, snapshotVersion: "ov-test" }
       : Promise.reject({ error: { code: "NOT_STUBBED", message: "本门不桩 chain_loss_attribution", requestId: "req_test" } }),
   ),
-  createSimSession: vi.fn(async (body: { baseSnapshot: TickState }) => {
-    capturedBase = body.baseSnapshot;
+  createSimSession: vi.fn(async (body: Record<string, unknown>) => {
+    createBodies.push(body);
+    capturedBase = SERVER_BASE;
     return {
       id: "sims_v3",
       tenantId: "demo",
-      baseSnapshot: body.baseSnapshot,
+      baseSnapshot: SERVER_BASE,
       scope: {},
       status: "READY",
       curTick: 0,
@@ -184,6 +215,7 @@ const ready = async () => {
 
 beforeEach(() => {
   capturedBase = {};
+  createBodies.length = 0;
   perturbedState = null;
   runImpactFn.mockReset();
   /**
@@ -628,6 +660,12 @@ describe("§4 · 下区影响带 —— 扰动 × 影响传播的**接缝**（SE
     const user = userEvent.setup();
     mount();
     await ready();
+    // 🐤 金丝雀先立：桩真的记账了，否则下面那条否定结论什么都没证明。
+    expect(createBodies.length, "createSimSession 桩没记账 ⇒ 下面「body 里没有 baseSnapshot」证明不了任何事").toBeGreaterThan(0);
+    // ★ F0 接缝判据（WO-M0-GROUND-TRUTH）：建会话 body 里 **`baseSnapshot` 这个键压根不在**。
+    //   前端没有对象 ⇒ 它编的那一份是假数据（仓主定义）；世界由服务端现派生随 201 回包下发。
+    //   本门上面那份 `SERVER_BASE` 现在就是**回包**那一份，不再是前端塞进去的那一份。
+    expect("baseSnapshot" in createBodies[0]!, "F0 后前端还在往建会话 body 里塞自己编的世界 —— 路B裁决被回潮").toBe(false);
     // 未施加扰动前**不许**发请求：没有假设就没有影响，跑一次得到的是"改了个空"的结论。
     expect(runImpactFn).not.toHaveBeenCalled();
     expect(screen.getByTestId("impact-need-change").textContent ?? "").toContain("左区还没有施加扰动");

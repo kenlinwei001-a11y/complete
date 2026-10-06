@@ -138,7 +138,35 @@ const SESSION_ID = "sims_cfgux";
 
 /** 会话上**已落盘**的屏蔽集 —— 关系图的单一真相源（`patchSimDisabledRules` 写，`fetchSimSessions` 读）。 */
 let sessionDisabled: string[] = [];
+/**
+ * ══ 🔄 F0 重锚（WO-M0-GROUND-TRUTH，2026-09-19 路B裁决落地）═══════════════════════════
+ *
+ * **改之前（X）**：`createSimSession` 的桩里写 `capturedBase = body.baseSnapshot` ——
+ * 捕获的是**前端自己现编**的那份世界。
+ *
+ * **为什么它今天红**：F0 之后 `init` **不传 `baseSnapshot`**
+ * （`SandboxView.tsx`：`const s = await createSimSession({ scope });`），世界由服务端
+ * `deriveSeedBaseSnapshot` 现派生随 **201 回包**下发。于是 `body.baseSnapshot === undefined`
+ * ⇒ 回包的 `baseSnapshot` 也是 `undefined` ⇒ 屏上 `baseWorld` 为空
+ * ⇒ 扰动施加后**没有可比的两端** ⇒ 结果区的 `sandbox-perturbation-last-delta` 整条不出。
+ * 报错指向「结果区的数没变」，而真因在**建会话那一跳的桩还停在 F0 之前**。
+ *
+ * **改之后（Y = 现在）**：世界从**回包**这一份来（与真后端同形状）——
+ * 这才是本门要判的形态：屏上的基线是世界态（服务端派生），不是前端编的。
+ *
+ * ⚠ 值刻意避开 50 附近那一族（`hash01` 派生值收敛到 50）。R6 确定性：定值表，无时钟无随机。
+ */
+const SERVER_BASE: TickState = Object.fromEntries(
+  (Object.values(CFG.nodeObjectIds).flat() as string[]).map((id, i) => [
+    id,
+    Object.fromEntries(CFG.stateVars.map((v, j) => [v, 11 + i * 5 + j * 4])),
+  ]),
+) as TickState;
+
+/** 建会话**回包**里那份 baseSnapshot。桩里捕获，测试据此现算期望值。 */
 let capturedBase: TickState = {};
+/** 建会话请求的 body **原文**（未经回填）—— 用来咬「`baseSnapshot` 这个键压根不在」。 */
+const createBodies: Record<string, unknown>[] = [];
 
 const { patchFn } = vi.hoisted(() => ({ patchFn: vi.fn() }));
 
@@ -146,12 +174,13 @@ vi.mock("@/api/endpoints", () => ({
   fetchWorkspace: vi.fn(),
   fetchSimViewConfig: vi.fn(async () => CFG),
   runSolver: vi.fn(async () => Promise.reject({ error: { code: "NOT_STUBBED", message: "本门不桩求解器", requestId: "req_t" } })),
-  createSimSession: vi.fn(async (body: { baseSnapshot: TickState }) => {
-    capturedBase = body.baseSnapshot;
+  createSimSession: vi.fn(async (body: Record<string, unknown>) => {
+    createBodies.push(body);
+    capturedBase = SERVER_BASE;
     return {
       id: SESSION_ID,
       tenantId: "demo",
-      baseSnapshot: body.baseSnapshot,
+      baseSnapshot: SERVER_BASE,
       scope: {},
       status: "READY",
       curTick: 0,
@@ -264,6 +293,7 @@ function graphCounts(): { nodes: number; edges: number; active: number } {
 beforeEach(() => {
   sessionDisabled = [];
   capturedBase = {};
+  createBodies.length = 0;
   patchFn.mockReset();
   patchFn.mockImplementation(async (_id: string, keys: string[]) => {
     sessionDisabled = [...keys];
@@ -449,6 +479,12 @@ describe("§2 · 双向联动（判据落在**数**与**DOM 结构**上）", () 
     const user = userEvent.setup();
     mount();
     await ready();
+    // ★ F0 接缝判据（WO-M0-GROUND-TRUTH）：本条之前红在「建会话桩还停在 F0 之前」——
+    //   桩读 `body.baseSnapshot` 而前端**不再传**它 ⇒ 基线世界为空 ⇒ 差分两端无从比。
+    //   现在基线来自**回包**，故这里把「body 里压根没有那个键」钉成机器判据，
+    //   下次谁把前端自造世界塞回去，红在**这条**上，而不是红在十层之外的「数没变」。
+    await waitFor(() => expect(createBodies.length, "createSimSession 桩没记账 ⇒ 下面那条否定结论证明不了任何事").toBeGreaterThan(0));
+    expect("baseSnapshot" in createBodies[0]!, "F0 后前端还在往建会话 body 里塞自己编的世界 —— 路B裁决被回潮").toBe(false);
     await user.click(screen.getByTestId("sandbox-perturbation-apply-btn"));
     const last = await screen.findByTestId("sandbox-perturbation-last-delta");
     const [b, a] = last.textContent!.split("→").map((s) => Number(s.trim()));
