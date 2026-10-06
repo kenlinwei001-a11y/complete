@@ -1,0 +1,99 @@
+## GOALLOOP-R2 · 独立复算 · BASE=http://127.0.0.1:4052 · 10 拍
+## 臂：零扰 / 单A（obj_order_SO-3391.leadDays -3）/ 多扰动 A+B（+ obj_material_al_foil.priceShock 10）
+
+### ⓪ 原始面（台账，未经 solver）
+  Order 全表 = 500 张（回包 total=500）· 分桶 = {"OPEN":50,"COMPLETED":350,"IN_PRODUCTION":100}
+  世界成员（status≠COMPLETED ∧ 未合并）= 150 张 · 非成员 = 350 张
+  Σ权重(全表)     = 45464327004.000000000000 元 = 454.643270 亿
+  Σ权重(世界成员) = 15663001584.000000000000 元 = 156.630016 亿
+  ⇒ 全表/世界成员 = 2.902657
+  成本基线 FinancePlan(line=销售成本).rolling = 581.1 亿（真主键 finId=fin-cogs）
+  🐤 正向对照（必然为真）：全表权重大于 0 且成员权重大于 0 ⇒ ✅ 尺子有读数（不是空集判绿）
+
+### ① 三臂会话
+  零扰: session=sims_cvv4s0jk2xzdzx8t curTick=10 available=true source=TICK objects=4425
+     回包 pressures[costPressure(Order)] value=0.000000 carriers=150 universe=500 denominator={"set":"SIM_WORLD_MEMBERS","n":150,"weightSum":15663001584}
+     回包 lines[COST].delta=0.000000 亿（0.00 万元）· lines[MARGIN].delta=0.000000 亿（0.00 万元）
+     回包 cash: arBaseline=160802 arProjected=160802 overdueExposure=0
+  单A: session=sims_jqadddhpyr3rq6vf curTick=10 available=true source=TICK objects=4425
+     回包 pressures[costPressure(Order)] value=0.004602 carriers=150 universe=500 denominator={"set":"SIM_WORLD_MEMBERS","n":150,"weightSum":15663001584}
+     回包 lines[COST].delta=0.026744 亿（267.44 万元）· lines[MARGIN].delta=-0.026744 亿（-267.44 万元）
+     回包 cash: arBaseline=160802 arProjected=160805.7801 overdueExposure=0.856622
+  多扰动A+B: session=sims_6scqe6x1d0erqnpj curTick=10 available=true source=TICK objects=4425
+     回包 pressures[costPressure(Order)] value=0.020226 carriers=150 universe=500 denominator={"set":"SIM_WORLD_MEMBERS","n":150,"weightSum":15663001584}
+     回包 lines[COST].delta=0.117531 亿（1175.31 万元）· lines[MARGIN].delta=-0.117531 亿（-1175.31 万元）
+     回包 cash: arBaseline=160802 arProjected=160820.818189 overdueExposure=4.419352
+
+### ② 🐤 金丝雀（缺一即判 NOT-MEASURED，⛔ 不许报绿）
+  (a) 脉冲 A 落地：obj_order_SO-3391.leadDays tick0=14.000000000000 → tickN=11.000000000000 ⇒ ✅ 已落地
+  (a2) 脉冲 B 落地（多扰动臂）：obj_material_al_foil.priceShock tick0=2.000000000000 → tickN=12.000000000000 ⇒ ✅ 已落地
+  (a3) 零扰臂对照：obj_order_SO-3391.leadDays tickN=14.000000000000（应与 tick0 同 ⇒ 零扰臂没被误扰动）
+  (b) 成员集合两条独立路径一致：文档判据 150 张 vs 世界态实测 150 张 ⇒ ✅ 一致
+      ⛔ 参考：非成员 350 张（若 =0 而 COMPLETED=350 ⇒ 判据没生效，不许报「没有已完成订单」）
+
+### ③ 独立复算 · 零扰臂
+  N = Σ_{世界成员 ∧ Δp≠0} (qty×unitPrice×Δp) = 0.000000000000 元·pp（参与的单 = 0 张）
+  W_driven（这 0 张的 Σ权重）= 0.000000000000 = 0.000000 亿
+  Δcost 口径U2（世界成员分母，判据口径）= 0.000000 元 = 0.00 万元
+  Δcost 口径U1（对象层全表分母）      = 0.000000 元 = 0.00 万元
+  Δcost 口径U3（只摊被推动的 0 张）  = 0.000000 元 = 0.00 万元
+  三口径两两差：|U2−U1|=0.00 万元 · |U3−U2|=0.00 万元 · |U3−U1|=0.00 万元
+  （参照口径对照，同一臂换零扰臂终态当静息值）N=0.000000000000（参与 0 张）⇒ Δcost(U2)=0.00 万元 · 与上者之比=0.000000
+
+### ③ 独立复算 · 单A臂（提前交付 3 天）
+  N = Σ_{世界成员 ∧ Δp≠0} (qty×unitPrice×Δp) = 72085653.888482511044 元·pp（参与的单 = 24 张）
+  W_driven（这 24 张的 Σ权重）= 3628874568.000000000000 = 36.288746 亿
+  Δcost 口径U2（世界成员分母，判据口径）= 2674389.914982 元 = 267.44 万元
+  Δcost 口径U1（对象层全表分母）      = 921359.145400 元 = 92.14 万元
+  Δcost 口径U3（只摊被推动的 24 张）  = 11543240.938659 元 = 1154.32 万元
+  三口径两两差：|U2−U1|=175.30 万元 · |U3−U2|=886.89 万元 · |U3−U1|=1062.19 万元
+  （参照口径对照，同一臂换零扰臂终态当静息值）N=72085653.888482511044（参与 24 张）⇒ Δcost(U2)=267.44 万元 · 与上者之比=1.000000
+
+### ③ 独立复算 · 多扰动臂 A+B
+  N = Σ_{世界成员 ∧ Δp≠0} (qty×unitPrice×Δp) = 316794645.755115151405 元·pp（参与的单 = 150 张）
+  W_driven（这 150 张的 Σ权重）= 15663001584.000000000000 = 156.630016 亿
+  Δcost 口径U2（世界成员分母，判据口径）= 11753134.778225 元 = 1175.31 万元
+  Δcost 口径U1（对象层全表分母）      = 4049094.769007 元 = 404.91 万元
+  Δcost 口径U3（只摊被推动的 150 张）  = 11753134.778225 元 = 1175.31 万元
+  三口径两两差：|U2−U1|=770.40 万元 · |U3−U2|=0.00 万元 · |U3−U1|=770.40 万元
+  （参照口径对照，同一臂换零扰臂终态当静息值）N=316794645.755115151405（参与 150 张）⇒ Δcost(U2)=1175.31 万元 · 与上者之比=1.000000
+
+### ③b 应收侧独立复算（发票 60 张 · 客户 20 家 · 按 custName 同名匹配）
+  单A：匹配到客户 60/60 张（正向对照：>0 ⇒ 这条复算真的走了匹配路）
+    arBaseline  复算=160802.000000 vs 回包=160802 → 差 0.000000 ✅
+    arProjected 复算=160805.780100 vs 回包=160805.7801 → 差 -3.233e-7 ✅
+    overdueExposure 复算=0.856622 vs 回包=0.856622 → 差 3.623e-7 ✅
+  多扰动A+B：匹配到客户 60/60 张（正向对照：>0 ⇒ 这条复算真的走了匹配路）
+    arBaseline  复算=160802.000000 vs 回包=160802 → 差 0.000000 ✅
+    arProjected 复算=160820.818189 vs 回包=160820.818189 → 差 -3.447e-7 ✅
+    overdueExposure 复算=4.419352 vs 回包=4.419352 → 差 -3.442e-7 ✅
+
+### ④ 判据
+  (1) 复算 Δcost(U2) = 2674389.914982 元 vs 回包 lines[COST].delta = 2674400.000000 元
+      差 = 10.085018 元 ⇒ 容差 1000 元 ✅ 过
+      毛利：回包 lines[MARGIN].delta = -2674400.000000 元 · Δ收入 = 0.000000 元（恒 0？是)
+      ⇒ 毛利继承 Δ成本：✅ 逐位同幅
+  (1b) 多扰动臂 A+B：复算 Δcost(U2) = 11753134.778225 元 vs 回包 lines[COST].delta = 11753100.000000 元 ⇒ 差 = 34.778225 元 ✅ 过
+       毛利继承：回包 MARGIN.delta = -11753100.000000 元 · Δ成本 = 11753100.000000 元 ⇒ ✅ 同幅
+       多扰动臂复算 vs 单A 臂复算 = 4.394698 倍（两臂不是同一扰动 ⇒ 这个比**不**该等于任何固定数，仅记录）
+  (1c) 零扰臂对答案：复算 0 元 vs 回包 COST.delta 0 元 ⇒ 差 = 0.000000 元 ✅ 过
+  (c2) 跨臂指纹（改前回执 vs 本探针两个口径）：
+       改前 4052 回包 COST.delta = 921400.000000 元（R1 回执，改前 dist 实测）
+       本探针 U1 口径（全表分母）  = 921359.145400 元 ⇒ 改前/U1 = 2.902540 ≠ 1 的倍数 = 0.999956 ⇒ ✅ 改前的数 = 今天 U1 口径（改的确实是分母，不是传导）
+       改后回包 = 2674400.000000 元 ⇒ 改后/改前 = 2.902540（判据 2.9027 ∈ [2.9025,2.9028]？✅）
+  (2) 另两口径与 U2 的最小两两差 = 175.30 万元 ⇒ ≥100 万元？✅ 尺子分得开
+  (3) 零扰臂 Δcost = 0.000000 元（严格 =0？✅ 是) · 零扰臂 N=0.000000000000
+      脉冲 14→11：✅ · 世界成员=150（判据要 150）· Δp≠0=24（判据要 24）
+  (c) 全表/世界成员 = 2.902657 ⇒ 落在 [2.9025, 2.9028]？✅ 位置钉住（改的是分母）
+      回包 costPressure.value = 0.004602 vs 复算 N/W_members = 0.004602（round6 后 0.004602）
+  (d) 应收侧（改前回执 {"arBaseline":160802,"arProjected":160805.7801,"overdueExposure":0.856622}）⇒ 本次 {"arBaseline":160802,"arProjected":160805.7801,"overdueExposure":0.856622}
+      逐位不变？✅ 是（改口径只动了成本/毛利，应收侧是本次改动的对照臂）
+  (e) 回包 denominator 自证：{"set":"SIM_WORLD_MEMBERS","n":150,"weightSum":15663001584} vs 期望 {"set":"SIM_WORLD_MEMBERS","n":150,"weightSum":15663001584} ⇒ ✅
+
+## 结论：✅ 判据同时成立（(1) 三臂复算全吻合 (2) 尺子分得开 (3) 零扰=0 且金丝雀全中 · 改前数 = 今日 U1 口径）
+## ⛔ 口径声明（禁令 D1，与本行分开陈述）：上面 ✅ 验的是**算术**（给定「世界成员」这个口径，
+##    这个数算得出来）。**「该用哪个口径」不由本探针判定** —— 那由
+##    docs/evidence/GOALLOOP-R2-decision.txt 的三条锚（业务问题原文 / entersSimWorld 裁定理由 /
+##    单一物化入口令）裁定。改前臂同样吻合（比值 0.999711971）而口径是错的 ⇒ 吻合不度量口径。
+SESSION_Z=sims_cvv4s0jk2xzdzx8t SESSION_A=sims_jqadddhpyr3rq6vf SESSION_AB=sims_6scqe6x1d0erqnpj
+DONE 2026-10-06T14:43:04.335Z

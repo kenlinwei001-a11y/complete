@@ -74,6 +74,7 @@ const OUT_OK: FinanceWorldProjectionOutput = {
       value: 4.5,
       carriers: 1,
       universe: 24,
+      denominator: { set: "SIM_WORLD_MEMBERS", n: 24, weightSum: 1 },
       weighting: "VALUE",
       weightingNote: "按承载对象真金额加权",
       provenance: { kind: "派生", drillType: "Order", drillId: "obj_order_SO-1", drillField: "costPressure", drillValue: 108 },

@@ -42,6 +42,7 @@
 import {
   FINANCE_WORLD_DEFAULT_LINE_ROLES,
   FINANCE_WORLD_PRESSURE_DIVISOR,
+  MONEY_CHARGE_BASIS, // GOALLOOP-R2 · 金额摊销轴的**唯一**口径出处（contracts 声明 · battery.ts 登记）
   type FinanceWorldBasis,
   type FinanceWorldCash,
   type FinanceWorldChainHop,
@@ -55,11 +56,15 @@ import {
   type TickState,
   type TurnDynamics,
 } from "@platform/contracts";
-import type { AuthCtx, ObjectInstance } from "../domain.js";
+import type { AuthCtx } from "../domain.js";
 import { notFound, validationError } from "../errors.js";
 import type { Repos } from "../repo/repo.js";
 import { round } from "../prng.js";
 import { DeviationReader } from "../sim/deviation-read.js";
+// GOALLOOP-R2 · 推演世界成员集合的**唯一物化入口**（`seed-world.ts` 的单一入口令）。
+// ⛔ 本文件此前是**第 6 份手抄**：各来一遍 `repos.objects.listByType(...)`，而且抄漏了
+//    `entersSimWorld` 过滤 ⇒ 分母把 350 张「任何扰动都改不了结果」的已完成单也摊了进去。
+import { listSimWorldObjects, type SimWorldRow } from "../sim/seed-world.js";
 import { deriveTurnDynamics, readWorldLine, WORLD_LINE_DEFAULT_WINDOW } from "../sim/world-line.js";
 import { num, str } from "./types.js";
 
@@ -99,13 +104,38 @@ const stateOf = (world: TickState, objectId: string, stateVar: string): number |
   return typeof v === "number" ? v : undefined;
 };
 
+/** 金额口径只吃这三个字段（`listSimWorldObjects` 回的结构，比 `ObjectInstance` 窄 ⇒ 不必先转宽）。 */
+type ChargeableObject = SimWorldRow["obj"];
+
 /** 对象在本次金额口径下的权重（真金额；拿不到 → 0，由调用方回落等权）。 */
-type WeightFn = (o: ObjectInstance) => number;
+type WeightFn = (o: ChargeableObject) => number;
+
+/**
+ * 压力的**摊销总体**（GOALLOOP-R2）：**分子摊谁，分母就是谁**。
+ *
+ * ⛔ `members` 与 `universe` 的分工是**本单最容易搞错的一处**，写死在这里：
+ *   · `members` = **分母**（= `MONEY_CHARGE_BASIS[...].population` 登记的那个集合）；
+ *   · `universe` = **对象层总数，只用于披露**，⛔ **不参与任何除法** ——
+ *     它答的是「`carriers:0` 是台账空还是查过了没中」。把披露用的总数拿去做分母，
+ *     正是本单改前那个 **×2.902657 固定稀释**的来源（分子摊世界态覆盖到的 150 张、
+ *     分母摊对象层全表 500 张）。
+ */
+interface PressurePopulation {
+  /** 登记名（`MONEY_CHARGE_BASIS[...].population`）—— 随回包逐条下发，让读数自证是对哪个集合取的。 */
+  readonly set: string;
+  readonly members: readonly ChargeableObject[];
+  readonly universe: number;
+}
 
 interface PressureAgg {
   value: number;
   carriers: number;
   universe: number;
+  /**
+   * 这个平均是对**哪个集合**取的（改前回包**不能**自证这一点 ⇒ 2.9 倍稀释无人发现）。
+   * `n` = 参与摊销的对象数、`weightSum` = 分母（Σ权重）。
+   */
+  denominator: { set: string; n: number; weightSum: number };
   weighting: "VALUE" | "EQUAL";
   weightingNote: string;
   /** 承载对象里权重最大的那个（provenance 下钻落点；无承载对象 → null）。 */
@@ -115,12 +145,26 @@ interface PressureAgg {
 /**
  * 按真金额加权聚合一个压力量。
  *
- * **分母是全域（universe），不是承载集**：没被世界态覆盖的对象压力读作 0 —— 它们确实
- * 在财务基数里、确实没受这次扰动影响。只对承载集取平均会把「10 张单里 1 张涨价」
- * 报成「全域涨价」，那是把局部推演放大成全局结论（静默错答的一种）。
+ * ── 分母 = **登记表指定的总体**（`pop.members`），不是「手边最近的那个 `listByType`」────
+ * GOALLOOP-R2 裁决（全文 `docs/evidence/GOALLOOP-R2-decision.txt`）：金额摊销的分母取
+ * `SIM_WORLD_MEMBERS`（推演世界成员）。三条锚**都不在金额路径上**（拿金额路径自己的输出
+ * 当自己口径的根据 = 自证）：
+ *   ① 业务问题原文问的是「在**这个推演世界**里、施加了那条扰动之后…变成多少钱」；
+ *   ② `entersSimWorld` 的裁定理由「货已交、款已结 ⇒ 后续**任何扰动都改不了它的结果**」——
+ *      350 张 COMPLETED 单的金额恒定不变，把不变量放进「扰动带来多少钱变化」的分母 = 稀释；
+ *   ③ `listSimWorldObjects` 的单一物化入口令（改前本文件是**第 6 份手抄**且抄漏了过滤）。
+ *
+ * ⚠ 实测价格：全表 454.6433 亿 ÷ 世界成员 156.6300 亿 = **2.902657**（固定倍数）⇒
+ *   「读数随不随输入变」「两者的比随不随输入比变」这两类判据**都排除不掉它**
+ *   （本单第 6 次同族错就是这个形态：只排得掉"随输入变的稀释"，排不掉"固定倍数稀释"）。
+ *
+ * ⛔ 改前 `catalog.ts` 那句自陈「分母是全域基数不是承载集（只对承载集平均会把『10 张单里 1 张涨价』
+ *   报成全域涨价）」—— 那句话本身可能对（全域摊销是一种合法口径），**但它说的分母既不是承载集
+ *   也不是推演世界成员，而是「对象层全表」**：350 张改不了结果的单被摊了进去。
+ *   本函数的分母是**登记表指定的总体**，与「全域摊销 vs 承载集平均」之争无关。
  */
 function aggregatePressure(
-  objects: ObjectInstance[],
+  pop: PressurePopulation,
   world: TickState,
   stateVar: string,
   weightOf: WeightFn,
@@ -134,14 +178,21 @@ function aggregatePressure(
    */
   rest?: DeviationReader,
 ): PressureAgg {
-  const universe = objects.length;
-  if (universe === 0) {
+  const { set, members, universe } = pop;
+  const n = members.length;
+  if (n === 0) {
+    // 「台账空」(universe=0) 与「台账有、但这个摊销总体空」(universe>0) 是**两件事**，分开说：
+    // 合成一句会把「这个总体里没有对象」读成「本租户没有这类对象」（静默错答的一种）。
     return {
       value: 0,
       carriers: 0,
-      universe: 0,
+      universe,
+      denominator: { set, n: 0, weightSum: 0 },
       weighting: "EQUAL",
-      weightingNote: "本租户该对象类型 0 条 —— 这个 0 是「台账空」，不是「压力为 0」。",
+      weightingNote:
+        universe === 0
+          ? "本租户该对象类型 0 条 —— 这个 0 是「台账空」，不是「压力为 0」。"
+          : `对象层有 ${universe} 条，但摊销总体「${set}」0 条 —— 这个 0 是「没有对象进这个总体」，不是「压力为 0」。`,
       topCarrier: null,
     };
   }
@@ -151,7 +202,7 @@ function aggregatePressure(
   let carriers = 0;
   let top: { id: string; pressure: number; w: number } | null = null;
   // R6：按 id 升序遍历 —— 浮点加法不满足结合律，遍历序变则末位可能漂。
-  for (const o of [...objects].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
+  for (const o of [...members].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
     // 给了读器 ⇒ 这一格读的是偏离；读器对「世界态没这格」仍返回 undefined（不消费），
     // 对「有格但静息值取不到」也返回 undefined 但**记了账** ⇒ 两件事在上游可分辨。
     const raw = rest ? rest.deviationOf(o.id, o.type, stateVar) : stateOf(world, o.id, stateVar);
@@ -167,12 +218,13 @@ function aggregatePressure(
   }
   const valueWeighted = sumW > 0;
   return {
-    value: valueWeighted ? sumWP / sumW : sumP / universe,
+    value: valueWeighted ? sumWP / sumW : sumP / n,
     carriers,
     universe,
+    denominator: { set, n, weightSum: round(sumW, 2) },
     weighting: valueWeighted ? "VALUE" : "EQUAL",
     weightingNote: valueWeighted
-      ? `按承载对象真金额加权（Σ权重=${round(sumW, 2)}，量纲在加权平均里相消）`
+      ? `按承载对象真金额在总体「${set}」内加权（总体 ${n} 个对象 · Σ权重=${round(sumW, 2)}，量纲在加权平均里相消）`
       : "金额权重字段全为 0/缺失 ⇒ 回落等权平均；这不是「金额无关」，是「拿不到金额权重」，据实标注。",
     topCarrier: top ? { id: top.id, pressure: top.pressure } : null,
   };
@@ -246,14 +298,36 @@ export async function projectFinanceWorld(
       `金额 = 基线 ×（1 + 压力**偏离** ÷ ${divisor}），压力偏离 = 世界态值 − 静息值（静息值取本世界开局快照同一格）。` +
       `压力指数按${pressureUnit === "pp" ? "百分点(pp)" : "比率(ratio)"}读；` +
       "这是**推演投影**不是实测值 —— 基线取本体真值，增量由世界态压力沿传导规则折算。" +
+      "压力的**摊销总体**由登记表 `MONEY_CHARGE_BASIS` 定（当前 = 推演世界成员：已完成的单不进推演世界），" +
+      "逐条随 `pressures[].denominator` 下发 —— 说清「这个平均是对哪个集合取的」，不是现场挑一个 `listByType`。" +
       "⚠ 吃的是**偏离**不是水平：压力为 0 才叫「没偏」，而水平 0 的意思是「该量本身为零」（两者不是一回事，" +
       "静息值取不到的格进 `unresolvedRestPoints`，⛔ 不按 0 算）。",
   };
 
-  // ── ③ 三个压力量（各自带 carriers / universe / 加权口径）──────────────────────────
-  const orders = await repos.objects.listByType(ctx.tenantId, "Order");
-  const customers = await repos.objects.listByType(ctx.tenantId, "Customer");
-  const invoices = await repos.objects.listByType(ctx.tenantId, "ARInvoice");
+  // ── ③ 三个压力量（各自带 carriers / universe / denominator / 加权口径）──────────────
+  /**
+   * ⛔ **推演世界成员集合的唯一物化入口**（`sim/seed-world.ts` 的 `listSimWorldObjects`）。
+   * 改前这里是**第 6 份手抄**（三行 `listByType`），而且**抄漏了 `entersSimWorld` 过滤**：
+   * 分母把 350 张「任何扰动都改不了它的结果」的已完成单也摊了进去（实测稀释 ×2.902657）。
+   * 本函数的单一入口令原文：「要写 `for (t of types) for (o of listByType) if (...)` 之前，
+   * 先问一句：我要的成员集合是不是推演世界？是 ⇒ 用本函数，别再抄第 6 份。」
+   */
+  const worldMembers = await listSimWorldObjects(repos, ctx.tenantId);
+  /**
+   * 摊销总体 = 推演世界成员按类型切分。
+   * · `set` 从 `MONEY_CHARGE_BASIS` 读（⛔ 不在这里写死 `"SIM_WORLD_MEMBERS"` 字面量 ——
+   *   写死就等于本文件又抄了一份口径，改登记表时这里不会跟着变且不会红）；
+   * · `universe` **只用于披露**（对象层该类型总数），⛔ 不参与除法。
+   */
+  const populationOf = async (typeKey: string, stateVar: string): Promise<PressurePopulation> => ({
+    set: MONEY_CHARGE_BASIS[`${typeKey}|${stateVar}`]?.population ?? "SIM_WORLD_MEMBERS",
+    members: worldMembers.filter((r) => r.typeKey === typeKey).map((r) => r.obj),
+    universe: (await repos.objects.listByType(ctx.tenantId, typeKey)).length,
+  });
+
+  const orders = await populationOf("Order", "costPressure");
+  const customers = await populationOf("Customer", "receivablePressure");
+  const invoices = await populationOf("ARInvoice", "overduePressure");
 
   /** 订单金额 = 数量 × 单价（种子里没有现成的 `value` 字段，这两个是真字段·`battery.ts:3793–3794`）。 */
   const orderValue: WeightFn = (o) => num(o.props.qty) * num(o.props.unitPrice);
@@ -267,7 +341,7 @@ export async function projectFinanceWorld(
     if (!custOfInvoice.has(l.toId)) custOfInvoice.set(l.toId, l.fromId);
   }
   const custWeight = new Map<string, number>();
-  for (const inv of invoices) {
+  for (const inv of invoices.members) {
     const cid = custOfInvoice.get(inv.id);
     if (cid) custWeight.set(cid, (custWeight.get(cid) ?? 0) + invoiceAmount(inv));
   }
@@ -301,6 +375,9 @@ export async function projectFinanceWorld(
     value: round(agg.value, 6),
     carriers: agg.carriers,
     universe: agg.universe,
+    // GOALLOOP-R2 · 让回包**自证**「这个平均是对哪个集合取的」——
+    // 改前回包里只有 `carriers/universe`，「分子摊 150 张、分母摊 500 张」在回包上**看不出来**。
+    denominator: agg.denominator,
     weighting: agg.weighting,
     weightingNote: agg.weightingNote,
     provenance: {
@@ -340,12 +417,12 @@ export async function projectFinanceWorld(
   if (worldLine.frames.length > 0) {
     /** 逐 stateVar：沿世界线各帧跑同一个聚合，得到这一读数的轨迹。 */
     const trackOf = (
-      objects: ObjectInstance[],
+      pop: PressurePopulation,
       stateVar: string,
       weightOf: WeightFn,
     ): TurnDynamics =>
       deriveTurnDynamics(
-        worldLine.frames.map((f) => ({ tick: f.tick, value: aggregatePressure(objects, f.state, stateVar, weightOf).value })),
+        worldLine.frames.map((f) => ({ tick: f.tick, value: aggregatePressure(pop, f.state, stateVar, weightOf).value })),
       );
     turnDynamics = {
       curTick: world.curTick,
@@ -367,11 +444,14 @@ export async function projectFinanceWorld(
     costLine: str(args.costLine) || FINANCE_WORLD_DEFAULT_LINE_ROLES.costLine,
     marginLine: str(args.marginLine) || FINANCE_WORLD_DEFAULT_LINE_ROLES.marginLine,
   };
-  const plans = [...(await repos.objects.listByType(ctx.tenantId, "FinancePlan"))].sort((a, b) =>
-    a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
-  );
+  // 同一条纪律：基线行也走**同一个**成员集合物化入口（此处**是第 7 份手抄**，一并删掉）。
+  // FinancePlan 无终态、故过滤后集合不变 ⇒ 基线逐位不变；但它必须与压力侧同源。
+  const plans = worldMembers
+    .filter((r) => r.typeKey === "FinancePlan")
+    .map((r) => r.obj)
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const planOf = (line: string) => plans.find((o) => str(o.props.line) === line);
-  const finId = (o: ObjectInstance | undefined) => (o ? str(o.props.finId) || o.id : "*");
+  const finId = (o: ChargeableObject | undefined) => (o ? str(o.props.finId) || o.id : "*");
 
   // 落点 (b) ①：成本因子吃的是**偏离**（世界态 − 静息值），不是水平。
   const costFactor = 1 + costDev.value / divisor;
@@ -396,7 +476,7 @@ export async function projectFinanceWorld(
     ...(costPlan ? ([[costPlan.id, cogsProjected]] as [string, number][]) : []),
     ...(marginPlan ? ([[marginPlan.id, gmProjected]] as [string, number][]) : []),
   ]);
-  const roleOf = (o: ObjectInstance): FinanceWorldLine["role"] =>
+  const roleOf = (o: ChargeableObject): FinanceWorldLine["role"] =>
     o.id === costPlan?.id ? "COST" : o.id === revenuePlan?.id ? "REVENUE" : o.id === marginPlan?.id ? "MARGIN" : "PASSTHROUGH";
 
   for (const o of plans) {
@@ -454,7 +534,9 @@ export async function projectFinanceWorld(
   let invoiceCarriers = 0;
   let customerLinked = 0;
   let topInvoice: { id: string; amount: number; invoiceId: string } | null = null;
-  for (const inv of [...invoices].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
+  // ⛔ 逐张发票的总体**也是登记表指定的那个**（锚①「这个推演世界里…应收变成多少钱」）——
+  //    与压力侧同一个 `worldMembers`，不在这里再抄一遍成员判据。
+  for (const inv of [...invoices.members].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
     const amount = invoiceAmount(inv);
     arBaseline += amount;
     const cid = custOfInvoice.get(inv.id);
@@ -474,16 +556,23 @@ export async function projectFinanceWorld(
     }
   }
   const cash: FinanceWorldCash = {
-    available: invoices.length > 0,
-    ...(invoices.length === 0
-      ? { unavailableReason: "本租户 ARInvoice 台账 0 条 —— 应收/逾期口径无承载物。这是「查不到」，不是「应收为 0」。" }
+    available: invoices.members.length > 0,
+    ...(invoices.members.length === 0
+      ? {
+          unavailableReason:
+            invoices.universe === 0
+              ? "本租户 ARInvoice 台账 0 条 —— 应收/逾期口径无承载物。这是「查不到」，不是「应收为 0」。"
+              : `ARInvoice 台账有 ${invoices.universe} 条，但摊销总体「${invoices.set}」0 条 —— 这个 0 是「没有对象进这个总体」，不是「应收为 0」。`,
+        }
       : {}),
     arBaseline: money(arBaseline),
     arProjected: money(arProjected),
     arDelta: money(arProjected - arBaseline),
     overdueExposure: money(overdueExposure),
     overdueSharePct: arBaseline === 0 ? 0 : round((overdueExposure / arBaseline) * 100, 4),
-    invoiceUniverse: invoices.length,
+    // 披露的是**对象层总数**（`universe` 的既有语义），不是本次摊销的总体大小 ——
+    // 前者答「台账里一共有多少」，后者在 `pressures[].denominator` 里另给。两者混淆正是本单的病。
+    invoiceUniverse: invoices.universe,
     invoiceCarriers,
     customerLinked,
     formula:
@@ -502,7 +591,7 @@ export async function projectFinanceWorld(
       drillValue: topInvoice?.amount ?? 0,
     },
   };
-  if (invoices.length > 0 && customerLinked === 0) {
+  if (invoices.members.length > 0 && customerLinked === 0) {
     notes.push(
       "一张发票都没经 `customer_has_invoice` 找到客户 ⇒ 应收压力（落在 Customer 上）传不到金额侧，" +
         "应收投影恒等于基线。这是**链路缺失**，不是「客户没有回款压力」。",
@@ -569,7 +658,8 @@ export async function projectFinanceWorld(
 
   const summary = available
     ? `世界 ${world.id} @tick${world.curTick}：成本压力 ${round(costAgg.value, 3)}（偏离 ${round(costDev.value, 3)}，` +
-      `${costAgg.carriers}/${costAgg.universe} 张单承载；**金额吃的是偏离**）` +
+      // 摊销总体逐字写进摘要：只说 `carriers/universe` 会让「分子摊 150 张、分母摊 500 张」看不出来。
+      `${costAgg.carriers}/${costAgg.denominator.n} 张单承载（对象层共 ${costAgg.universe} 张，摊销总体=推演世界成员）；**金额吃的是偏离**）` +
       ` ⇒ ${roles.costLine} ${cogsRolling} → ${cogsProjected}（${cogsProjected - cogsRolling >= 0 ? "+" : ""}${money(cogsProjected - cogsRolling)}）、` +
       `${roles.marginLine} ${gmRolling} → ${gmProjected}；逾期敞口 ${money(overdueExposure)}。**推演投影，非实测**。`
     : `世界 ${world.id} @tick${world.curTick}：金额口径不可用 —— ${unavailableReason}`;

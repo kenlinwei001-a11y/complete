@@ -1,0 +1,85 @@
+## GOALLOOP-R3 · 测试角色独立复算 · BASE=http://127.0.0.1:4052 · 10 拍 · TGT=obj_order_SO-3391.leadDays -3
+### ⓪ 原始面台账（未经任何求解器）
+  Order 全表 500 张（total=500）· 分桶 {"OPEN":50,"COMPLETED":350,"IN_PRODUCTION":100}
+  世界成员（status≠COMPLETED）= 150 张 · W_members=15663001584.000000000000 = 156.630016 亿
+  全表 W_book=45464327004.000000000000 = 454.643270 亿 · W_book/W_members=2.902657
+  成本基线 FinancePlan(line=销售成本).rolling = 581.1 亿（finId=fin-cogs）· 毛利行 rolling=118.9 亿
+  目标单 obj_order_SO-3391: cust=广汽集团 status=OPEN qty=7259 unitPrice=22198 权重=161135282.000000000000
+  🐤 正向对照①（必然为真）：权重口径交叉核 — qty×unitPrice ≈ props.value 的有 500/500 张；不等 0 张
+  🐤 正向对照②（必然为真）：W_book>0 且 W_members>0 ⇒ ✅ 尺子有读数（不是空集判绿）
+
+### ① 三臂会话（被测读数，仅用于对答案）
+  零扰: session=sims_vetj074ww9hmy9hr tick=10 available=true source=TICK
+     pressures[costPressure/Order] value=0.000000 carriers=150 universe=500 denominator={"set":"SIM_WORLD_MEMBERS","n":150,"weightSum":15663001584}
+     lines COST.delta=0.000000 亿 = 0.00 万元 · MARGIN.delta=0.000000 亿 · REVENUE.delta=0.000000 亿
+     cash: arBaseline=160802 arProjected=160802 overdueExposure=0 invoiceUniverse=60 customerLinked=60
+     unresolvedRestPoints=（字段缺席）
+  单A 提前交付3天: session=sims_np5v4mwkrnnb3y5m tick=10 available=true source=TICK
+     pressures[costPressure/Order] value=0.004602 carriers=150 universe=500 denominator={"set":"SIM_WORLD_MEMBERS","n":150,"weightSum":15663001584}
+     lines COST.delta=0.026744 亿 = 267.44 万元 · MARGIN.delta=-0.026744 亿 · REVENUE.delta=0.000000 亿
+     cash: arBaseline=160802 arProjected=160805.7801 overdueExposure=0.856622 invoiceUniverse=60 customerLinked=60
+     unresolvedRestPoints=（字段缺席）
+  多扰动 A+B: session=sims_rzdheqmjvw1r8nwd tick=10 available=true source=TICK
+     pressures[costPressure/Order] value=0.020226 carriers=150 universe=500 denominator={"set":"SIM_WORLD_MEMBERS","n":150,"weightSum":15663001584}
+     lines COST.delta=0.117531 亿 = 1175.31 万元 · MARGIN.delta=-0.117531 亿 · REVENUE.delta=0.000000 亿
+     cash: arBaseline=160802 arProjected=160820.818189 overdueExposure=4.419352 invoiceUniverse=60 customerLinked=60
+     unresolvedRestPoints=（字段缺席）
+
+### ② 🐤 金丝雀
+  (a) 脉冲落地：obj_order_SO-3391.leadDays t0=14.000000000000 → tN=11.000000000000 ⇒ ✅ 落地
+  (b) 零扰臂对照：同一格 t0=14.000000000000 → tN=14.000000000000 ⇒ ✅ 零扰臂没动它
+  (c) 成员集合两条独立路径：对象层判据 150 张 vs 世界态实测 150 张 ⇒ ✅ 一致
+      ⛔ 非成员 350 张（若 =0 而 COMPLETED=350 ⇒ 判据没生效，不许报"没有已完成订单"）
+
+### ③ 独立复算（我的算式，不调求解器算）
+  零扰臂：driven=0 N=0.000000000000 ⇒ Δcost(U2)=0.000000 元
+  [载格 150/150 · 静息格缺 0]
+  单A臂：N = Σ (qty×unitPrice×Δp) = 72085653.888482511044 元·pp（driven=24 张）
+    W_driven=3628874568.000000000000 = 36.288746 亿
+    Δcost(U2 世界成员分母) = 2674389.914982 元 = 267.44 万元
+    Δcost(U1 全表分母)     = 921359.145400 元 = 92.14 万元
+    Δcost(U3 只摊被推动)   = 11543240.938659 元 = 1154.32 万元
+    value 复算 = N/W_members = 0.004602288616（回包 round6=0.004602）
+  多扰臂 A+B：N = 316794645.755115151405 元·pp（driven=150 张）⇒ Δcost(U2) = 11753134.778225 元 = 1175.31 万元
+
+### ④ 应收侧独立复算（发票 60 张 · 客户 20 家 · custName 匹配）
+  零扰：匹配客户 60/60（正向对照 >0 ⇒ 走了匹配路）
+    arBaseline  复算=160802.000000 vs 回包=160802 差 0.000000
+    arProjected 复算=160802.000000 vs 回包=160802 差 0.000e+0
+    overdue 复算=0.000000 vs 回包=0 差 0.000e+0
+  单A：匹配客户 60/60（正向对照 >0 ⇒ 走了匹配路）
+    arBaseline  复算=160802.000000 vs 回包=160802 差 0.000000
+    arProjected 复算=160805.780100 vs 回包=160805.7801 差 -3.233e-7
+    overdue 复算=0.856622 vs 回包=0.856622 差 3.623e-7
+  多扰 A+B：匹配客户 60/60（正向对照 >0 ⇒ 走了匹配路）
+    arBaseline  复算=160802.000000 vs 回包=160802 差 0.000000
+    arProjected 复算=160820.818189 vs 回包=160820.818189 差 -3.447e-7
+    overdue 复算=4.419352 vs 回包=4.419352 差 -3.442e-7
+
+### ⑤ 对答案（判据）
+  (1) 我的 Δcost(U2) = 2674389.914982 元 vs 回包 COST.delta = 2674400.000000 元 ⇒ 差 10.085018 元 ⇒ ≤1000 元？✅
+      回包 round 粒度核对：round(我的值/100)×100 = 2674400 ⇒ 与回包逐位同？✅（差 10 元级 = 100 元粒度的取整）
+  (1b) 毛利：回包 MARGIN.delta=-2674400.000000 元 vs −Δcost=-2674400.000000 ⇒ ✅ 继承 Δ成本（Δ收入=0）
+       REVENUE.delta=0.000000 元 ⇒ 恒 0？是（回包自陈：世界态需求侧与收入行之间没有传导规则）
+  (1c) 零扰臂：我算 0.000000 元 vs 回包 0.000000 元 ⇒ 差 0.000000 元 ⇒ 严格 =0? ✅
+  (2) 三口径两两最小差 = 175.30 万元 ⇒ ≥100 万元？✅ 尺子分得开
+  (3) 金丝雀：脉冲 14→11 ✅ · 世界成员=150 · Δp≠0=24
+  (1d) 多扰臂 A+B：我的 Δcost(U2) = 11753134.778225 元 vs 回包 = 11753100.000000 元 ⇒ 差 34.778225 元 ⇒ ≤1000 元？✅
+       毛利继承：回包 MARGIN.delta=-11753100.000000 元 vs −Δcost=-11753100.000000 ⇒ ✅ 同幅
+  (4) 回包 denominator 自证：{"set":"SIM_WORLD_MEMBERS","n":150,"weightSum":15663001584} vs 我算 {set:SIM_WORLD_MEMBERS, n:150, weightSum:15663001584} ⇒ ✅
+      回包 basis.divisor=100 pressureUnit=pp（我只做交叉核对，复算用数学常数 100）
+
+### ⑥ 跨臂指纹（改的确实是分母）
+  4053（/tmp/wt-base4053@6d636682b，早于 WO-AB 归位/偏离落点修复）不是本次改动的改前臂
+    ⇒ 它的数不可比：本条**不**拿它当改前证据。
+    （4053 活着：objects 头页 total=500 —— 只是代码基线不同）
+  (b) 改前回执 921400.000000 元（R1 在改 S3 前的 4052 上实测）vs 我的 U1 口径 921359.145400 元
+      round100(我的 U1) = 921400 ⇒ 与改前回执逐位同？✅（差 = 100 元取整粒度）
+      改后回包 2674400.000000 / 改前回执 921400.000000 = 2.902540 · 我算的 W_book/W_members = 2.902657 ⇒ ✅ 比值 = 分母比
+      ⇒ 改前那个数 = 今日 U1 口径（分子同一张单集，分母 500 张）；改后 = U2 口径（分母 150 张）。改的**只是分母**。
+
+## 结论：✅ 独立复算与回包吻合（成本·单A+多扰）；毛利继承、应收另算见上
+## ⛔ 口径与算术分开陈述：本探针验的是「给定世界态、给定基线，这笔钱算得出来」；
+##    「世界态本身对不对 / 该不该用这个摊销总体」不由本探针判定（那是决策档 + 世界模型的事）。
+DUMP=/tmp/goalloop_r3_dump.json
+SESSION_Z=sims_vetj074ww9hmy9hr SESSION_A=sims_np5v4mwkrnnb3y5m

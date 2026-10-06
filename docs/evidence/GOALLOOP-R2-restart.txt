@@ -1,0 +1,36 @@
+# GOALLOOP-R2 · S5 重建 + 重起 4052（内存模式改码必须重建 dist —— 本单已踩过旧 dist 的坑）
+# 时间 2026-10-06 · 分支 claude/semantics-declared · ⛔ 4053 未动 · ⛔ 4001/4002/5173 未碰
+#
+# 两次重启（第二次是因为 build 后 src 又落了两处改动：ontology-signature.ts 签名声明）
+
+── 第 1 代（S5 主体：分母改动落地）───────────────────────────────────────────────
+$ pnpm --filter @platform/contracts build         → packages/contracts build: Done     rc=0
+$ pnpm --filter datacore... build                 → Scope: 3 of 7 workspace projects
+                                                     packages/llm-adapters build: Done
+                                                     packages/contracts build: Done
+                                                     apps/datacore build: Done          rc=0
+$ lsof -nP -iTCP:4052 -sTCP:LISTEN                → node 6183 … TCP *:4052 (LISTEN)（旧 pid / 旧 dist）
+$ kill 6183 ; sleep 2 ; lsof … | wc -l            → 0
+$ cd apps/datacore && PORT=4052 SEED_DEMO=1 nohup node --max-old-space-size=8192 dist/server.js
+$ curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4052/a/v1/health
+  t=3s 000 · t=6s 000 · t=9s 000 · t=12s 401   ⇒ 401 = 活着且要认证（本仓约定）
+$ lsof -nP -iTCP:4052 -sTCP:LISTEN                → node 26034 … TCP *:4052 (LISTEN)
+
+── 第 2 代（最终 dist：含 ontology-signature.ts 的 `Order.status` 声明）────────────
+$ pnpm --filter datacore... build                 → apps/datacore build: Done          rc=0
+$ kill <旧 pid> ; 起新实例
+$ curl -s -o /dev/null -w '%{http_code}' …/a/v1/health → t=3s 000 · t=6s 401
+$ lsof -nP -iTCP:4052 -sTCP:LISTEN                → node 31706 … TCP *:4052 (LISTEN)
+  🐤 pid 换代 = 268 万级探针值确实由**新 dist** 算出来的（旧 pid 与探针值不成对即作废）
+  ⇒ 三臂探针在**这一代**上复跑，逐条判据结论与第 1 代**逐字相同**（见 GOALLOOP-R2-probe.txt）
+
+── 前端（vite dev，不写 dist）──────────────────────────────────────────────────
+$ cd apps/frontend-shell && VITE_DATACORE_URL=http://127.0.0.1:4052 \
+    nohup npx vite --port 5294 --strictPort --host 127.0.0.1
+  → VITE v5.4.21 ready in 2061 ms · Local: http://127.0.0.1:5294/
+$ curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5294/                       → 200
+$ lsof -nP -iTCP:5294 -sTCP:LISTEN                → node 32913 … TCP 127.0.0.1:5294 (LISTEN)
+  ⚠ 5294 在本轮开工时**未在监听**（父单里描述的那个 dev server 已经不在），本单按同一份
+    env 覆盖重新拉起 —— 只起我自己的这个实例，别人的端口一律没碰。
+
+DONE 2026-10-06

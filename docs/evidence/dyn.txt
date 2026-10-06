@@ -1,0 +1,50 @@
+## 动态数据审计 · 同扰动（SO-3391.leadDays −3）逐环节
+A1 session=sims_chg5ethrcwjdbp7h
+
+=== 第一组：A1 vs A2（纯重复，中间无外部操作）===
+  ✅同 t0.世界态
+      A1=订单=150 Σ金额=15663001584 costPressure非0=0
+      A2=订单=150 Σ金额=15663001584 costPressure非0=0
+  ✅同 t10.世界态
+      A1=订单=150 Σ金额=15663001584 costPressure非0=24
+      A2=订单=150 Σ金额=15663001584 costPressure非0=24
+  ✅同 求解器.聚合
+      A1={"value":0.004602,"carriers":150,"universe":500,"w":15663001584,"dn":150}
+      A2={"value":0.004602,"carriers":150,"universe":500,"w":15663001584,"dn":150}
+  ✅同 求解器.COST
+      A1=rolling=581.1 projected=581.126744 delta=0.026744
+      A2=rolling=581.1 projected=581.126744 delta=0.026744
+  ✅同 求解器.MARGIN
+      A1=rolling=118.9 projected=118.873256 delta=-0.026744
+      A2=rolling=118.9 projected=118.873256 delta=-0.026744
+  ✅同 求解器.REVENUE
+      A1=rolling=700 projected=700 delta=0
+      A2=rolling=700 projected=700 delta=0
+  ✅同 求解器.basis
+      A1={"divisor":100,"pu":"pp"}
+      A2={"divisor":100,"pu":"pp"}
+
+=== 第二组：A2 vs A3（A2 与 A3 之间【插入】一次外部操作：新建 3 个会话）===
+  ✅同 t0.世界态
+      A2=订单=150 Σ金额=15663001584 costPressure非0=0
+      A3=订单=150 Σ金额=15663001584 costPressure非0=0
+  ✅同 t10.世界态
+      A2=订单=150 Σ金额=15663001584 costPressure非0=24
+      A3=订单=150 Σ金额=15663001584 costPressure非0=24
+  ✅同 求解器.聚合
+      A2={"value":0.004602,"carriers":150,"universe":500,"w":15663001584,"dn":150}
+      A3={"value":0.004602,"carriers":150,"universe":500,"w":15663001584,"dn":150}
+  ✅同 求解器.COST
+      A2=rolling=581.1 projected=581.126744 delta=0.026744
+      A3=rolling=581.1 projected=581.126744 delta=0.026744
+  ✅同 求解器.MARGIN
+      A2=rolling=118.9 projected=118.873256 delta=-0.026744
+      A3=rolling=118.9 projected=118.873256 delta=-0.026744
+  ✅同 求解器.REVENUE
+      A2=rolling=700 projected=700 delta=0
+      A3=rolling=700 projected=700 delta=0
+  ✅同 求解器.basis
+      A2={"divisor":100,"pu":"pp"}
+      A3={"divisor":100,"pu":"pp"}
+
+DONE 2026-10-06T15:58:52.019Z

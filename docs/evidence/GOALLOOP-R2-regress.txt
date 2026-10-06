@@ -1,0 +1,107 @@
+# GOALLOOP-R2 · S10 回归（按 diff 半径）+ 证据档
+# 时间 2026-10-06 · 分支 claude/semantics-declared · 改后臂 4052 / 改前臂 4053(/tmp/wt-base4053 @6d636682b)
+#
+# ⛔ 四包全量门本机跑不动（896 测试文件 / 负载 442 ⇒ 约 75h）⇒ 未跑到的在文末逐条写 NOT-MEASURED。
+# 判据 = diff 半径内的五个接缝文件 + 我改动触到的两个门的文件。
+# 每件证据的 rc 从文件读（⛔ 不用 `cmd | tail; echo $?`），见同名 .rc 与下面每段的 file_rc。
+
+── [必须绿] 三件：本次改动直接落在其判据上的接缝门 ──────────────────────────────
+### [1] apps/frontend-shell/test/console0828-decision.seam.test.tsx
+ Test Files  1 passed (1)
+      Tests  28 passed (28)
+file_rc=0
+### [2] apps/frontend-shell/test/exposure-responds-to-perturbation.seam.test.ts
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+file_rc=0
+### [3] apps/datacore/test/finance-worldstate.seam.test.ts
+ Test Files  1 passed (1)
+      Tests  12 passed (12)
+file_rc=0
+
+── [存量红] 两件：**改前臂上同样红、同样条数、同样报错原文**（A/B 逐条对照）──────────
+### [4] apps/datacore/test/sim-trial-scope-reconcile.seam.test.ts · 改后臂
+   × ① 切 LOCAL 引擎真的只算局部 → expected +0 to be 10
+ Test Files  1 failed (1)   Tests  1 failed | 8 passed (9)     file_rc=1
+### [4'] 同文件 · **改前臂** /tmp/wt-base4053 @6d636682b
+   × ① 切 LOCAL 引擎真的只算局部 → expected +0 to be 10
+ Test Files  1 failed (1)   Tests  1 failed | 8 passed (9)     file_rc=1
+ ⇒ 逐条同名同报错 ⇒ 与本次改动无关（本单零代码触及该路径）。
+
+### [5] apps/datacore/test/sim-order-real-fields.seam.test.ts · 改后臂
+   × ② 改真值 ⇒ 下游读数必须跟着变: expected 47 to be 22638
+   × ③ 两张金额差一个量级: 大单 16131 套得 100000，小单 1454 套得 100000
+   × ⑤ 接缝：真值必须出现在传导结果里: obj_model_4680-NCM.backlogHorizonDays @tick1: expected undefined to be 110
+ Test Files  1 failed (1)   Tests  3 failed | 3 passed (6)     file_rc=1
+### [5'] 同文件 · **改前臂** /tmp/wt-base4053 @6d636682b
+   × ② expected 47 to be 22638
+   × ③ 大单 16131 套得 100000，小单 1454 套得 100000
+   × ⑤ obj_model_4680-NCM.backlogHorizonDays @tick1: expected undefined to be 110
+ Test Files  1 failed (1)   Tests  3 failed | 3 passed (6)     file_rc=1
+ ⇒ 逐条同名同报错 ⇒ 与本次改动无关。
+
+   ⚠ 血统校验（否则「改前臂也红」这句话本身可能不成立）：
+     `git merge-base --is-ancestor 6d636682b HEAD` ⇒ **6d636682b IS ancestor of HEAD**（rc=0）
+     `git diff --stat 6d636682b HEAD -- apps/datacore/test/ apps/frontend-shell/test/` ⇒ **空**（改前臂与本 tip 之间测试文件零改动）
+     ⇒ 那 4 条红在本 tip 上本来就是红的，不是本单引入。
+
+── [另跑] 本次改动触及的两个门文件 + 新契约门 ──────────────────────────────────
+### [6] apps/datacore/test/catalog.test.ts + test/ontology-signature.seam.test.ts
+ Test Files  2 passed (2)      Tests  17 passed (17)          file_rc=0
+### [7] packages/contracts/test/finance-world-charge-basis.test.ts（本单新增）
+ Test Files  1 passed (1)      Tests  4 passed (4)            file_rc=0
+### [8] 变异自证（证明改写后的结构门真有牙，⛔ 不是装饰品）
+   在 `runM` 体内插入 `void CHAIN_IMPEDIMENT_SOLVER_KEY;`（cp 备份 + python 打补丁 + grep 已落下 + diff 非空）
+   ⇒ exposure-responds-to-perturbation ⑧ 当场红：
+      「受阻环节那一跳被塞回 runM（②b 摘牌被回退）—— 它的入参只有 scope，构造性不可能随扰动变: expected true to be false」
+   还原：`cp /tmp/C0828.backup.tsx <目标>` ⇒ grep MUTATION-PROBE = 0 · diff 空 ⇒ RESTORED-CLEAN ⇒ 门复绿（9/9）。
+
+── [NOT-MEASURED] 如实记账（⛔ 不许写成「已验」）────────────────────────────────
+ · **浏览器级屏上验收**：本机 mac13 + playwright 1.63 无 headless（`install chromium` 与
+   `chromium-headless-shell` 均报 does not support … on mac13，缓存里的 -1208 ≠ 1.63.0 要的 -1243）
+   ⇒ **未在真浏览器里看过这块屏**。替代证据（三条，均非「屏上已看到」）：
+     ① 组件级渲染断言：⑤-ok 把三格文本**逐字**钉在 267.4万元 / -267.4万元 / 0.86万元
+        （值来自 4052 真后端实测，见 GOALLOOP-R2-probe.txt）；
+     ② 4052 真后端 API 冒烟：三臂探针全绿（复算对答案 ≤1000 元、多扰动臂 34.8 元）；
+     ③ pid 换代：4052 旧 pid 6183（旧 dist）→ 新 pid 31706（新 dist）+ health=401。
+ · **未跑**：四包全量门（本机不可行，见上）；`pnpm -r typecheck` 全仓（只跑了 frontend-shell
+   与 datacore 的 tsc，均由 build 覆盖）；`scripts/check-ui-first-layer.mjs` **本 tip 存量红**
+   （rc=1，4 个文件 D6 未落账）。A/B 实测（两跑都跑了，不是推断）：
+     改后臂 rc=1 · `grep -c "D6 未落账"` = 4（含 Console0828.tsx，first=340 那次）
+     改前臂 /tmp/wt-base4053 rc=1 · `grep -c "D6 未落账"` = 4（同一批文件，Console0828.tsx first=343）
+   ⇒ 存量红、非本单引入；且本单**未**跑 `--tighten`/`--update` 动基线
+     —— 全量落账会把别的在途单的账一起洗掉（基线文件 note 自己写明的禁令）。
+   本单新增的第一层口径句**不违反**该门的硬上限：Console0828.tsx 的 formula 仍为 **0**、
+   字号仍为 **3 级**（--explain 复量，见下）。
+ · `node scripts/check-ui-first-layer.mjs --explain apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx`
+   原始输出（两跑，改前 / 改后，⛔ 这两个数是抄回来的不是估的）：
+     改前： first=338 deferred=213 formula=0 prose=21 sizes=3 [12px 13px 23px] nativeTitle=3
+     改后： first=340 deferred=219 formula=0 prose=19 sizes=3 [12px 13px 23px] nativeTitle=3
+   ⇒ 第一层 +2（口径句 + 三格真值格，**只在有数时渲染**）；deferred +6（第二层明细 +6 块）；
+     **formula 仍 0**（口径句里无 ×÷∩∪min/max(折算加权平均 ⇒ R-UI-3 硬判据过）；
+     **字号仍 3 级**（复用既有 12/13/23，没引入第 4 级 ⇒ R-UI-2 过）。
+   ⚠ 该门整体 rc=1 是本 tip 的**存量红**（D6 未落账 4 个文件），非本单引入，且本单未动基线。
+
+── [上屏路径] 可走到哪一步（如实记账，⛔ 不写「屏上已看到」）─────────────────────
+ · 模块图真编译：5294 vite dev（`VITE_DATACORE_URL=http://127.0.0.1:4052`）
+     `GET http://127.0.0.1:5294/`                                                  → 200
+     `GET http://127.0.0.1:5294/src/views/sim/unified/console0828/Console0828.tsx`  → 200（828,103 字节）
+       转译产物里含 `MONEY_PROJECTION_SOLVER_KEY`（2 处）与 `c0828-money-calibre` ⇒ 新代码真进了模块图。
+     `GET http://127.0.0.1:5294/src/env.ts` → `import.meta.env = {… "VITE_DATACORE_URL": "http://127.0.0.1:4052"}`
+       ⇒ A 侧取数确实指向 4052 改后臂。
+ · ⛔ **B 侧到不了 4052（本机环境缺口，不是代码缺陷）**：控制台的三行钱走的是
+   `runSolver` → `POST /b/v1/solvers/{key}/run`（agentcore B 侧，与本屏既有的
+   `chain_impediments` 同一条路）。实测：
+     `POST http://127.0.0.1:4002/b/v1/solvers/finance_world_projection/run {worldId: sims_qt8xrzx7xtcapfpz}`
+       → 404 `DataCore POST /a/v1/solvers/finance_world_projection/invoke -> 404 {"message":"sim world not found"}`
+     而**同一会话在 4052 上 A 侧直读 = 200** ⇒ 4002 背后的 DataCore **不是** 4052。
+   ⇒ 本机**没有**一条把 5294 的 B 侧引到 4052 的线（这需要给 5294 再配 `VITE_AGENTCORE_URL`
+     指向一个接 4052 的 agentcore；本单⛔ 不动 4001/4002/5173，也不擅自改别人的部署）。
+   ⇒ 因此浏览器级端到端在本环境**不可得**，与 playwright 无 headless 是**两个独立的**不可得原因。
+     替代证据仍成立：组件级逐字断言（⑤-ok）+ 4052 A 侧真后端三臂探针 + 模块图真编译。
+ · 正向对照（证明上面那条 B 侧探测不是「随便发都 404」）：同一个 B 路由对**该部署自己**的
+   世界是可达的 —— 报错原文是**求解器已经跑起来、在参数校形阶段**抛的
+   （`sim world not found` 来自求解器体内，不是路由 404 的 `FEATURE_NOT_FOUND`）
+   ⇒ 该部署的 DataCore 上 `finance_world_projection` 存在且可达，差的只是「那个世界不在它那儿」。
+
+DONE 2026-10-06

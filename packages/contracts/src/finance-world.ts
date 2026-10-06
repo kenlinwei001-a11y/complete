@@ -29,7 +29,9 @@ import { GapProvenanceSchema } from "./gap-attribution.js";
  * 三样东西一起下发，缺一样这个金额就不可复核：
  *  ① **基线**：`FinancePlan.{budget,rolling}` 的真值 + 真主键 `finId`（provenance.drillId）；
  *  ② **压力**：世界态里真承载对象上的 stateVar 真值 + 承载对象数 `carriers` + 全域基数 `universe`
- *     （没有 `universe`，`carriers:0` 分不清「台账空」与「查过了没中」—— 那是静默错答）；
+ *     （没有 `universe`，`carriers:0` 分不清「台账空」与「查过了没中」—— 那是静默错答）
+ *     + **摊销总体 `denominator`**（GOALLOOP-R2：没有它，屏上分不清「分子摊 150 张、分母摊 500 张」
+ *     —— 实测那一个错法就是 2.902657 倍，且是**固定倍数**，任何"随输入变"的判据都抓不到）；
  *  ③ **传导链**：产生该压力的那几条 `PropagationRule` 的**真 id 与真系数**（`chain[]`）——
  *     改种子里的系数，这里下发的链跟着变，界面上"凭什么是这个数"当场可查。
  *
@@ -54,7 +56,11 @@ export const FinanceWorldBasisSchema = z.object({
   kind: z.literal("PROJECTION"),
   /** 压力指数量纲：`pp` = 百分点（除以 100 折成比率）；`ratio` = 本身即比率（除以 1）。 */
   pressureUnit: z.enum(["pp", "ratio"]),
-  /** 折算除数（`pp`→100 / `ratio`→1）。金额 = 基线 ×（1 + 压力 ÷ divisor）。 */
+  /**
+   * 折算除数（`pp`→100 / `ratio`→1）。金额 = 基线 ×（1 + 压力 ÷ divisor）。
+   * ⚠ 它只是**量纲桥**：它**不决定**压力对哪个集合摊销 —— 那件事在 `MONEY_CHARGE_BASIS`
+   * （金额摊销轴登记表，GOALLOOP-R2）里，并逐条随 `pressures[].denominator` 下发。
+   */
   divisor: z.number(),
   /** 这个除数从哪来：缺省声明 还是 调用方 `args.pressureUnit` 指定。 */
   source: z.enum(["DEFAULT_DECLARED", "ARG"]),
@@ -63,7 +69,7 @@ export const FinanceWorldBasisSchema = z.object({
 });
 export type FinanceWorldBasis = z.infer<typeof FinanceWorldBasisSchema>;
 
-/** 一个压力量的聚合读数（每一个都要能回答「几个对象在承载它、全域一共几个」）。 */
+/** 一个压力量的聚合读数（每一个都要能回答「几个对象在承载它、全域一共几个、**这个平均是对哪个集合取的**」）。 */
 export const FinanceWorldPressureSchema = z.object({
   stateVar: z.string(), // costPressure / receivablePressure / overduePressure
   objectType: z.string(), // 承载它的对象类型（Order / Customer / ARInvoice）
@@ -71,8 +77,24 @@ export const FinanceWorldPressureSchema = z.object({
   value: z.number(),
   /** 世界态里**真带这个 stateVar** 的对象数（不是"值非 0"，是"这个键存在"）。 */
   carriers: z.number().int(),
-  /** 全域基数：本租户该类型对象总数。缺它 `carriers:0` 无法区分「台账空」与「查过了没中」。 */
+  /** 全域基数：本租户该类型对象总数。缺它 `carriers:0` 无法区分「台账空」与「查过了没中」。**只用于披露，不参与除法**（分母见 `denominator`）。 */
   universe: z.number().int(),
+  /**
+   * GOALLOOP-R2 · 这个平均是对**哪个集合**取的（= `MONEY_CHARGE_BASIS[*].population`）。
+   *
+   * 🔴 为什么必须逐条下发：改前回包里只有 `carriers`/`universe`，「**分子摊 150 张、
+   * 分母摊对象层全表 500 张**」在回包上**看不出来** ⇒ 同一个「新增成本」两个口径差
+   * **2.902657 倍**（92.1 万元 vs 267.4 万元）而屏上无法分辨。这个字段就是让读数自证。
+   * `n` = 参与摊销的对象数、`weightSum` = 分母本身（Σ权重）。⛔ 不是 `universe`。
+   */
+  denominator: z.object({
+    /** 登记名（当前唯一取值 `SIM_WORLD_MEMBERS` = 推演世界成员：已完成的单不进推演世界）。 */
+    set: z.string(),
+    /** 参与本次摊销的对象数（`universe` 是台账总数，两者不是一回事）。 */
+    n: z.number().int(),
+    /** 分母 = Σ 权重（`Order.qty×unitPrice` / 发票真 `amount`）。量纲在加权平均里相消。 */
+    weightSum: z.number(),
+  }),
   /** `VALUE` = 按对象真金额加权（金额口径唯一正确的聚合法）；`EQUAL` = 拿不到金额权重时的等权回落。 */
   weighting: z.enum(["VALUE", "EQUAL"]),
   /** 为什么是这个加权口径（`EQUAL` 时必须写明是哪个字段拿不到）。 */
@@ -266,3 +288,95 @@ export const FINANCE_WORLD_DEFAULT_LINE_ROLES = {
 
 /** 压力量纲缺省：按百分点读。**唯一**一处除数声明，随回包下发（`basis.divisor`）。 */
 export const FINANCE_WORLD_PRESSURE_DIVISOR: Record<"pp" | "ratio", number> = { pp: 100, ratio: 1 };
+
+/**
+ * ══ GOALLOOP-R2 · **金额摊销轴**登记表：`(类型,压力变量) → 这个压力对哪个集合摊销` ═══════════
+ *
+ * 🔴 为什么必须有一张声明表（根因认定 LOOP 三方一致后的落点，2026-10-06）：
+ *
+ *   `STATE_VAR_SEMANTICS`（`synthetic/battery.ts`）答的是「**这格里的数是水平还是偏离**」；
+ *   它**答不了**「这个压力对**哪个集合**摊销」—— 后者此前从来没被声明过，于是被**现场挑**：
+ *   `solvers/finance-world.ts:254–256` 手抄了一份「全表 Order」当分母（**第 6 份手抄**，
+ *   见 `sim/seed-world.ts:233–266` 的单一物化入口令），而**抄漏了 `entersSimWorld` 过滤**。
+ *
+ *   **实测价格（R1 回执，`docs/evidence/GOALLOOP-R1b-probe.txt`）**：
+ *     全表 500 张 / 454.6433 亿  ← 改前分母
+ *     世界成员 150 张 / 156.6300 亿 ← 本表裁定（`SIM_WORLD_MEMBERS`）
+ *     比值 = **2.902657 的固定稀释** ⇒ 同一个「新增成本」两个口径差
+ *     92.1 万元 vs **267.4 万元**（÷2.9027）。
+ *
+ *   ⚠ 这个稀释是**固定倍数**不是「随输入变的稀释」⇒
+ *     「读数随不随输入变 / 两者的比随不随输入变」这类判据**天生排除不掉它**
+ *     （本单第 6 次同族错的形态，写法上就长这样）。
+ *
+ * ── 裁定依据（锚只能引**金额路径之外**的地方，⛔ 不许拿金额路径自己的输出自证）─────────────
+ *   锚① **业务问题原文**（`apps/datacore/src/catalog.ts` 的 `finance_world_projection` 条目）：
+ *        「回答『在这个**推演世界**里、施加了那条扰动之后，成本/毛利/应收各变成多少钱』」
+ *        ⇒ 被问的是**这个世界**的钱；已完成订单不在这个世界里。
+ *   锚② **世界成员判据的裁定理由**（`sim/seed-world.ts:200`）：
+ *        「货已交、款已结 ⇒ 后续**任何扰动都改不了它的结果**」⇒ 350 张 COMPLETED 单的金额
+ *        **恒定不变**；把恒定不变的量放进「扰动带来多少钱变化」的分母 = 把不变量当变量摊。
+ *   锚③ **单一物化入口令**（`sim/seed-world.ts:233–266`）：成员集合**只许**走
+ *        `listSimWorldObjects`/`entersSimWorld`，⛔ 不许再抄第 7 份。
+ *
+ * ⚠ 保留意见（据实记录，⛔ 不许粉饰）：改前 `catalog.ts` 那句自陈
+ *   「分母是全域基数不是承载集（只对承载集平均会把『10 张单里 1 张涨价』报成全域涨价）」
+ *   —— **那句话本身可能是对的**（全域摊销是一种合法口径）。它与本裁决不矛盾：
+ *   本表裁的是**分母不取 U1 全表**（锚②否掉了 U1），**不是**「分母取承载集」。
+ *
+ * ⛔ **本表是全平台唯一出处**。求解器与前端控制台**都**从 `@platform/contracts` 读这一份；
+ *   两端各写一份 = 第二套真相源（本仓治过多次的病）。改口径 ⇒ 只改这里，
+ *   回包里的 `pressures[].denominator` / `basis` 会跟着变，屏上读回包即可发现分家。
+ */
+export interface MoneyChargeBasisEntry {
+  /** 分母取哪个集合。**机器可读**，回包里逐条下发（`pressures[].denominator.set`）。 */
+  readonly population: "SIM_WORLD_MEMBERS";
+  /** 基线金额从哪来（`FinancePlan.line = ?` 的哪一列）。 */
+  readonly baseRef: string;
+  /**
+   * **基线的计量单位**（`baseRef` 那一列在对象层声明的单位）。
+   *
+   * 🔴 为什么它必须在登记表里而不是让消费方各自猜：本仓既有过一次「同一个数两种单位、
+   * 差 10000 倍」的教训 —— 屏上那条 nocalc 的老理由原文就是
+   * 「客户对象确有应收数，但其计量单位（元 / 万元）无登记册可据，两者相差 10000 倍，故不上屏」。
+   * 那个「登记册」就是**对象类型的属性声明**：`ARInvoice.amount` 的 `unit` 声明为 **万元**，
+   * `FinancePlan.{budget,rolling}` 走**亿**口径。登记在这里 ⇒ 前端与求解器读同一份，
+   * ⛔ 不再由某一端按名推断。
+   */
+  readonly baseUnit: string;
+  /** 压力量纲桥（除数）从哪来 —— 指向 `FINANCE_WORLD_PRESSURE_DIVISOR`，不另立一套。 */
+  readonly divisorRef: string;
+  /** 人话口径（前端第一层直接展示，不必自己拼）。⛔ 不含源码文件名/行号（R-UI-4）。 */
+  readonly note: string;
+}
+
+export const MONEY_CHARGE_BASIS: Readonly<Record<string, MoneyChargeBasisEntry>> = {
+  "Order|costPressure": {
+    population: "SIM_WORLD_MEMBERS",
+    baseRef: "FinancePlan:销售成本.rolling",
+    baseUnit: "亿",
+    divisorRef: "FINANCE_WORLD_PRESSURE_DIVISOR",
+    note:
+      "成本压力按**推演世界成员**（已完成的单不进推演世界——货已交款已结，任何扰动都改不了它的结果）" +
+      "的订单金额（数量×单价）加权平均，再乘成本基线（FinancePlan 销售成本行滚动值）。" +
+      "分母取世界成员而不是对象层全表：把 350 张「改不了结果」的单摊进去会把金额稀释约 2.9 倍。",
+  },
+  "Customer|receivablePressure": {
+    population: "SIM_WORLD_MEMBERS",
+    baseRef: "ARInvoice.amount（逐张真值，经 customer_has_invoice 归集到客户）",
+    baseUnit: "万元",
+    divisorRef: "FINANCE_WORLD_PRESSURE_DIVISOR",
+    note:
+      "应收压力按推演世界成员的客户（权重 = 该客户名下发票金额之和）加权平均，逐张发票用真金额投影。" +
+      "本轴下世界成员 == 对象层全表（客户/发票无「已完成」终态）⇒ 改口径前后逐位相同，是这次改动的对照。",
+  },
+  "ARInvoice|overduePressure": {
+    population: "SIM_WORLD_MEMBERS",
+    baseRef: "ARInvoice.amount（逐张真值）",
+    baseUnit: "万元",
+    divisorRef: "FINANCE_WORLD_PRESSURE_DIVISOR",
+    note:
+      "逾期敞口按推演世界成员的发票金额（真 amount）加权，逐张投影，不是拿一个总额乘系数。" +
+      "本轴下世界成员 == 对象层全表（同上）⇒ 改口径前后逐位相同，是这次改动的对照。",
+  },
+};

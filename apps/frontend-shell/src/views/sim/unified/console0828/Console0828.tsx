@@ -118,6 +118,11 @@ import {
   type TickCalendar,
   type WorldCells,
   isSettledOrder,
+  // GOALLOOP-R2 · 三行钱的真值来源（回包 → 三格 + 第一层口径句）
+  buildMoneyProjection,
+  fmtWan,
+  MONEY_PROJECTION_SOLVER_KEY,
+  type MoneyProjection,
 } from "./console0828Model";
 import { useOptionAdopt } from "./useOptionAdopt";
 import {
@@ -155,6 +160,13 @@ interface RunResult {
   /** 每条扰动的落库回执（`startTick` 是后端定的，不是前端猜的）。 */
   readonly receipts: readonly { readonly name: string; readonly startTick: number | null }[];
   readonly disclosure: DisclosureBrief | null;
+  /**
+   * GOALLOOP-R2 · 三行钱（毛利差额 / 新增成本 / 占压应收）的真值。
+   *
+   * ⚠ 这一跳**失败不拖垮本次推演**：推演本身（世界态 / 敞口 / 客户面）照常出，
+   * 只有三行钱退回「本次无法计算」＋原因 —— 两条链的可用性本来就是独立的。
+   */
+  readonly projection: MoneyProjection;
   /**
    * ⛔ 这里**不许**再有 `impediments` 字段（WO-EXPOSURE-CONTRIB ②b · 摘牌）：
    * 全流程扫描只收 `{scope}`，不读会话 / 世界态 / 扰动 —— 它算的时候根本不知道有扰动这回事，
@@ -449,13 +461,18 @@ function PricingReadoutDetail({
   if (outcome.kind === "gap") {
     return (
       <p className={styles.calibre}>
+        {/* WO-UI-LAYERING-BURNDOWN：状态留第一层（「定价缺格 · 原因」是**当下发生了什么**），
+            解释降入 `?` 浮层。规范 §1「诚实位允许降到浮层，绝不允许删除」——
+            原句一字未删，只是换了层；`?` 触发器就是那个可见记号。 */}
         定价缺格 · {PRICING_GAP_TEXT[outcome.reason]}
         {outcome.reason === "HORIZON_BELOW_REACH" ? horizonGapDetail(outcome) : ""}
-        {outcome.missingBinding === null
-          ? outcome.reason === "HORIZON_BELOW_REACH"
-            ? ""
-            : " —— 该杠杆当前没有可传导的派生式子，如实缺格，⛔ 不返 0。"
-          : `：${outcome.missingBinding.objectType}.${outcome.missingBinding.prop} 无对应派生规格 —— 该杠杆拨了也不会按式子传导，如实缺格，⛔ 不返 0。`}
+        {outcome.reason === "HORIZON_BELOW_REACH" && outcome.missingBinding === null ? null : (
+          <InfoPopover topic="为什么是「缺格」，而不是 0" testId="c0828-price-gap-why">
+            {outcome.missingBinding === null
+              ? "该杠杆当前没有可传导的派生式子，如实缺格，⛔ 不返 0。"
+              : `${outcome.missingBinding.objectType}.${outcome.missingBinding.prop} 无对应派生规格 —— 该杠杆拨了也不会按式子传导，如实缺格，⛔ 不返 0。`}
+          </InfoPopover>
+        )}
       </p>
     );
   }
@@ -959,6 +976,28 @@ export default function Console0828({
       }
       const ticked = await simTick(sid, horizon, true);
       const after = await simWorld(sid);
+      /**
+       * ── GOALLOOP-R2 · 三行钱（原恒 `nocalc`）─────────────────────────────────────
+       * 在**推完世界之后**问一次 `finance_world_projection`（`{worldId: sid}`）：
+       * 它读的是这个世界当前 tick 的态，故必须排在 `simTick` 之后。
+       *
+       * ⛔ 三条纪律：
+       *  · **失败不拖垮推演**：单独 try/catch ⇒ 世界态/敞口/客户面照常出，只有三行钱退回
+       *    「本次无法计算」+ 真实原因（把原因写进 `why`，⛔ 不静默吞成「无变化」）。
+       *  · **前端不折算**：三个数一律取回包（见 `buildMoneyProjection`），此处不做任何算术。
+       *  · **参数就两个事实**：solver key 与 worldId —— 不塞 scope、不塞 tick（那些是求解器
+       *    自己的口径，前端塞进去就是把两套口径焊死）。
+       */
+      let projection: MoneyProjection;
+      try {
+        const res = await runSolver(MONEY_PROJECTION_SOLVER_KEY, { worldId: sid });
+        projection = buildMoneyProjection(res.data);
+      } catch (e) {
+        projection = {
+          kind: "unavailable",
+          why: `财务投影这一跳没走通：${e instanceof Error ? e.message : String(e)} —— 不是「钱没有变化」。`,
+        };
+      }
       return {
         beforeTick: before.tick,
         afterTick: ticked.curTick,
@@ -966,6 +1005,7 @@ export default function Console0828({
         staged,
         receipts,
         disclosure: readDisclosure(ticked.disclosure),
+        projection,
       };
     },
     onSuccess: (r) => {
@@ -1012,7 +1052,7 @@ export default function Console0828({
   );
 
   const money = useMemo(
-    () => (result === null ? null : buildMoneyView(result.deltas, orders, causeOf)),
+    () => (result === null ? null : buildMoneyView(result.deltas, orders, causeOf, result.projection)),
     [result, orders, causeOf],
   );
 
@@ -3452,7 +3492,11 @@ export default function Console0828({
                       <span className={styles.brkKey}>{b.label}</span>
                       <span className={styles.brkVal}>
                         {b.cell.kind === "value" ? (
-                          fmtMoney(b.cell.yuan, "元")
+                          /* GOALLOOP-R2 · 单位随格走（`万元` 三行同单位才可比）；
+                             ⛔ 不许改成「永远 fmtMoney 自动折万/亿」—— 那会让三行各自换单位。 */
+                          <span data-testid={`c0828-money-${b.label}`}>
+                            {b.cell.unit === "万元" ? fmtWan(b.cell.yuan) : fmtMoney(b.cell.yuan, "元")}
+                          </span>
                         ) : (
                           <span className={styles.nocalc} data-testid={`c0828-nocalc-${b.label}`}>
                             本次无法计算
@@ -3462,6 +3506,15 @@ export default function Console0828({
                     </div>
                   ))}
                 </div>
+
+                {/* ══ GOALLOOP-R2 · 三行钱的第一层口径（R-UI-3：口径 = 这个数是什么 ⇒ 默认可见）══
+                    ⛔ 不许把这一句挪进 InfoPopover / details —— 那等于口径不存在（规范原文）。
+                    它是**推演投影**的诚实位所在：摊销总体是谁、基线是谁、单位是什么。 */}
+                {money.projectionCalibre === null ? null : (
+                  <p className={styles.calibre} data-testid="c0828-money-calibre">
+                    {money.projectionCalibre}
+                  </p>
+                )}
 
                 <p className={styles.why} data-testid="c0828-maincause">
                   {money.mainCause === null ? (
@@ -3482,9 +3535,37 @@ export default function Console0828({
                       订单簿合计 {fmtMoney(money.bookTotal, "元")}，共 {money.bookOrders} 张单（逐页取全后累加，
                       并与服务端返回的总数勾稽）。被推动 {money.exposedOrders} 张，合计 {fmtMoney(money.exposure, "元")}。
                     </p>
-                    <p>毛利差额：{NOCALC_WHY.margin}</p>
-                    <p>新增成本：{NOCALC_WHY.cost}</p>
-                    <p>占压应收：{NOCALC_WHY.receivable}</p>
+                    {/* ══ GOALLOOP-R2 · 三行钱的第二层（「凭什么这么算」）══════════════
+                        ⚠ 这一层是**推导式**的层（规范 R-UI-3：推导式不在第一层，口径在第一层）。
+                        两条分支**互斥且都必须在**：
+                          · 有投影 ⇒ 逐字给回包的算式 + 摊销总体 + 两个不同的应收量分开列；
+                          · 没投影 ⇒ 原样退回旧的 nocalc 理由（⛔ 那条分支不许删——
+                            删了就变成「算不出来时屏上一句解释都没有」）。 */}
+                    {money.projectionDetail === null ? (
+                      <>
+                        <p>毛利差额：{NOCALC_WHY.margin}</p>
+                        <p>新增成本：{NOCALC_WHY.cost}</p>
+                        <p>占压应收：{NOCALC_WHY.receivable}</p>
+                      </>
+                    ) : (
+                      <div data-testid="c0828-money-detail">
+                        <p>新增成本：{money.projectionDetail.costFormula}</p>
+                        <p>毛利差额：{money.projectionDetail.marginFormula}</p>
+                        <p>占压应收：{money.projectionDetail.cashFormula}</p>
+                        <p>
+                          占压应收（逾期敞口增量）= {fmtWan(money.projectionDetail.overdueExposureWan * 1e4)} ·
+                          应收合计本次变化 = {fmtWan(money.projectionDetail.arDeltaWan * 1e4)} ·
+                          应收基线 = {fmtWan(money.projectionDetail.arBaselineWan * 1e4)}
+                          —— 前两个是**两个不同的量**，分开列，不合并。
+                        </p>
+                        <p>
+                          投影口径：世界 {money.projectionDetail.worldId} @第 {money.projectionDetail.curTick} 拍 ·
+                          态取自 {money.projectionDetail.stateSource === "TICK" ? "该拍真态" : "世界开局快照"} ·
+                          摊销总体 {money.projectionDetail.populationText} {money.projectionDetail.populationN} 个
+                          （对象层共 {money.projectionDetail.universeN} 个）。
+                        </p>
+                      </div>
+                    )}
                     <p>
                       本次共 {result.deltas.length} 格读数发生变化；世界态自 {tickLabel(cal, result.beforeTick)} 推进至{" "}
                       {tickLabel(cal, result.afterTick)}。金丝雀：读取到 {money.ordersSeen} 张单（为 0 表示遍历失效，不是「无波及」）。

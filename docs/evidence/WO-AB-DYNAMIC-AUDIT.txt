@@ -1,0 +1,36 @@
+=== 动态数据审计（A：换起点）· 结论 ===
+日期 2026-10-07 00:01 · 4052 · 探针 WO-AB-DYNAMIC-AUDIT.mjs + 对象层全量查询
+
+### 第一组：同起点重复（A1 vs A2）逐环节比对
+  t0世界态 / t10世界态 / 求解器聚合 / COST / MARGIN / REVENUE / basis ⇒ 全部 ✅ 逐字节相同
+### 第二组：A2 vs A3（中间插入 3 次建会话）
+  同样全部 ✅ 相同 ⇒ 外部操作不影响已建会话的读数
+
+### ★ 换起点：500 张为什么只有 150 张进世界（实测吻合）
+  对象层 Order 总数 = 500（GET /a/v1/objects?type=Order&pageSize=600，回包 total=500）
+  status 分布 = OPEN 50 · COMPLETED 350 · IN_PRODUCTION 100
+  mergedInto 非空 = 0
+  进世界 = 500 − 350(COMPLETED) − 0 = 150
+  实测 members/carriers/denominator.n = 150  ⇒ ✅ 吻合
+
+### 动态性的根（源码证据 seed-world.ts:212-219）
+  export function entersSimWorld(typeKey, o) {
+    if (o.mergedInto) return false;                                   // 可变：对象被合并
+    if (typeKey === "Order" && o.props["status"] === "COMPLETED") return false;  // 可变：订单完成
+  }
+  ⇒ members 依赖【业务状态属性】⇒ 订单一旦完成，就掉出推演世界。
+
+### 所以那个 2.9027 倍的完整生命史
+  旧口径：分子 Σ(压力×value) 只遍历 members(150)，分母却用 universe(500) 的权重和
+         ⇒ 454.6亿 / 156.6亿 = 2.9025 倍稀释
+  在本机种子里：350 张固定 COMPLETED ⇒ 150 固定 ⇒ 2.9027 固定 ⇒ 三组比对全同
+  在真实业务里：订单陆续完成 ⇒ members 变小 ⇒ 稀释比【会漂】
+  ⇒ 这正是它长期存活的原因：**两个动态量之比**，每次跑出来偏差都不同，
+    读起来像「两种口径之争」而不像 bug。
+
+### ⚠ 未做成的一步（如实标）
+  本想【制造一次状态变化】实测 members 从 150 掉下来：
+  · PATCH /a/v1/objects/Order/<id>  → 404 route not found（无此路由）
+  · POST /a/v1/objects/merge-scan   → 候选数 0（mergedInto 全空，无可并对象）
+  ⇒ 没做出「活的状态变化」，本条记 NOT-MEASURED。
+    但等式 500−350=150 已实测吻合，**动态性的机制已由源码 + 该等式共同坐实**。

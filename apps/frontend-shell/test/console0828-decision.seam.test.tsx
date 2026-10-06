@@ -373,6 +373,77 @@ let withCandidates = false;
  */
 let pricingOutcomeFactory: ((body: { candidates: { candidateId: string }[] }) => { items: unknown[] }) | null = null;
 
+/**
+ * GOALLOOP-R2 · 三行钱（`finance_world_projection`）那一跳的桩态。
+ *
+ * ⚠ 缺省 `"unavailable"`：这样**其余 21 条用例的行为与改动前逐字节同**（三行照旧 nocalc），
+ * 把「新通路」收进两条专门的臂里，而不是让每条老用例都跟着变。
+ * ⛔ 两条臂**都必须在**：
+ *   · `"unavailable"` ⇒ 旧断言原样保留（==「本次无法计算」且 ≠ 0、≠ 空串）；
+ *   · `"ok"`          ⇒ 三格文本**逐字**等于真后端实测值 + 调用参数断言。
+ *   只留一条就是「判据不度量目标」：只留 unavailable 则**没有一条断言看得见新通路**；
+ *   只留 ok 则「算不出来」那一条诚实态无人守。
+ */
+let financeProjectionMode: "unavailable" | "ok" = "unavailable";
+/** 每次「开始推演」打到求解器的 (key, args) —— ② 那半用来咬「调用参数就是这两个事实」。 */
+let solverCalls: { key: string; args: Record<string, unknown> }[] = [];
+
+/**
+ * `finance_world_projection` 的桩回包 —— **逐字抄自 4052 真后端实测**（GOALLOOP-R2-probe，
+ * 单 A 臂「广汽 SO-3391 提前交付 3 天」，10 拍）：
+ *   COST.delta = 0.026744 亿（268 万级）· MARGIN.delta = −0.026744 亿 ·
+ *   overdueExposure = 0.856622 万元 · denominator = {SIM_WORLD_MEMBERS, n:150, weightSum:15663001584}
+ * ⛔ 夹具值必须来自真后端实测，⛔ 不许在测试里现编一个好看的数 —— 编出来的夹具
+ *    只能证明「屏会显示数字」，证明不了「屏显示的是那个真值」。
+ */
+function financeProjectionPayload(): unknown {
+  const PROV = { kind: "派生", drillType: "FinancePlan", drillId: "fin-cogs", drillField: "rolling", drillValue: 581.1 };
+  return {
+    worldId: "sims_c0828",
+    curTick: 3,
+    worldStateSource: "TICK",
+    worldObjectCount: 4425,
+    available: true,
+    notes: ["收入行故意不动：世界态需求侧变量与 FinancePlan 收入行之间今天没有传导规则。"],
+    basis: { kind: "PROJECTION", pressureUnit: "pp", divisor: 100, source: "DEFAULT_DECLARED", note: "金额 = 基线 ×（1 + 压力偏离 ÷ 100）" },
+    pressures: [
+      {
+        stateVar: "costPressure",
+        objectType: "Order",
+        value: 0.004602,
+        carriers: 150,
+        universe: 500,
+        denominator: { set: "SIM_WORLD_MEMBERS", n: 150, weightSum: 15663001584 },
+        weighting: "VALUE",
+        weightingNote: "按承载对象真金额在总体「SIM_WORLD_MEMBERS」内加权",
+        provenance: { kind: "派生", drillType: "Order", drillId: "obj_order_SO-3391", drillField: "costPressure", drillValue: 0.004602 },
+      },
+    ],
+    lines: [
+      { subject: "收入", role: "REVENUE", budget: 700, rolling: 700, projected: 700, delta: 0, deltaPct: 0, driver: "", formula: "700（本链不驱动收入）", provenance: { ...PROV, drillId: "fin-rev", drillValue: 700 } },
+      { subject: "销售成本", role: "COST", budget: 588, rolling: 581.1, projected: 581.126744, delta: 0.026744, deltaPct: 0.0046, driver: "Order.costPressure", formula: "581.1 ×（1 + 偏离 0.00460229 ÷ 100）= 581.126744", provenance: PROV },
+      { subject: "毛利", role: "MARGIN", budget: 112, rolling: 118.9, projected: 118.873256, delta: -0.026744, deltaPct: -0.0225, driver: "Order.costPressure（经 收入Δ − 成本Δ 传导）", formula: "118.9 +（Δ收入 0）−（Δ成本 0.026744）= 118.873256", provenance: { ...PROV, drillId: "fin-gm", drillValue: 118.9 } },
+    ],
+    cash: {
+      available: true,
+      arBaseline: 160802,
+      arProjected: 160805.7801,
+      arDelta: 3.7801,
+      overdueExposure: 0.856622,
+      overdueSharePct: 0.0005,
+      invoiceUniverse: 60,
+      invoiceCarriers: 60,
+      customerLinked: 60,
+      formula: "应收投影 = Σ_发票 amount ×（1 + 该发票客户 receivablePressure 偏离 ÷ 100）",
+      provenance: { kind: "实测", drillType: "ARInvoice", drillId: "arinvoice_0_0", drillField: "amount", drillValue: 2651 },
+    },
+    chain: [],
+    reconChecks: [{ label: "收入 − 销售成本 − 毛利", baselineResidual: 0, projectedResidual: 0, ok: true }],
+    reconciled: true,
+    summary: "世界 sims_c0828 @tick3：成本压力 0.004（偏离 0.004602…）",
+  };
+}
+
 vi.mock("@/api/endpoints", () => ({
   // ── console0828 这一屏用到的六个 ──
   fetchSimViewConfig: vi.fn(async () => cfg()),
@@ -432,8 +503,30 @@ vi.mock("@/api/endpoints", () => ({
   // ⑦c 两臂把 `pricingOutcomeFactory` 设上，就地把 priced/gap 挂到真 candidateId。
   simPricing: vi.fn(async (_sid: string, body: { candidates: { candidateId: string }[] }) =>
     pricingOutcomeFactory === null ? { items: [] } : pricingOutcomeFactory(body)),
-  runSolver: vi.fn(async () => {
+  /**
+   * ⚠ 按 **solver key 分派**（GOALLOOP-R2 起这一跳出两个消费者）：`chain_impediments` 回卡点载荷；
+   * `finance_world_projection` 按 `financeProjectionMode` 回三行钱。
+   * ⛔ 不按 key 分派会让新增那一跳吃下卡点载荷 —— 那正是「桩回的东西与这一跳无关」的假绿形态。
+   * ⛔ `solverFails` 仍然对**所有** key 生效（⑤c 那条臂要的就是「求解器这一跳整体没走通」）。
+   */
+  runSolver: vi.fn(async (key: string, args: Record<string, unknown>) => {
+    solverCalls.push({ key, args });
     if (solverFails) throw new Error("求解器这一跳没走通（桩：本用例刻意不回）");
+    if (key === "finance_world_projection") {
+      if (financeProjectionMode === "unavailable") {
+        return {
+          data: {
+            worldId: "sims_c0828", curTick: 3, worldStateSource: "TICK", worldObjectCount: 0,
+            available: false, unavailableReason: "世界 sims_c0828 的态为空（0 个对象有态）—— 据实报缺。",
+            notes: [], basis: { kind: "PROJECTION", pressureUnit: "pp", divisor: 100, source: "DEFAULT_DECLARED", note: "n" },
+            pressures: [], lines: [], cash: { available: false, arBaseline: 0, arProjected: 0, arDelta: 0, overdueExposure: 0, overdueSharePct: 0, invoiceUniverse: 0, invoiceCarriers: 0, customerLinked: 0, formula: "", provenance: { kind: "实测" } },
+            chain: [], reconChecks: [], reconciled: false, summary: "不可用",
+          },
+          snapshotVersion: "sv-test",
+        };
+      }
+      return { data: financeProjectionPayload(), snapshotVersion: "sv-test" };
+    }
     return { data: impedimentPayload(), snapshotVersion: "sv-test" };
   }),
   proposeSimCandidates: vi.fn(),
@@ -540,6 +633,8 @@ beforeEach(() => {
   withCandidates = false;
   pricingOutcomeFactory = null;
   worldAfter = WORLD_AFTER;
+  financeProjectionMode = "unavailable";
+  solverCalls = [];
 });
 afterEach(cleanup);
 
@@ -995,7 +1090,12 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     expect(warn.textContent).toContain("37 拍");
   });
 
-  it("⑤ 诚实态 · 三行钱：算不出来的画「这次算不出来」——⛔ 不许显示 0，也不许留空", async () => {
+  it("⑤ 诚实态 · 三行钱：**回包说不可用**时画「这次算不出来」——⛔ 不许显示 0，也不许留空", async () => {
+    // ⚠ GOALLOOP-R2 起本条**只管一支**：`financeProjectionMode` 缺省 `"unavailable"`
+    //   （= 回包 `available:false`）⇒ 三行退回诚实缺口。⛔ 断言一条都没放宽、没删。
+    //   另一支（回包可用 ⇒ 三格逐字等于真后端实测值）见 ⑤-ok —— 两支缺一即
+    //   「判据不度量目标」：只有这一支 ⇒ 新通路没有任何断言看得见。
+    expect(financeProjectionMode).toBe("unavailable"); // 金丝雀：本条真的跑在「不可用」这一支上
     mount();
     await railReady();
     await addEvent("material-price-up", "mat_licarb", 15);
@@ -1014,12 +1114,64 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
       expect(txt).not.toBe("0");
       expect(txt).not.toBe("");
       expect(txt).not.toMatch(/^0\s*元$/);
+      // 反向：这一支**不许**出现真值格（两个 testid 同时在场 = 同一行被画了两次）。
+      expect(screen.queryByTestId(`c0828-money-${label}`)).toBeNull();
     }
+    // 口径句只在**有数**时出现（它描述的是那些数）；不可用时不许挂一句来源不明的口径。
+    expect(screen.queryByTestId("c0828-money-calibre")).toBeNull();
+    // 第二层退回旧的「为什么算不出来」三条理由（⛔ 这一支删了就变成「算不出来时一句解释都没有」）。
+    for (const why of ["毛利差额", "新增成本", "占压应收"]) expect(screen.getByTestId("c0828-recon").textContent ?? "").toContain(why);
+    expect(screen.getByTestId("c0828-recon").textContent ?? "").toContain("未登记的系数");
 
     // 全屏诚实位把这条语义写在字面上，不靠用户自己领会删除线。
     const honesty = screen.getByTestId("c0828-honesty").textContent ?? "";
     expect(honesty).toContain("本次无法计算");
     expect(honesty).toContain("不是 0");
+  });
+
+  it("⑤-ok · 三行钱算得出来时：三格**逐字**等于真后端实测值，且第一层带口径与诚实位（⛔ 值不许藏在浮层）", async () => {
+    // ── 夹具的出处（⛔ 不是现编的）：4052 真后端 · 单 A 臂「obj_order_SO-3391.leadDays −3」· 10 拍
+    //    （`docs/evidence/GOALLOOP-R2-probe.txt`）。若屏上印不出这三个串，说明这条链没真的接上。
+    financeProjectionMode = "ok";
+    mount();
+    await railReady();
+    await addEvent("material-price-up", "mat_licarb", 15);
+    fireEvent.click(screen.getByTestId("c0828-go"));
+    await screen.findByTestId("c0828-money");
+
+    // ── ① 三格文本**逐字**（含单位与符号）——「267.4 万」与「−267.4 万」是**两格不同的钱**，
+    //    用 toContain("267") 会让「毛利与成本同号」这种错也绿。
+    expect((screen.getByTestId("c0828-money-新增成本").textContent ?? "").trim()).toBe("267.4万元");
+    expect((screen.getByTestId("c0828-money-毛利差额").textContent ?? "").trim()).toBe("-267.4万元");
+    expect((screen.getByTestId("c0828-money-占压应收").textContent ?? "").trim()).toBe("0.86万元");
+    // 反向：这一支**不许**再出现「本次无法计算」（两支同时在场 = 一格被画了两次）。
+    for (const label of MONEY_BREAKDOWN_LABELS) expect(screen.queryByTestId(`c0828-nocalc-${label}`)).toBeNull();
+
+    // ── ② 第一层口径句（R-UI-3：口径 = 这个数是什么 ⇒ 默认可见，⛔ 不许只塞浮层）。
+    const calibre = screen.getByTestId("c0828-money-calibre").textContent ?? "";
+    expect(calibre).toContain("推演投影"); // 诚实位：推演 ≠ 实测
+    expect(calibre).toContain("非实测");
+    expect(calibre).toContain("150"); // 摊销总体 = 世界成员 150 个（取自回包 denominator.n）
+    expect(calibre).toContain("500"); // 对象层共 500 个（披露用，不是分母）
+    expect(calibre).toContain("581.1"); // 成本基线（取自回包 lines[COST].rolling）
+    expect(calibre).toContain("万元"); // 单位
+    // 口径句里**不许**出现推导式（规范 R-UI-3 的硬判据：`×÷∩∪min(折算加权平均` 属浮层）。
+    expect(calibre).not.toMatch(/[×÷∩∪]/);
+    expect(calibre).not.toMatch(/\b(min|max)\s*\(/i);
+
+    // ── ③ 第二层给出「凭什么这么算」：逐字取回包里的算式，且**两个不同的应收量分开列**。
+    const detail = screen.getByTestId("c0828-money-detail").textContent ?? "";
+    expect(detail).toContain("581.1 ×（1 + 偏离 0.00460229 ÷ 100）= 581.126744"); // 回包 lines[COST].formula
+    expect(detail).toContain("应收合计本次变化");
+    expect(detail).toContain("0.86万元"); // 占压应收（逾期敞口增量）
+    expect(detail).toContain("3.78万元"); // 应收合计本次变化 —— 与上面那个是**两个量**
+
+    // ── ④ 调用参数断言：这一跳就问了两件事（哪个求解器、哪个世界），⛔ 别的一律没塞。
+    const call = solverCalls.find((c) => c.key === "finance_world_projection");
+    expect(call, "本次推演**没有**问到 finance_world_projection ⇒ 三行钱的数无处可来").toBeDefined();
+    expect(call!.args).toEqual({ worldId: "sims_c0828" });
+    // 金丝雀（正向对照）：同一次推演里另一条求解器链**也**被问过 —— 否则上面那条分派可能是空跑。
+    expect(solverCalls.some((c) => c.key === "chain_impediments")).toBe(true);
   });
 
   it("⑤b 诚实态 · 整跳失败：说「这次没算成」，而**不是**摆一屏 0 出来", async () => {

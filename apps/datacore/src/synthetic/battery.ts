@@ -4156,6 +4156,23 @@ export function stateVarSemantics(typeKey: string, stateVar: string): "LEVEL" | 
   return STATE_VAR_SEMANTICS[`${typeKey}|${stateVar}`] ?? "LEVEL";
 }
 
+/**
+ * ══ GOALLOOP-R2 · **金额摊销轴**登记（`STATE_VAR_SEMANTICS` 的姊妹轴）═════════════════════
+ *
+ * 上一张表答「这格里的数是**水平**还是**偏离**」；本轴答**下一个**问题：
+ * 「这个压力对**哪个集合**摊销」。两者是**同一族**的缺声明病：
+ * 语义没声明时四类使用方各按各的假定读写同一格；**集合没声明时**消费方现场挑一个,
+ * 挑出来的那个通常就是「手边最近的那个 `listByType`」—— 本单实测挑成了**对象层全表**，
+ * 而正确的集合是**推演世界成员**，两者相差 **2.902657 倍**（92.1 万 vs 267.4 万）。
+ *
+ * 值在 `@platform/contracts` 的 `MONEY_CHARGE_BASIS`（**唯一出处**），本行是 datacore 侧的登记入口。
+ * ⛔ 为什么值不写在本文件：前端控制台也要读**同一份**，而依赖方向是
+ *   `apps/datacore → packages/contracts`（单向）⇒ 写在这里前端导入不了 ⇒ 两端各写一份
+ *   ⇒ 第二套真相源。故**声明在 contracts、登记在这里**（同一纪律区，物理位置服从依赖方向）。
+ * ⛔ 求解器/前端一律从 `@platform/contracts` 读，不许在调用点另写 population 字面量。
+ */
+export { MONEY_CHARGE_BASIS, type MoneyChargeBasisEntry } from "@platform/contracts";
+
 /** `(类型,变量)` → 显式值绑定（裸对精确命中；未登记 → `undefined` = 走名字撞）。全平台唯一入口。 */
 export function stateVarValueRef(typeKey: string, stateVar: string): { specKey: string } | undefined {
   return STATE_VAR_VALUE_REFS[`${typeKey}|${stateVar}`];

@@ -41,11 +41,16 @@
  *   700.00 亿 = 需求 P50 预测 · 250.60 亿 = 方案寻优毛利。只有订单簿总额随订单簿变。
  */
 
-import { daysForTicks } from "@platform/contracts";
+import {
+  daysForTicks,
+  FinanceWorldProjectionOutputSchema,
+  MONEY_CHARGE_BASIS, // GOALLOOP-R2 · 金额摊销轴的**唯一**口径出处（与 datacore 求解器读同一份）
+} from "@platform/contracts";
 import type {
   CandidateEffectKind,
   CandidateJoinKind,
   CandidateRungKind,
+  FinanceWorldProjectionOutput,
   PropagationRule,
 } from "@platform/contracts";
 import type { CandidateVM } from "../../chainImpediment";
@@ -139,7 +144,17 @@ export function buildRunExposureDeltas(controlState: WorldCells, afterState: Wor
 
 /** 一个金额在屏上的三态。**「算不出来」与「是 0」必须分得开**（稿上删除线的语义）。 */
 export type MoneyCell =
-  | { readonly kind: "value"; readonly yuan: number }
+  | {
+      readonly kind: "value";
+      readonly yuan: number;
+      /**
+       * 印在屏上的单位（GOALLOOP-R2）。缺省 `"元"`（走 `fmtMoney` 自动按量级折万/亿）；
+       * `"万元"` ⇒ 一律按万元印**同一个单位**，三行可比。
+       * ⛔ 单位不是排版偏好：本仓有过「同一个数两种单位差 10000 倍」的账，
+       *    故它由 `MONEY_CHARGE_BASIS[*].baseUnit`（= 对象层属性声明里的单位）定。
+       */
+      readonly unit?: "元" | "万元";
+    }
   /** 这次算不出来 —— 屏上画删除线，**不是 0，也不是「无变化」**。 */
   | { readonly kind: "nocalc"; readonly why: string };
 
@@ -196,6 +211,16 @@ export interface MoneyView {
   readonly bookOrders: number;
   /** 三行拆解（稿上那三行；算不出来的照实画删除线）。 */
   readonly breakdown: readonly { readonly label: string; readonly cell: MoneyCell }[];
+  /**
+   * GOALLOOP-R2 · 三行钱的第一层**口径句**（`null` = 本次拿不到投影 ⇒ 三行照旧 nocalc）。
+   *
+   * ⛔ 按 R-UI-3「**口径 = 这个数是什么** ⇒ 第一层默认可见」：它写的是「这个数是对哪个集合取的、
+   * 基线是谁、单位是什么」，**不含推导式**（推导式在第二层的金额勾稽里）。
+   * 全部取自回包（`pressures[].denominator` / `lines[].rolling` / `MONEY_CHARGE_BASIS`），⛔ 不写死。
+   */
+  readonly projectionCalibre: string | null;
+  /** 三行钱的第二层明细（回包逐字给的算式 + 摊销总体），`null` = 本次没有投影。 */
+  readonly projectionDetail: MoneyProjectionDetail | null;
   /** 「主要是 X」——贡献最大的那件事的名字；`null` = 这次没有可归因的单一主因。 */
   readonly mainCause: string | null;
   /** 金丝雀：世界里一共有几张单被读到（0 ⇒ 遍历坏了，不许报「没有波及」）。 */
@@ -220,6 +245,163 @@ export const NOCALC_WHY = {
  *   「期望值与被测数据各自漂」，改了一边照样绿（本仓 `quantile-field-naming` 记过这笔账）。
  */
 export const MONEY_BREAKDOWN_LABELS = ["毛利差额", "新增成本", "占压应收"] as const;
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * GOALLOOP-R2 · 三行钱的真值来源（`finance_world_projection` 回包）
+ * ══════════════════════════════════════════════════════════════════════════════
+ *
+ * ── 这条线补的是哪一格（原状态：三行恒 `nocalc`）────────────────────────────────
+ * 旧理由（`NOCALC_WHY`）是「压力读数折算成钱需要一个全平台未登记的系数」。
+ * 那个系数**今天登记了**：`MONEY_CHARGE_BASIS`（金额摊销轴）+ `basis.divisor`（量纲桥，
+ * 随回包下发）—— 故三行钱从「本次无法计算」翻成真值，**不是把 nocalc 改写成 0**。
+ *
+ * ⛔ 三个不许（每一条都对应本仓已付过账的一种病）：
+ *  ① **不许自己折**：三行的数一律取自回包（`lines[].delta` / `cash.overdueExposure`），
+ *     前端不重算 —— 前端重算 = 第二套实现，两边各自"对"而口径分家。
+ *  ② **不许把 nocalc 兜底删掉**：回包 `available:false` / 形状不合契约 / 这一跳失败
+ *     ⇒ 三行**原样退回**「本次无法计算」＋原因。摆一个 0 会被读成「扰动不影响钱」。
+ *  ③ **不许把口径塞进浮层**：`projectionCalibre` 必须常驻第一层（规范 R-UI-3：
+ *     口径 = 这个数是什么 ⇒ 第一层默认可见；推导式才进浮层）。
+ */
+
+/** 三行钱由谁算 —— 单个 key，⛔ 组件里不许再出现第二个同义字面量。 */
+export const MONEY_PROJECTION_SOLVER_KEY = "finance_world_projection";
+
+/** 三行钱的第二层明细（「凭什么这么算」的那一层；逐字来自回包）。 */
+export interface MoneyProjectionDetail {
+  readonly worldId: string;
+  readonly curTick: number;
+  readonly stateSource: string;
+  readonly costFormula: string;
+  readonly marginFormula: string;
+  readonly cashFormula: string;
+  /** 占压应收（逾期敞口）本次增量，**万元**（= `ARInvoice.amount` 的声明单位）。 */
+  readonly overdueExposureWan: number;
+  /** 应收合计本次变化，**万元**（同一单位；与上面那个是**两个不同的量**，分开列）。 */
+  readonly arDeltaWan: number;
+  readonly arBaselineWan: number;
+  /** 摊销总体的登记名与人话名。 */
+  readonly population: string;
+  readonly populationText: string;
+  readonly populationN: number;
+  /** 对象层该类型总数（披露用；⛔ 不是分母）。 */
+  readonly universeN: number;
+  /** 成本基线（真值）与其单位 —— 单位取自登记表，⛔ 不在这里按名推断。 */
+  readonly costBaseline: number;
+  readonly costBaselineUnit: string;
+  /** 应收侧的基线单位（同上，取自登记表）。 */
+  readonly amountUnit: string;
+  readonly notes: readonly string[];
+}
+
+export type MoneyProjection =
+  | {
+      readonly kind: "ok";
+      readonly detail: MoneyProjectionDetail;
+      /** 三行钱（**元**，已由回包的原始单位换算；换算依据写在 detail 里）。 */
+      readonly costYuan: number;
+      readonly marginYuan: number;
+      readonly receivableYuan: number;
+    }
+  | { readonly kind: "unavailable"; readonly why: string };
+
+/** 登记名 → 人话（⛔ 认不出就**原样印登记名**，不替读者猜一个中文名）。 */
+const POPULATION_TEXT: Readonly<Record<string, string>> = { SIM_WORLD_MEMBERS: "推演世界成员" };
+
+/**
+ * 回包 → 三行钱。**只做三件事**：按契约 parse、挑出三个数、拼口径句。
+ * ⛔ 任何一步不成立都返回 `unavailable` + 原因，**不退回 0、不猜**。
+ */
+export function buildMoneyProjection(payload: unknown): MoneyProjection {
+  const parsed = FinanceWorldProjectionOutputSchema.safeParse(payload);
+  if (!parsed.success) {
+    const first = parsed.error.issues[0];
+    return {
+      kind: "unavailable",
+      why: `求解器回包形状不合契约（${first?.path.join(".") ?? "?"}：${first?.message ?? "?"}）—— 不猜、不退回 0。`,
+    };
+  }
+  const out: FinanceWorldProjectionOutput = parsed.data;
+  if (!out.available) {
+    return { kind: "unavailable", why: out.unavailableReason ?? "回包说本次不可用，但没给原因。" };
+  }
+  const cost = out.lines.find((l) => l.role === "COST");
+  const margin = out.lines.find((l) => l.role === "MARGIN");
+  const pCost = out.pressures.find((p) => p.stateVar === "costPressure" && p.objectType === "Order");
+  if (!cost || !margin || !pCost) {
+    return {
+      kind: "unavailable",
+      why:
+        `回包缺 ${!cost ? "成本行" : ""}${!cost && !margin ? "、" : ""}${!margin ? "毛利行" : ""}` +
+        `${!pCost ? `${!cost || !margin ? "、" : ""}成本压力读数` : ""} —— 三行钱不齐 ⇒ 一行都不摆（摆一半会被读成另一半是 0）。`,
+    };
+  }
+  const costAxis = MONEY_CHARGE_BASIS["Order|costPressure"];
+  const arAxis = MONEY_CHARGE_BASIS["ARInvoice|overduePressure"];
+  const costBaselineUnit = costAxis?.baseUnit ?? "";
+  const amountUnit = arAxis?.baseUnit ?? "";
+  const populationText = POPULATION_TEXT[pCost.denominator.set] ?? pCost.denominator.set;
+
+  const detail: MoneyProjectionDetail = {
+    worldId: out.worldId,
+    curTick: out.curTick,
+    stateSource: out.worldStateSource,
+    costFormula: cost.formula,
+    marginFormula: margin.formula,
+    cashFormula: out.cash.formula,
+    overdueExposureWan: numOr(out.cash.overdueExposure, NaN),
+    arDeltaWan: numOr(out.cash.arDelta, NaN),
+    arBaselineWan: numOr(out.cash.arBaseline, NaN),
+    population: pCost.denominator.set,
+    populationText,
+    populationN: pCost.denominator.n,
+    universeN: pCost.universe,
+    costBaseline: cost.rolling,
+    costBaselineUnit,
+    amountUnit,
+    notes: out.notes,
+  };
+  return {
+    kind: "ok",
+    detail,
+    // 科目行 delta 走**亿**口径（`FinancePlan.rolling` 的声明单位），×1e8 → 元。
+    costYuan: cost.delta * 1e8,
+    marginYuan: margin.delta * 1e8,
+    // 应收侧走**万元**口径（`ARInvoice.amount` 的声明单位），×1e4 → 元。
+    receivableYuan: detail.overdueExposureWan * 1e4,
+  };
+}
+
+const numOr = (v: unknown, fallback: number): number =>
+  typeof v === "number" && Number.isFinite(v) ? v : fallback;
+
+/**
+ * 万元口径的印法。**⛔ 只有真的 0 才印 `0.00`**（同 `fmtMagnitude` 的教训：
+ * 一个非零的小数被两位小数印成 `0.00`，与「一格都没动」逐字节同形）。
+ */
+export function fmtWan(yuan: number): string {
+  const w = yuan / 1e4;
+  if (w === 0) return "0.00万元";
+  const abs = Math.abs(w);
+  if (abs >= 100) return `${w.toFixed(1)}万元`;
+  if (abs >= 0.01) return `${w.toFixed(2)}万元`;
+  return `${w.toPrecision(2)}万元`;
+}
+
+/**
+ * 三行钱的第一层**口径句**（R-UI-3：口径默认可见）。全部由回包 + 登记表拼出，⛔ 不写死数字。
+ * ⛔ 措辞守 R-UI-3：只答「这个数是什么」（对哪个集合取的 / 基线是谁 / 单位），
+ *    不写 `A × B ÷ C` 这类推导式（那属浮层，规范里的硬判据会咬）。
+ */
+export function moneyProjectionCalibre(p: MoneyProjection): string | null {
+  if (p.kind !== "ok") return null;
+  const d = p.detail;
+  return (
+    `口径：推演投影（非实测）· 摊销总体 = ${d.populationText} ${d.populationN} 个（对象层共 ${d.universeN} 个，` +
+    `披露用、不是分母）· 成本基线 ${d.costBaseline} ${d.costBaselineUnit}（本体真值）· 应收基线单位 ${d.amountUnit} · ` +
+    `本行金额一律按万元列示`
+  );
+}
 
 /**
  * 幅度读数怎么印。**⛔ 不许用 `toFixed(2)`**（2026-09-30 改）。
@@ -254,6 +436,11 @@ export function buildMoneyView(
   deltas: readonly CellDelta[],
   orders: readonly OrderRow[],
   causeOf: (objectId: string) => string | null,
+  /**
+   * GOALLOOP-R2 · 三行钱的真值（`finance_world_projection` 回包）。缺省 `null` ⇒ 三行照旧 nocalc
+   * （**向后兼容**：不给这一项的行为与改动前逐字节同）。
+   */
+  projection: MoneyProjection | null = null,
 ): MoneyView {
   const byId = new Map(orders.map((o) => [o.id, o]));
 
@@ -402,14 +589,24 @@ export function buildMoneyView(
     magnitude,
     bookTotal,
     bookOrders: orders.length,
+    // ⛔ 三行的每一格**要么**是真值（来自回包）**要么**是 nocalc + 原因，没有第三种。
+    //    「回包给了但某个数是 NaN」也走 nocalc —— 摆一个 NaN 比摆删除线更坏。
     breakdown: [
-      { label: MONEY_BREAKDOWN_LABELS[0], cell: { kind: "nocalc", why: NOCALC_WHY.margin } },
-      { label: MONEY_BREAKDOWN_LABELS[1], cell: { kind: "nocalc", why: NOCALC_WHY.cost } },
-      { label: MONEY_BREAKDOWN_LABELS[2], cell: { kind: "nocalc", why: NOCALC_WHY.receivable } },
+      { label: MONEY_BREAKDOWN_LABELS[0], cell: projCell(projection?.kind === "ok" ? projection.marginYuan : null, NOCALC_WHY.margin) },
+      { label: MONEY_BREAKDOWN_LABELS[1], cell: projCell(projection?.kind === "ok" ? projection.costYuan : null, NOCALC_WHY.cost) },
+      { label: MONEY_BREAKDOWN_LABELS[2], cell: projCell(projection?.kind === "ok" ? projection.receivableYuan : null, NOCALC_WHY.receivable) },
     ],
+    projectionCalibre: projection === null ? null : moneyProjectionCalibre(projection),
+    projectionDetail: projection?.kind === "ok" ? projection.detail : null,
     mainCause,
     ordersSeen: orders.length,
   };
+}
+
+/** 一个数 → 屏上那一格。`null` / 非有限值 ⇒ nocalc（⛔ 绝不折成 0）。 */
+function projCell(yuan: number | null, why: string): MoneyCell {
+  if (yuan === null || !Number.isFinite(yuan)) return { kind: "nocalc", why };
+  return { kind: "value", yuan, unit: "万元" };
 }
 
 /** 区③b 客户表的一行。 */

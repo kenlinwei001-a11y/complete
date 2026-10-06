@@ -142,7 +142,19 @@ describe("SEAM · 扰动影响面随扰动变化", () => {
    * 移出「本次推演结果」语境，明标「基础数据现状 · 与本次扰动无关」。
    * ⛔ 工单明令禁止第三条路：留在原位只把标签改模糊 —— 那是把谎言降层，不是消除它。
    * 故本条守三样：两卡不许复活 · `.impediments` 字段访问不许复活 · 明标必须在场。
-   * 反向金丝雀在注释里写死：把 `runSolver` 塞回 runM（全文件第 2 个调用点）即红。 */
+   * 反向金丝雀在注释里写死：把 `runSolver(CHAIN_IMPEDIMENT_SOLVER_KEY` 塞回 runM 即红。
+   *
+   * ⚠ **2026-10-06 判据换面（GOALLOOP-R2），只换度量方式、⛔ 不放宽任何一条**：
+   *   原第 ③ 条写的是「`runSolver` 全文件调用点应恰为 1」—— 那时全仓只有 impQ 一个调用方，
+   *   于是「调用点数 = 1」碰巧与「那一跳没被塞回 runM」同真同假。
+   *   本单给 `runM` **新增了第二个**（合法的）求解器调用（`finance_world_projection`，三行钱），
+   *   两者当场分家 ⇒ 原来的写法会把「新接了一跳正当的钱」判成「摘牌被回退」——
+   *   那正是本仓反复治的「判据不度量目标」：**度量的是一件事，断定的是另一件事**。
+   *   改法（三项一起，缺一即松）：
+   *    ① **按目标直咬**：`runM` 的函数体里不许出现 `CHAIN_IMPEDIMENT_SOLVER_KEY`（精确）；
+   *    ② **预算不撤、只加一**：调用点总数恰为 2（impQ + 三行钱）—— 第三个仍当场红；
+   *    ③ 两个 key 各自的调用点各恰为 1（防止「把 impQ 那一跳换成别的 key」蒙混）。
+   *   ⛔ `runM` 块取不到 ⇒ 先红（别读成通过）——address 取不到而静默跳过，就是空集判绿。 */
   it("⑧ 摘牌结构判据：受阻环节不许再回到「本次推演结果」语境", () => {
     const tree = checkedTree(
       "apps/frontend-shell/src/views/sim/unified/console0828",
@@ -155,11 +167,28 @@ describe("SEAM · 扰动影响面随扰动变化", () => {
     // ② RunResult 的 `.impediments` 字段访问不许复活（顶栏 scope 回显必须来自 impQ.data）。
     const field = factHits(tree, /\.impediments\b/);
     expect(field, `result.impediments 复活（摘牌被回退）；命中：${field.join(",")}`).toEqual([]);
-    // ③ runSolver 全目录只能剩 **1 个**调用点（impQ 独立查询）；塞回 runM = 第 2 处 ⇒ 当场红。
+    // ③ 按目标直咬 + 预算不撤（判据换面，见上注）。
     const tsx = tree.find(([p]) => p.endsWith("Console0828.tsx"));
     expect(tsx, "Console0828.tsx 必须在 checkedTree 里（金丝雀：目录/文件名变了这里先红）").toBeDefined();
-    const solverCalls = (tsx?.[1].match(/(?<![\w.])runSolver\s*\(/g) ?? []).length;
-    expect(solverCalls, `runSolver 调用点 = ${solverCalls}，应恰为 1（impQ）；为 2 = 已塞回 runM`).toBe(1);
+    const src = tsx?.[1] ?? "";
+    // ③a 精确：runM 的函数体里不许出现受阻环节那一跳。
+    const runMBlock = src.match(/const runM = useMutation\(\{([\s\S]*?)\n {2}\}\);/);
+    expect(
+      runMBlock,
+      "取不到 runM 的函数体 ⇒ 下面那条「不许塞回 runM」无从谈起（⛔ 先红，不许静默跳过）",
+    ).not.toBeNull();
+    expect(
+      runMBlock?.[1].includes("CHAIN_IMPEDIMENT_SOLVER_KEY"),
+      "受阻环节那一跳被塞回 runM（②b 摘牌被回退）—— 它的入参只有 scope，构造性不可能随扰动变",
+    ).toBe(false);
+    // ③b 预算：调用点总数恰为 2（impQ 独立查询 + 三行钱的财务投影）；第三个 = 有新一跳没经登记。
+    const totalCalls = (src.match(/(?<![\w.])runSolver\s*\(/g) ?? []).length;
+    expect(totalCalls, `runSolver 调用点 = ${totalCalls}，预算 2（impQ + 三行钱的财务投影）`).toBe(2);
+    // ③c 两个 key 各自恰为 1 处调用（换成别的 key 蒙混 → 这里红）。
+    const chainCalls = (src.match(/runSolver\s*\(\s*CHAIN_IMPEDIMENT_SOLVER_KEY\s*,/g) ?? []).length;
+    const moneyCalls = (src.match(/runSolver\s*\(\s*MONEY_PROJECTION_SOLVER_KEY\s*,/g) ?? []).length;
+    expect(chainCalls, `受阻环节那一跳的调用点 = ${chainCalls}，应恰为 1（impQ）`).toBe(1);
+    expect(moneyCalls, `三行钱那一跳的调用点 = ${moneyCalls}，应恰为 1（runM）`).toBe(1);
     // ④ 摘牌后的明标必须在场：「基础数据现状 · 与本次扰动无关」（读者不读代码也能判断）。
     const caption = factHits(tree, /c0828-base-status/);
     expect(

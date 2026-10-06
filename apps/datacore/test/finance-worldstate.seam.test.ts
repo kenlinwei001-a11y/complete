@@ -213,8 +213,62 @@ describe("WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影", () 
     const impliedDev = (cogsAfter.projected / cogsAfter.rolling - 1) * after.basis.divisor;
     expect(cellDev, "金丝雀：扰动必须让这一格真的偏离静息值，否则下面的复算无从谈起").toBeGreaterThan(0);
     expect(impliedDev, "金额必须真的吃到了偏离").toBeGreaterThan(0);
-    // 聚合分母是**全域** 500 张单（只有这一张有静息点）⇒ 单格偏离必被稀释 ⇒ 隐含值严格小于单格值。
-    expect(impliedDev, "隐含偏离等于单格偏离 ⇒ 聚合口径变了（分母不再是全域）").toBeLessThan(cellDev);
+    /* ══ GOALLOOP-R2 · 分母口径（改写本段，⛔ 未放宽任何容差）══════════════════════════
+     *
+     * 改前：分子摊「世界态覆盖到的」，分母摊「对象层**全表** 500 张」—— 两者不是同一个集合。
+     * 改后：**分子摊谁，分母就是谁** = 推演世界成员（已完成单不进推演世界）。
+     *
+     * 判据分三层，一层比一层硬：
+     *  ① 登记名与两个分母数**与对象层现算逐位对**（不抄回包、不看代码）；
+     *  ② **2.9027 指纹**：全表权重 ÷ 世界成员权重 —— 这就是「改的是分母」的比值，
+     *     它落在实测带 [2.9025, 2.9028] 内 ⇒ 改的确实是分母那 350 张的摊入与否；
+     *  ③ **独立复算**：从原始世界态逐单取 `costPressure`，用成员权重加权算出偏离，
+     *     与「从金额反推出来的隐含偏离」对上（容差 1e-6，够收 6 位圆整的噪声）。
+     *     ⛔ 这一条**不复用**求解器的聚合实现（测试自己遍历、自己加权）。
+     */
+    const allOrders = await t.repos.objects.listByType("demo", "Order");
+    const memberOrders = allOrders.filter((o) => o.props["status"] !== "COMPLETED");
+    const wt = (o: (typeof allOrders)[number]) => Number(o.props["qty"]) * Number(o.props["unitPrice"]);
+    const Wm = memberOrders.reduce((a, o) => a + wt(o), 0);
+    const Wall = allOrders.reduce((a, o) => a + wt(o), 0);
+    // 金丝雀（正向对照，⛔ 空集一律判 NOT-MEASURED）：成员必须是**真子集**且有正权重。
+    expect(allOrders.length, "对象层 Order 台账为空 ⇒ 下面每一条都是空集断言").toBeGreaterThan(0);
+    expect(memberOrders.length, "世界成员为空 ⇒ 本用例前提不成立").toBeGreaterThan(0);
+    expect(Wm, "成员权重为 0 ⇒ 加权平均退化，本用例前提不成立").toBeGreaterThan(0);
+    expect(Wall, "全表权重为 0 ⇒ 指纹比值无意义").toBeGreaterThan(Wm);
+
+    expect(pressureAfter.denominator.set).toBe("SIM_WORLD_MEMBERS");
+    expect(pressureAfter.denominator.n, "分母口径的对象数 ≠ 对象层现算的世界成员数").toBe(memberOrders.length);
+    expect(pressureAfter.denominator.weightSum, "分母（Σ权重）≠ 对象层现算的世界成员权重").toBeCloseTo(Wm, 2);
+    // ② 指纹：全表 / 世界成员（demo 种子上实测 2.902657）。
+    const dilution = Wall / Wm;
+    expect(dilution, `全表/世界成员 = ${dilution}，不在实测带 [2.9025, 2.9028] 内 ⇒ 改的不是分母那件事实`).toBeGreaterThan(2.9025);
+    expect(dilution).toBeLessThan(2.9028);
+    // ③ 独立复算（分子摊谁分母就摊谁）。
+    const worldR = await t.app.inject({ method: "GET", url: `/a/v1/sim/sessions/${sid}/world`, headers: ADMIN });
+    const stAll = (worldR.json() as { state: Record<string, Record<string, number>> }).state;
+    // ⚠ 静息值必须按**求解器声明的口径**取（`basis.note`：静息值 = 本世界开局快照同一格；
+    //   取不到的格**不被消费**，进 `unresolvedRestPoints`，⛔ 不按偏离 0 算）。
+    //   本用例只播了两格静息点 ⇒ 大多数承载格的静息值取不到 ⇒ 它们对金额零贡献。
+    //   ⛔ 不照这条写就会把「没算」当成「算了等于 0」，复算出来的数会大 51 倍（本单实测）。
+    const sess = await t.repos.sim.getSession("demo", sid);
+    const rest = (sess?.baseSnapshot ?? {}) as Record<string, Record<string, number>>;
+    let N = 0;
+    let consumed = 0;
+    for (const o of memberOrders) {
+      const v = stAll[o.id]?.["costPressure"];
+      const r = rest[o.id]?.["costPressure"];
+      if (typeof v === "number" && typeof r === "number") {
+        N += wt(o) * (v - r);
+        consumed += 1;
+      }
+    }
+    expect(consumed, "一个格子都没被消费 ⇒ 下面的复算对上了也什么都证明不了").toBeGreaterThan(0);
+    const recomputedDev = N / Wm;
+    expect(recomputedDev, "金丝雀：独立复算出 0 ⇒ 下面那条对上了也只是 0==0（自洽成绿）").toBeGreaterThan(0);
+    expect(impliedDev, "金额隐含的偏离 ≠ 成员集加权的独立复算 ⇒ 分母/分子口径又分家了").toBeCloseTo(recomputedDev, 6);
+    // ④ 方向：分母改成成员集后，单格偏离仍被摊薄（只有少数几张单承载）⇒ 隐含值严格小于单格值。
+    expect(impliedDev, "隐含偏离等于单格偏离 ⇒ 聚合口径变成了承载集平均").toBeLessThan(cellDev);
     // ★ 头号口径判据：金额吃的**不是**面 C 报的那个水平读数（改前两者相等 ⇒ 这一条当场红）。
     expect(impliedDev).not.toBeCloseTo(pressureAfter.value, 6);
     // ⑤ 基线**没被动过**（R4：投影不写回本体真值）
