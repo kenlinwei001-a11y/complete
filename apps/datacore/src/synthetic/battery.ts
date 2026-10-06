@@ -4135,6 +4135,20 @@ export const STATE_VAR_SEMANTICS: Record<string, "LEVEL" | "DEVIATION"> = {
   "Base|loadIndex": "DEVIATION",
   // 同 `loadIndex`（`world-read.ts:112`，`可用产能' = 产能 ×（1 − 利用率压力 ÷ divisor）`）。
   "Line|utilPressure": "DEVIATION",
+  // 裁定依据：`finance-world.ts:465` 按偏离读它
+  //   （`arProjected += amount * (1 + 该发票客户 receivablePressure 偏离 ÷ divisor)`），
+  //   而规格 `customer_receivable_pressure` 产**水平**（`seed-derivation-specs.ts:77`）。
+  //   ⚠ 本条规格 2026-10-05 曾退役、**终裁否掉并已回退** ⇒ 规格在，故本格有此病。
+  "Customer|receivablePressure": "DEVIATION",
+  // 裁定依据：`world-read.ts:119` 按偏离读它
+  //   （`需求量' = 需求量 ×（1 + 需求压力 ÷ divisor）`），而规格 `order_demand_pressure` 产**水平**
+  //   （`COALESCE(this.demandDelta * 100, 0)`，`seed-derivation-specs.ts:203`）。
+  // ⚠ 本条**不在**本单原 14 格清单里 —— 因为那份清单口径是「传导规则 × 规格」交集，
+  //   而 `order_demand_pressure` **有规格、无传导规则** ⇒ 被筛掉。
+  //   **它仍满足本病全部条件**（规格产水平 + 消费端按偏离读），只是没有第三只手来打架，
+  //   所以不像 `Order.costPressure` 那样在屏上打出假信号 —— 但「静息态被播成非 0」是一样的。
+  //   ⇒ 已实测：150 格里 148 格非 0。
+  "Order|demandPressure": "DEVIATION",
 };
 
 /** `(类型,变量)` → 量纲语义（未登记 → `LEVEL` = 保持现状）。全平台唯一入口，⛔ 不许在调用侧另写缺省。 */

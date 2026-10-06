@@ -1,0 +1,27 @@
+=== ② 完成 · 按正确口径的完整清单收口 ===
+build rc=0 ✓  4052 重启后 tick0 全量扫
+
+判据：『有按偏离读的消费端』∩『有规格产水平值』—— 共 6 个量名
+消费端并集 = finance-world.ts:514 CHAIN_TARGETS(3) ∪ sim/world-read.ts:98/105/112/119(4)
+
+  量名                         格数       非0 判定
+  costPressure              156        0 ✅
+  receivablePressure         20        0 ✅
+  overduePressure            60        0 ✅（虽无规格，也无其他写入方 ⇒ 走 restPoint）
+  loadIndex                  13        0 ✅
+  utilPressure              130        0 ✅
+  demandPressure            150        0 ✅
+  ─────────────────────────────────────────────
+  合计归位 529 格
+
+对照（无偏离读消费端、本单【未动】，缺省 LEVEL 保现状）：
+  shortageRisk              158      147 待定
+  queuePressure             650      650 待定
+
+### 本单在 ② 上自曝的两处清单错误（都已纠正）
+  ① 原 14 格清单口径 =「传导规则 × 派生规格」交集 ⇒ **偏窄**。
+(eval):27: command not found: order_demand_pressure
+     漏了 （有规格、**无传导规则** ⇒ 被交集筛掉）等。
+     正确口径 =「有按偏离读的消费端 ∩ 有规格产水平值」——本件按此重出。
+  ② 我一度断言「utilPressure 92.5 的真实静息态不是 0 ⇒ 声明错」——**反了**，
+     它有偏离读消费端 ⇒ restPoint=0 对、92.5 才是病。错因=看名字外表就推断（按名推断）。
