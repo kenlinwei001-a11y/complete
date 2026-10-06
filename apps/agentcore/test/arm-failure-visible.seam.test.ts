@@ -381,7 +381,9 @@ describe("WO-ARM-FAILURE-VISIBLE · ⑥ 两臂同判据：同一份失败集合�
 });
 
 // ---------------------------------------------------------------------------
-// ⑦ 广告面审计（**只报不改** · 钉住今天的事实）
+// ⑦ 广告面审计（工具面 vs 提示词面）
+//   ⑦a「只报不改」的当时只到工具面为止；⑦b 那条**已收口**（WO-ROSTER-RESPECT-TOOLFILTER）：
+//   目录段成员资格从「只走对象域」改成「对象域 ∩ 授予面（toolFilter）」，断言随之翻成 `.not.toContain`。
 // ---------------------------------------------------------------------------
 
 /** 活服务 `agt_capacity_planner` 的授予面（`GET /b/v1/agents/agt_capacity_planner` 实读）：
@@ -473,20 +475,27 @@ describe("WO-ARM-FAILURE-VISIBLE · ⑦ 广告面审计（工具面 vs 提示词
     }
   });
 
-  it("⑦b 提示词面：导航切片的「全部可调用求解器目录」**不受 toolFilter 约束** ⇒ cockpit_kpi 被点名", () => {
+  it("⑦b 提示词面：导航切片的「全部可调用求解器目录」**已收到 toolFilter 上** ⇒ cockpit_kpi 不再被点名", () => {
     // 目录按活服务实读的 reads 构造（同一条过滤规则：scope 对象域 ∩ reads）。tier 置 "roster"
     // = 活目录的「全量目录段」那一层（`fetchLiveSolverCatalog` 第二段赋的就是它）。
     const catalog = Object.fromEntries(
       Object.entries(LIVE_READS).map(([key, reads]) => [key, { capability: `${key} 能力`, outputShape: ["x"], reads, tier: "roster" as const }]),
     );
-    const scope = { objectTypes: ["Base", "Line", "Model", "Order"], toolNames: GRANTED_SOLVERS.map((k) => `mcp__solvers__${k}`) };
+    // `solverToolFilter` = 授予面（`tools[].toolFilter` 原文·活服务实读的那 5 个）。
+    const scope = {
+      objectTypes: ["Base", "Line", "Model", "Order"],
+      toolNames: GRANTED_SOLVERS.map((k) => `mcp__solvers__${k}`),
+      solverToolFilter: GRANTED_SOLVERS.map((k) => `mcp__solvers__${k}`),
+    };
     const text = renderNavigationSlice(projectNavigationSlice(QUERY, undefined, scope, catalog));
 
     // 反向金丝雀先证明这条规则**真的在过滤**（不是「谁都能进」）：读 Material/Supplier 的那条不进。
     expect(text, "scope 外的对象域不进目录（过滤规则在动）").not.toContain("nope_out_of_scope");
-    // 今天的事实（**钉住·非修复**）：cockpit_kpi 读 Base/Order ⇒ 与 scope 有交集 ⇒ 进目录段。
-    // ⚠ 若将来把 roster 收到 `toolFilter` 上，本断言应当改成 `.not.toContain(...)` —— 那是修复不是回归。
-    expect(text, "roster 的成员资格只看对象域、不看 toolFilter ⇒ 广告面宽于授予面").toContain("cockpit_kpi");
-    expect(text, "且这段的措辞是「全部**可调用的**求解器目录」——模型据此去调它调不到的东西").toContain("全部可调用的求解器目录");
+    // 已收口（WO-ROSTER-RESPECT-TOOLFILTER）：目录段成员资格 = 对象域 ∩ **授予面（toolFilter）**。
+    // cockpit_kpi 读 Base/Order（域内）但**不在**该 agent 的 toolFilter 里 ⇒ 广告面 ⊆ 可调用面。
+    // 收口前此处是 `.toContain(...)`（写死当时的行为），修的不是它本身、是它钉住的那条错规则。
+    expect(text, "roster 仍在域内选成员：授予面那 5 个要列出来（证明段没被整体抽空）").toContain("capacity_forecast");
+    expect(text, "cockpit_kpi 不在授予面 ⇒ 不许出现在「全部可调用」目录里").not.toContain("cockpit_kpi");
+    expect(text, "且这段的措辞是「全部**可调用的**求解器目录」——措辞与成员资格同口径").toContain("全部可调用的求解器目录");
   });
 });
