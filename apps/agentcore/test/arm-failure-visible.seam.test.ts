@@ -36,6 +36,7 @@ import { loadConfig, stdioPolicyFromConfig } from "../src/config.js";
 import { buildServer } from "../src/server.js";
 import { BudgetTracker } from "../src/tools/budget.js";
 import { TENANT, createTestApp } from "./helpers.js";
+import { projectNavigationSlice, renderNavigationSlice } from "../src/agent/navigation-slice.js";
 
 // ---------------------------------------------------------------------------
 // 帧构造（形态照 dsh-reflect-parity.seam.test.ts / dsh-runtime-reassemble.test.ts，不另立第二套）
@@ -376,5 +377,115 @@ describe("WO-ARM-FAILURE-VISIBLE · ⑥ 两臂同判据：同一份失败集合�
     } finally {
       await r.close();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ⑦ 广告面审计（**只报不改** · 钉住今天的事实）
+// ---------------------------------------------------------------------------
+
+/** 活服务 `agt_capacity_planner` 的授予面（`GET /b/v1/agents/agt_capacity_planner` 实读）：
+ *  求解器 toolFilter = 这 5 个；`scopeDeclaration.objectTypes = [Base, Line, Model, Order]`。 */
+const GRANTED_SOLVERS = [
+  "capacity_forecast",
+  "mrp_netting",
+  "affected_orders",
+  "bottleneck_matrix",
+  "base_capacity_outlook",
+] as const;
+/** 该问句下**活服务** `/b/v1/resources/search`（kinds=["solver"]·maxResults 50）的实测结果：
+ *  50 条里 `cockpit_kpi` 排第 9（score 0.439）—— 它**不在**上面的 toolFilter 里。 */
+const QUERY = "常州基地当前的产能利用率是多少？瓶颈在哪道工序？";
+
+/** 活服务 `/a/v1/solvers/registry` 实读的 `ontologySignature.reads`（只取 typeKey 面，逐字不动）。 */
+const LIVE_READS: Record<string, string[]> = {
+  capacity_forecast: ["Base", "Line", "Process", "Equipment", "MaintPlan", "Model", "Order", "DataSourceHealth", "Material"],
+  bottleneck_matrix: ["Base", "Line", "Process", "Equipment", "Material"],
+  // 实测原文（本单取证）：`[{"typeKey":"SopVersionRow",…},{"typeKey":"FinancePlan",…},{"typeKey":"Base",…},{"typeKey":"AnnualScenario",…},{"typeKey":"Order",…}]`
+  cockpit_kpi: ["SopVersionRow", "FinancePlan", "Base", "AnnualScenario", "Order"],
+  nope_out_of_scope: ["Material", "Supplier"], // 反向金丝雀用：与 [Base,Line,Model,Order] 无交集
+};
+
+function solverCatalogAgent(id: string, withFilter: boolean): AgentDefinition {
+  return {
+    tenantId: TENANT,
+    id,
+    key: id,
+    version: 1,
+    name: id,
+    description: "advertisement audit agent",
+    model: "claude-opus-4-8",
+    systemPrompt: "你是测试 agent。",
+    tools: [
+      {
+        kind: "MCP",
+        mcpConfigId: SOLVERS_MCP_CONFIG_ID,
+        ...(withFilter ? { toolFilter: GRANTED_SOLVERS.map((k) => `mcp__solvers__${k}`) } : {}),
+      },
+    ],
+    ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
+    skills: [],
+    mcpServers: [{ mcpConfigId: SOLVERS_MCP_CONFIG_ID }],
+    scopeDeclaration: {
+      objectTypes: ["Base", "Line", "Model", "Order"],
+      toolNames: GRANTED_SOLVERS.map((k) => `mcp__solvers__${k}`),
+    },
+    status: "PUBLISHED",
+  } as AgentDefinition;
+}
+
+describe("WO-ARM-FAILURE-VISIBLE · ⑦ 广告面审计（工具面 vs 提示词面）", () => {
+  it("⑦a 工具面：`expandAgentTools` 严格吃 toolFilter ⇒ cockpit_kpi **不**在模型可调清单里", async () => {
+    const t = await createTestApp();
+    try {
+      // 装配点要能走到求解器分支，仓里有 `mcp_builtin_solvers` 这一行是前提（`main.ts` 启动期种）。
+      for (const c of seedMcpConfigs()) if (!(await t.repos.mcpConfigs.get(c.id))) await t.repos.mcpConfigs.insert(c);
+      const registryItems = [...GRANTED_SOLVERS, "cockpit_kpi"].map((key) => ({
+        key,
+        name: key,
+        description: `${key} 求解器`,
+        domain: "capacity",
+        argHints: {},
+      }));
+      // 目录源打桩：让它**确实含有** cockpit_kpi —— 否则「没看到」不度量「被过滤掉了」。
+      t.dataCore.catalog.solverRegistry = async () => ({ items: registryItems });
+
+      const filtered = await t.deps.engine.expandAgentTools(solverCatalogAgent("agt_adv_filter", true), {
+        tenantId: TENANT,
+        userId: "u",
+        roles: ["planner"],
+      });
+      const names = filtered.map((s) => s.name).sort();
+      expect(names, "授予面 5 个：toolFilter 逐条生效").toEqual(GRANTED_SOLVERS.map((k) => `mcp__solvers__${k}`).sort());
+      expect(names, "cockpit_kpi 不在授予面 ⇒ 不许出现在模型可调清单里").not.toContain("mcp__solvers__cockpit_kpi");
+
+      // 正对照（金丝雀）：去掉 toolFilter 的同一份目录 ⇒ cockpit_kpi **会**出现。
+      // 它证明上面那条「不在」是**过滤的结果**，不是「目录里压根没有」。
+      const unfiltered = await t.deps.engine.expandAgentTools(solverCatalogAgent("agt_adv_nofilter", false), {
+        tenantId: TENANT,
+        userId: "u",
+        roles: ["planner"],
+      });
+      expect(unfiltered.map((s) => s.name)).toContain("mcp__solvers__cockpit_kpi");
+    } finally {
+      await t.app.close();
+    }
+  });
+
+  it("⑦b 提示词面：导航切片的「全部可调用求解器目录」**不受 toolFilter 约束** ⇒ cockpit_kpi 被点名", () => {
+    // 目录按活服务实读的 reads 构造（同一条过滤规则：scope 对象域 ∩ reads）。tier 置 "roster"
+    // = 活目录的「全量目录段」那一层（`fetchLiveSolverCatalog` 第二段赋的就是它）。
+    const catalog = Object.fromEntries(
+      Object.entries(LIVE_READS).map(([key, reads]) => [key, { capability: `${key} 能力`, outputShape: ["x"], reads, tier: "roster" as const }]),
+    );
+    const scope = { objectTypes: ["Base", "Line", "Model", "Order"], toolNames: GRANTED_SOLVERS.map((k) => `mcp__solvers__${k}`) };
+    const text = renderNavigationSlice(projectNavigationSlice(QUERY, undefined, scope, catalog));
+
+    // 反向金丝雀先证明这条规则**真的在过滤**（不是「谁都能进」）：读 Material/Supplier 的那条不进。
+    expect(text, "scope 外的对象域不进目录（过滤规则在动）").not.toContain("nope_out_of_scope");
+    // 今天的事实（**钉住·非修复**）：cockpit_kpi 读 Base/Order ⇒ 与 scope 有交集 ⇒ 进目录段。
+    // ⚠ 若将来把 roster 收到 `toolFilter` 上，本断言应当改成 `.not.toContain(...)` —— 那是修复不是回归。
+    expect(text, "roster 的成员资格只看对象域、不看 toolFilter ⇒ 广告面宽于授予面").toContain("cockpit_kpi");
+    expect(text, "且这段的措辞是「全部**可调用的**求解器目录」——模型据此去调它调不到的东西").toContain("全部可调用的求解器目录");
   });
 });
