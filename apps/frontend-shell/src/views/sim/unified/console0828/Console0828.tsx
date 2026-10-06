@@ -2786,11 +2786,18 @@ export default function Console0828({
                   *   读者只能理解成「这次推演算出来的」——**摆错位置比没有更糟**，
                   *   那正是仓主最初撞到的那个形态：「输入不同的扰动因素，该截屏数据没有变化」。
                   */}
-                <p className={styles.calibre} data-testid="c0828-board-baseline-note">
+                {/* WO-AB-UI-LAYERING：口径说明降层到 `?` 浮层（`docs/CONVENTION-ui-information-layering.md`
+                    §1 三层：第一层结论 · 第二层明细 · 浮层放「凭什么」；§2 R-UI-3 指定
+                    `components/InfoPopover` 为唯一实现）。
+                    ⚠ 红线：诚实位**允许降到浮层，绝不允许删除**；降层后第一层必须留可见记号 ——
+                    那个 `?` 触发器本身就是记号，⛔ 不是 hover 才显形的花活（`InfoPopover` 保证真 `<button>`、Tab 到得了）。
+                    本处原来是裸 `<p>` 摆在主数旁边，读者会把它当成「这次推演算出来的」——
+                    与被解释的结论抢同一层，这正是要治的形态。 */}
+                <InfoPopover topic="本块为基线扫描（不随本次扰动变）" testId="c0828-board-baseline-note">
                   ⚠ 本块为<b>基线扫描</b>：读的是对象层当前快照，<b>不随本次扰动变</b> ——
                   换一个扰动重跑，这 {impGroups.all.length} 处与各自的严重度、实测/红线都不会改变。
                   它回答的是「<b>现在哪里卡着</b>」，不是「<b>这次扰动会卡在哪</b>」。
-                </p>
+                </InfoPopover>
                 <div className={styles.tblWrap}>
                   <table className={styles.board}>
                     <thead>
