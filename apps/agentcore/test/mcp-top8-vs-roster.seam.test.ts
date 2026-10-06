@@ -16,10 +16,11 @@ import { projectNavigationSlice, renderNavigationSlice } from "../src/agent/navi
  * 首轮发给 LLM 的请求里：
  *   · 目录段点名的求解器 **16**（自称「**全部可调用的**求解器目录」）；
  *   · `tools[]` 真带上的 `mcp__solvers__*` 只有 **6**（Phase6C `selectMcpTools` top-8，
- *     8 个名额里 2 个给了本体切片工具）；
- *   · **差集 10 条**：atp_check / base_capacity_outlook / bottleneck_matrix / decision_play /
+ *     8 个名额里 2 个给了本体切片工具）：atp_check / base_capacity_outlook / bottleneck_matrix /
+ *     capacity_forecast / kit_readiness / risk_timeline；
+ *   · **差集 10 条**：affected_orders / credit_exposure / decision_play / finance_pnl /
  *     gap_attribution / generic_inference / metric_rollup / mrp_netting /
- *     supply_demand_gap_attribution / yield_diagnosis。
+ *     supply_demand_gap_attribution / yield_diagnosis（改后为空，见 ②④）。
  * 被 deferred 的既不在模型 `tools` 里、`discover(kind:"mcp_tools")` 今天又返回空表
  * （按需加载模式未启用）⇒ **模型真的调不到**，而那句「任何一条你都能直接调用」在断言它们可调。
  *
