@@ -18,6 +18,7 @@ import {
   saveAgent,
   type QueryHistoryItem,
 } from "@/api/endpoints";
+import { MCP_ORIGIN_LABEL, mcpNamespaceOf, mcpOriginOf, mcpToolFilterLabel } from "@/api/mcpNamespace";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { InfoPopover } from "@/components/InfoPopover";
 import ReferencesPanel from "@/components/ReferencesPanel";
@@ -901,10 +902,19 @@ function AgentEditor({ agent, onChanged, onForked }: { agent: AgentDefinition; o
           >
             {(mcpConfigs ?? []).map((m) => (
               <option key={m.id} value={m.id}>
-                {m.name}
+                {m.name} · {mcpNamespaceOf(m).wildcard}
               </option>
             ))}
           </select>
+          {/* 下拉里给的是展示名，模型真正看见的是命名空间全名 —— 选中项即时把前缀摊开。 */}
+          {(() => {
+            const m = (mcpConfigs ?? []).find((x) => x.id === ref.mcpConfigId);
+            return (
+              <span className="mono" data-testid={`agent-mcp-namespace-${i}`} style={{ fontSize: 11, alignSelf: "center", whiteSpace: "nowrap" }}>
+                {m ? mcpNamespaceOf(m).wildcard : "（配置未下发）"}
+              </span>
+            );
+          })()}
           <input
             placeholder="toolFilter（逗号分隔，空=全部）"
             disabled={!editable}
@@ -928,6 +938,53 @@ function AgentEditor({ agent, onChanged, onForked }: { agent: AgentDefinition; o
         </button>
       )}
       {editable && (mcpConfigs?.length ?? 0) === 0 && <RefEmptyLink to="/admin/mcp" label="MCP 服务器" testid="agent-mcp-empty" />}
+
+      {/* WO-DSH-CONFIG-SURFACE：本 agent 实际挂到的 DSH 命名空间一览（只读）。
+          agent 侧契约只带 mcpConfigId（挂载面 mcpServers[] + 工具面 tools[kind=MCP]），
+          此前编辑器一处都不渲染 mcpServers ⇒「这个 agent 能调到哪些命名空间下的哪些工具」答不出来。
+          mcpConfigId 解不出的行如实标「配置未下发」，不猜名字（契约上拿不到就拿不到）。 */}
+      <div className="section-title">DSH 命名空间挂载面</div>
+      {(() => {
+        const mounted = new Map<string, { filter?: string[]; viaMount: boolean; viaTools: boolean }>();
+        for (const m of agent.mcpServers ?? []) {
+          const cur = mounted.get(m.mcpConfigId) ?? { viaMount: false, viaTools: false };
+          mounted.set(m.mcpConfigId, { ...cur, viaMount: true });
+        }
+        for (const ref of mcpRefs) {
+          const cur = mounted.get(ref.mcpConfigId) ?? { viaMount: false, viaTools: false };
+          mounted.set(ref.mcpConfigId, { ...cur, viaTools: true, filter: ref.toolFilter });
+        }
+        if (mounted.size === 0) return <div style={{ fontSize: 12, color: "var(--muted)" }} data-testid="agent-mcp-mounts-empty">未挂任何 MCP server（模型面看不到 mcp__* 工具）。</div>;
+        return (
+          <table style={{ width: "100%", fontSize: 12, marginBottom: 10 }} data-testid="agent-mcp-mounts">
+            <thead>
+              <tr style={{ color: "var(--muted)", textAlign: "left" }}>
+                <th>server</th>
+                <th>命名空间前缀</th>
+                <th>工具过滤面</th>
+                <th>来源</th>
+                <th>状态</th>
+                <th>接入面</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...mounted.entries()].map(([configId, m]) => {
+                const cfg = (mcpConfigs ?? []).find((x) => x.id === configId);
+                return (
+                  <tr key={configId} data-testid={`agent-mcp-mount-${configId}`}>
+                    <td data-testid={`agent-mcp-mount-name-${configId}`}>{cfg ? cfg.name : "（配置未下发）"}</td>
+                    <td className="mono" data-testid={`agent-mcp-mount-ns-${configId}`}>{cfg ? mcpNamespaceOf(cfg).wildcard : "（未下发）"}</td>
+                    <td data-testid={`agent-mcp-mount-filter-${configId}`}>{m.viaTools ? mcpToolFilterLabel(m.filter) : "全部工具（未设过滤）"}</td>
+                    <td data-testid={`agent-mcp-mount-origin-${configId}`}>{cfg ? MCP_ORIGIN_LABEL[mcpOriginOf(cfg)] : "（未下发）"}</td>
+                    <td><span className={`badge ${cfg?.status === "ACTIVE" ? "green" : ""}`} data-testid={`agent-mcp-mount-status-${configId}`}>{cfg ? cfg.status : "—"}</span></td>
+                    <td data-testid={`agent-mcp-mount-via-${configId}`}>{[m.viaMount ? "mcpServers" : null, m.viaTools ? "tools[kind=MCP]" : null].filter(Boolean).join(" + ")}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        );
+      })()}
 
       <div className="section-title">{t.workflowTools}</div>
       {wfRefs.map((ref, i) => (
