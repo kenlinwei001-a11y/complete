@@ -1830,14 +1830,22 @@ describe("§6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算", () => {
       hashSourced,
       "「源走哈希占位」的边集合变了 —— 见上方三种成因，三种都必须先解释再改这个名单。",
     ).toEqual([
-      "demo_alt_switch_to_material_shortage",       // 源 MaterialAlternative.switchPressure 无派生规格
-      "demo_fg_drawdown_relieves_model_demand",     // 源 FinishedGoodsInventory.drawdownPressure 无派生规格
+      // ── 2026-10-06 WO-DERIV-BACKFILL：名单 **6 → 3**，走的是上面注释里那条「**好事**」分支 ────
+      // 掉出的 3 条，其**源格**本单都接上了诚实数据源（A 档 17 条之一，逐条可查）：
+      //   · `demo_alt_switch_to_material_shortage`     源 `MaterialAlternative.switchPressure`
+      //        ← 规格 `materialalternative_switch_pressure` = `this.priority`
+      //   · `demo_fg_drawdown_relieves_model_demand`   源 `FinishedGoodsInventory.drawdownPressure`
+      //        ← 规格 `fgi_drawdown_pressure` = `this.coverDays`
+      //   · `demo_inspection_queue_to_material_shortage` 源 `IncomingInspection.queueDays`
+      //        ← 规格 `incominginspection_queue_days` = `this.releasedDay - this.arrivedDay`
+      // ⛔ 这**不是** (a) 那条「有诚实源的格子退回占位」——方向相反：哈希占位**转正**。
+      //    两半互证：① 机器读数（上面 `hashSourced` 只剩 3 条）；② 三个源格各自有规格行。
+      //    ⚠ 判据不能只靠 ②：**规格存在**不度量**世界真的按它派生了** —— ① 才是那个度量。
       // 源 Model.forecastBias —— 2026-09-20 走 (b)：原规格 `model_forecast_bias` 的分子是
       // `totalDemand − SUM(in(order_for_model).qty)`，两项同源 ⇒ **恒 0**，却盖着 "measured" 章。
       // 退役后回哈希占位（实测 6 型号 1/88/50/88/8/79）⇒ 这条全图唯一的负系数边**首次真正传导**
       // （单拍 trace 0 行 → 150 行 / −1705.848）。⛔ 别把它读成回归。
       "demo_forecast_bias_to_order_demand",
-      "demo_inspection_queue_to_material_shortage", // 源 IncomingInspection.queueDays 无派生规格
       "demo_order_churn_to_line_split",             // 源 Order.orderChurn —— 仓主 2026-09-16 明令停笔
       "demo_order_churn_to_model_demand_load",      // 同上（本格就是 `Model.demandLoad`）
     ]);
@@ -1868,6 +1876,16 @@ describe("§6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算", () => {
       flipped,
       `「A 列头名 ≠ B 列头名」的格子集合变了。\n  8 个多入边格子现值：\n  ${flipTable}`,
     ).toEqual([
+      // ── 2026-10-06 WO-DERIV-BACKFILL：**6 → 7**，新增 `Material.shortageRisk` ──────────────
+      // 两半都由实测给出，⛔ 不是推断：
+      //   ① 旧世界未翻转：canonical 原文件的这份名单只有 6 条、不含本格 ⇒ 那时 A 头名 == B 头名；
+      //   ② 本单给它的首名边 `demo_alt_switch_to_material_shortage` 的**源**接上了诚实数据源
+      //      （`MaterialAlternative.switchPressure` ← 规格 `this.priority`，实测 n=5 取值 {1,2,3}
+      //      均值 2.20），该边 B 拉力随之塌到 ~0.66；
+      //      而 A 列（`|g|×W`，与源读数无关）头名仍是它(0.30000) ⇒ **两列头名分家**。
+      //      现 B 头名 = `demo_batch_procurement_delay_to_material_shortage`(10.7976·源实测)。
+      // ⛔ 判据不是「谁数值大谁对」：这是**源读数换档**引起的，主因是本单那条规格，属真变化。
+      "Material.shortageRisk",         // A: alt_switch(0.30000) / B: batch_procurement_delay(10.7976·源实测)
       "Model.costPressure",            // A: material_price(0.42391) / B: wo_release(源 E=7.758 但 |g| 0.326)
       "Model.demandLoad",              // A: order_demand(+) / B: order_churn(哈希源 E=53.58)
       "OrderLine.splitPressure",       // A: order_demand / B: order_churn（同因）
@@ -1943,10 +1961,29 @@ describe("§6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算", () => {
     //
     // **独立复算**（不经本测的算法，纯手算核对）：
     //   两条不动的边合计 = −12.5527 + 12.3511；
-    //   cover:  −0.00698967 × 134.420244 ÷ 6 ÷ 0.37 = −0.423222（修前用 120.333342 得 −0.378870）
-    //   drawdn: −0.0083879  × 375.282112 ÷ 6 ÷ 0.37 = −1.417941（修前用 348.666667 得 −1.317379）
-    //   ⇒ 修前合计 −1.897848（在册 −1.8977932307 ✓）、修后合计 −2.042763（实测 −2.0427078656 ✓）。
+    //   cover:  −0.00698967 × 134.420244 ÷ 6 ÷ 0.37 = −0.423222
+    //   drawdn: −0.0083879  × 134.420244 ÷ 6 ÷ 0.37 = −0.507884  ← 2026-10-06 改
+    //   ⇒ 合计 −1.132706（实测 −1.1326514414522784 ✓）
     //
+    // ── 2026-10-06 WO-DERIV-BACKFILL 为什么动这个数 ────────────────────────────────
+    // `drawdn` 的**源**从哈希占位换成了规格 `fgi_drawdown_pressure`（本单 A 档 17 条之一），
+    // ⇒ 源读数从「均值 375.282112 的铸造值」变成真实字段值「134.420244」⇒ 该边拉力
+    // −1.417941 → −0.507884，**本条合计 −2.0427078656 → −1.1326514414522784**。
+    // ⛔ 不是回归也不是修好：**它仍为负**，缺口没修、没变性 —— 本条的告警语义原样有效。
+    // 两半互证：① 机器读数（判据⑤ 名单里 `demo_fg_drawdown_relieves_model_demand` **已掉出**
+    //   = 它的源不再走占位）；② 本格的逐边打印里，四条入边**只有这一条**的源被本单动过。
+    //
+    // ⚠ **本单留下的一个观察，供下一个人判断**（⛔ 本条不据此改规格）：新规格 `this.coverDays`
+    //   与相邻边 `demo_fg_cover_days_to_model_demand` 的源**是同一个字段** ⇒ 上面两个系数相乘的是
+    //   **同一个 134.420244**，`Model.demandLoad` 的四条入边里两条在搬同一个信号（重复计数）。
+    //   我当时的取舍已写在规格注释里（「去化的自变量是**还能撑几天**」）；同型确有更贴「提货速率」的
+    //   字段 `dailyDemand`。**换不换是模型语义裁决，不是复验能定的** —— 且该格本就在本单
+    //   `wo-deriv-backfill-dual-owner.txt` 的双所有者名单里（规格与入边两个写者），换源要连同那份
+    //   普查一起看。
+    //
+    // ⚠ **下面这段变异反证的基线（−1.8977932307）已随本单作废**：它测的是"按 `qtyAvailable`
+    //   加权 vs 按 `dailyDemand` 加权"的差，而 `drawdn` 的源已经不读 `qtyAvailable` 那一支了。
+    //   ⛔ 别照它复现 —— 要复现得先把源换回旧档。它记的 RL9 结论本身仍然成立。
     // **🐤 变异反证（这一条才是"新值是对的"的证据，缺了它上面全是说辞）**：
     //   把两条边的 `field` 从 `qtyAvailable` 换成 `dailyDemand`（实测**组内取值数 = 1**，即组内恒定
     //   ⇒ 按它加权等价于等份），本条断言**恢复原值 −1.8977932307 并当场转绿（实测 RC=0）**。
@@ -1956,7 +1993,7 @@ describe("§6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算", () => {
     // ⚠ **本条钉的那个缺口没有被修，也没有变性**：`Model.demandLoad` 仍被负拉力压在域下界 0，
     //   病因仍是注释里记的 ① / ②（forecastBias 哈希占位恒非负 · orderChurn 被 adversary 开关闸掉）。
     //   本单只是把**库存缓冲那两项的算法**改对了。它转正仍然是"修好了"的判据。
-    ).toBeCloseTo(-2.0427078656, 6);
+    ).toBeCloseTo(-1.1326514415, 6);
   }, 300000);
 });
 
