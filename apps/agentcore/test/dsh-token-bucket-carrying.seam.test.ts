@@ -26,6 +26,14 @@
  * ══ 本文件**不**覆盖的面（点名，不隐去）═══════════════════════════════════════════
  * · **native 臂的输入桶**（取 `usage.prompt_tokens`）不在这里 —— 那是适配器缝，`llm-adapters` 侧自测。
  *   本文件只钉 EXTERNAL 臂，**不做两臂互比**（两臂 token 账不互比是既定口径）。
+ *   ⚠️ **2026-10-06 订正（WO-TWO-ARM-ACCOUNT-DIFF）**：上面那句的**理由已被后来那次修复消掉**——
+ *   本条写于 `9ece8e26d`（10-04 17:06），而 `562faf9e8`（10-04 23:56，`git merge-base --is-ancestor`
+ *   实测为后者的祖先）把输入桶语义下沉到 `llm-adapters/src/types.ts` 的 `LlmUsage` 单点
+ *   （≡ 新输入 + 缓存命中），ROLLOUT §1 原话「两臂同量在**所有 provider kind** 上成立」。
+ *   ⇒ 「不互比」在本文件（EXTERNAL 单臂 + 语料 cacheRead 恒 0）范围内**仍成立**，
+ *     但**不再是全仓口径**：两臂打同一 provider 时的账差对照见
+ *     `dsh-two-arm-account-diff.seam.test.ts`（ROLLOUT §1-a③ 的可执行臂）。
+ *     剩余那条「物理不同源」的理由只属于 `dsh-e2e-dualrun50` 语料（native 走 ScriptedLlmClient 固定账）。
  * · **缓存写桶**（`cacheWriteTokens`）不在载体 A 定义里，本文件不主张它该不该计。
  * · 配额账本侧的落账（谁调用 `record`、记几次）不是本文件的面 —— 见 `ledger-single-tap.seam.test.ts`。
  */
