@@ -1,0 +1,15 @@
+零扰动臂 session=sims_7s6gnef2ckjhnn3r ticks=12：共 6375 格，动了 943 格
+|Δ|>0.5 的格 912 个（其中 costPressure 15 个）；costPressure 大位移样本：
+  obj_order_SO-3529.costPressure: 90.384615384615 → 82.278484540203  (Δ=-8.106130844)
+  obj_order_SO-900325.costPressure: 90.384615384615 → 82.278484540203  (Δ=-8.106130844)
+  obj_order_SO-3452.costPressure: 90.384615384615 → 82.284551834996  (Δ=-8.100063550)
+  obj_order_SO-900091.costPressure: 90.384615384615 → 82.284551834996  (Δ=-8.100063550)
+  obj_order_SO-900286.costPressure: 90.384615384615 → 82.284551834996  (Δ=-8.100063550)
+  obj_order_SO-900406.costPressure: 88 → 81.592652301338  (Δ=-6.407347699)
+  obj_order_SO-900448.costPressure: 88 → 81.599413015941  (Δ=-6.400586984)
+  obj_order_SO-3458.costPressure: 85 → 80.610352775026  (Δ=-4.389647225)
+  obj_order_SO-900029.costPressure: 85 → 80.610352775026  (Δ=-4.389647225)
+  obj_order_SO-900088.costPressure: 84 → 80.232666025662  (Δ=-3.767333974)
+  obj_order_SO-900121.costPressure: 84 → 80.241031877826  (Δ=-3.758968122)
+  obj_order_SO-900270.costPressure: 83 → 79.847432297293  (Δ=-3.152567703)
+DONE

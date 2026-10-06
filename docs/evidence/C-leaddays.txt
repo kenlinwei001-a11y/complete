@@ -1,0 +1,10 @@
+session=sims_1zy10djw9vxv3gb8
+perturbation 回包 = {"id":"simpert_45twdadhw5yvt0b8","tenantId":"demo","sessionId":"sims_1zy10djw9vxv3gb8","kind":"supply_disruption","targetObjectId":"obj_order_SO-3391","targetStateVar":"leadDays","startTick":0,"durationTicks":null,"magnitude":-3,"mode":"delta","label":"C-leaddays","createdAt":"2026-10-05T18:17:24.825Z"}
+t0: {"lead":11,"cp":90.384615384615,"model":2.9263}
+t1: {"lead":11,"cp":90.384615384615,"model":2.936811363625}
+  applied=["simpert_45twdadhw5yvt0b8"] writes=undefined
+t2: {"lead":11,"cp":84.524927258669,"model":2.943433522709}
+  applied=["simpert_45twdadhw5yvt0b8"] writes=undefined
+t3: {"lead":11,"cp":82.968990731368,"model":2.947605482932}
+  applied=["simpert_45twdadhw5yvt0b8"] writes=undefined
+DONE

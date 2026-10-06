@@ -1,0 +1,10 @@
+## WO-AB-SATPROJ · obj_order_SO-3391.costPressure 逐拍写入过程 · session=sims_kys5s3mcnajp8gfc mag=-1 ticks=3
+t0 读数 = 90.384615384615
+
+t | 读数 | Δ本拍 | saturations(raw→value) | λ | trace amount→该格
+1 | 90.384615384615 | 0.000000000000 | [] | 0.37 | —
+2 | 84.524182120036 | -5.860433264579 | 90.385587685750→84.524182120036(max) | 0.37 | 0.000972301135
+3 | 82.967301681503 | -1.556880438533 | 86.694127278781→82.967301681503(max) | 0.37 | 0.001584850850
+
+JSONL=[{"t":1,"value":90.384615384615,"sat":[],"lam":0.37,"amts":[],"nTrace":1},{"t":2,"value":84.524182120036,"sat":[{"objectId":"obj_order_SO-3391","stateVar":"costPressure","raw":90.38558768575,"value":84.524182120036,"bound":"max"}],"lam":0.37,"amts":[0.000972301135],"nTrace":59},{"t":3,"value":82.967301681503,"sat":[{"objectId":"obj_order_SO-3391","stateVar":"costPressure","raw":86.694127278781,"value":82.967301681503,"bound":"max"}],"lam":0.37,"amts":[0.00158485085],"nTrace":139}]
+DONE 2026-10-05T18:06:40.050Z

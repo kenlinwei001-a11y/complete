@@ -1,0 +1,12 @@
+session=sims_k3ashaqhgq576haz curTick=undefined
+建会话后 world.tick=0 {"lead":14,"cp":90.384615384615,"src":2.9263}
+POST /perturbations 回包 curTick=0 state={"lead":11,"cp":90.384615384615,"src":2.9263}
+扰动后 world.tick=0 {"lead":11,"cp":90.384615384615,"src":2.9263}
+tick1 后 world.tick=1 {"lead":11,"cp":90.384615384615,"src":2.936811363625}
+tick 回包 state {"lead":11,"cp":90.384615384615,"src":2.936811363625}
+trace 行数=1 applied=["simpert_rtpvd1fq3ggw7pny"]
+perturbation trace 行 = []
+含 leadDays 的 trace 行 = []
+stateVarReport.decayApplied.leadDays=undefined costPressure=0.37
+saturations(leadDays)=[]
+DONE
