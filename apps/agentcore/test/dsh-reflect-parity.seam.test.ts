@@ -216,14 +216,24 @@ describe("§2 反向对照", () => {
     expect(on.ok).toBe(true);
     if (!on.ok) return;
     expect(on.reflected, "金丝雀：这条输入必须真能触发复盘，否则『门关』那半边是空的").toBe(true);
-    expect(on.answer.blocks.length, "门开必有缺口块 ⇒ 本条的断言咬着东西").toBe(2);
+    // ⚠ WO-DSH-ARM-FAILURE-VISIBLE 起本条**改判据口径**（原为 `blocks.length).toBe(2)`）：
+    //   这条轨迹里有一次**失败**的工具调用（`toolResult(c1, true, "solver down")`），而本单起
+    //   答案尾部会再多一块**可点名**的失败披露（工具名 + outcome + 原因原文）—— 它与 reflect 的
+    //   缺口块**判据独立、各有各的用途**（一块进重规划门、一块给用户点名）。
+    //   计数断言在这里没有鉴别力（多一块少一块都让它红），故改判「缺口块在不在」——
+    //   这仍是本条真正要咬的东西（复盘门开 ⇒ 必产出缺口块）。
+    expect(on.answer.blocks.length, "门开 = 答案 + 缺口块 + 失败披露三块").toBe(3);
+    expect(
+      String((on.answer.blocks.at(-1) as { markdown?: string }).markdown ?? ""),
+      "门开必有缺口块 ⇒ 本条的断言咬着东西",
+    ).toContain("【本次回答的已知不足】");
 
     const off = reassembleDshRun(traj, {});
     expect(off.ok).toBe(true);
     if (!off.ok) return;
     expect(off.reflected, "门关 ⇒ 复盘一步都不许跑").toBeUndefined();
     expect(off.replanReasons).toBeUndefined();
-    expect(off.answer.blocks, "门关的产出必须逐字节不变（既有关闭态零回归）").toHaveLength(1);
+    expect(off.answer.blocks, "门关的产出必须逐字节不变（既有关闭态零回归）· 失败披露块与本门控无关·恒在").toHaveLength(2);
     expect(off.answer.blocks[0]).toEqual({ type: "text", markdown: SOLVER_ACK });
   });
 });
