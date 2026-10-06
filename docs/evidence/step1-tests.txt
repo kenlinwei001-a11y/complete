@@ -1,0 +1,188 @@
+
+ RUN  v3.2.6 /private/tmp/wt-ab/apps/datacore
+
+ ✓ test/sim-propagation.test.ts (15 tests) 42ms
+ ❯ test/seed-demo-propagation.test.ts (27 tests | 7 failed) 122386ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 种子后 view-config：propagationCount≥2 + stateVars 非空（消空世界）  6314ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 种的规则沿真链路（Order/Model/Base）：发布且 viaLinkKey 是 demo 真链路  616ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 🔴 方向可达门：每条种子规则的 source─via→target 在**真链路表**上真的走得通（#158 复发闸）  7471ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 🔴 方向可达门的变异反证：喂一条方向写反的规则（#158 原文），门必须判它死  6889ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 确定性 R6：同 SEED_DEMO 重跑规则字节一致（固定 id/系数）  900ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 幂等：重复播种不增项（固定 id 覆盖）  581ms
+   × SEED_DEMO · 沙盘传导规则种子 > live-fire：种子规则 + 真 Order→Model 链路 → tick 真跨对象传导 6221ms
+     → expected +0 to be 0.074277927822 // Object.is equality
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 🔴 效果层 SEAM：供应侧扰动（Supplier.deliveryDelay）跨 3 跳真的传导到 Order.shortageRisk  6242ms
+   × SEED_DEMO · 沙盘传导规则种子 > 🔴 逐条真触发：54 条规则在真 tick 的 trace 里一条不缺（REQ143 + 档 1/2/3 + 采购根源 3 + 三根源 4 + 设备侧出口 4 + 订单真实字段 3 + 库存环 2 + 物料环 3） 5660ms
+     → expected [ …(38) ] to deeply equal []
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🐤 金丝雀：端点/链路全合法的边**必须建得出来**（证明这组门不是一律拒绝）  5174ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 端点不存在的边必须 400（link-types 那次 81/133 全放行的复发闸）  4834ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 链路类型不存在的边必须 400  4741ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 方向写反的边必须 400 —— 引擎只沿 from→to 单向走，反向边语法全对但恒贡献 0  4533ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 coefficientRef 解析不到必须 400 —— 否则静默回落内联系数，用户以为改规则生效其实无效  5230ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 PATCH 也走同一道体检：塞非法 coefficientRef 必须 400，而合法系数照常放行  4315ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 体检在 upsert **之前**跑：非法边不许先把同 key 的合法边覆盖掉再报错  4421ms
+   ✓ §5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子） > 种子把 bom_cost_share 接上了（兄弟边 edge-money-weight §4 的同款闸，本条边此前漏着） 2ms
+   × §5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子） > 🔴 对照实验：同一型号上，BOM 占比不同的两种物料各涨 15 ⇒ 读数必须按占比拉开（修前同为 9.75） 5899ms
+     → 占比最大(0.5786986855010224)与最小(0.00785266264416494)的两种物料给出同一个读数 ⇒ 用量项又从公式里掉了（修前形态复现：amount = coeff × sourceVal，与用多少无关）: expected +0 not to be +0 // Object.is equality
+   ✓ §5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子） > 种子把 bom_cost_share 接到**缺料→供应风险**这条边上了（此前挂 equal_share·注释被邻居证伪） 2ms
+   × §5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子） > 🔴 对照实验：缺料→供应风险 —— BOM 占比不同的物料各涨 15 ⇒ 读数按占比拉开，且 Σ权重≡1 总量不跳 6215ms
+     → 占比最大(0.5786986855010224)与最小(0.00785266264416494)的两种物料给出同一个读数 ⇒ 又退回等份（修前形态复现：七种料各 1/7，贵重料与边角料同权): expected +0 not to be +0 // Object.is equality
+   ✓ §7 WO-WEIGHT-BASIS-FIELD · 按声明字段分摊（真种子） > 种子把 9 条边接到 source_field_share 上了，且各自声明了字段（裁定不改的那条仍是 equal_share）  5944ms
+   ✓ §7 WO-WEIGHT-BASIS-FIELD · 按声明字段分摊（真种子） > 🔴 Σw 逐目标恒 = 1（归一方向被改成 Σ=N 即红 —— §6 判据③b 那次 1.249998→1.571426 的复发闸）  5205ms
+   × §7 WO-WEIGHT-BASIS-FIELD · 按声明字段分摊（真种子） > 🔴 对照实验：同一供应商名下 qty 差 4.09× 的两张采购单各加急 15 ⇒ 读数按 qty 拉开（修前同为 0.555） 5764ms
+     → 小单读数为 0 ⇒ 这条边没传导，下面的比值是 0/0: expected 0 to be greater than 0
+   ✓ §7 WO-WEIGHT-BASIS-FIELD · 按声明字段分摊（真种子） > 🔴 field 读不到必须报缺 + 引擎不传导（双向金丝雀；⛔ 不许静默归零或回落等份）  7533ms
+   ✓ §7 WO-WEIGHT-BASIS-FIELD · 按声明字段分摊（真种子） > 🔴 契约层 requiresField 两个方向都拒收（真跑 zod·带双向金丝雀） 1ms
+   × §6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算 > 🔴 超预算格子集合 + `Model.demandLoad` 读数必须与在册一致（加边/抬系数即红） 7834ms
+     → 🐤 单拍 trace 为空 ⇒ 一条边都没传导，下面的拉力对账是空话: expected 0 to be greater than 0
+   × M0-A11 解释切片（≤20 节点只读投影 + 覆盖账本） > 真推演 trace ⇒ 截断账本与手算一致；maxNodes 放大 ⇒ 完整（T1+T3） 3838ms
+     → tick1 trace 为空 ⇒ 切片验的是空图（假绿形态）: expected 0 to be greater than 0
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/seed-demo-propagation.test.ts > SEED_DEMO · 沙盘传导规则种子 > live-fire：种子规则 + 真 Order→Model 链路 → tick 真跨对象传导
+AssertionError: expected +0 to be 0.074277927822 // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 0.074277927822[39m
+[31m+ 0[39m
+
+ ❯ test/seed-demo-propagation.test.ts:270:45
+    268|     expect(coeff, "该边系数为 0 ⇒ 期望值恒 0，下面那句会自洽成绿").toBeGreaterThan(0);
+    269|     const expected = Math.round(coeff! * (explain!.numerator / explain…
+    270|     expect(body.state[modelId]!.demandLoad).toBe(expected);
+       |                                             ^
+    271|     // 且**必须真的与 8 不同**（除非这张单恰好是均值单）—— 否则这条用例又退回去度量"没分摊"。
+    272|     expect(explain!.weight).toBeGreaterThan(0);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/7]⎯
+
+ FAIL  test/seed-demo-propagation.test.ts > SEED_DEMO · 沙盘传导规则种子 > 🔴 逐条真触发：54 条规则在真 tick 的 trace 里一条不缺（REQ143 + 档 1/2/3 + 采购根源 3 + 三根源 4 + 设备侧出口 4 + 订单真实字段 3 + 库存环 2 + 物料环 3）
+AssertionError: expected [ …(38) ] to deeply equal []
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [][39m
+[31m+ [[39m
+[31m+   "需求/demo_order_demand_pressure",[39m
+[31m+   "供应/demo_supplier_delay_to_material_shortage",[39m
+[31m+   "供应/demo_material_shortage_to_model_supply_risk",[39m
+[31m+   "供应/demo_model_supply_risk_to_order_shortage",[39m
+[31m+   "交付/demo_material_shortage_to_po_expedite",[39m
+[31m+   "交付/demo_po_expedite_to_inspection_queue",[39m
+[31m+   "成本/demo_material_price_to_model_cost",[39m
+[31m+   "成本/demo_model_cost_to_order_cost",[39m
+[31m+   "现金/demo_order_cost_to_customer_receivable",[39m
+[31m+   "现金/demo_customer_receivable_to_invoice_overdue",[39m
+[31m+   "扩面档1/demo_material_shortage_to_batch_turnover",[39m
+[31m+   "扩面档1/demo_po_expedite_to_customs_queue",[39m
+[31m+   "扩面档1/demo_model_demand_to_cert_queue",[39m
+[31m+   "扩面档2/demo_wip_feed_to_defect_pressure",[39m
+[31m+   "扩面档2/demo_defect_to_exception_backlog",[39m
+[31m+   "扩面档2/demo_order_demand_to_line_split",[39m
+[31m+   "扩面档2/demo_order_shortage_to_promise_risk",[39m
+[31m+   "扩面档2/demo_customer_receivable_to_location_hold",[39m
+[31m+   "扩面档2/demo_customer_receivable_to_collection",[39m
+[31m+   "扩面档2/demo_material_shortage_to_alt_switch",[39m
+[31m+   "扩面档2/demo_material_shortage_to_balance_gap",[39m
+[31m+   "扩面档3/demo_po_expedite_to_supplier_review",[39m
+[31m+   "采购根源/demo_po_procurement_delay_to_material_shortage",[39m
+[31m+   "采购根源/demo_batch_procurement_delay_to_material_shortage",[39m
+[31m+   "采购根源/demo_supplier_procurement_delay_to_material_shortage",[39m
+[31m+   "根源/demo_forecast_bias_to_order_demand",[39m
+[31m+   "根源/demo_order_churn_to_line_split",[39m
+[31m+   "根源/demo_order_churn_to_model_demand_load",[39m
+[31m+   "根源/demo_equipment_failure_to_process_queue",[39m
+[31m+   "设备负荷根源/demo_equipment_load_to_process_queue",[39m
+[31m+   "设备负荷根源/demo_equipment_load_to_repair_backlog",[39m
+[31m+   "订单真实字段/demo_order_qty_to_model_top_qty",[39m
+[31m+   "订单真实字段/demo_order_price_to_model_top_price",[39m
+[31m+   "订单真实字段/demo_order_leaddays_to_model_horizon",[39m
+[31m+   "库存环/demo_fg_cover_days_to_model_demand",[39m
+[31m+   "物料环/demo_alt_switch_to_material_shortage",[39m
+[31m+   "物料环/demo_inspection_queue_to_material_shortage",[39m
+[31m+   "物料环/demo_balance_gap_to_po_expedite",[39m
+[31m+ ][39m
+
+ ❯ test/seed-demo-propagation.test.ts:584:21
+    582|     };
+    583|     const missing = Object.entries(DIRS).flatMap(([dir, keys]) => keys…
+    584|     expect(missing).toEqual([]);
+       |                     ^
+    585|     // ── 完整性：十七组 54 条 = **默认世界里会跑的**全部规则（没有哪条游离在分组之外）──
+    586|     // （组数是 prose、无机器守卫，以本对象实际键数为准：业务 6 + 扩面 3 档 + 采购根源/根源/
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/7]⎯
+
+ FAIL  test/seed-demo-propagation.test.ts > §5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子） > 🔴 对照实验：同一型号上，BOM 占比不同的两种物料各涨 15 ⇒ 读数必须按占比拉开（修前同为 9.75）
+AssertionError: 占比最大(0.5786986855010224)与最小(0.00785266264416494)的两种物料给出同一个读数 ⇒ 用量项又从公式里掉了（修前形态复现：amount = coeff × sourceVal，与用多少无关）: expected +0 not to be +0 // Object.is equality
+ ❯ test/seed-demo-propagation.test.ts:825:11
+    823|       `占比最大(${hi.ex!.weight})与最小(${lo.ex!.weight})的两种物料给出同一个读数 ⇒ ` +
+    824|         "用量项又从公式里掉了（修前形态复现：amount = coeff × sourceVal，与用多少无关）",
+    825|     ).not.toBe(lo.read);
+       |           ^
+    826|     expect(hi.read).toBeGreaterThan(lo.read); // 占比大的那个必须更疼
+    827| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/7]⎯
+
+ FAIL  test/seed-demo-propagation.test.ts > §5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子） > 🔴 对照实验：缺料→供应风险 —— BOM 占比不同的物料各涨 15 ⇒ 读数按占比拉开，且 Σ权重≡1 总量不跳
+AssertionError: 占比最大(0.5786986855010224)与最小(0.00785266264416494)的两种物料给出同一个读数 ⇒ 又退回等份（修前形态复现：七种料各 1/7，贵重料与边角料同权): expected +0 not to be +0 // Object.is equality
+ ❯ test/seed-demo-propagation.test.ts:964:11
+    962|       `占比最大(${hi.ex!.weight})与最小(${lo.ex!.weight})的两种物料给出同一个读数 ⇒ ` +
+    963|         "又退回等份（修前形态复现：七种料各 1/7，贵重料与边角料同权)",
+    964|     ).not.toBe(lo.read);
+       |           ^
+    965|     expect(hi.read).toBeGreaterThan(lo.read);
+    966| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/7]⎯
+
+ FAIL  test/seed-demo-propagation.test.ts > §7 WO-WEIGHT-BASIS-FIELD · 按声明字段分摊（真种子） > 🔴 对照实验：同一供应商名下 qty 差 4.09× 的两张采购单各加急 15 ⇒ 读数按 qty 拉开（修前同为 0.555）
+AssertionError: 小单读数为 0 ⇒ 这条边没传导，下面的比值是 0/0: expected 0 to be greater than 0
+ ❯ test/seed-demo-propagation.test.ts:1202:53
+    1200| 
+    1201|     // ── 判据①：两个读数**必须不同**（修前逐字节相同的 0.555，那就是平摊的指纹）────────
+    1202|     expect(rLo.read, "小单读数为 0 ⇒ 这条边没传导，下面的比值是 0/0").toBeGreaterThan(0);
+       |                                                     ^
+    1203|     expect(
+    1204|       rHi.read,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/7]⎯
+
+ FAIL  test/seed-demo-propagation.test.ts > §6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算 > 🔴 超预算格子集合 + `Model.demandLoad` 读数必须与在册一致（加边/抬系数即红）
+AssertionError: 🐤 单拍 trace 为空 ⇒ 一条边都没传导，下面的拉力对账是空话: expected 0 to be greater than 0
+ ❯ test/seed-demo-propagation.test.ts:1717:69
+    1715|     expect(tickRes.statusCode, `tick 失败：${tickRes.body.slice(0, 300)}`…
+    1716|     const traceRows = (tickRes.json() as { trace?: { ruleKey: string; …
+    1717|     expect(traceRows.length, "🐤 单拍 trace 为空 ⇒ 一条边都没传导，下面的拉力对账是空话").to…
+       |                                                                     ^
+    1718|     const traceByRule = new Map<string, number>();
+    1719|     for (const row of traceRows) traceByRule.set(row.ruleKey, (traceBy…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/7]⎯
+
+ FAIL  test/seed-demo-propagation.test.ts > M0-A11 解释切片（≤20 节点只读投影 + 覆盖账本） > 真推演 trace ⇒ 截断账本与手算一致；maxNodes 放大 ⇒ 完整（T1+T3）
+AssertionError: tick1 trace 为空 ⇒ 切片验的是空图（假绿形态）: expected 0 to be greater than 0
+ ❯ test/seed-demo-propagation.test.ts:1975:60
+    1973|     const row = await t.repos.sim.getTickState("demo", sid, 1);
+    1974|     const trace = row?.trace ?? [];
+    1975|     expect(trace.length, "tick1 trace 为空 ⇒ 切片验的是空图（假绿形态）").toBeGreater…
+       |                                                            ^
+    1976|     const inEdges = trace.filter((e) => e.toObjectId === modelId);
+    1977|     expect(
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/7]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  7 failed | 35 passed (42)
+   Start at  16:13:35
+   Duration  131.50s (transform 4.51s, setup 0ms, collect 10.72s, tests 122.43s, environment 4ms, prepare 590ms)
+
+undefined
+/private/tmp/wt-ab/apps/datacore:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run test/sim-propagation.test.ts test/seed-demo-propagation.test.ts test/spec-base-synthesis.test.ts --maxWorkers=2 --testTimeout=30000

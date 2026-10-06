@@ -1,0 +1,22 @@
+=== WO-SEMANTICS-DECLARED 第 1 步 · 行为中立对照实验 ===
+
+改动：synthetic/battery.ts 新增 STATE_VAR_SEMANTICS 声明表 + stateVarSemantics()
+      【未接任何调用点】⇒ 预期零行为变化
+
+证据链（三件，缺一不可）：
+ ① 编译：pnpm --filter datacore... build ⇒ BUILD_RC=0（三包全 Done）
+ ② 纯新增：git diff --stat ⇒ 39 insertions(+), 0 deletions(-)
+           git diff | grep '^-'（排除 --- 头）= 空 ⇒ 没动任何既有行
+ ③ 对照实验（本条是行为中立的唯一硬证据）：
+      改【前】基线：test/sim-propagation + seed-demo-propagation + spec-base-synthesis
+                    BASE_TESTS_RC=1 · 7 failed | 35 passed（42）
+      改【后】同套件：TESTS_RC=1 · 7 failed | 35 passed（42）
+      ⇒ 红数与红条逐条相同 ⇒ 零行为变化
+
+⚠ 那 7 条红是【本树原有】，非本单引入 —— 见 /tmp/wt-ab 记忆：
+   seed-demo-propagation.test.ts 的 M0-A11/判据④⑤⑥ 在该类树上必红（该 WO 漏更新）。
+   红条样例：'tick1 trace 为空 ⇒ 切片验的是空图（假绿形态）' @ seed-demo-propagation.test.ts:1975
+   ⛔ 本单不声称修复它们，也不把它们算作本单的账。
+
+还原手法（守仓规）：未提交的实现禁 git checkout 还原 ⇒ 用 cp 备份 + git show 还原 + md5 验净。
+  md5(/tmp/battery.semantics.ts) == md5(恢复后 workspace) ⇒ d065767e5f492735ef4e881c1ee1f95c

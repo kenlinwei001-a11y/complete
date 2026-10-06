@@ -4085,6 +4085,45 @@ export const STATE_VAR_VALUE_REFS: Record<string, { specKey: string }> = {
   "FinishedGoodsInventory|coverDays": { specKey: "fgi_cover_days" },
 };
 
+/**
+ * `(类型,变量)` → **量纲语义**声明（`LEVEL` 水平值 / `DEVIATION` 偏离值）。全平台唯一入口。
+ *
+ * 🔴 为什么需要这张表（WO-SEMANTICS-DECLARED，根因认定 LOOP 三方一致后的落点）：
+ *
+ *   仓里已有的三类承载物**没有一处声明过「这格里的数是水平还是偏离」**：
+ *     · `STATE_VAR_DOMAINS`   定的是**值域**（min/max/restPoint）
+ *     · `STATE_VAR_VALUE_REFS` 定的是**来源**（值由哪个 spec 算）
+ *     · `PropagationRule`      定的是**传动**（谁传谁/多少/怎么合）
+ *   于是四类使用方各按各的假定读写同一格，实测（`Order.costPressure`）：
+ *     · 求解器 `finance-world.ts`   按**偏离**读（`金额 = 基线 × (1 + 压力 ÷ divisor)`）
+ *     · 屏（0–100 压力标度）        按**水平**读
+ *     · 规格 `order_cost_pressure`  产出**水平**（`creditUsedRatio×100`，实测 props = 115）
+ *     · 传导核                      按**偏离**算（`drive = sourceVal − ref`）
+ *   而 `115` 越出压力域上界 `100` ⇒ tick0 投影把它压成 `90.384615` ⇒ C2 每拍按 `+0.37·base` 抬回
+ *   ⇒ 与投影的压缩互相顶成一个**复合不动点 `82.2915`** ⇒ 该格在扰动下的变化 `−8.0931` 里
+ *   **99% 来自这个不动点、与成本传导无关**（逐笔求和：进入它的全部传导边 12 拍只搬运 `+0.0734`）。
+ *
+ * ⇒ 判据：语义一旦定死，**「谁能写这格」就是推导出来的，不是拍出来的**：
+ *   · 声明 `DEVIATION` ⇒ 静息值**必须**是 `restPoint`；产出天然是 `LEVEL` 的规格**不许**登记为该格 producer；
+ *     C2（`spec-base-synthesis.ts`）对它**跳过**（其锚已是 `restPoint`，C2 对它是恒等变换）
+ *   · 声明 `LEVEL`     ⇒ 规格合法；传导边写入前**必须换算**，不得把偏离当水平直接加
+ *
+ * ⚠ **缺省 `LEVEL` = 保持现状**（本单最小改动面）。故本表**只登记逐格裁定过的格**；
+ *   其余格语义未裁 ⇒ 读作 `LEVEL`、行为逐字节不变。⛔ 不要在未裁定的格上抢先登记。
+ */
+export const STATE_VAR_SEMANTICS: Record<string, "LEVEL" | "DEVIATION"> = {
+  // 裁定依据：求解器 `finance-world.ts` 按偏离读它（`金额 = 基线 × (1 + 压力 ÷ divisor)`）
+  // 且传导核给它的正是偏离（实测 trace `amount = 0.2775 × 源偏离`，手算逐位吻合）
+  // ⇒ 二对一，且唯一与消费端量纲自洽的是 `DEVIATION`。
+  // ⚠ 登记本行**尚未接任何调用点**（执行顺序第 1 步 = 只引入声明，行为中立）。
+  "Order|costPressure": "DEVIATION",
+};
+
+/** `(类型,变量)` → 量纲语义（未登记 → `LEVEL` = 保持现状）。全平台唯一入口，⛔ 不许在调用侧另写缺省。 */
+export function stateVarSemantics(typeKey: string, stateVar: string): "LEVEL" | "DEVIATION" {
+  return STATE_VAR_SEMANTICS[`${typeKey}|${stateVar}`] ?? "LEVEL";
+}
+
 /** `(类型,变量)` → 显式值绑定（裸对精确命中；未登记 → `undefined` = 走名字撞）。全平台唯一入口。 */
 export function stateVarValueRef(typeKey: string, stateVar: string): { specKey: string } | undefined {
   return STATE_VAR_VALUE_REFS[`${typeKey}|${stateVar}`];
