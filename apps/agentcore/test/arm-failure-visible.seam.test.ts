@@ -21,7 +21,7 @@
  * （活服务实测：同为一次运行，`mcp__ontology__resolve_slice` OK 126ms，而 `mcp__solvers__*` 全 ERROR 0ms。）
  */
 import { describe, expect, it } from "vitest";
-import type { AgentDefinition } from "@platform/contracts";
+import type { AgentDefinition, Answer } from "@platform/contracts";
 import { reassembleDshRun, type DshSessionEvent } from "../src/dsh-runtime/reassemble.js";
 import { createMemoryRepos } from "../src/persistence/memory.js";
 import { createMockDataCore } from "../src/mocks/clients.js";
@@ -35,7 +35,7 @@ import { wireDeps } from "../src/deps.js";
 import { loadConfig, stdioPolicyFromConfig } from "../src/config.js";
 import { buildServer } from "../src/server.js";
 import { BudgetTracker } from "../src/tools/budget.js";
-import { TENANT } from "./helpers.js";
+import { TENANT, createTestApp } from "./helpers.js";
 
 // ---------------------------------------------------------------------------
 // 帧构造（形态照 dsh-reflect-parity.seam.test.ts / dsh-runtime-reassemble.test.ts，不另立第二套）
@@ -236,6 +236,145 @@ describe("WO-DSH-ARM-FAILURE-VISIBLE · Q2 复现：原生臂求解器 MCP 工�
       expect(seen[0]!.args, "扁平入参口径逐键透传到求解器").toEqual({ baseIds: ["changzhou"] });
     } finally {
       await app.close();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ⑤⑥ 原生臂（活服务跑的就是它）+ 两臂同判据
+// ---------------------------------------------------------------------------
+
+/** 原生臂夹具 agent：两个 BUILTIN 工具在册（一个用来撞 scope 门、一个用来造 ERROR）。
+ *  scope 只声明这两个 ⇒ 调第三个（`fill_data`）必撞**工具 scope 门**。 */
+function nativeAgent(id: string): AgentDefinition {
+  return {
+    tenantId: TENANT,
+    id,
+    key: id,
+    version: 1,
+    name: id,
+    description: "native arm failure disclosure seam agent",
+    model: "claude-opus-4-8",
+    systemPrompt: "你是测试 agent。",
+    tools: [
+      { kind: "BUILTIN", name: "query_objects" },
+      { kind: "BUILTIN", name: "query_timeseries_agg" },
+    ],
+    ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
+    skills: [],
+    mcpServers: [],
+    scopeDeclaration: { objectTypes: [], toolNames: ["query_objects", "query_timeseries_agg"] },
+    status: "PUBLISHED",
+  };
+}
+
+/** 真 `engine.runRegisteredAgent` → 真 loop → 真 executor（只换 LLM 剧本）。 */
+async function runNative(id: string, turns: (() => { content: unknown[] })[]): Promise<{
+  answer: Answer;
+  failedRows: { toolName: string; outcome: string; output: unknown }[];
+  close: () => Promise<void>;
+}> {
+  const t = await createTestApp();
+  await t.repos.agents.insert(nativeAgent(id));
+  for (const turn of turns) t.llm.queueAgentTurn(turn as never);
+  const taskId = `task_${id}`;
+  const r = await t.deps.engine.runRegisteredAgent({
+    taskId,
+    agentId: id,
+    version: "latest",
+    prompt: "常州基地在产线情况如何",
+    ctx: { tenantId: TENANT, userId: "user-planner", roles: ["planner"] },
+    nesting: { callChain: [], budget: new BudgetTracker({ maxRoundTrips: 24, maxIterations: 24 }) },
+    emit: async () => undefined,
+  });
+  const rows = (await t.repos.toolCalls.listByTask(taskId)).filter((c) => c.outcome !== "OK");
+  return {
+    answer: r.answer,
+    failedRows: rows.map((c) => ({ toolName: c.toolName, outcome: c.outcome, output: c.output })),
+    close: () => t.app.close(),
+  };
+}
+
+const BLOCK_HEAD = "【本次运行中有工具调用未成功】";
+const textOfAnswer = (a: Answer): string =>
+  a.blocks.filter((b) => b.type === "text").map((b) => (b as { markdown: string }).markdown).join("\n");
+const disclosureBlockOf = (a: Answer): string | undefined =>
+  a.blocks
+    .filter((b) => b.type === "text")
+    .map((b) => (b as { markdown: string }).markdown)
+    .find((m) => m.startsWith(BLOCK_HEAD));
+
+/** 剧本：一次撞 scope 门的 DENIED + 一次入参不合的 ERROR，然后干净收尾。 */
+const failingTurns = () => [
+  () => ({
+    content: [
+      toolUse("fill_data", { typeKey: "Line", fields: ["utilization"] }), // 不在 scope ⇒ DENIED
+      toolUse("query_timeseries_agg", {}), // 入参不合契约 ⇒ 执行器 ERROR
+    ],
+  }),
+  () => ({ content: [toolUse("final_answer", { blocks: [{ type: "text", markdown: "结论已给出。" }], provenance: [] })] }),
+];
+/** 反向金丝雀剧本：零失败。 */
+const cleanTurns = () => [
+  () => ({ content: [toolUse("query_objects", { objectType: "Line" })] }),
+  () => ({ content: [toolUse("final_answer", { blocks: [{ type: "text", markdown: "结论已给出。" }], provenance: [] })] }),
+];
+
+describe("WO-ARM-FAILURE-VISIBLE · ⑤ 原生臂：失败在答案里可点名（活服务跑的就是这条臂）", () => {
+  it("⑤a 一次 DENIED + 一次 ERROR ⇒ 逐条点名（工具名 + 四态 + 门/原因原文）", async () => {
+    const r = await runNative("agt_native_fail", failingTurns());
+    try {
+      const block = disclosureBlockOf(r.answer);
+      expect(block, "修前：屏上零提及（答案只有模型自己那句结论）").toBeTruthy();
+      expect(block!).toContain("- fill_data（DENIED）：AGENT_SCOPE_VIOLATION: 该工具超出本 Agent 的能力声明");
+      expect(block!).toContain("- query_timeseries_agg（ERROR）：");
+      expect(block!, "ERROR 的原因原文必须透出（不是「出错了」这种笼统话）").toContain("TOOL_ERROR");
+      // 独立旁证：审计行里这两次调用的四态，与披露块点名的四态逐条一致。
+      expect(r.failedRows.map((x) => `${x.toolName}/${x.outcome}`).sort()).toEqual([
+        "fill_data/DENIED",
+        "query_timeseries_agg/ERROR",
+      ]);
+    } finally {
+      await r.close();
+    }
+  });
+
+  it("⑤b 反向金丝雀：零失败的运行不许长出披露块（否则它只是噪声，不是信号）", async () => {
+    const r = await runNative("agt_native_clean", cleanTurns());
+    try {
+      expect(disclosureBlockOf(r.answer), "零失败还报失败 = 假信号").toBeUndefined();
+      expect(textOfAnswer(r.answer)).not.toContain(BLOCK_HEAD);
+    } finally {
+      await r.close();
+    }
+  });
+});
+
+describe("WO-ARM-FAILURE-VISIBLE · ⑥ 两臂同判据：同一份失败集合渲染出的披露块**逐字同**", () => {
+  it("原生臂的披露块 == DSH 臂（帧流）的披露块", async () => {
+    const r = await runNative("agt_native_parity", failingTurns());
+    try {
+      const nativeBlock = disclosureBlockOf(r.answer);
+      expect(nativeBlock, "原生臂必须产出披露块（否则 ⑥ 无对象可比）").toBeTruthy();
+
+      // DSH 臂的输入 = **同一批失败的原件**：DENIED 走 loop 的固定句（与 MCP 反向桥同一句），
+      // ERROR 走 `JSON.stringify(payload)`（loop:972 与桥 envelopeOf 同一式）—— 两条臂的模型面
+      // 回执就是这两串，故帧流夹具喂同样的串才算「同一份失败集合」。
+      const errRow = r.failedRows.find((x) => x.outcome === "ERROR");
+      const dshFrames: DshSessionEvent[] = [
+        toolCall("c1", "fill_data", { typeKey: "Line", fields: ["utilization"] }),
+        toolResult("c1", true, "AGENT_SCOPE_VIOLATION: 该工具超出本 Agent 的能力声明"),
+        toolCall("c2", "query_timeseries_agg", {}),
+        toolResult("c2", true, JSON.stringify(errRow?.output)),
+        finalAnswer("结论已给出。"),
+        turnEnd("completed"),
+      ];
+      const dsh = reassembleDshRun(dshFrames);
+      expect(dsh.ok).toBe(true);
+      if (!dsh.ok) return;
+      expect(disclosureBlockOf(dsh.answer), "两臂渲染出的字必须逐字相同（同一份渲染单源）").toBe(nativeBlock);
+    } finally {
+      await r.close();
     }
   });
 });

@@ -21,6 +21,10 @@ import { enrichProvenance } from "../tools/provenance.js";
 import { scanBlocks } from "../util/numerics.js";
 import { checkJsonSchema } from "../util/jsonschema.js";
 import { reflectAnswer, type ReflectVerdict } from "./reflect.js";
+// WO-ARM-FAILURE-VISIBLE：失败披露的渲染/归一是**两条臂共用的唯一实现**
+// （`agent/failure-disclosure.ts`；DSH 臂经 `dsh-runtime/reassemble.ts` 吃同一份）。
+// ⛔ 不许在本文件另写一份渲染 —— 两份必漂，且 ⑥ 的「两臂逐字同」就没了判据。
+import { failedToolCall, renderFailedCallsBlock, type FailedToolCall } from "./failure-disclosure.js";
 import {
   CONTEXT_FULL_REMINDER,
   ContextBudgeter,
@@ -605,6 +609,14 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
   // WO-LOOP-CONTROL-P2.5 · rung② 可判别停滞标记（仅在 rung① 用尽后的停滞点置位·由 degrade 在 escalation 开时挂到结果 stalled 上抛
   // 编排层·关=永 undefined=逐字节同 P2）。不改 degrade 收尾块/答案/溯源——degrade 仍是唯一诚实出口。
   let stalledForReroute: { reason: "STALL_LOOP" | "STALL_CONSECUTIVE" } | undefined;
+  /**
+   * WO-ARM-FAILURE-VISIBLE · 本次运行里**失败的**工具调用（四态里除 OK 的三态）。
+   * 轮末从 `outcomes` 采集（`call.outcome` 是执行器四态直出 = 事实源；`result.content` 是
+   * 模型面回执原文 = 门/原因原文），收尾时渲染成**可点名**的披露块接到答案尾部。
+   * ⚠ 渲染/归一**不在这里**（`agent/failure-disclosure.ts` 单源，DSH 臂吃同一份）——
+   * 两份文案必漂，且「两臂逐字同」的判据就没了。
+   */
+  const failedCalls: FailedToolCall[] = [];
 
   const budgeter = new ContextBudgeter(opts.llm, opts.model, opts.tenantId, opts.metrics);
   await budgeter.init();
@@ -699,6 +711,11 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     } else {
       blocks.push({ type: "text", markdown: lastText || "（探索模式未能产出回答）" });
     }
+    // WO-ARM-FAILURE-VISIBLE：失败披露（可点名：哪次调用 · 什么结局 · 哪道门/什么原因原文）。
+    // 三条出口共用同一份渲染（`agent/failure-disclosure.ts`）；零失败 ⇒ 无块 = 既有关闭态字节不变。
+    // 位置在诚实头/正文之后、`scanBlocks` 之前 —— 那段文案照既有口径一起被扫（与复盘缺口块同）。
+    const failureBlock = renderFailedCallsBlock(failedCalls);
+    if (failureBlock) blocks.push(failureBlock);
     // WO-Phase4 · R13：有界终止摘要复述已调工具 → provenance 列所有成功产出结果的 toolCallId（去重·仅 OK 调用·
     // 无成功调用则为空 = 诚实 NO_ANSWER，不编造溯源）。软收尾（无 reason）沿用既有空 provenance。
     // ⚠️ WO-NUM-FLAG-TRUTH：本段**先于**下方 scanBlocks —— 判据要吃表长（⟦ref:N⟧ 指不指得出东西）。
@@ -1153,6 +1170,9 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
             // 重规划预算尽仍不过关 → 诚实收尾：附「反思发现的残余缺口」块（不静默发半成品·KILL-MOCK-RED）。
             const gapBlocks: AnswerBlock[] = [
               ...accepted.answer.blocks,
+              // WO-ARM-FAILURE-VISIBLE：失败披露块插在**复盘块之前**（复盘块恒为最后一句，
+              // 与 DSH 臂同序）；零失败 ⇒ 空数组，本条与既有夹具逐字节同。
+              ...(renderFailedCallsBlock(failedCalls) ? [renderFailedCallsBlock(failedCalls)!] : []),
               // ★ WO-REFLECT-JARGON-SPLIT：上屏用 `lastReplanReasonUser`（用户可读），
               // ⛔ 不许用 `lastReplanReason` —— 那是回注给模型的诊断串（含 invoke_solver / ⟦ref:N⟧ /
               // 「求解纪律」这类内部术语与补齐指令），用户读了无法据此做任何决定。
@@ -1181,7 +1201,14 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
         iterations.push({ index: i, toolCalls: [] });
         return {
           outcome: "ANSWERED",
-          answer: accepted.answer,
+          // WO-ARM-FAILURE-VISIBLE：失败披露块接在答案之后（零失败 ⇒ 原对象原样，字节不变）。
+          // `unverifiedNumerics` 必须按**加块之后**的正文重算（与 DSH 臂同口径）。
+          answer: (() => {
+            const fb = renderFailedCallsBlock(failedCalls);
+            if (!fb) return accepted.answer;
+            const blocks = [...accepted.answer.blocks, fb];
+            return { ...accepted.answer, blocks, unverifiedNumerics: scanBlocks(blocks, accepted.answer.provenance.length) };
+          })(),
           structured: accepted.structured,
           run: finishRun(false),
           sketch,
@@ -1296,6 +1323,13 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
       else if (o.ok) consecutiveDenies = 0;
       if (o.ok) roundHadSuccess = true;
       else if (o.result.isError) roundFailures += 1;
+      // WO-ARM-FAILURE-VISIBLE：失败调用入册（答案尾部要逐条点名）。取的是 `call.outcome`
+      // （执行器四态直出）与 `result.content`（模型面回执原文）—— 同一个 (工具名, 结局, 原件)
+      // 三元组，与 DSH 臂从帧流收到的那一份同源 ⇒ 两臂渲染出的字逐字相同。
+      if (o.call && !o.ok) {
+        const note = failedToolCall(o.call.toolName, o.call.outcome, o.result.content);
+        if (note) failedCalls.push(note);
+      }
     }
     // WO-AGENT-RUNTIME-S01 · 停滞早停计数更新：任一成功工具产出 → 复位；否则本轮失败累加 + 无成功轮 +1。
     if (roundHadSuccess) {
