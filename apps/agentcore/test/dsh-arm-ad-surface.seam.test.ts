@@ -227,6 +227,24 @@ function diff(a: string[], b: string[]): { over: string[]; under: string[] } {
   return { over: [...sa].filter((k) => !sb.has(k)), under: [...sb].filter((k) => !sa.has(k)) };
 }
 
+/**
+ * 提示词**求解器目录段**的键（与 `mcp-top8-vs-roster.seam.test.ts` / `roster-toolfilter.seam.test.ts`
+ * 同一台抽取器：只在标题之后取 `  · key：` 行）。前两单收的就是这一段；DSH 臂上它是否也 ⊆ 可调用面
+ * 是本单的旁证面（广告还有第二条通道：提示词）。
+ */
+function rosterSection(text: string): string[] {
+  const lines = text.replace(/\\n/g, "\n").split("\n");
+  const start = lines.findIndex((l) => l.includes("全部可调用的求解器目录"));
+  if (start < 0) return [];
+  const out: string[] = [];
+  for (const l of lines.slice(start + 1)) {
+    const m = /^ {2}· ([A-Za-z0-9_]+)：/.exec(l);
+    if (!m) break;
+    out.push(m[1]!);
+  }
+  return out;
+}
+
 /** 从 OpenAI 线格式请求体里取某次工具调用的回执原文（= 模型实际看到的字节）。 */
 function toolResultText(body: unknown, toolCallId: string): string {
   const msgs = (body as { messages?: unknown[] } | undefined)?.messages ?? [];
@@ -331,6 +349,7 @@ describe("WO-DSH-ARM-AD-SURFACE · ②④ agt_seed_analyst（16 求解器·>8）
       expect(catalogKeys.size, "活目录空 ⇒ 上面那条前提是空集上的真").toBeGreaterThan(50);
 
       const advertised = advertisedSolverKeys(stub);
+      const roster = rosterSection(JSON.stringify(stub.requests[0]?.body));
       const scope = gateScopeSolverKeys(entry);
       // 探针面 = 两面之并 ∪ 负对照（对照必须**真被拒**，否则「都放行」与「闸坏了」同形）
       const probes = await probeGate(entry, [...new Set([...advertised, ...scope, OFF_WHITELIST_KEY])]);
@@ -350,6 +369,7 @@ describe("WO-DSH-ARM-AD-SURFACE · ②④ agt_seed_analyst（16 求解器·>8）
       );
 
       report("②④ analyst · DSH 臂", [
+        `提示词目录段(${roster.length}) = ${roster.join(",")}`,
         `广告面 A(${advertised.length}) = ${advertised.join(",")}`,
         `scope 面实值(${scope.length}) = ${scope.join(",")}`,
         `逐键真调通过(${passed.length}) = ${passed.join(",")}`,
@@ -359,6 +379,14 @@ describe("WO-DSH-ARM-AD-SURFACE · ②④ agt_seed_analyst（16 求解器·>8）
       expect(advertised.length, "analyst 的广告面必须等于它的求解器白名单（16）").toBe(16);
       expect(over, `广告面点名了调不到的：${over.join(",")}`).toEqual([]);
       expect(under, `调得动却没广告：${under.join(",")}`).toEqual([]);
+      // 旁证面①：提示词目录段（前两单收的那一段）同样 ⊆ 可调用面。
+      expect(roster.length, "目录段一行都没抽到 ⇒ 该抽取器在 DSH 臂上没内容可量").toBeGreaterThan(0);
+      expect(
+        roster.filter((k) => !passed.includes(k)),
+        "提示词目录段点名了调不到的",
+      ).toEqual([]);
+      // 旁证面②：目录段不许超出 MCP 广告面（两条通道不许各说各话）。
+      expect(roster.filter((k) => !advertised.includes(k)), "目录段有、MCP 工具面没有").toEqual([]);
 
       // ── 端到端：被原生臂 top-k 截掉的那条，在 DSH 臂真通 ──────────────────────
       const rows = await t.repos.toolCalls.listByTask("task_ad_arm2");
