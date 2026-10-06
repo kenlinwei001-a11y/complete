@@ -199,17 +199,26 @@ interface GateProbe {
   errorCode?: string;
 }
 
-/** 逐键**真调**本 run 的那只 executor（判据 = 放不放行，不是读名单）。 */
+/**
+ * 逐键**真调**本 run 的那只 executor（判据 = 放不放行，不是读名单）。
+ *
+ * `budgetDecision:{ok:true}` 的用意：executor 的**预算门在第 2 步**（scope 门在第 0 步），
+ * 探测若吃掉本 run 的预算，后几条会退化成 `BUDGET_EXCEEDED`，把「真执行过」这条证据弄丢。
+ * 传它 = 声明「本轮不再重复消耗」（该形参的既有语义：并行轮由循环侧预计数）——
+ * 判决点（scope 门）不受影响；预算这条轴不在本单判据内（DSH 真路径确实会消耗预算，
+ * 见报告 NOT-MEASURED 段）。
+ */
 async function probeGate(entry: DshToolExecuteRun, keys: string[]): Promise<GateProbe[]> {
   const out: GateProbe[] = [];
   for (const k of [...keys].sort()) {
-    const r = await entry.executor.run(fullNameOf(k), {});
+    const r = await entry.executor.run(fullNameOf(k), {}, { budgetDecision: { ok: true } });
     const payload = r.payload as { error?: { code?: string } } | undefined;
     out.push({ key: k, outcome: r.outcome, ...(payload?.error?.code ? { errorCode: payload.error.code } : {}) });
   }
   return out;
 }
 
+/** scope 门放行 = 不是 DENIED（OK/ERROR 都说明它走到了执行体）。 */
 const callable = (probes: GateProbe[]): string[] => probes.filter((p) => p.outcome !== "DENIED").map((p) => p.key);
 
 function diff(a: string[], b: string[]): { over: string[]; under: string[] } {
@@ -275,8 +284,11 @@ describe("WO-DSH-ARM-AD-SURFACE · ① agt_capacity_planner（5 求解器·≤8�
       // 金丝雀（量具活着）：广告面非空，且**确定在**的那个键在（模型面真看得见求解器）。
       expect(advertised.length, "广告面一条求解器都没有 ⇒ 本臂没量到东西").toBeGreaterThan(0);
       expect(advertised, "确定在白名单里的 capacity_forecast 没被广告 ⇒ 抽取器坏了").toContain("capacity_forecast");
-      // 金丝雀（闸有鉴别力）：同臂必须有一条**确定放行**的探针，否则「都放行」与「闸坏了」同形。
+      // 金丝雀（真执行过）：探针必须真打到执行体（不是「全 DENIED」也不是「空转」）。
       expect(passed.length, "没有一条探针放行 ⇒ scope 面抽取/执行坏了").toBeGreaterThan(0);
+      expect(probes.filter((p) => p.outcome === "OK").length, "探针一条都没真执行过 ⇒ 上面的放行不可信").toBe(
+        advertised.length,
+      );
 
       report("① capacity_planner · DSH 臂", [
         `广告面 A(${advertised.length}) = ${advertised.join(",")}`,
@@ -331,6 +343,11 @@ describe("WO-DSH-ARM-AD-SURFACE · ②④ agt_seed_analyst（16 求解器·>8）
       expect(advertised, "确定在授予面里的 gap_attribution 没被广告 ⇒ 抽取器坏了").toContain("gap_attribution");
       const neg = probes.find((p) => p.key === OFF_WHITELIST_KEY)!;
       expect(neg.outcome, `不在授予面的 ${OFF_WHITELIST_KEY} 却被放行 ⇒ 闸坏了，上面的「为空」不可信`).toBe("DENIED");
+      // 金丝雀（真执行过）：广告面那 16 条探针必须**条条真打到执行体**（OK），
+      // 否则「放行」可能是被预算/其它门掩盖出来的同形结论。
+      expect(probes.filter((p) => p.outcome === "OK").length, "广告面探针没条条真执行 ⇒ 放行不可信").toBe(
+        advertised.length,
+      );
 
       report("②④ analyst · DSH 臂", [
         `广告面 A(${advertised.length}) = ${advertised.join(",")}`,
@@ -415,6 +432,15 @@ describe("WO-DSH-ARM-AD-SURFACE · ③ 对照：白名单进一条 ⇒ 广告面
       // 有牙③：量具报得出非空（A 有 17 条 > 本 run 授予上限 8 ⇒ 差集结构性非空）
       expect(over.length, "反事实配置下差集仍为空 ⇒ 量具恒报空，前面的「空」不可信").toBeGreaterThanOrEqual(9);
       expect(over).toContain(OFF_WHITELIST_KEY);
+      // 有牙④：拒的那批必须是 **DENIED**（scope 门）而不是别的形态 —— 说明量的是那一道门，
+      // 且 scope 门的裁决**不受预算/其它门掩盖**（同批次另有 6 条真执行 OK，金丝雀）。
+      expect(
+        probes.filter((p) => p.outcome === "DENIED").map((p) => p.key),
+        "差集那批的形态必须是 scope 门 DENIED",
+      ).toEqual(over);
+      expect(probes.filter((p) => p.outcome === "OK").length, "对照臂也要有真执行的那一批（否则拒绝无鉴别力）").toBe(
+        passed.length,
+      );
     } finally {
       await close();
       await stub.close();
