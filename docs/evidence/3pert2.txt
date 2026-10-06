@@ -1,0 +1,30 @@
+## 3 扰动 × 3 次独立运行 · BASE=http://127.0.0.1:4052 TICKS=10 幅度 -3/-20
+
+### P1 Order.leadDays(交期)  落点 obj_order_SO-3391.leadDays
+  run#1 session=sims_jhy64trqdp8s6axz
+  run#2 session=sims_t0m4x8pgsfkd46pt
+  run#3 session=sims_cervx6f72r79j77v
+  ── 判据③ 确定性：3 次逐字节 ✅ 相同（非随机）
+  ── 判据① 静息相关格非 0 数：179/627 / 179/627 / 179/627
+  ── 判据① 真 zero 臂非 0 数：147/627
+  ── 判据② 线性：检查 32 格，偏离比应恒 = 6.6667；超差(>1e-6) 0 格，最大相对偏差 8.77e-10 ✅
+
+### P2 Material.priceShock(料价)  落点 obj_material_pos_ncm.priceShock
+  run#1 session=sims_m7yqz09xayter5a1
+  run#2 session=sims_7d9vtvj7yfa4emx3
+  run#3 session=sims_matv521a202fpapf
+  ── 判据③ 确定性：3 次逐字节 ✅ 相同（非随机）
+  ── 判据① 静息相关格非 0 数：147/627 / 147/627 / 147/627
+  ── 判据① 真 zero 臂非 0 数：147/627
+  ── 判据② 线性：⛔ 检查 0 格 —— 空集【判不了】，记 NOT-MEASURED（⛔ 不许报绿）
+
+### P3 Shipment.inboundExpeditePressure  落点 obj_shipment_shp_1.inboundExpeditePressure
+  run#1 session=sims_rmqdpqr6fbt5m8dx
+  run#2 session=sims_0hsne3z4a1fjs9ys
+  run#3 session=sims_fp7k8pb9k2y814x7
+  ── 判据③ 确定性：3 次逐字节 ✅ 相同（非随机）
+  ── 判据① 静息相关格非 0 数：147/627 / 147/627 / 147/627
+  ── 判据① 真 zero 臂非 0 数：147/627
+  ── 判据② 线性：⛔ 检查 0 格 —— 空集【判不了】，记 NOT-MEASURED（⛔ 不许报绿）
+
+DONE 2026-10-06T12:49:29.323Z

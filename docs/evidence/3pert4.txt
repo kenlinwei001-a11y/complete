@@ -1,0 +1,29 @@
+## 3 扰动 × 2 次独立运行 · BASE=http://127.0.0.1:4052 TICKS=10 幅度 -3/-20
+
+### P1 Order.leadDays(交期)  落点 obj_order_SO-3391.leadDays
+  run#1 session=sims_wn2bp1wdrk8cskx2
+  run#2 session=sims_phjrqr5tq6fz4w0k
+  ── 判据③ 确定性：2 次逐字节 ✅ 相同（非随机）
+  ── 判据① 静息相关格非 0 数：179/627 / 179/627
+  ── 被扰动格 obj_order_SO-3391.leadDays：zero=14  mag=11
+  ── ✅ 脉冲金丝雀：被扰动格 14 → 11 ⇒ 扰动已落地
+  ── 判据② 线性：检查 32 格，偏离比应恒 = 6.6667；超差(>1e-6) 0 格，最大相对偏差 8.77e-10 ✅
+
+### P2 Material.priceShock(料价)  落点 obj_material_al_foil.priceShock
+  run#1 session=sims_qcz49nran6cbwnjf
+  run#2 session=sims_rceff9thnxxpdan0
+  ── 判据③ 确定性：2 次逐字节 ✅ 相同（非随机）
+  ── 判据① 静息相关格非 0 数：147/627 / 147/627
+  ── 被扰动格 obj_material_al_foil.priceShock：zero=2  mag=0
+  ── ✅ 脉冲金丝雀：被扰动格 2 → 0 ⇒ 扰动已落地
+  ── 判据② 线性：⛔ 检查 0 格 —— 空集【判不了】，记 NOT-MEASURED（⛔ 不许报绿）
+
+### P3 Line.utilPressure(产线利用率)  落点 obj_line_LINE-WS-changzhou-assembly.utilPressure
+  run#1 session=sims_gh25x2m59dm6fbny
+  run#2 session=sims_z9f2hhv4nj63b80k
+  ── 判据③ 确定性：2 次逐字节 ✅ 相同（非随机）
+  ── 判据① 静息相关格非 0 数：147/627 / 147/627
+  ── 被扰动格 obj_line_LINE-WS-changzhou-assembly.utilPressure：zero=0  mag=0
+  ⛔【脉冲金丝雀失败】被扰动格自身未变 ⇒ 扰动没落地，本扰动判据记 NOT-MEASURED（⛔ 不许报"修好了"）
+
+DONE 2026-10-06T12:51:09.254Z
