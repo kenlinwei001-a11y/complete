@@ -445,7 +445,8 @@ describe("WO-ARM-FAILURE-VISIBLE · ⑦ 广告面审计（工具面 vs 提示词
         name: key,
         description: `${key} 求解器`,
         domain: "capacity",
-        argHints: {},
+        argHints: {} as Record<string, string>,
+        pool: "scenario" as const,
       }));
       // 目录源打桩：让它**确实含有** cockpit_kpi —— 否则「没看到」不度量「被过滤掉了」。
       t.dataCore.catalog.solverRegistry = async () => ({ items: registryItems });
