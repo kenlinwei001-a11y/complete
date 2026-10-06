@@ -440,7 +440,9 @@ export function renderAnswer(
     }
   }
 
-  const unverified = scanBlocks(blocks);
+  // WO-NUM-FLAG-TRUTH：判据要吃 provenance 表长 —— workflow 路的表是**平台自建**的（上面按真实
+  // toolCallId 逐条 push），故 ⟦ref:N⟧ 指不指得出东西由它判，不再只看「有没有标记」。
+  const unverified = scanBlocks(blocks, provenance.length);
   if (unverified) {
     // Path A出现该情况属实现 bug —— 仍只打标，不阻断（§5.5）
     metrics.unverifiedNumerics.inc({ path: trustLevel === "VERIFIED_WORKFLOW" ? "WORKFLOW" : "AGENT" });

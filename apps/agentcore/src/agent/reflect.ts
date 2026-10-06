@@ -107,7 +107,13 @@ export function reflectAnswer(input: ReflectInput): ReflectVerdict {
     v.push({ model: "答案为空或仅占位（未真正作答）", user: "本次没能给出有效回答" });
 
   // ② 数字落地（数字红线）：裸数 / ⟦ref:N⟧ 越界。
-  if (scanBlocks(input.blocks))
+  //
+  // WO-NUM-FLAG-TRUTH（2026-10-06）：`scanBlocks` 自本单起**也吃 provenanceCount**，规则与下面
+  // `refsWithinRange` **同一条**（每个 ⟦ref:N⟧ 的 N 必须落在 [0, provenanceCount)）。修前两者对
+  // 同一份答案可以给出相反结论（实测：20 处 ⟦ref:N⟧ + provenance 0 条 ⇒ 本函数判红、而
+  // `unverifiedNumerics` 报 false）—— 「两条判据打架」本身就是缺陷，不是两个独立视角。
+  // ⚠️ 两条**都保留**：处置不同（一个回注重规划 / 一个上屏诚实标），合并会让其中一边的语义丢掉。
+  if (scanBlocks(input.blocks, input.provenanceCount))
     v.push({
       model: "存在未溯源业务数字（数字红线：每个业务数字须 ⟦ref:N⟧）",
       user: "回答里有数字没能注明出处",
