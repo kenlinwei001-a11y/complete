@@ -101,7 +101,9 @@ function readOutputPath(data: unknown, outputPath: string): unknown {
   return cur;
 }
 
-// 数字红线判据：**单源** `util/numerics.ts`（本文件曾自写一份 `scanUnverified`，见文件末「分叉的那一份」）。
+// 数字红线判据：**单源** `util/numerics.ts`（`scanBlocks`）—— 本文件原自写一份 `scanUnverified`
+// （「剥掉 ⟦…⟧ 后还有数字字符就算未溯源」），与单源的实际分叉是**反方向**的：它把**已指得出出处**的数字
+// 也标成未溯源（无差别标记），而两处判据对同一句可以给出相反结论。
 // ⚠ 本文件**不得**再自写第二份判据 —— 两份实现改一份不会红，这正是它上次分叉的方式。
 
 /**
