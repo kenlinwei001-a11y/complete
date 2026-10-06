@@ -105,7 +105,9 @@ export function MetricWall({ wall, selected, onSelect }: MetricWallProps): JSX.E
       data-series={wall.seriesAvailable ? "1" : "0"}
     >
       <div className={styles.calibre} data-testid="usim-threshold">
-        「被推动」判据：|Δ| ≥ {wall.threshold.value === 0 ? "任何非零变化" : fmt(wall.threshold.value)} · 口径 = {wall.threshold.basis}
+        {/* WO-UI-DESC-POPOVER：原写「判据：|Δ| ≥ …」—— `|Δ|` 是数学记号，屏上没人给你念 Δ。
+            改用业务词「变化量」，**判据与口径一个字没动**（口径按 R-UI-3 必须默认可见，留第一层）。 */}
+        被推动 = 变化量 ≥ {wall.threshold.value === 0 ? "任何非零变化" : fmt(wall.threshold.value)} · 口径 = {wall.threshold.basis}
       </div>
       {wall.truncated ? (
         <div className={`${styles.calibre} ${styles.warn}`} data-testid="usim-truncated">

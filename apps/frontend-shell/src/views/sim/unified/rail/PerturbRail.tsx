@@ -763,7 +763,7 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
             {selectedVar === null
               ? "这一片里一个量都没有"
               : selectedVar.isRoot
-                ? `层级「${selectedVar.layer ?? "未下发"}」 —— 由后端按传导图入度/出度现算`
+                ? `层级「${selectedVar.layer ?? "未下发"}」`
                 : `层级「${selectedVar.layer ?? "未下发"}」 —— ${DOWNSTREAM_NOTE}`}
           </p>
 
