@@ -34,6 +34,10 @@
 import { AnswerBlockSchema, type AgentIteration, type Answer, type AnswerBlock, type ProvenanceRef } from "@platform/contracts";
 import { z } from "zod";
 import { scanBlocks } from "../util/numerics.js";
+// WO-ARM-FAILURE-VISIBLE：失败披露的**渲染/归一**单源在 `agent/failure-disclosure.ts`
+// （两臂共用；本文件只做帧流取数）。⛔ 不许在本文件另写一份渲染。
+import { failedToolCall, renderFailedCallsBlock, type FailedToolCall } from "../agent/failure-disclosure.js";
+export type { FailedToolCall } from "../agent/failure-disclosure.js";
 // WO-DSH-REFLECT-PARITY：复盘判据**单源复用** `agent/reflect.ts`（原生路同一份四查），
 // 本文件不另写第二套 —— 两份实现必漂，正是本仓「不许另抄一份」铁律防的那个形态。
 import { reflectAnswer } from "../agent/reflect.js";
@@ -279,45 +283,11 @@ function successfulCallIds(events: readonly DshSessionEvent[]): string[] {
 }
 
 /**
- * WO-DSH-ARM-FAILURE-VISIBLE · **一次失败调用的可点名片**（工具名 + 四态 outcome + 门/原因原文）。
+ * WO-DSH-ARM-FAILURE-VISIBLE · 从帧流收集失败调用（isError=true 的 tool-result）。
  *
- * 为什么要有它（活服务实测，task_01M48KCQV09AGNSSKQY5WBJ3N6 / 13:15 两跑）：8 次工具调用里
- * 4 次失败（2 ERROR + 2 DENIED），而用户读到的答案对它们**只字未提**（只有一句笼统的「数据不全」）
- * —— 用户既不知道失败的是**哪次**调用，也不知道撞的是**哪道门**。失败发生了却读不出来，
- * 与「没发生」在屏上不可区分。
- */
-export interface FailedToolCall {
-  toolName: string;
-  outcome: "DENIED" | "BUDGET_EXCEEDED" | "ERROR";
-  /** 门/原因原文（取自帧流里的 tool-result 文本，原样透出，不翻译、不归纳）。 */
-  reason: string;
-}
-
-/** 工具结果帧里的文本（三种形态都收：`[{type:"text",text}]` / 裸串 / 空）。 */
-function toolResultText(b: Record<string, unknown>): string {
-  const c = b.content;
-  if (typeof c === "string") return c;
-  if (Array.isArray(c)) {
-    return c
-      .filter((x): x is Record<string, unknown> => typeof x === "object" && x !== null && (x as { type?: unknown }).type === "text")
-      .map((x) => (typeof x.text === "string" ? x.text : ""))
-      .join("");
-  }
-  return "";
-}
-
-/** 帧流文本 → 上屏短句：剥 `<tool_data …>` 包络、压空白、截断（不改写内容）。 */
-function tidyReason(text: string): string {
-  return text
-    .replace(/^<tool_data[^>]*>/u, "")
-    .replace(/<\/tool_data>$/u, "")
-    .replace(/\s+/gu, " ")
-    .trim()
-    .slice(0, 240);
-}
-
-/**
- * 从帧流收集失败调用（isError=true 的 tool-result）。
+ * ⛔ **渲染与归一不在本文件** —— 那是两条臂共用的唯一实现，中性位置在
+ * `agent/failure-disclosure.ts`（放这里会被 `loop.ts` 静态 import = 第二个 dsh-runtime 入口，
+ * 触 `check-dsh-dormancy.mjs` D3）。本函数只做**取数**（帧流口径），产出同一份 `FailedToolCall`。
  *
  * outcome 的取证次序（**事实源优先，不许猜**）：① 宿主侧表 `hostToolCalls`（四态 + tc_ id 的
  * 事实源，与 `foldDshIterations` 同一张表）；② 表未命中（MCP/meta 外形态）才按帧文本里的
@@ -337,9 +307,9 @@ export function collectFailedCalls(
       if (typeof b !== "object" || b === null) continue;
       const block = b as Record<string, unknown>;
       if (block.type !== "tool-result" || typeof block.toolCallId !== "string" || block.isError !== true) continue;
-      const reason = tidyReason(toolResultText(block));
+      const reason = toolResultText(block);
       const host = hostToolCalls?.get(block.toolCallId);
-      const outcome: FailedToolCall["outcome"] =
+      const outcome =
         host?.outcome && host.outcome !== "OK"
           ? host.outcome
           : /AGENT_SCOPE_VIOLATION|无权访问/u.test(reason)
@@ -347,29 +317,24 @@ export function collectFailedCalls(
             : /预算已尽/u.test(reason)
               ? "BUDGET_EXCEEDED"
               : "ERROR";
-      out.push({ toolName: nameByCallId.get(block.toolCallId) ?? "unknown", outcome, reason });
+      const note = failedToolCall(nameByCallId.get(block.toolCallId) ?? "unknown", outcome, reason);
+      if (note) out.push(note);
     }
   }
   return out;
 }
 
-/**
- * 失败披露块（**可点名**：哪次调用 · 什么结局 · 哪道门/什么原因原文）。
- *
- * 两条刻意的取舍：
- *  · 不写计数与序号 —— 那段文案是平台自撰、会一起被 `scanBlocks` 扫（本文件既有口径），
- *    写「共 2 次」等于给答案塞一个没有出处的业务数字。条数由列出的行数表达，足够。
- *  · 措辞**不撞** `agent/reflect.ts` 的 `FAILURE_ACK_RE`（「失败/未能/无权」等）—— 复盘第三查
- *    「静默失败」是独立的一条判据与治理门控，本块不该把它悄悄置成已满足（两块各说各的，
- *    重叠是刻意的：一块可点名、一块进重规划门）。
- */
-export function renderFailedCallsBlock(failed: readonly FailedToolCall[]): AnswerBlock | undefined {
-  if (failed.length === 0) return undefined;
-  const lines = failed.map((f) => `- ${f.toolName}（${f.outcome}）：${f.reason || "（无原因文本）"}`);
-  return {
-    type: "text",
-    markdown: `【本次运行中有工具调用未成功】以下结论未包含这些调用的结果，请勿把它们当作已核实的数据：\n${lines.join("\n")}`,
-  };
+/** 工具结果帧里的文本（三种形态都收：`[{type:"text",text}]` / 裸串 / 空）。 */
+function toolResultText(b: Record<string, unknown>): string {
+  const c = b.content;
+  if (typeof c === "string") return c;
+  if (Array.isArray(c)) {
+    return c
+      .filter((x): x is Record<string, unknown> => typeof x === "object" && x !== null && (x as { type?: unknown }).type === "text")
+      .map((x) => (typeof x.text === "string" ? x.text : ""))
+      .join("");
+  }
+  return "";
 }
 
 /**
