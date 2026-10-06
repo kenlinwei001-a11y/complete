@@ -536,6 +536,34 @@ export class ExecutionEngine {
     }
   }
 
+  /**
+   * WO-ROSTER-RESPECT-TOOLFILTER · **求解器 MCP 面的授予白名单**（`tools[].toolFilter` 原文）——
+   * 导航切片把它当「可调用面」收窄广告面（判据：广告面 ⊆ 可调用面）。
+   *
+   * 单源 = `agent.tools` 里**求解器 MCP ref** 的 `toolFilter`，与 `expandAgentTools` 求解器分支
+   * 同一条判据（`serverName === SOLVERS_MCP_SERVER`）——不另抄一份「哪个 config 是求解器」的名单。
+   *
+   * 返回值语义（三态，别混）：
+   *   · `undefined` —— 未设过滤（该 ref 无 toolFilter）·**或**该 agent 没有求解器 MCP ref
+   *     ⇒ 广告面**不收窄**（「没设过滤」≠「什么都不给」）；
+   *   · 非空数组 —— 多 ref 取**并集**（授予面 = 各 ref 之并，同 expandAgentTools 的产出口径）；
+   *   · 空数组 —— `toolFilter: []` ⇒ 该 server 工具全丢，一条求解器都不广告。
+   */
+  private async solverMcpToolFilterOf(agent: AgentDefinition): Promise<string[] | undefined> {
+    const filters: string[][] = [];
+    for (const ref of agent.tools) {
+      if (ref.kind !== "MCP") continue;
+      const config = await this.deps.repos.mcpConfigs.get(ref.mcpConfigId);
+      if (!config) continue;
+      const serverName = config.serverName ?? mcpServerNameSlug(config.name);
+      if (serverName !== SOLVERS_MCP_SERVER) continue;
+      if (ref.toolFilter === undefined) return undefined; // 任一求解器 ref 未设过滤 = 全量授予 ⇒ 不收窄
+      filters.push(ref.toolFilter);
+    }
+    if (filters.length === 0) return undefined; // 无求解器 ref ⇒ 本 agent 不靠 MCP 面调 solver（旧行为）
+    return [...new Set(filters.flat())];
+  }
+
   async expandAgentTools(agent: AgentDefinition, ctx?: ToolAuthCtx): Promise<AgentToolSpec[]> {
     const specs: AgentToolSpec[] = [];
     for (const ref of agent.tools) {
@@ -751,7 +779,10 @@ export class ExecutionEngine {
     const liveCatalog = scopeCanInvokeSolvers(agent.scopeDeclaration.toolNames)
       ? await fetchLiveSolverCatalog(this.capabilityMapSource(), opts.ctx, opts.prompt)
       : undefined;
-    const navSlice = projectNavigationSlice(opts.prompt, undefined, agent.scopeDeclaration, liveCatalog);
+    // WO-ROSTER-RESPECT-TOOLFILTER · 授予面（`tools[].toolFilter` 原文）随 scope 一起进投影：
+    // 目录段/详情段的成员资格 = 对象域 ∩ **可调用面**。缺省（undefined）⇒ 不收窄（旧行为逐字节不变）。
+    const solverToolFilter = await this.solverMcpToolFilterOf(agent);
+    const navSlice = projectNavigationSlice(opts.prompt, undefined, { ...agent.scopeDeclaration, solverToolFilter }, liveCatalog);
     const sliceSection = renderNavigationSlice(navSlice);
     // WO-QOS-ONTOLOGY-CONTEXT · 口径语义锚定（缺口③文档三层投喂第二层）：紧随导航图 append 各字段/规则口径
     //（Metric formula/unit·派生公式·规则 expression·取自 A 单一真值 getTypeSemantics·TTL60s 缓存·只列涉及项）——
