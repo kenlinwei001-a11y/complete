@@ -43,6 +43,7 @@ import {
   stateVarDisplayName,
   stateVarDomains,
   stateVarValueRef,
+  stateVarSemantics,
 } from "../synthetic/battery.js";
 import { buildPropagationInputs } from "./propagation-inputs.js";
 import type { PropagationGraph, StateVarDisclosure } from "./propagation.js";
@@ -458,6 +459,12 @@ export async function deriveSeedBaseSnapshot(
    *   （变异反证仍有效：规格库非空 + 指一个查无的 specKey ⇒ `specByKey.get` 落空 ⇒ 红。）
    */
   const brokenRefs: string[] = [];
+  /**
+   * ★ WO-SEMANTICS-DECLARED：`DEVIATION` 语义的格取不到 `restPoint` ⇒ **点名**。
+   * ⛔ 不退回 `0`：那会把"我不知道这格的静息点"装扮成"我知道它是 0"，正是本单要治的错行为。
+   * 取不到时**退回既有行为**（走下面的真读数支），但把缺口记在这里 —— 与 `brokenRefs` 同式。
+   */
+  const unresolvedDeviationRestPoints: string[] = [];
   if (specByKey.size > 0) {
     for (const typeKey of byType.keys()) {
       for (const v of byType.get(typeKey) ?? new Set<string>()) {
@@ -489,6 +496,31 @@ export async function deriveSeedBaseSnapshot(
       const row: Record<string, number> = {};
       const originRow: Record<string, CellOrigin> = {};
       for (const v of vars) {
+        // ★ WO-SEMANTICS-DECLARED：`DEVIATION` 语义的格，静息态必须是 `restPoint`，**不取对象属性上的水平值**。
+        //
+        // 为什么（根因认定 LOOP 三方一致，证据见 docs/evidence/WO-AB-ROOTCAUSE-CONVERGED.md）：
+        //   `Order.costPressure` 的 props 值是 115（规格 `creditUsedRatio×100`，**水平**语义），
+        //   而它的消费端（求解器 `金额 = 基线 × (1 + 压力 ÷ divisor)`）与传导核都按**偏离**读它。
+        //   115 越出压力域上界 100 ⇒ tick0 投影压成 90.384615 ⇒ C2（spec-base-synthesis）每拍
+        //   按 `+0.37·base` 抬回 ⇒ 与投影的压缩顶成一个**复合不动点 82.2915** ⇒ 该格在扰动下的
+        //   变化 −8.0931 里 **99% 来自这个不动点、与成本传导无关**（逐笔求和：进入它的全部传导边
+        //   12 拍只搬运 +0.0734）。**把一个水平值播进一个偏离格，就是那个不动点的源头。**
+        //
+        // 记账口径：值是**派生**出来的（语义声明 + restPoint），不是实测来的
+        //   ⇒ 标 `derived`（契约 `CellOrigin` 两档之一，语义完全覆盖），**不计入 `measured*` 三个账**。
+        //   ⛔ 不许标 `measured` —— 那是在出处上写假话，正是本单在治的病。
+        if (stateVarSemantics(typeKey, v) === "DEVIATION") {
+          const d = domains[v];
+          if (d === undefined || typeof d.restPoint !== "number") {
+            // ⛔ 取不到 restPoint **不许退回 0**（仓规：把"我不知道静息点"装扮成"我知道它是 0"
+            //    正是本单要治的错行为）⇒ 点名，并按"未声明域"的既有那一档处理（下面 else 支）。
+            unresolvedDeviationRestPoints.push(`${typeKey}.${v}`);
+          } else {
+            row[v] = d.restPoint;
+            originRow[v] = "derived";
+            continue;
+          }
+        }
         const real = o.props[v];
         if (typeof real === "number" && Number.isFinite(real)) {
           row[v] = real;

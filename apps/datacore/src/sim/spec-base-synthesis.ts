@@ -53,7 +53,7 @@
  *   ⛔ 次序不许颠倒：先投影再合成 = 刚收回来的值又被代数覆写掉，退回病灶（见该文件头注「三条不许」）。
  */
 import { buildCellRoles, type PropagationRule, type StateVarDomainLookup, type TickState } from "@platform/contracts";
-import { stateVarValueRef } from "../synthetic/battery.js";
+import { stateVarValueRef, stateVarSemantics } from "../synthetic/battery.js";
 import { round12, type PropagationGraph } from "./propagation.js";
 
 export interface SpecBaseSynthesisDeps {
@@ -90,6 +90,13 @@ export function makeRestoreSpecBase(deps: SpecBaseSynthesisDeps): RestoreSpecBas
         // 🔴 判据是「**归不归派生规格所有**」，不是「baseSnapshot 里有没有键」（那永远有）。
         //    与播种路（`seed-world.ts` 的 `measuredRefVarKeys`）**同一个函数**，不另立登记表。
         if (stateVarValueRef(tk, sv) === undefined) continue;
+        // ★ WO-SEMANTICS-DECLARED：`DEVIATION` 语义的格【跳过】——
+        //   本模块的活是「把核的 rest 锚换成 base 锚」。语义一旦定死，锚就唯一了：
+        //     · 声明 `DEVIATION` ⇒ 锚**就是** `restPoint` ⇒ 核已经用对了 ⇒ C2 对它恒等，无活可干
+        //     · 声明 `LEVEL`     ⇒ 锚是 `base`（规格产出的水平值）⇒ 正是本模块要补的那个差
+        //   ⛔ 本行与播种值那一支（`seed-world.ts` 的 DEVIATION 分支）**必须同批落地**：
+        //      只做本行 ⇒ 零臂的 `−λx` 与 `+λ·base` 失去抵消 ⇒ 零臂从 90.38 指数衰减到 0。
+        if (stateVarSemantics(tk, sv) !== "LEVEL") continue;
         const base = baseRow[sv];
         if (typeof base !== "number") continue;
         const cur = bucket[sv];
