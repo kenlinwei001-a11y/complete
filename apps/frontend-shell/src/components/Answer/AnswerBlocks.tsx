@@ -98,7 +98,11 @@ export function TextBlock({
     while ((m = REF_RE.exec(line)) !== null) {
       if (m.index > last) parts.push(<Fragment key={`${key}t${i}`}>{renderInline(line.slice(last, m.index), `${key}t${i}`)}</Fragment>);
       const provId = m[1]!;
-      parts.push(<ProvMark key={`${key}r${i}`} provId={provId} taskId={taskId} index={provIndex(provId)} />);
+      // 找得到才印数字角标；找不到印「?」—— ⛔ **不印 `[0]`**：
+      // 0 是 `provIndex` 里 `indexOf` 未命中的哨兵值，不是第 0 条出处。照印就是「有个角标」冒充
+      // 「指得出出处」（活服务实测满屏 `[0]` 的那一幕）。
+      const idx = provIndex(provId);
+      parts.push(<ProvMark key={`${key}r${i}`} provId={provId} taskId={taskId} index={idx} resolved={idx > 0} />);
       last = m.index + m[0].length;
       i++;
     }
@@ -131,7 +135,7 @@ export function TableBlock({
     <div className={styles.tableWrap} data-testid="answer-table">
       <div className={styles.tableHead}>
         <span />
-        <ProvMark provId={provId} taskId={taskId} index={provIndex(provId)} />
+        <ProvMark provId={provId} taskId={taskId} index={provIndex(provId)} resolved={provIndex(provId) > 0} />
       </div>
       <table className="cmp">
         <thead>
@@ -203,7 +207,7 @@ export function RuleViolationBlock({
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span className="badge red">{ruleId}</span>
         <span className="badge">{severity}</span>
-        <ProvMark provId={provId} taskId={taskId} index={provIndex(provId)} />
+        <ProvMark provId={provId} taskId={taskId} index={provIndex(provId)} resolved={provIndex(provId) > 0} />
       </div>
       <p style={{ marginTop: 6, lineHeight: 1.6 }}>{explanation}</p>
     </div>

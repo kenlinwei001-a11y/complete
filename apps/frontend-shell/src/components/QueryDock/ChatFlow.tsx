@@ -61,7 +61,13 @@ function ChatTextBlock({
       const provId = m[1]!;
       parts.push(
         provenance !== undefined ? (
-          <ProvMark key={`${key}r${i}`} provId={provId} taskId={provenance.taskId} index={provenance.provIndex(provId)} />
+          <ProvMark
+            key={`${key}r${i}`}
+            provId={provId}
+            taskId={provenance.taskId}
+            index={provenance.provIndex(provId)}
+            resolved={provenance.provIndex(provId) > 0}
+          />
         ) : (
           <sup key={`${key}r${i}`} data-testid={`chat-ref-${provId}`}>
             [{provId}]
