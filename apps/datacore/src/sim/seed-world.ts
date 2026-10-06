@@ -640,9 +640,8 @@ export async function deriveSeedBaseSnapshot(
           ? "种子世界的 tick0 读数由本体结构派生（确定性占位），不是实测：" +
             "推演状态变量（loadIndex/demandPressure…）在本平台不是对象属性，对象上取不到值 —— " +
             "「实测格」一项计的就是每次播种现场探到的真读数格数。凡拿它当起点算出的差值，量级不可当实测读。"
-          : `种子世界的 tick0 读数分两种：${measuredCells} 格是实测（状态变量名就是对象上的属性名，` +
-            `直接读了那个对象的真实业务数）；其余 ${cells - measuredCells} 格是本体结构派生的确定性占位` +
-            "（这些状态变量在本平台不是对象属性，对象上取不到值）。" +
+          : `种子世界的 tick0 读数分两种：${measuredCells} 格是实测（直接读了对象上的真实业务数）；` +
+            `其余 ${cells - measuredCells} 格是结构派生的确定性占位。` +
             "拿占位格当起点算出的差值，量级不可当实测读；实测格没有这个问题。" +
             // §3：显式绑定来的格子，出处里点名它们各自来自哪条公式（纯文本，不上 markdown）。
             (measuredRefVarKeys.size > 0
