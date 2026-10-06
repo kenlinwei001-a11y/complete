@@ -4120,6 +4120,12 @@ export const STATE_VAR_SEMANTICS: Record<string, "LEVEL" | "DEVIATION"> = {
   // ⇒ 二对一，且唯一与消费端量纲自洽的是 `DEVIATION`。
   // ⚠ 登记本行**尚未接任何调用点**（执行顺序第 1 步 = 只引入声明，行为中立）。
   "Order|costPressure": "DEVIATION",
+  // 裁定依据同 Order 那条，且更硬：`world-read.ts:98` 的投影规则按偏离读它
+  // （`成本' = 成本 ×（1 + 成本压力 ÷ divisor）`），`finance-world.ts:514` 的 CHAIN_TARGETS 也含 `costPressure`。
+  // ⚠ 本条**已裁未改**，本行登记后才生效；影响面 = 6 个 Model（2170-NCM / 4680-NCM / 4680-LFP …）
+  //    及其下游全部订单。未发作是因为它的 base 2.93 未越 `knee=75`（`world-projection.ts` 的压缩支）
+  //    ——**不是因为它健康**：同构的 `Order.costPressure` base 90.38 越了 knee 就在屏上打出 8.09 假信号。
+  "Model|costPressure": "DEVIATION",
 };
 
 /** `(类型,变量)` → 量纲语义（未登记 → `LEVEL` = 保持现状）。全平台唯一入口，⛔ 不许在调用侧另写缺省。 */

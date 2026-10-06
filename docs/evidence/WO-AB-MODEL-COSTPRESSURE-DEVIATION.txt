@@ -1,0 +1,19 @@
+=== Model.costPressure 语义归位 · 验收（4052 重启后）===
+改动：STATE_VAR_SEMANTICS 增 '"Model|costPressure": "DEVIATION"'（一行）
+裁定依据：world-read.ts:98 成本投影按偏离读它 + finance-world.ts:514 CHAIN_TARGETS 含 costPressure
+
+### 判据1 静息态归位（tick0，6 个 Model 全查）
+  obj_model_2170-NCM = 0 · 4680-LFP = 0 · 4680-NCM = 0 · 圆柱-LFP = 0 · 方形-LFP = 0 · 方形-NCM = 0
+  改前：2.9085 / 2.4653 / 2.9263 / …   ⇒ 全部归位 ✓
+  连带 Order.costPressure 非 0 格数 = 0（保持）✓
+
+### 判据2 扰动下仍活着 + 完全线性（WO-AB-HOPTRACE2 逐拍）
+  obj_model_4680-NCM.costPressure  rest=0.000000  逐拍偏离比恒 = 6.6667（= 输入比）
+    偏离(-3) t12 = 0.028298 ；偏离(-20) t12 = 0.188654
+  obj_order_SO-3391.costPressure   rest=0.000000  逐拍偏离比恒 = 6.6667
+    末拍偏离(-3) = 0.020637（改前 0.020636512938 ⇒ 逐位相同）
+
+### 判据3 改的是【表述】不是【响应】
+  偏离量前后逐位相同（0.028298 / 0.020637），而静息态从 2.9263 / 90.3846 归位到 0。
+  ⇒ 这正是「水平 vs 偏离」的语义归位，不是把数调小。
+  build rc=0 ✓   探针 rc=0 ✓
