@@ -45,6 +45,47 @@ function sseChunk(obj: unknown): string {
   return `data: ${JSON.stringify(obj)}\n\n`;
 }
 
+/**
+ * 非流式（JSON）形态的同一轮次 —— **只在 `jsonWhenNotStreaming` 开启且请求未带 `stream:true` 时走**。
+ *
+ * 为什么需要它：两条臂的**线协议不同**。dsh 臂经 pi-ai 走 SSE（`roundToSse`）；
+ * native 臂经 `llm-adapters/openai.ts` 的 OpenAI SDK 非流式 `chat.completions.create`，
+ * 读的是 `resp.choices[0]`（`packages/llm-adapters/src/openai.ts` 的 `agent()`）——
+ * 拿 SSE 喂它会在 `choices` 上读到 undefined。
+ * ⚠ 与 SSE 形态**共用同一份 `round`**（同一 usage、同一 toolCall）⇒ 两臂的线上用量声明是同一个数，
+ * 这正是「同 task 双跑比 token 账」的受控变量。缺省不开 ⇒ 既有全部调用方逐字节不变。
+ */
+function roundToJson(round: StubRound, _seq: number): unknown {
+  const toolCalls = round.toolCall
+    ? [
+        {
+          id: `call_${_seq}`,
+          type: "function",
+          function: { name: round.toolCall.name, arguments: round.toolCall.arguments },
+        },
+      ]
+    : undefined;
+  return {
+    id: "chatcmpl-stub",
+    object: "chat.completion",
+    created: 1,
+    model: STUB_MODEL_ID,
+    choices: [
+      {
+        index: 0,
+        message: {
+          role: "assistant",
+          content: round.toolCall ? null : (round.text ?? ""),
+          ...(toolCalls ? { tool_calls: toolCalls } : {}),
+          ...(round.reasoning !== undefined ? { reasoning_content: round.reasoning } : {}),
+        },
+        finish_reason: round.toolCall ? "tool_calls" : (round.finishReason ?? "stop"),
+      },
+    ],
+    usage: round.usage,
+  };
+}
+
 function roundToSse(round: StubRound, seq: number): string {
   const base = { id: "chatcmpl-stub", object: "chat.completion.chunk", created: 1, model: STUB_MODEL_ID };
   let out = "";
@@ -104,9 +145,16 @@ function roundToSse(round: StubRound, seq: number): string {
   return out;
 }
 
-/** 剧本化 stub：第 n 次 POST /chat/completions 回 rounds[n-1]，耗尽回 500。 */
+/**
+ * 剧本化 stub：第 n 次 POST /chat/completions 回 rounds[n-1]，耗尽回 500。
+ *
+ * `opts.jsonWhenNotStreaming`（缺省 **false** ⇒ 既有调用方逐字节不变）：
+ * 请求体未带 `stream: true` 时改回**非流式 JSON**（`roundToJson`）——
+ * native 臂的 OpenAI SDK 非流式路径需要它，见 `roundToJson` 头注。
+ */
 export async function startStubOpenAi(
   rounds: StubRound[],
+  opts?: { jsonWhenNotStreaming?: boolean },
 ): Promise<{ url: string; requests: StubRequest[]; close: () => Promise<void> }> {
   const requests: StubRequest[] = [];
   const server: Server = createServer((req, res) => {
@@ -131,6 +179,11 @@ export async function startStubOpenAi(
       const round = rounds[requests.length - 1];
       if (!round) {
         res.writeHead(500, { "content-type": "application/json" }).end(JSON.stringify({ error: { message: "stub script exhausted" } }));
+        return;
+      }
+      if (opts?.jsonWhenNotStreaming && (body as { stream?: unknown })?.stream !== true) {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(roundToJson(round, requests.length)));
         return;
       }
       res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "close" });
