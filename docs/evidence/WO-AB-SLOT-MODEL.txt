@@ -1,0 +1,38 @@
+=== WO-SLOT-MODEL · 四个槽位模式的补法（2026-10-07 仓主令）===
+
+### 槽位现状（本单已补到哪）
+  槽位         承载物                        状态
+  1 量纲       STATE_VAR_SEMANTICS        ✅ 本单新加，16 格已裁
+  2 静息值      STATE_VAR_DOMAINS.restPoint ✅ 本单修（播种改为读它）
+  3 公式       DerivationSpec + stateVarValueRef ✅ 本步补（见下）
+  4 数据槽位     MONEY_CHARGE_BASIS（仅金额摊销一处） ⚠ 已起步，远未覆盖
+
+### 槽位 3 的缺口与补法
+  缺口：**公式产什么量纲，无人校验** —— 一个产水平值的规格登记给一个 DEVIATION 格，拦不住。
+  实测账（改前）：已裁 DEVIATION 的 16 格里，**15 格仍挂着产水平的规格**。
+    行为上已经对了（播种走 DEVIATION 支取 restPoint），但**出处记账是假的**：
+    它仍宣称「这一格的值来自那条规格」，而值早就不来自它了。
+    ⇒ 这就是本单一路在治的**名实不符**在槽位层的复现。
+
+  补法（不逐条删登记）：在**全平台唯一入口** stateVarValueRef() 里按语义收敛一次——
+    若该格语义 = DEVIATION ⇒ 恒返回 undefined（值由 restPoint + 传导管，不由任何规格物化）。
+    ⛔ 删 15 条，第 16 格迟早再加回来 —— 那是拿人力追一个结构问题。
+    在入口收敛 ⇒ **结构上不可能再不一致**。
+
+  判据：
+    ① 16 格已裁 DEVIATION，仍解析出规格的 = 0 ✅ 全部收敛
+    ② 行为不变：15 个量 · 总格数 1993 · 非0 = 0 ✅ 全归位
+    build rc=0 ✅
+
+### 槽位 4（数据槽位）· 还欠什么
+  现状：MONEY_CHARGE_BASIS 是**第一个**数据槽位声明 —— 它把「金额摊销的集合是谁」
+        从散落的 listByType 调用收成一处登记，并逐条随 pressures[].denominator 下发。
+  仍散着的（本单实测到的）：
+    · orderValue = qty × unitPrice —— 这个口径无统一登记
+    · restReference 的取值顺序（baseSnapshot → domains.restPoint）散在函数里
+    · 每个规格的输入从哪取（如 creditUsedRatio 来自本体属性，取数关系无承载物）
+  ⇒ 这一层**未做**，如实标注。它需要把「每个量的公式 + 其输入取自哪个集合」
+    变成一处声明，与给「量纲」补的那张表同构。
+
+### 累计归位
+  1993 格（15 个量）· 16 格已裁 DEVIATION · 全部 tick0 = restPoint(0)

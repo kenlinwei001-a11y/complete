@@ -4149,6 +4149,33 @@ export const STATE_VAR_SEMANTICS: Record<string, "LEVEL" | "DEVIATION"> = {
   //   所以不像 `Order.costPressure` 那样在屏上打出假信号 —— 但「静息态被播成非 0」是一样的。
   //   ⇒ 已实测：150 格里 148 格非 0。
   "Order|demandPressure": "DEVIATION",
+  // ── WO-REAL-BUSINESS · 按【真实业务】量纲一次裁定（2026-10-07 仓主令）────────────────
+  //
+  // 判据（业务，不是"有没有消费端"这条技术判据）：
+  //   一个世界态量，若它表达的是**「相对某个基线的偏移」**（风险 / 压力 / 负荷 / 缺口）
+  //   ⇒ 静息态就是 0 ⇒ `DEVIATION`；
+  //   若它表达的是**「绝对量」**（天数 / 数量 / 比例本身）⇒ `LEVEL`。
+  //
+  // 这 9 个量**名字本身就带风险/压力/负荷/缺口**，且 `STATE_VAR_DOMAINS` 已统一声明
+  // 它们 `restPoint = 0`（实测逐条核过）—— **域表早就按"偏离"声明了，是播种在按"水平"播。**
+  // 每一个都有一份规格在产水平值（实测逐条核过），与前面已修的 6 格**完全同构**。
+  //
+  // ⚠ 它们与那 6 格唯一的差别：**没有"按偏离读"的消费端** —— 所以没有第三只手来打架，
+  //   不会像 `Order.costPressure` 那样在屏上打出假信号。**但"静息态被播成非静息值"这件事是一样的**，
+  //   且它会经传导核（永远按偏离传）扩散到下游。
+  //
+  // 影响面实测：shortageRisk 147 · supplyRisk 0 · demandLoad 6 · defectPressure 85 ·
+  //   gapPressure 7 · queuePressure 650 · expeditePressure 19 · feedPressure 260 · releasePressure 260。
+  "Material|shortageRisk": "DEVIATION",
+  "Order|shortageRisk": "DEVIATION",
+  "Model|supplyRisk": "DEVIATION",
+  "Model|demandLoad": "DEVIATION",
+  "DefectRecord|defectPressure": "DEVIATION",
+  "MaterialBalance|gapPressure": "DEVIATION",
+  "Process|queuePressure": "DEVIATION",
+  "PurchaseOrder|expeditePressure": "DEVIATION",
+  "WIPLot|feedPressure": "DEVIATION",
+  "WorkOrder|releasePressure": "DEVIATION",
 };
 
 /** `(类型,变量)` → 量纲语义（未登记 → `LEVEL` = 保持现状）。全平台唯一入口，⛔ 不许在调用侧另写缺省。 */
@@ -4173,8 +4200,29 @@ export function stateVarSemantics(typeKey: string, stateVar: string): "LEVEL" | 
  */
 export { MONEY_CHARGE_BASIS, type MoneyChargeBasisEntry } from "@platform/contracts";
 
-/** `(类型,变量)` → 显式值绑定（裸对精确命中；未登记 → `undefined` = 走名字撞）。全平台唯一入口。 */
+/**
+ * `(类型,变量)` → 显式值绑定（裸对精确命中；未登记 → `undefined` = 走名字撞）。全平台唯一入口。
+ *
+ * ★ WO-SLOT-MODEL（2026-10-07）· **出处由语义【推导】，不靠两处各自登记**：
+ *
+ *   一个格若已裁定为 `DEVIATION`，它的值就由 **`restPoint` + 传导**管，
+ *   **不再由任何规格物化** ⇒ 本条**恒返回 `undefined`**，无论 `STATE_VAR_VALUE_REFS` 里是否还留着登记。
+ *
+ * 🔴 为什么这么做（实测定稿的形态）：改前有 **15 格**同时满足「语义 = `DEVIATION`」与
+ *   「`valueRef` 仍指向一个**产水平值**的规格」——**行为上已经对了**（播种走 `DEVIATION` 支、取 `restPoint`），
+ *   但**出处记账是假的**：它仍宣称「这一格的值来自那条规格」，而值早就不来自它了。
+ *   ⇒ 这就是本单一路在治的那个病（**名实不符**）在槽位层的复现。
+ *
+ * ⛔ **不逐条删登记**：删了 15 条，第 16 格迟早又会被加上 —— 那是拿人力去追一个**结构问题**。
+ *   本函数是**全平台唯一入口**，在入口处按语义收敛一次，**结构上不可能再不一致**。
+ *
+ * ⚠ 与 `spec-base-synthesis.ts` 的关系：C2 的守卫是 `stateVarValueRef(...) === undefined ⇒ continue`
+ *   ⇒ 本收敛让它对 `DEVIATION` 格**自动跳过**（它的锚本来就是 `restPoint`，C2 对它是恒等变换）。
+ *   语义守卫（`stateVarSemantics !== "LEVEL" ⇒ continue`）与本条**互为双保险**。
+ */
 export function stateVarValueRef(typeKey: string, stateVar: string): { specKey: string } | undefined {
+  // 语义先判：DEVIATION 格的值不由规格物化 ⇒ 出处恒为「无规格」。
+  if (stateVarSemantics(typeKey, stateVar) === "DEVIATION") return undefined;
   return STATE_VAR_VALUE_REFS[`${typeKey}|${stateVar}`];
 }
 

@@ -217,6 +217,29 @@ function aggregatePressure(
     }
   }
   const valueWeighted = sumW > 0;
+  /**
+   * ★ WO-DYNAMIC-RATIO-GUARD · 分母必须与分子同源 —— 结构自检（不是门，是本函数的不变量）。
+   *
+   * 🔴 为什么要有这一条（2026-10-07 实测的事故形态）：
+   *   修前分母取的是 `universe`（对象层**全部**该类型对象），而分子只遍历 `members`（摊销总体）
+   *   ⇒ 实测 `454.6亿 ÷ 156.6亿 = 2.9025 倍` 稀释（500 张 vs 150 张，差的 350 张全是 COMPLETED）。
+   *
+   * ⚠ **这一族错为什么特别难发现**：`universe` 与 `members` **都是动态算的**，
+   *   所以那个比值**不是常量**——它随「订单陆续完成」而漂。于是一个确定的错值，
+   *   每次跑出来的偏差都不一样，**每次都读起来像「两种口径之争」，而不像一个 bug**。
+   *   ⇒ 判据：**凡是分子分母各自动态取值的地方，都要问「它们取自同一个集合吗」——
+   *     这个问题在常量错里一眼可见，在两个动态量之比里会消失。**
+   *
+   * 本断言守的就是它：分母（`sumW`）与分子（`sumWP`）**只能**出自下面那个 `members` 循环，
+   * `n` 必须等于 `members.length`。谁把分母换成 `universe` 或别的集合，这里当场炸 ——
+   * 而不是等到屏上一个数「看起来像口径差异」。
+   */
+  if (n !== members.length || (valueWeighted && sumW <= 0)) {
+    throw new Error(
+      `WO-DYNAMIC-RATIO-GUARD：摊销分母与分子不同源（n=${n} · members=${members.length} · sumW=${sumW}）。` +
+        `分母必须与分子逐项取自同一个集合「${set}」；⛔ 不许用 universe（对象层总数，只用于披露）。`,
+    );
+  }
   return {
     value: valueWeighted ? sumWP / sumW : sumP / n,
     carriers,
