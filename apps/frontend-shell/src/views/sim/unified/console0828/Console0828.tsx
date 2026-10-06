@@ -2786,10 +2786,20 @@ export default function Console0828({
                   *   读者只能理解成「这次推演算出来的」——**摆错位置比没有更糟**，
                   *   那正是仓主最初撞到的那个形态：「输入不同的扰动因素，该截屏数据没有变化」。
                   */}
+                {/*
+                  * WO-UI-DESC-POPOVER（2026-10-06）：原是第一层一整段自辩文字，按
+                  * `docs/CONVENTION-ui-information-layering.md` R-UI-3「措辞型解释 ⇒ `?` 浮层」
+                  * 降层。**第一层留的是口径本身**（「基线扫描 · 不随本次扰动变」）—— 规范同日
+                  * 裁决写明「口径必须默认可见」（仓上真发生过三个数都叫「营收」而口径藏在浮层里、
+                  * 连审核方都把它们的同一个量）。降的是**为什么/怎么读**，不是**它是什么**。
+                  */}
                 <p className={styles.calibre} data-testid="c0828-board-baseline-note">
-                  ⚠ 本块为<b>基线扫描</b>：读的是对象层当前快照，<b>不随本次扰动变</b> ——
-                  换一个扰动重跑，这 {impGroups.all.length} 处与各自的严重度、实测/红线都不会改变。
-                  它回答的是「<b>现在哪里卡着</b>」，不是「<b>这次扰动会卡在哪</b>」。
+                  <b>基线扫描</b> · 不随本次扰动变
+                  <InfoPopover topic="这块的数是什么口径、该怎么读" testId="c0828-board-baseline">
+                    本块读的是对象层当前快照，<b>不随本次扰动变</b> —— 换一个扰动重跑，
+                    这 {impGroups.all.length} 处与各自的严重度、实测/红线都不会改变。
+                    它回答的是「<b>现在哪里卡着</b>」，不是「<b>这次扰动会卡在哪</b>」。
+                  </InfoPopover>
                 </p>
                 <div className={styles.tblWrap}>
                   <table className={styles.board}>
