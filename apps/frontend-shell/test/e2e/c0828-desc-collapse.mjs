@@ -168,18 +168,25 @@ for (const t of TABS) {
       popText: tip ? (tip.textContent ?? '') : null,
     });
     b.blur();
+    // ⚠ 兜底路径（鼠标合成事件）开出来的浮层**只认真实 mouseleave 才关** ——
+    //   不补这一下它会一直挂在 DOM 里，让「摘掉触发器后那句还在不在」变成**假阴性**
+    //   （实测踩过：5 条里 3 条读成「无鉴别力」，而那是量法坏了，不是判据坏了）。
+    const w = b.parentElement;
+    if (w) w.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body }));
     await new Promise((r) => setTimeout(r, 40));
   }
   const anyTip = root.querySelectorAll('[role="tooltip"]').length;
   const rootTxt = root.innerText;
   const pane = document.querySelector('[data-testid="c0828-pane-${t}"]');
-  return { total: btns.length, out, anyTip, rootTxt, paneTxt: pane ? pane.innerText : null };
+  return { total: btns.length, out, anyTip, rootTxt, paneTxt: pane ? pane.innerText : null,
+           leftoverTips: root.querySelectorAll('[role="tooltip"]').length };
 })()`);
   pops.total += got.total;
   pops.out.push(...got.out);
   pops.anyTip += got.anyTip;
   perTab[t] = { root: got.rootTxt, pane: got.paneTxt };
-  console.log(`  页签 ${t}：可见「?」${got.total} 个 · 能抽出气泡正文的 ${got.out.filter((p) => p.popText !== null).length} 个 · 该页签第一层 ${String(got.paneTxt ?? "").length} 字节 · 全屏第一层 ${got.rootTxt.length} 字节`);
+  console.log(`  页签 ${t}：可见「?」${got.total} 个 · 能抽出气泡正文的 ${got.out.filter((p) => p.popText !== null).length} 个 · 收完仍开着的浮层 ${got.leftoverTips}（必须 0）· 该页签第一层 ${String(got.paneTxt ?? "").length} 字节 · 全屏第一层 ${got.rootTxt.length} 字节`);
+  if (got.leftoverTips !== 0) bail(`量法坏了：抽完「?」后还有 ${got.leftoverTips} 个浮层挂在 DOM 里（判据 ⑤⑥ 会失真）`, 2);
 }
 await evalJs(`(() => { const b = document.querySelector('[data-testid="c0828-tab-board"]'); if (b) b.click(); return true; })()`);
 await new Promise((r) => setTimeout(r, 500));
