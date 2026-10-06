@@ -776,6 +776,12 @@ export class ExecutionEngine {
     //     MCP 工具面（授予了 BUILTIN `invoke_solver` ⇒ 任意 solver 都调得动；或压根不调 solver）；
     //     ②本 run 走 DSH 臂（子进程挂的 solver server 把 toolFilter 全量目录给模型，top-k 收窄
     //     不在那条路上 —— 那边广告全量才是诚实的）。
+    //     ⚠ 该豁免**已于 2026-10-06 端到端实测**（不是据读码）：`agt_seed_analyst`（16 求解器）
+    //     与 `agt_capacity_planner`（5）在 DSH 臂上「广告面 == 可调用面」双向差集为空 ——
+    //     子进程 allow-list 与宿主 scope 门的名单**同源**（都是 `scopeDeclaration.toolNames ∪`
+    //     本 run 授予面），白名单里的求解器全在声明面内（出厂三面同改），故全量广告成立；
+    //     反事实配置（清空声明面）下同一台量具报得出 11 条非空差集 ⇒ 判据不瞎。
+    //     口径与证据见 `test/dsh-arm-ad-surface.seam.test.ts`。
     //   · 非空数组 —— 收窄到这批全名；
     //   · 空数组 —— 求解器 MCP 工具被 top-k 全截掉 ⇒ 一条求解器都不广告（诚实缺席）。
     //
