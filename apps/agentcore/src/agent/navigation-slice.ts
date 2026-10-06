@@ -1,4 +1,4 @@
-import { parseSolverMcpToolName, type PageContext } from "@platform/contracts";
+import { parseSolverMcpToolName, solverMcpToolName, type PageContext } from "@platform/contracts";
 import { domainResolve } from "../router/domain-resolver.js";
 import { isOptWhatifSignal } from "../router/opt-whatif-route.js"; // WO-OPTWHATIF-NL-WIRING · opt_whatif 双命中信号（单一来源·leaf 模块·无环）
 
@@ -17,6 +17,10 @@ import { isOptWhatifSignal } from "../router/opt-whatif-route.js"; // WO-OPTWHAT
  *
  * **尊重隔离语义**：按每 agent 的 `scopeDeclaration.objectTypes / toolNames` 投影——越界的对象类型/求解器**不进图**
  *（不是 CEO 写死一张全局图）；无 objectTypes 声明（通用 path-B）→ 不做对象域收窄，按问句 domain 投影。
+ *
+ * **WO-ROSTER-RESPECT-TOOLFILTER · 广告面 ⊆ 可调用面**：求解器目录段/详情段的成员资格**不只**看对象域，
+ * 还要过 agent 的 MCP 白名单（`AgentScope.solverToolFilter` = `tools[].toolFilter` 原文）——
+ * 提示词里点名的每一条，权限上都必须真的调得动（否则就是在引诱模型去撞 `AGENT_SCOPE_VIOLATION`）。
  */
 
 /** 求解器目录条目：一句话能力 + 输出形状（顶层 key）+ 读取的对象类型域 + 归属业务域族。 */
@@ -439,6 +443,18 @@ const SOLVER_RULE_HINTS: Record<string, string> = {
 export interface AgentScope {
   objectTypes?: string[];
   toolNames?: string[];
+  /**
+   * WO-ROSTER-RESPECT-TOOLFILTER · **求解器 MCP 面的授予白名单**（= `agent.tools[]` 里求解器 MCP ref
+   * 的 `toolFilter` 原文·两形态都认：全名 `mcp__solvers__<key>` 或裸 `<key>`）。
+   *
+   * 为什么单开一个通道、而不复用 `toolNames`：`toolNames` 是**声明面**（`scopeDeclaration.toolNames`，
+   * 且运行时生效口径是「声明 ∪ 授予」的并集），与**授予面**（toolFilter）结构上可以不同 ——
+   * 后端 agent CRUD 允许两个字段各写各的，种子里它们只是恰好同源。**可调用面的真源是 toolFilter**，
+   * 拿声明面当白名单就是又造一份会漂的真相源。
+   *
+   * ⚠ 缺省（`undefined`）= 未设过滤（或该 agent 无求解器 MCP ref）⇒ 不收窄；显式（含 `[]`）= 按名单收窄。
+   */
+  solverToolFilter?: string[];
 }
 
 export interface SliceSolver {
@@ -568,8 +584,9 @@ function briefOf(text: string, max: number = BRIEF_MAX_CHARS): string {
  * WO-TOOLS-LIST · 产出**两段**（标准 MCP 的 tools/list ⊥ 按需详情）：
  *   · `solvers` = 详情段（≤ {@link MAX_SOLVERS}·按相关性·展开能力全文与输出形状）；
  *   · `roster`  = 全量目录段（scope 内**全部**可调用的求解器·key + 一句话·按 key 字典序）。
- * 两段的成员资格走**同一套** scope / `solversAllowed` 过滤 —— 目录里列出的，权限上就真的调得动
- * （`tools/executor.ts` 的 `invoke_solver` 本就不按候选集限制，隔离由 scope 与 A6 行级过滤兜）。
+ * 两段的成员资格走**同一套** scope / `solversAllowed` / `solverGranted` 过滤 —— 目录里列出的，
+ * 权限上就真的调得动（`tools/executor.ts` 的 `invoke_solver` 本就不按候选集限制，隔离由 scope 与
+ * A6 行级过滤兜；而 **MCP 白名单 `toolFilter` 是工具面的硬门**，见 `AgentScope.solverToolFilter`）。
  */
 export function projectNavigationSlice(
   query: string,
@@ -582,6 +599,24 @@ export function projectNavigationSlice(
   const res = domainResolve(q, pageContext);
   const scopeTypes = scope?.objectTypes && scope.objectTypes.length > 0 ? new Set(scope.objectTypes) : undefined;
   const solversAllowed = canInvokeSolvers(scope?.toolNames);
+  // WO-ROSTER-RESPECT-TOOLFILTER · **授予面白名单**（= `agent.tools[].toolFilter` 原文）。
+  //
+  // 今天的行为是 X：目录段与详情段的成员资格**只看** `scope 对象域 ∩ entry.reads`——不看 agent 的
+  // MCP 白名单。于是当 toolFilter 比「对象域规则选出来的那批」更窄时，提示词会**点名一个模型调不到
+  // 的求解器**（executor 的工具 scope 门当场 `AGENT_SCOPE_VIOLATION`·0ms DENIED）；而那一段的措辞
+  // 恰恰是「**全部可调用的**求解器目录」⇒ 提示词在引诱模型白烧一轮。
+  // 应该是 Y：广告面 ⊆ 可调用面 —— 目录段里列出的每一条，权限上都必须真的调得动。
+  //
+  // 两形态都认（全名 `mcp__solvers__<key>` / 裸 `<key>`），与 `expandAgentTools` 求解器分支的
+  // toolFilter 匹配同一条判据（`ref.toolFilter.includes(rawName) || includes(name)`），不另立口径。
+  //
+  // ⚠ 缺省（`undefined`）= **未设过滤**（或该 agent 没有求解器 MCP ref）⇒ **不收窄**、按既有规则照常。
+  //   「没设过滤」与「什么都不给」是两件事，混了会把没配过滤的 agent 的求解器一律饿掉。
+  //   显式给出（含空数组）= 只广告名单内的：空数组 ⇒ 一个求解器都不广告（与 `expandAgentTools`
+  //   的 `toolFilter: []`「该 server 工具全丢」同语义）。
+  const grantedFilter = scope?.solverToolFilter === undefined ? undefined : new Set(scope.solverToolFilter);
+  const solverGranted = (key: string): boolean =>
+    grantedFilter === undefined || grantedFilter.has(key) || grantedFilter.has(solverMcpToolName(key));
   // 活目录（生产）vs 降级镜像（兜底）。isLive 决定"候选怎么来"：检索已收窄 → 全员候选；镜像 → 族信号选型。
   const isLive = catalog !== undefined;
   const cat: SolverCatalog = catalog ?? FALLBACK_SOLVER_CATALOG;
@@ -612,9 +647,12 @@ export function projectNavigationSlice(
     }
   }
 
-  // 隔离过滤：scope 收窄时，只留读 scope 内至少一个对象类型的 solver（越界 solver 不进图）。
+  // 隔离过滤：两道闸，缺一不可 ——
+  //  ①**授予面**（toolFilter 白名单）：调不动的 solver 一条都不列（广告面 ⊆ 可调用面）；
+  //  ②**对象域**：scope 收窄时，只留读 scope 内至少一个对象类型的 solver（越界 solver 不进图）。
   // reads 为空 = 目录没声明对象域 = 无证据判越界 → 保留（降级镜像每条 reads 都非空，故旧行为不变）。
   let solverKeys = [...candidateKeys].filter((key) => {
+    if (!solverGranted(key)) return false;
     if (!scopeTypes) return true;
     const reads = cat[key]!.reads;
     if (reads.length === 0) return true;
@@ -642,12 +680,15 @@ export function projectNavigationSlice(
   // ── WO-TOOLS-LIST · 阶段① 全量目录 ────────────────────────────────────────
   // 判据：**能调的就该被告知**。所以目录的成员资格与「能不能调」严格同源 —— 与详情段走
   // **同一个** scope 过滤 + 同一个 `solversAllowed` 闸，只是不过相关性窗口、不截断。
+  // WO-ROSTER-RESPECT-TOOLFILTER · 那段文案自称「**全部可调用的**求解器目录」，故成员资格
+  // **必须**同时过授予面 `solverGranted`（toolFilter）——否则提示词会点名模型调不到的工具。
   // ⚠️ 只在活目录态渲染：降级镜像手上是 19 条残本，把它宣称成"全部可调用的求解器"是撒谎，
   //    而模型会据此**不再** discover（"目录都给我了还查什么"）—— 比不给目录更坏。
   const roster: SliceRosterEntry[] = !isLive || !solversAllowed
     ? []
     : Object.entries(cat)
-        .filter(([, entry]) => {
+        .filter(([key, entry]) => {
+          if (!solverGranted(key)) return false; // 授予面：调不动的**一条都不广告**（同详情段）
           if (!scopeTypes) return true;
           if (entry.reads.length === 0) return true; // reads 空 = 无证据判越界 → 保留（同详情段）
           return entry.reads.some((t) => scopeTypes.has(t));
