@@ -699,13 +699,10 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     } else {
       blocks.push({ type: "text", markdown: lastText || "（探索模式未能产出回答）" });
     }
-    const unverified = scanBlocks(blocks); // 未验证数字护栏（复述里若含裸数 → 标记，不放水）
-    if (unverified) opts.metrics.unverifiedNumerics.inc({ path: "AGENT" });
-    if (reason === "TIMEOUT") opts.metrics.agentTimeout.inc();
-    else if (reason === "STALL_LOOP") opts.metrics.agentLoopRepeat.inc(); // P1 环检测归因（与 timeout 同款：只计专属 counter）
-    else if (outcome === "BUDGET_EXHAUSTED") opts.metrics.agentBudgetExhausted.inc();
     // WO-Phase4 · R13：有界终止摘要复述已调工具 → provenance 列所有成功产出结果的 toolCallId（去重·仅 OK 调用·
     // 无成功调用则为空 = 诚实 NO_ANSWER，不编造溯源）。软收尾（无 reason）沿用既有空 provenance。
+    // ⚠️ WO-NUM-FLAG-TRUTH：本段**先于**下方 scanBlocks —— 判据要吃表长（⟦ref:N⟧ 指不指得出东西）。
+    //   纯搬运（本段与 scan 之间无数据依赖），不改变任何输出。
     const provenance: ProvenanceRef[] = [];
     if (reason) {
       const seen = new Set<string>();
@@ -717,6 +714,11 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
         }
       }
     }
+    const unverified = scanBlocks(blocks, provenance.length); // 未验证数字护栏（复述里若含裸数 / ⟦ref:N⟧ 指空 → 标记，不放水）
+    if (unverified) opts.metrics.unverifiedNumerics.inc({ path: "AGENT" });
+    if (reason === "TIMEOUT") opts.metrics.agentTimeout.inc();
+    else if (reason === "STALL_LOOP") opts.metrics.agentLoopRepeat.inc(); // P1 环检测归因（与 timeout 同款：只计专属 counter）
+    else if (outcome === "BUDGET_EXHAUSTED") opts.metrics.agentBudgetExhausted.inc();
     return {
       outcome,
       answer: { trustLevel: "AGENT_EXPLORATORY", blocks, provenance, unverifiedNumerics: unverified },
@@ -1161,7 +1163,12 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
             iterations.push({ index: i, toolCalls: [] });
             return {
               outcome: "ANSWERED",
-              answer: { ...accepted.answer, blocks: gapBlocks, unverifiedNumerics: scanBlocks(gapBlocks) },
+              answer: {
+                ...accepted.answer,
+                blocks: gapBlocks,
+                // WO-NUM-FLAG-TRUTH：表长取**这份答案自己的** provenance（gapBlocks 只是它的加块版）。
+                unverifiedNumerics: scanBlocks(gapBlocks, accepted.answer.provenance.length),
+              },
               structured: accepted.structured,
               run: finishRun(false),
               sketch,
@@ -1398,7 +1405,7 @@ async function acceptFinalAnswer(
       return { ok: false, errors: ["挂载的 Skill 为 WRITE/审批类型，final_answer 必须包含 action_draft 块"] };
     }
   }
-  const unverified = scanBlocks(blocks);
+  const unverified = scanBlocks(blocks, provenance.length);
   if (unverified) opts.metrics.unverifiedNumerics.inc({ path: "AGENT" });
   return {
     ok: true,

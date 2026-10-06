@@ -573,7 +573,7 @@ export function reassembleDshRun(events: readonly DshSessionEvent[], opts: Reass
     return {
       ok: true,
       outcome: "BUDGET_EXHAUSTED",
-      answer: { trustLevel: "AGENT_EXPLORATORY", blocks, provenance, unverifiedNumerics: scanBlocks(blocks) },
+      answer: { trustLevel: "AGENT_EXPLORATORY", blocks, provenance, unverifiedNumerics: scanBlocks(blocks, provenance.length) },
       sketch,
       degraded: { reason: "STALL_LOOP" },
       iterations,
@@ -602,7 +602,7 @@ export function reassembleDshRun(events: readonly DshSessionEvent[], opts: Reass
     return {
       ok: true,
       outcome: "BUDGET_EXHAUSTED",
-      answer: { trustLevel: "AGENT_EXPLORATORY", blocks, provenance, unverifiedNumerics: scanBlocks(blocks) },
+      answer: { trustLevel: "AGENT_EXPLORATORY", blocks, provenance, unverifiedNumerics: scanBlocks(blocks, provenance.length) },
       sketch,
       degraded: { reason: "BUDGET_EXHAUSTED" },
       iterations,
@@ -776,7 +776,7 @@ export function reassembleDshRun(events: readonly DshSessionEvent[], opts: Reass
   return {
     ok: true,
     outcome,
-    answer: { trustLevel: "AGENT_EXPLORATORY", blocks, provenance, unverifiedNumerics: scanBlocks(blocks) },
+    answer: { trustLevel: "AGENT_EXPLORATORY", blocks, provenance, unverifiedNumerics: scanBlocks(blocks, provenance.length) },
     sketch,
     ...(outcome === "BUDGET_EXHAUSTED" ? { degraded: { reason: "BUDGET_EXHAUSTED" as const } } : {}),
     ...(stats ? { stats } : {}),

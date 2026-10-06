@@ -1,12 +1,18 @@
 /**
  * Numeric provenance scan (QOS-PRD §5.5).
- * For each text block: drop sentences containing ⟦ref:*⟧ markers, then scan the
- * remainder with the exact PRD regex; ISO dates are excluded. Non-blocking flag.
+ * For each text block: drop sentences whose ⟦ref:N⟧ markers **全部指得出东西**（N 落在
+ * provenance 表内）—— 指不出的句子**不豁免**，照 PRD 正则扫；ISO 日期除外。Non-blocking flag.
+ *
+ * ⚠️ 豁免的判据是「标记**指得出**」不是「标记**存在**」（WO-NUM-FLAG-TRUTH，2026-10-06）——
+ *    见文件末「数字红线的处置沿革」。
  */
 
 const NUMERIC_RE = /(?<![\w⟦])\d[\d,.]*(?:%|万|亿|GWh|套|吨|天|周)?/gu;
 const ISO_DATE_RE = /\b\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?\b/g;
-const REF_MARK_RE = /⟦ref:[^⟧]*⟧/;
+/** ⟦ref:…⟧ 标记全体（**剥离**用 —— 含非数字体，防标记自身的字符混进数字扫描面）。 */
+const REF_MARK_RE = /⟦ref:[^⟧]*⟧/g;
+/** ⟦ref:N⟧ 的**数字下标**形态（**解析**用 —— 判 N 是否落在 provenance 表内）。 */
+const REF_INDEXED_RE = /^⟦ref:(\d+)⟧$/u;
 
 function splitSentences(markdown: string): string[] {
   // "." splits only at end-of-sentence (followed by whitespace/EOL) so decimals stay intact
@@ -33,19 +39,53 @@ function splitSentences(markdown: string): string[] {
  */
 const LIST_ORDINAL_RE = /^[ \t]*\d{1,3}(?:\.(?=[ \t]|$)|[)、])[ \t]*/u;
 
-export function hasUnverifiedNumerics(markdown: string): boolean {
+/**
+ * 这一句的**每一个** ⟦ref:N⟧ 是否都指得出东西。
+ *
+ * 判据（与 `agent/reflect.ts` 的 `refsWithinRange` **同一条规则**）：句内 ≥1 个标记，
+ * 且**每个** N 都落在 `[0, provenanceCount)`。形态不合（`⟦ref:abc⟧`）同样算指不出。
+ *
+ * ⚠️ **「全部指得出」而不是「有一个指得出」**：`"缺口 1200 台 ⟦ref:0⟧–⟦ref:9⟧"` 里只要有一个
+ * 悬空，这句的数字就**没有**被完整溯源，豁免必须整体失效（否则半个指针就能洗白整句）。
+ */
+function refsAllResolve(sentence: string, provenanceCount: number): boolean {
+  let seen = false;
+  REF_MARK_RE.lastIndex = 0; // 共享 /g 正则：matchAll 会读 lastIndex，先归零防跨调用串味
+  for (const m of sentence.matchAll(REF_MARK_RE)) {
+    seen = true;
+    const indexed = REF_INDEXED_RE.exec(m[0]);
+    if (!indexed) return false;
+    const n = Number(indexed[1]);
+    if (!(Number.isInteger(n) && n >= 0 && n < provenanceCount)) return false;
+  }
+  return seen;
+}
+
+/**
+ * @param provenanceCount 本次答案的 provenance 表条数 —— ⟦ref:N⟧ 的 N 只有落在 `[0, provenanceCount)`
+ *   才算「指得出东西」。**必填**（不给缺省）：缺省值要么宽（当成"都指得出"= 复现本函数修掉的那个谎），
+ *   要么严（当成"都指不出"= 合法答案被误标），两个方向都是**替调用方猜一个它才知道的事实**。
+ */
+export function hasUnverifiedNumerics(markdown: string, provenanceCount: number): boolean {
   const kept = splitSentences(markdown)
     .map((s) => s.replace(LIST_ORDINAL_RE, ""))
-    .filter((s) => !REF_MARK_RE.test(s))
+    // 豁免 = 该句每个 ⟦ref:N⟧ 都指得出东西；指不出 ⇒ 该句照扫（不豁免）
+    .filter((s) => !refsAllResolve(s, provenanceCount))
+    // 悬空标记**自身**的字符（`ref:9` 里的 `9`）不许进扫描面 —— 这条豁免的是标记语法，
+    // 不是「有标记就放过」：剥完标记后句里若还有数字，照样要溯源。
+    .map((s) => s.replace(REF_MARK_RE, ""))
     .join("");
   const withoutDates = kept.replace(ISO_DATE_RE, "");
   NUMERIC_RE.lastIndex = 0;
   return NUMERIC_RE.test(withoutDates);
 }
 
-export function scanBlocks(blocks: { type: string; markdown?: string }[]): boolean {
+export function scanBlocks(
+  blocks: { type: string; markdown?: string }[],
+  provenanceCount: number,
+): boolean {
   for (const b of blocks) {
-    if (b.type === "text" && typeof b.markdown === "string" && hasUnverifiedNumerics(b.markdown)) {
+    if (b.type === "text" && typeof b.markdown === "string" && hasUnverifiedNumerics(b.markdown, provenanceCount)) {
       return true;
     }
   }
@@ -74,4 +114,23 @@ export function scanBlocks(blocks: { type: string; markdown?: string }[]): boole
  *   被当业务数字」这一条（实测占触发量的 58%）；
  *   **未修的残余**：非业务计数（「共读取 6 个文件」）仍会被咬住，且检测面只扫 `text` 块
  *   （`kpi` 块里的裸数扫不到）—— 两者都是登记在案的漏网/误报面，收紧前需逐条裁决。
+ *
+ * **2026-10-06**（`WO-NUM-FLAG-TRUTH` · 本文件**修的是检测**，不是处置）
+ *   实测现场（活服务 4002 · 真 LLM provider `deepseek-flash[1M]` · DSH 内核 `kernel:"EXTERNAL"`）：
+ *   一次真实 agent 跑交付的答案正文含 **20 处** `⟦ref:N⟧`（编号 {0,2,3,4,10,11}），而
+ *   `answer.provenance` = **`[]`（0 条）** ⇒ **20 处指针全部指空**，而 `unverifiedNumerics` 报 **false**。
+ *   同一次运行里 `agent/reflect.ts` 的 `refsWithinRange` **判了红**并把
+ *   「回答里的出处标注指向了不存在的数据」写进了屏上自披露块 —— **两条判据对同一份答案结论相反**，
+ *   而喂给「诚实标」的是弱的那条。
+ *
+ *   弱在哪（修前的 `hasUnverifiedNumerics`）：`.filter((s) => !REF_MARK_RE.test(s))` 把**含标记的整句
+ *   直接丢弃**，`return NUMERIC_RE.test(withoutDates)` 只验「数字旁边**有没有**标记」，
+ *   **从不验那个标记指得出东西**。形态：
+ *   > **「我用『这个数字旁边有个 ⟦ref:N⟧ 标记』当作『这个数字有出处』的证据，
+ *   >   而前者并不度量后者 —— 标记可以指空（表为空）或越界（N ≥ 表长）。」**
+ *
+ *   修法：豁免条件由「句内有标记」改为「句内**每个**标记都指得出东西」
+ *   （`refsAllResolve`，与 `reflect.ts` 的 `refsWithinRange` **同一条规则**）；指不出的句子
+ *   **不豁免**，照 PRD 正则扫（悬空标记自身的字符先剥掉，防 `ref:9` 的 `9` 被当成业务数字）。
+ *   `provenanceCount` **必填** —— 见 `hasUnverifiedNumerics` 的 @param。
  */

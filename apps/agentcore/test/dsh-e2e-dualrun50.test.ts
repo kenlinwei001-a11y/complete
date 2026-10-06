@@ -827,7 +827,10 @@ describe("WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务）", () => {
     for (const id of A5_SUBSET) expect(DUALRUN_CORPUS.some((t) => t.id === id)).toBe(true);
     // 答案块经生产 scanBlocks 零裸数（unverifiedNumerics:false 锚的单源护栏）
     for (const t of DUALRUN_CORPUS) {
-      expect(scanBlocks(t.expect.answer.blocks), `${t.id} 答案块含裸数，unverifiedNumerics 锚会漂`).toBe(false);
+      expect(
+        scanBlocks(t.expect.answer.blocks, t.expect.answer.provenance?.length ?? 0),
+        `${t.id} 答案块含裸数 / ⟦ref:N⟧ 指空，unverifiedNumerics 锚会漂`,
+      ).toBe(false);
     }
     // EMPTY 豁免位双恰护栏：「豁免位生效 ⇔ expect.answer 确无本任务 id」——
     // 给有 marker 的任务误置豁免位 ⇒ 谓词不成立 ⇒ 哨兵照常跑（此断言同红，双保险）；
