@@ -1,0 +1,11 @@
+# GOALLOOP-R1b-probe · 三个候选「集合」各是哪些单、各是多少钱（只读 + 自建会话）
+# 跑法：cd /tmp/wt-ab && BASE=http://127.0.0.1:4052 TICKS=10 node docs/evidence/GOALLOOP-R1b-probe.mjs
+# 回执：CAPTURED_RC=0（见同名 .rc）
+## GOALLOOP-R1b · session=sims_b8ypaqrdp5s4gqch · 扰动 obj_order_SO-3391.leadDays -3 · 10 拍
+  U1 全表（对象层 Order）           500 张 · 454.6433 亿
+  U2 世界成员（进世界、非 COMPLETED）150 张 · 156.6300 亿   U1/U2 = 2.902657
+  U3 被推动（本次差分真动了的单）    24 张 · 36.2887 亿   U2/U3 = 4.316215 · U1/U3 = 12.528492
+  动了的格数 = 960 · 动了的对象数 = 959（含非 Order）
+  Order.value 与 qty×unitPrice：相等 150 张 / 不等 0 张
+SESSION=sims_b8ypaqrdp5s4gqch
+DONE 2026-10-06T13:20:56.647Z

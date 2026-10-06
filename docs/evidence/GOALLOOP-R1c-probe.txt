@@ -1,0 +1,9 @@
+# GOALLOOP-R1c-probe · 控制台口径的「被推动的订单敞口」（扰臂终态 vs 零扰臂终态）
+# 跑法：cd /tmp/wt-ab && BASE=http://127.0.0.1:4052 TICKS=10 node docs/evidence/GOALLOOP-R1c-probe.mjs
+# 回执：CAPTURED_RC=0（见同名 .rc）
+## GOALLOOP-R1c · 控制台口径敞口 · 扰臂 sims_zshnz8bf2ep2ve1j vs 零扰臂 sims_zng7e7sfxt3a9e2t · 10 拍
+  动了的格 = 65 · 动了的对象 = 64（其中 Order = 24）
+  ⇒ 控制台口径敞口（Order 差分集按成交额合计）= 36.2887 亿
+  世界成员订单合计 = 156.6300 亿 · 对象层全表合计 = 454.6433 亿
+  三口径比值：全表/世界成员 = 2.902657 · 世界成员/被推动 = 4.316215 · 全表/被推动 = 12.528492
+DONE 2026-10-06T13:21:36.344Z

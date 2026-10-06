@@ -1,0 +1,49 @@
+# GOALLOOP-R1-probe · 缺口取证（只读 + 自建会话，不改既有世界）
+# 跑法：cd /tmp/wt-ab && BASE=http://127.0.0.1:4052 TICKS=10 node docs/evidence/GOALLOOP-R1-probe.mjs
+# 回执：CAPTURED_RC=0（见同名 .rc）
+## GOALLOOP-R1 · 缺口取证 · BASE=http://127.0.0.1:4052 · 扰动 obj_order_SO-3391.leadDays -3 · 10 拍
+
+### ① 订单台账（对象层，全量）
+  总数 = 500 · 分桶 = {"OPEN":50,"COMPLETED":350,"IN_PRODUCTION":100}
+  世界成员判据（seed-world.ts entersSimWorld）：status==="COMPLETED" ⇒ 不进推演世界
+  ⇒ 预期世界成员 = 150 张
+  Customer 全量 = 20 · ARInvoice 全量 = 60 · FinancePlan 全量 = 3
+
+### ② 会话 sims_zz6j6d3gsqgm3qck · 推至 tick 10
+  🐤 脉冲金丝雀（扰动落没落地）：obj_order_SO-3391.leadDays tick0=14.000000000000 → tickN=11.000000000000 ⇒ 已落地
+
+### ③ 被测路径回包（finance_world_projection）
+  available=true · worldStateSource=TICK · worldObjectCount=4425 · divisor=100
+  costPressure(Order)   value=0.001586000000 carriers=150 universe=500 weighting=VALUE
+  receivablePressure    value=0.002351000000 carriers=20 universe=20
+  overduePressure       value=0.000533000000 carriers=60 universe=60
+  COST   rolling=581.1 projected=581.109214 delta=0.009214
+  MARGIN rolling=118.9 projected=118.890786 delta=-0.009214
+  COST formula: 581.1 ×（1 + 偏离 0.001586 ÷ 100）= 581.109214
+  cash: arBaseline=160802 (0.0016 亿) arProjected=160805.7801 arDelta=3.7801 overdueExposure=0.856622 invoiceUniverse=60 invoiceCarriers=60 customerLinked=60
+
+### ④ 手算（不复用 solver 代码；权重 = qty×unitPrice；偏离 = 世界态 − tick0 基线）
+  世界态里的 Order 对象数 = 150 · 其中带 costPressure 键 = 150 · 偏离非零 = 24
+  Σ权重(世界成员 150 张)      = 15663001584.000000000000  (156.6300 亿)
+  Σ权重(全表 500 张)      = 45464327004.000000000000  (454.6433 亿)
+  比值 全表/世界成员                      = 2.902657
+  手算 value（分子=承载集，分母=世界成员） = 0.004602288616
+  手算 value（分子=承载集，分母=全表）     = 0.001585543186   ← 与回包 value=0.001586000000 之比 = 0.999711971
+  （水平口径对照）手算 value（水平，分母=全表）= 0.001585543186
+  ⇒ 正向对照：|手算(全表分母) − 回包| = 4.568e-7（未舍入） / 0.000e+0（按回包同口径 round6）
+     ✅ 对上（手算方法与代码同源，两值之差只在分母选谁）
+
+### ⑤ 同一个「新增成本」在两个候选口径下差多少（这就是「正确答案是谁」的价格）
+  口径W（分母=世界成员 150 张）：新增成本 = 0.026744 亿 = 267.4 万元
+  口径U（分母=全表 500 张）：新增成本 = 0.009214 亿 = 92.1 万元
+  两者之比 = 2.9027
+  回包 COST.delta = 0.009214 亿 ⇒ 落在口径U（全表分母）
+
+### ⑥ 应收侧手算（逐张发票真 amount；客户按 custName 同名匹配，非 link 表）
+  手算 arBaseline=160802.000000 vs 回包 160802 · 发票数 60 vs invoiceUniverse 60
+  手算 arProjected=160805.780100 vs 回包 160805.7801  差=-3.233e-7
+  手算 overdueExposure=0.856622 vs 回包 0.856622  差=3.623e-7
+  客户匹配（按 custName）= 60 张 vs 回包 customerLinked=60（链路口径不同则此处会不等，据实记）
+
+SESSION=sims_zz6j6d3gsqgm3qck
+DONE 2026-10-06T13:22:13.753Z
