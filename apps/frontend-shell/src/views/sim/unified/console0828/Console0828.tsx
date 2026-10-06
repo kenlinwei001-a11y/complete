@@ -3010,8 +3010,14 @@ export default function Console0828({
                   </Modal>
                 ) : null}
                 {/* WO-UI-LAYER-DEMOTE：第一层留事实（无按钮·不处置无需操作），理由降第二层。 */}
+                {/* ⚠ WO-C0828-DESC-COLLAPSE（2026-10-06）：连那句「事实」也进 `?` ——
+                    它答的是「这个按钮干嘛 / 为什么这里没有按钮」，按判据（删了之后用户不会误读
+                    这一栏的任何一个数）属**描述型冗余** ⇒ 降进 `?`，原位只留 `?`（降层后留下的
+                    可见记号）。原句一字未改，只是换了层；`c0828-donothing-note` 锚点原地保留。 */}
                 <p className={styles.calibre} data-testid="c0828-donothing-note">
-                  第四栏无按钮 —— 不处置无需操作，属默认发生。
+                  <InfoPopover topic="这一栏为什么没有按钮" testId="c0828-donothing-note">
+                    第四栏无按钮 —— 不处置无需操作，属默认发生。
+                  </InfoPopover>
                 </p>
                 <details className={styles.calibre}>
                   <summary>为什么要摆这一栏</summary>
@@ -3336,7 +3342,12 @@ export default function Console0828({
                                 </button>
                                 {/* WO-UI-DESC-POPOVER：原句「引擎枚举已穷尽；改由 agent 读取同一份杠杆菜单
                                     重新生成」—— 前半含实现词「引擎」，后半是「这个按钮做了什么」的解释，
-                                    按 R-UI-3 归 `?` 浮层。第一层留**事实**：本处可选对策已穷尽。 */}
+                                    按 R-UI-3 归 `?` 浮层。第一层留**事实**：本处可选对策已穷尽。
+                                    ⚠ WO-C0828-DESC-COLLAPSE 的同一处改动**已撤、不并**（2026-10-06）：
+                                    本单原把**同一句**原文逐字搬进 `c0828-ask-agent-why` 浮层，
+                                    与本笔是**同句同层**的两种写法 —— 并排会成两个 `?` 说同一件事
+                                    （§2 R-UI-3「别每页各做一套」）。本笔的信息量更大（第一层留了状态、
+                                    浮层正文把人话补全），故取本笔、撤本单那一半。 */}
                                 <span className={styles.calibre}>
                                   本处可选对策已穷尽
                                   <InfoPopover topic="「交由 agent 生成对策」会做什么" testId="c0828-agent-regen">
@@ -3737,8 +3748,15 @@ export default function Console0828({
         {/* ── ② 结论要点（带 ✓，每条挂一个量化值）─────────────────────── */}
         <div className={styles.aiSec} data-testid="c0828-ai-points">
           <span className={styles.aiSecHead}>② 本次结论要点</span>
+          {/* ⚠ WO-C0828-DESC-COLLAPSE：「这里以后会有什么」是**对未来的描述**，不是结论 ⇒
+              描述型冗余，降进 `?`（与上一格 `c0828-ai-stream-howto` 同一写法：
+              诚实位「还没算」留在第一层，描述进浮层）。 */}
           {result === null || money === null ? (
-            <p className={styles.calibre}>推演后在此列出，每条后面挂它的量化值。</p>
+            <p className={styles.calibre}>
+              <InfoPopover topic="推演后这里会有什么" testId="c0828-ai-points-howto">
+                推演后在此列出，每条后面挂它的量化值。
+              </InfoPopover>
+            </p>
           ) : (
             <ul className={styles.aiList}>
               <li>
@@ -3859,9 +3877,15 @@ export default function Console0828({
                   </span>
                 </li>
               </ul>
+              {/* ⚠ WO-C0828-DESC-COLLAPSE：本段是**口径 + 本栏与中栏的关系说明** ⇒ 降进 `?`。
+                  该口径本身**没有从第一层消失**：同一句在「对策看板」头（按严重度排序 · 系统不给推荐）
+                  与「agent 补充对策」头（系统不给推荐 —— 决策由使用方作出）各有一处恒显，
+                  故这里降层不构成「口径要点了才看得见」（§2 R-UI-3 的本意）。 */}
               <p className={styles.kpiCal}>
-                口径：<b>系统不给推荐，决策由使用方作出。</b>
-                四栏完整比较（含「不处置」那一栏）在中栏「对策方案」面板里，本栏只列出名与两维。
+                <InfoPopover topic="本栏与中栏的关系" testId="c0828-ai-actions-cal">
+                  口径：<b>系统不给推荐，决策由使用方作出。</b>
+                  四栏完整比较（含「不处置」那一栏）在中栏「对策方案」面板里，本栏只列出名与两维。
+                </InfoPopover>
               </p>
             </>
           )}
