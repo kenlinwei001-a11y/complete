@@ -849,6 +849,9 @@ export function reassembleDshRun(events: readonly DshSessionEvent[], opts: Reass
   //
   // 位置：与原生路**同序**（`loop.ts` 的 reflect 支同样把缺口块拼进 blocks 后，再以扫描值出 answer）
   // —— 故 `unverifiedNumerics` 两路都含平台自撰的缺口文案，口径一致，无可比性问题。
+  // WO-DSH-ARM-FAILURE-VISIBLE：失败披露块**接在答案之后、复盘缺口块之前**（顺序 load-bearing：
+  // 复盘块在两条路里都是「最后一句」（原生路同序），本块插到它前面才不改变那个观察面）。
+  blocks = [...blocks, ...failureBlocks];
   let reflected = false;
   let replanReasons: string[] | undefined;
   if (opts.reflect) {
@@ -894,7 +897,7 @@ export function reassembleDshRun(events: readonly DshSessionEvent[], opts: Reass
   return {
     ok: true,
     outcome,
-    answer: { trustLevel: "AGENT_EXPLORATORY", blocks: [...blocks, ...failureBlocks], provenance, unverifiedNumerics: scanBlocks([...blocks, ...failureBlocks], provenance.length) },
+    answer: { trustLevel: "AGENT_EXPLORATORY", blocks, provenance, unverifiedNumerics: scanBlocks(blocks, provenance.length) },
     sketch,
     ...(outcome === "BUDGET_EXHAUSTED" ? { degraded: { reason: "BUDGET_EXHAUSTED" as const } } : {}),
     closing: parsed?.success ? "FINAL_ANSWER" : "SOFT_CLOSE",
