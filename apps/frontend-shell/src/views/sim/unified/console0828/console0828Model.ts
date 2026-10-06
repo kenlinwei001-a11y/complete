@@ -777,7 +777,10 @@ export function parseParetoLeverKey(key: string): { objectType: string; objectId
  */
 export const IMPEDIMENT_KIND_PLAIN: Readonly<Record<string, string>> = {
   BOTTLENECK: "能力不够，做不过来 —— 加产能有用",
-  CONGESTION: "能力够，但流不动（在排队 / 在途积压）—— 加产能没用",
+  // WO-UI-DESC-POPOVER（2026-10-06）：去掉括号里的成因解释（在排队 / 在途积压）——
+  // 那是「为什么流不动」，属 R-UI-3 的措辞型解释。**判据（能力够）与处置（加产能没用）一个没动**：
+  // 上一条注释明写三类的处置相反、不许合并，处置是决策信息，必须留在第一层。
+  CONGESTION: "能力够，但流不动 —— 加产能没用",
   BREAK: "链条接不上，上一环给不了这一环要的",
 };
 
