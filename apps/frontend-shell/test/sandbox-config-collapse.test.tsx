@@ -131,7 +131,24 @@ let perturbationStore: Perturbation[] = [];
 /** 置真 ⇒ 取清单这条请求失败。用来验「取不到数时横幅说什么」（见 §2 最后一例）。 */
 let perturbationsFail = false;
 let sessionDisabled: string[] = [];
-let capturedBase: TickState = {};
+
+/**
+ * 服务端**现派生**的那份 tick0 世界（WO-M0-GROUND-TRUTH · F0，2026-09-19 路B裁决）。
+ *
+ * F0 之前：前端 `init` 把 `hash01` 现编的世界塞进建会话 body，桩从 `body.baseSnapshot` 里
+ * **抄回来**当基线用（`capturedBase`）。F0 之后 `init` 只发 `{ scope }` ⇒ 那个字段恒 `undefined`
+ * ⇒ 抄回来的是 `undefined`，`{ ...(capturedBase.a1 ?? {}) }` 当场抛 `TypeError`（**在桩 push 之后**，
+ * 所以扰动建出来了、横幅却不刷新 —— 本门 §2 那条红就是这么来的）。
+ * 现在这份世界由**桩自己**定义：桩扮演的就是那个 `deriveSeedBaseSnapshot`。
+ */
+const SERVER_BASE: TickState = Object.fromEntries(
+  (Object.values(CFG.nodeObjectIds).flat() as string[]).map((id, i) => [
+    id,
+    Object.fromEntries(CFG.stateVars.map((v, j) => [v, 20 + i * 5 + j])),
+  ]),
+);
+/** 建会话请求的 body **原文**（未经回填）—— 用来咬「`baseSnapshot` 这个键压根不在」（F0）。 */
+const createBodies: Record<string, unknown>[] = [];
 
 const { patchFn } = vi.hoisted(() => ({ patchFn: vi.fn() }));
 
@@ -139,12 +156,12 @@ vi.mock("@/api/endpoints", () => ({
   fetchWorkspace: vi.fn(),
   fetchSimViewConfig: vi.fn(async () => CFG),
   runSolver: vi.fn(async () => Promise.reject({ error: { code: "NOT_STUBBED", message: "本门不桩求解器", requestId: "req_t" } })),
-  createSimSession: vi.fn(async (body: { baseSnapshot: TickState }) => {
-    capturedBase = body.baseSnapshot;
+  createSimSession: vi.fn(async (body: Record<string, unknown>) => {
+    createBodies.push(body);
     return {
       id: SESSION_ID,
       tenantId: "demo",
-      baseSnapshot: body.baseSnapshot,
+      baseSnapshot: SERVER_BASE,
       scope: {},
       status: "READY",
       curTick: 0,
@@ -157,7 +174,7 @@ vi.mock("@/api/endpoints", () => ({
       {
         id: SESSION_ID,
         tenantId: "demo",
-        baseSnapshot: capturedBase,
+        baseSnapshot: SERVER_BASE,
         scope: {},
         status: "READY",
         curTick: 0,
@@ -196,7 +213,7 @@ vi.mock("@/api/endpoints", () => ({
     perturbationStore = [...perturbationStore, p];
     return {
       perturbation: p,
-      state: { ...capturedBase, a1: { ...(capturedBase.a1 ?? {}), v0: 99 } },
+      state: { ...SERVER_BASE, a1: { ...(SERVER_BASE.a1 ?? {}), v0: 99 } },
       curTick: 0,
     };
   }),
@@ -205,8 +222,8 @@ vi.mock("@/api/endpoints", () => ({
     return { items: [...perturbationStore] };
   }),
   deleteSimPerturbation: vi.fn(),
-  simTick: vi.fn(async (_id: string, n: number) => ({ curTick: n, state: capturedBase })),
-  simWorld: vi.fn(async () => ({ tick: 0, state: capturedBase })),
+  simTick: vi.fn(async (_id: string, n: number) => ({ curTick: n, state: SERVER_BASE })),
+  simWorld: vi.fn(async () => ({ tick: 0, state: SERVER_BASE })),
   simCheckpoint: vi.fn(),
   simBranch: vi.fn(),
   fetchSimCompare: vi.fn(),
@@ -243,7 +260,7 @@ beforeEach(() => {
   perturbationStore = [];
   perturbationsFail = false;
   sessionDisabled = [];
-  capturedBase = {};
+  createBodies.length = 0;
   patchFn.mockReset();
   patchFn.mockImplementation(async (_id: string, keys: string[]) => {
     sessionDisabled = [...keys];
@@ -320,6 +337,13 @@ describe("§2 · 横幅上的三个数是**现算**的（写死的数在这一�
 
     // 后端真的多了一条（桩里 push 的那条）
     await waitFor(() => expect(perturbationStore.length).toBe(1));
+    /**
+     * ⚠ F0 接缝（WO-M0-GROUND-TRUTH，2026-09-19 路B裁决）：`init` **不再**往建会话 body 里塞
+     * 前端自己编的世界。它一旦回潮，上面那个 `SERVER_BASE` 就会与本门的桩**脱钩** ——
+     * 而那正是本门 §2 一度变红的原因（桩曾从请求里抄基线，抄到 `undefined`）。
+     */
+    await waitFor(() => expect(createBodies.length, "建会话请求一次都没发 ⇒ 上面的世界是空的，本门整段在空转").toBeGreaterThan(0));
+    expect("baseSnapshot" in createBodies[0]!, "F0 后前端还在往建会话 body 里塞自己编的世界 —— 路B裁决被回潮").toBe(false);
     // 🔴 判据落在**屏上那个数**：不跟着变 ⇒ 它是写死的，或者是渲染时抄下来的快照
     await waitFor(() =>
       expect(

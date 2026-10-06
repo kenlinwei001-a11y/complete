@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { SandboxViewConfig, SimSession } from "@platform/contracts";
@@ -57,14 +57,27 @@ const WORLD: Record<string, Record<string, number>> = {
   },
 };
 
+/**
+ * 建会话请求的 body **原文**（未经回填）—— 用来咬「`baseSnapshot` 这个键压根不在」（F0）。
+ *
+ * WO-M0-GROUND-TRUTH · F0（2026-09-19 路B裁决）：`init` 只发 `{ scope }`，tick0 世界改由服务端
+ * `deriveSeedBaseSnapshot` 现派生、随 201 回包下发。本门的桩就扮演那个服务端 ——
+ * 它回的世界是上面那份 `WORLD`（F0 之前它是从前端请求里**抄**回来的，F0 之后那个字段恒 `undefined`，
+ * 于是屏上 8 个读数全 `0.0`、「读数必须真的分散」那条前置守护当场红）。
+ */
+const createBodies: Record<string, unknown>[] = [];
+
 vi.mock("@/api/endpoints", () => ({
   fetchWorkspace: vi.fn(),
   fetchSimViewConfig: vi.fn(),
   runSolver: vi.fn(async () => Promise.reject({ error: { code: "NOT_STUBBED", message: "本门不桩求解器", requestId: "req_test" } })),
-  createSimSession: vi.fn(async (body: { baseSnapshot: Record<string, Record<string, number>> }) => ({
-    id: "sims_kpi", tenantId: "t", baseSnapshot: body.baseSnapshot, scope: {}, status: "READY",
-    curTick: 0, parentCheckpointId: null, createdAt: "2026-08-13T00:00:00.000Z",
-  } satisfies SimSession)),
+  createSimSession: vi.fn(async (body: Record<string, unknown>) => {
+    createBodies.push(body);
+    return {
+      id: "sims_kpi", tenantId: "t", baseSnapshot: WORLD, scope: {}, status: "READY",
+      curTick: 0, parentCheckpointId: null, createdAt: "2026-08-13T00:00:00.000Z",
+    } satisfies SimSession;
+  }),
   simTick: vi.fn(async (_id: string, n: number) => ({ curTick: n, state: WORLD })),
   simWorld: vi.fn(async () => ({ tick: 0, state: WORLD })),
   fetchSimSessions: vi.fn(async () => ({ items: [] })),
@@ -88,6 +101,10 @@ function mount() {
 }
 
 const ready = () => screen.findByTestId("sandbox-console");
+
+beforeEach(() => {
+  createBodies.length = 0;
+});
 
 describe("WO-SANDBOX-KPI-LAYER · 顶栏读数按偏离度分层", () => {
   it("① 真降层：偏离最大的 3 个在第一层，其余进 <details>；② D4 守恒：8 个 testid 一个不少", async () => {
@@ -134,6 +151,12 @@ describe("WO-SANDBOX-KPI-LAYER · 顶栏读数按偏离度分层", () => {
 
     // 降层的**可见记号**（规范 §1：静默降层等于删除）
     expect(screen.getByTestId("sandbox-kpi-rest-toggle").textContent ?? "").toContain(String(inRest.length));
+
+    // ⚠ F0 接缝（WO-M0-GROUND-TRUTH，2026-09-19 路B裁决）：`init` **不再**往建会话 body 里塞
+    //    前端自己编的世界；它一旦回潮，上面读到的世界就与本门的桩**脱钩**（桩曾因此抄到
+    //    `undefined`、屏上读数全 0，本条当场红过）。
+    await waitFor(() => expect(createBodies.length, "建会话请求一次都没发 ⇒ 上面读的是空世界，本条会空转通过").toBeGreaterThan(0));
+    expect("baseSnapshot" in createBodies[0]!, "F0 后前端还在往建会话 body 里塞自己编的世界 —— 路B裁决被回潮").toBe(false);
   });
 
   it("④ 第一层容量守恒：无论多少个 stateVar，第一层读数个数不随之膨胀（这才是「不密密麻麻」的机器判据）", async () => {
