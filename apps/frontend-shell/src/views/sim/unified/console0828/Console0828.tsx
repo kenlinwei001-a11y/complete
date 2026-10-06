@@ -3334,8 +3334,15 @@ export default function Console0828({
                                 >
                                   {agentM.isPending ? "agent 推演中…" : "交由 agent 生成对策 ▸"}
                                 </button>
+                                {/* WO-UI-DESC-POPOVER：原句「引擎枚举已穷尽；改由 agent 读取同一份杠杆菜单
+                                    重新生成」—— 前半含实现词「引擎」，后半是「这个按钮做了什么」的解释，
+                                    按 R-UI-3 归 `?` 浮层。第一层留**事实**：本处可选对策已穷尽。 */}
                                 <span className={styles.calibre}>
-                                  引擎枚举已穷尽；改由 agent 读取同一份杠杆菜单重新生成。
+                                  本处可选对策已穷尽
+                                  <InfoPopover topic="「交由 agent 生成对策」会做什么" testId="c0828-agent-regen">
+                                    系统已把这一处能走的路枚举穷尽；点上面那个按钮，会改由 agent
+                                    读取同一份对策菜单，重新生成一版。
+                                  </InfoPopover>
                                 </span>
                               </div>
                               {/* ⚠ 收敛这一步必须可审：一次只问**一处**，且要说清「凭什么是这一处」。
