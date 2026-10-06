@@ -19,7 +19,8 @@ import type { ObjectInstance } from "../src/domain.js";
  *     → `deriveSeedBaseSnapshot` 同名探测（真读数档，`measuredCells += 1`）
  *     → `buildPropagationInputs` 装图/权重/取值域（与 `POST …/tick` 同一处装配）
  *     → `replayWorldLine` 真跑 N 拍
- *     → 下游 `Model.backlogQtyTop` / `backlogPriceTop` / `backlogHorizonDays` 的读数
+ *     → 下游 `Model.backlogQtyTop` / `backlogPriceTop`（`combine:"max"` 直通）
+ *       与 `Model.costPressure`（`leadDays` 那条边的落点，`combine:"sum"`，见 ⑤b）的读数
  *
  * ⛔ 判据一律是**对照实验**（CLAUDE.md 铁律 1.5 判据一），不是"跑得起来吗"：
  *   改一个真值 ⇒ 下游读数必须按可预言的方式变。两个数逐字节相同 = 这条线没通，
@@ -28,8 +29,13 @@ import type { ObjectInstance } from "../src/domain.js";
 
 /** 三个真实业务字段 ＝ 状态变量名（同名直取）。改这里就是改被测对象，不是改期望值。 */
 const REAL_VARS = ["leadDays", "qty", "unitPrice"] as const;
-/** 它们各自的下游落点（`seed.ts` 三条规则的 targetStateVar）。 */
-const TOPS = { qty: "backlogQtyTop", unitPrice: "backlogPriceTop", leadDays: "backlogHorizonDays" } as const;
+/**
+ * 下游落点（`seed.ts` 三条规则的 targetStateVar）。
+ * ⚠ `leadDays` **已不在本表**：它那条边的靶格 2026-10-01 起是 `Model.costPressure`（`combine:"sum"`），
+ *   而本表的断言形式（`读数 === max(该型号各单的真值)`）只对 `combine:"max"` 的系数 1.0 直通边成立。
+ *   `leadDays` 的覆盖**没有丢**，换到了 ⑤b 那条按新语义写的对照臂（⛔ 别把它读成"删了一格真值"）。
+ */
+const TOPS = { qty: "backlogQtyTop", unitPrice: "backlogPriceTop" } as const;
 
 async function seededApp(): Promise<TestApp> {
   const t = await makeApp();
@@ -261,9 +267,8 @@ describe("WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM�
     const w5 = await runWorld(t, 5);
 
     for (const [modelId, rows] of byModel) {
-      for (const v of REAL_VARS) {
+      for (const [v, target] of Object.entries(TOPS)) {
         const expected = Math.max(...rows.map((o) => o.props[v] as number));
-        const target = TOPS[v];
         // 落点读数 === 该型号在手订单里那个字段的真实最大值（系数 1.0 原样透传）
         expect(w1[modelId]?.[target], `${modelId}.${target} @tick1`).toBe(expected);
         /**
@@ -276,5 +281,61 @@ describe("WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM�
           .toBe(expected);
       }
     }
+  }, 180000);
+
+  /**
+   * ⑤b `leadDays` 的真值必须**沿边传到落点** —— 落点 2026-10-01 起是 `Model.costPressure`。
+   *
+   * 为什么不与 ⑤ 同形：那条边是 `combine:"sum"` + 系数 −0.0841 + 按权重分摊，落点**不再等于**
+   * 任何一张单的真值 ⇒ `读数 === max(真值)` 的断言形式**在该边上根本不成立**，
+   * 不是"数变了要改金值"。故按 CLAUDE.md 铁律 1.5 判据一重写成对照实验：
+   * **把 X（交期）改掉 ⇒ Y（成本压力）必须按可预言的方向变**，且基准由同装置的对照臂现算。
+   *
+   * ⚠ 本臂是 WO-CONSOLE-DUE-CHANGE（2026-10-01）改靶格之后**唯一**还在守这条边的测试 ——
+   *   原 ⑤ 里那一格已随 `Model.backlogHorizonDays` 一起消失（该格不再被任何规则创建）。
+   */
+  it("⑤b 交期压缩 ⇒ 落点 Model.costPressure 必须升（对照实验：同种子不加扰动的那一次当基准）", async () => {
+    const t = await seededApp();
+    const live = await liveOrders(t);
+    const victim = live[0]!;
+    const modelId = await modelOf(t, victim.id);
+    const before = victim.props.leadDays as number;
+    expect(Number.isFinite(before), `Order.leadDays 不是有限数：${String(victim.props.leadDays)}`).toBe(true);
+
+    // 对照臂：**同一次装配、同一份种子，不加扰动** —— ⛔ 不写死一个数当基准（那是第二套真相源）。
+    const ctrl = await runWorld(t, 3, []);
+    const ctrlLanding = ctrl[modelId]?.costPressure;
+    expect(typeof ctrlLanding, "落点 Model.costPressure 在对照臂上必须有读数").toBe("number");
+
+    // 扰动臂：把这一张单的交期**压缩** 30 天。方向可预言 —— 边语义原文：
+    // 「订单交期压缩 ⇒ 该型号赶工/加班/加急 ⇒ **成本压力上升**（交期越远 ⇒ 当前成本压力越低，故系数为负）」。
+    // 取压缩（而非拉长）是有意的：拉长会把落点推向域下界 0，一旦钳住，方向断言就分不出
+    // 「真按系数在降」与「被地板挡住」—— 而压缩没有这个天花板。
+    const DELTA = -30;
+    const pert: Perturbation[] = [{
+      id: `pt_lead_${victim.id}`, tenantId: "demo", sessionId: "s", kind: "demand_shift",
+      targetObjectId: victim.id, targetStateVar: "leadDays",
+      startTick: 1, durationTicks: null, magnitude: DELTA, mode: "delta",
+      label: "交期压缩", createdAt: "2026-01-01T00:00:00.000Z",
+    }];
+    const bumped = await runWorld(t, 3, pert);
+
+    // 🐤 金丝雀先行：源格必须真的动了 —— 否则下面那句「落点没变」度量的是「扰动压根没生效」。
+    expect(
+      bumped[victim.id]?.leadDays,
+      "源格 Order.leadDays 没动 ⇒ 本臂什么都没测到（⛔ 不许把这读成「落点没响应」）",
+    ).toBe(before + DELTA);
+
+    const bumpLanding = bumped[modelId]?.costPressure;
+    expect(typeof bumpLanding).toBe("number");
+    expect(
+      bumpLanding,
+      `压缩交期 30 天：落点对照 ${String(ctrlLanding)} → 扰后 ${String(bumpLanding)} —— ` +
+        `逐字节相同 = 这条边没通（不是"差异很小"）`,
+    ).not.toBe(ctrlLanding);
+    expect(
+      bumpLanding,
+      `方向反了：该边系数为负、语义是「交期压缩 ⇒ 成本压力上升」，落点必须**升**`,
+    ).toBeGreaterThan(ctrlLanding as number);
   }, 180000);
 });
