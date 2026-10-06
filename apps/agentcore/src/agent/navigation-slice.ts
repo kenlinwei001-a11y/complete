@@ -21,6 +21,12 @@ import { isOptWhatifSignal } from "../router/opt-whatif-route.js"; // WO-OPTWHAT
  * **WO-ROSTER-RESPECT-TOOLFILTER · 广告面 ⊆ 可调用面**：求解器目录段/详情段的成员资格**不只**看对象域，
  * 还要过 agent 的 MCP 白名单（`AgentScope.solverToolFilter` = `tools[].toolFilter` 原文）——
  * 提示词里点名的每一条，权限上都必须真的调得动（否则就是在引诱模型去撞 `AGENT_SCOPE_VIOLATION`）。
+ *
+ * **WO-MCP-TOP8-VS-ROSTER · 同一判据的**运行时**那一层**：`toolFilter` 只是「配置上允许」，
+ * 模型面真拿到的 MCP 工具还经 Phase6C 相关性收窄（原生臂 `selectMcpTools` top-k）——
+ * 被 deferred 的既不在模型 `tools` 里、`discover(kind:"mcp_tools")` 今天又是空表（按需加载模式未启用），
+ * 即**真的调不到**。故 `AgentScope.solverGrantedToolNames`（本 run 模型面终态）缺省时照旧、
+ * 显式时把广告面再收窄到这批 —— 目录段那句「全部可调用的」不许对被截掉的那些成立。
  */
 
 /** 求解器目录条目：一句话能力 + 输出形状（顶层 key）+ 读取的对象类型域 + 归属业务域族。 */
@@ -455,6 +461,21 @@ export interface AgentScope {
    * ⚠ 缺省（`undefined`）= 未设过滤（或该 agent 无求解器 MCP ref）⇒ 不收窄；显式（含 `[]`）= 按名单收窄。
    */
   solverToolFilter?: string[];
+  /**
+   * WO-MCP-TOP8-VS-ROSTER · **本 run 模型面真拿到的求解器 MCP 工具**（全名 `mcp__solvers__<key>`）
+   * —— 即 Phase6C 相关性收窄（原生臂 `selectMcpTools` top-k）**之后**的终态。
+   *
+   * 为什么单开一个通道：`solverToolFilter` 答的是「配置允许调什么」（权限面），本字段答的是
+   * 「本 run 模型**真拿到**什么」（工具面）。两者可以不同：toolFilter 授予 16 条而 top-k 只发 8 条时，
+   * 目录段自称「**全部可调用的**求解器目录」就不再对那 8 条之外成立 —— 被截掉的既不在模型 `tools` 里，
+   * 也没有按需加载/发现补回的路（`discover(kind:"mcp_tools")` 今天返回空表），模型**调不到**它。
+   *
+   * ⚠ 缺省（`undefined`）= **不收窄**，两种情形都走这条（都是"上界不可知/不适用"）：
+   *   · 该 agent 的求解器不靠 MCP 工具面（有 BUILTIN `invoke_solver` ⇒ 任意 solver 都调得动；
+   *     或压根不调 solver）；· 调用方不是 MCP 收窄那条路（如通用 path-B / DSH 臂）。
+   * 显式（含 `[]`）= 只广告名单内的；`[]` ⇒ 一条求解器都不广告（全被截掉 = 诚实缺席）。
+   */
+  solverGrantedToolNames?: string[];
 }
 
 export interface SliceSolver {
@@ -615,8 +636,13 @@ export function projectNavigationSlice(
   //   显式给出（含空数组）= 只广告名单内的：空数组 ⇒ 一个求解器都不广告（与 `expandAgentTools`
   //   的 `toolFilter: []`「该 server 工具全丢」同语义）。
   const grantedFilter = scope?.solverToolFilter === undefined ? undefined : new Set(scope.solverToolFilter);
+  // WO-MCP-TOP8-VS-ROSTER · **运行时**授予面（本 run 模型面终态 = Phase6C top-k 之后的求解器 MCP 工具）。
+  // 与上面那层（配置允许）是**同一条判据的两层**，不是两条判据：两层都过才进广告面。
+  // ⚠ 缺省（`undefined`）= 不收窄（该 agent 的 solver 面不是 MCP 工具面 / 本 run 不走 MCP 收窄路）。
+  const grantedToolNames = scope?.solverGrantedToolNames === undefined ? undefined : new Set(scope.solverGrantedToolNames);
   const solverGranted = (key: string): boolean =>
-    grantedFilter === undefined || grantedFilter.has(key) || grantedFilter.has(solverMcpToolName(key));
+    (grantedFilter === undefined || grantedFilter.has(key) || grantedFilter.has(solverMcpToolName(key))) &&
+    (grantedToolNames === undefined || grantedToolNames.has(solverMcpToolName(key)));
   // 活目录（生产）vs 降级镜像（兜底）。isLive 决定"候选怎么来"：检索已收窄 → 全员候选；镜像 → 族信号选型。
   const isLive = catalog !== undefined;
   const cat: SolverCatalog = catalog ?? FALLBACK_SOLVER_CATALOG;
@@ -648,7 +674,8 @@ export function projectNavigationSlice(
   }
 
   // 隔离过滤：两道闸，缺一不可 ——
-  //  ①**授予面**（toolFilter 白名单）：调不动的 solver 一条都不列（广告面 ⊆ 可调用面）；
+  //  ①**授予面**（两层同一条判据：toolFilter 白名单 = 配置允许 × `solverGrantedToolNames`
+  //    = 本 run 模型面终态）：调不动的 solver 一条都不列（广告面 ⊆ 可调用面）；
   //  ②**对象域**：scope 收窄时，只留读 scope 内至少一个对象类型的 solver（越界 solver 不进图）。
   // reads 为空 = 目录没声明对象域 = 无证据判越界 → 保留（降级镜像每条 reads 都非空，故旧行为不变）。
   let solverKeys = [...candidateKeys].filter((key) => {
@@ -696,6 +723,9 @@ export function projectNavigationSlice(
         // R6 确定性：按 **key 字典序**。⛔ 刻意不按 rank / 使用频次 / 命中次数排 ——
         // 「按热度排」正是本单要拆的那个自锁循环的来源（冷门排后面 → 更少被选 → 更冷）。
         // 字典序还有一个额外好处：与问句无关 ⇒ 同租户所有问句的目录段逐字节相同，可被 prompt 缓存命中。
+        // ⚠️ WO-MCP-TOP8-VS-ROSTER 起有例外：**成员资格**对「MCP 工具被 top-k 收窄的 agent」随问句变
+        //    （授予面那一层是 top-k 的产物）—— **排序**仍是字典序（R6 不破），但这类 agent 的目录段
+        //    不再逐字节跨问句相同、吃不满 prompt 缓存。这是「广告面 ⊆ 可调用面」的代价，不许改回。
         .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
         .map(([key, entry]) => ({ key, brief: briefOf(entry.capability) }));
 
