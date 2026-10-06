@@ -2084,10 +2084,24 @@ export default function Console0828({
                   onClick={() => (isOpen ? setOpenEvent(null) : openForm(ev))}
                 >
                   <span>{ev.name}</span>
-                  {/* 落不了地时**把理由摆在第一层**，不是一句无信息量的「今天落不了地」——
-                      理由是决策信息（它决定你要不要去补那个对象/状态量），该上屏。 */}
+                  {/* WO-UI-DESC-POPOVER（2026-10-06 · 仓主逐案批准）：原注释主张「理由摆在第一层，
+                      理由是决策信息」—— 该主张**已被仓主推翻**：这段是「为什么/怎么读」的措辞型解释，
+                      按 `CONVENTION-ui-information-layering.md` R-UI-3 归 `?` 浮层。
+                      第一层留的是**状态**（「今天落不了地」）—— 规范允许第一层放「数值 / 状态 / 名字」，
+                      且诚实位降层**必须留可见记号**（`InfoPopover` 的 `?` 触发器本身就是那个记号，永远可见、Tab 到得了）。 */}
                   <span className={styles.evHint}>
-                    {ok ? ev.hint : L === undefined ? "还在判定" : LANDING_ABSENCE_TEXT[L.kind as "no-instance" | "no-statevar"]}
+                    {ok ? ev.hint : L === undefined ? "还在判定" : (
+                      <>
+                        今天落不了地
+                        <InfoPopover
+                          topic={`「${ev.name}」为什么今天落不了地`}
+                          testId={`c0828-ev-why-${ev.id}`}
+                          align="right"
+                        >
+                          {LANDING_ABSENCE_TEXT[L.kind as "no-instance" | "no-statevar"]}
+                        </InfoPopover>
+                      </>
+                    )}
                   </span>
                   <span className={styles.evPlus}>{isOpen ? "－" : "＋"}</span>
                 </button>
