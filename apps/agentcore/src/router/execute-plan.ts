@@ -4,6 +4,7 @@ import type { LlmClient } from "../llm/types.js";
 // WO-GRAPH-EXEC-CONSOLIDATE：分层扇出调度**收编到唯一实现**（原本文件自写一份组内 Promise.all 循环）。
 import { runLayeredGraph } from "../skill-orchestrator.js";
 import type { GuardedToolExecutor } from "../tools/executor.js";
+import { scanBlocks } from "../util/numerics.js"; // 数字红线**唯一判据**（本文件不得自写第二份·见下方 scan 处注）
 
 /**
  * WO-Phase2-C-COMPLETE · 组合路径执行器（executePlan·「能用半」）。
@@ -21,6 +22,7 @@ import type { GuardedToolExecutor } from "../tools/executor.js";
  * 不变量：
  *  - **R6**：同 plan 同执行序 → 同产物（组间串行·组内无共享写副作用·汇总按 step 顺序稳定）。
  *  - **数字红线**：综合步不产数——每业务数字须 `⟦ref:N⟧` 溯到第 N 步产物；scan 到未溯源裸数 → `unverifiedNumerics=true`（诚实标）。
+ *    判据**不是**本文件自带的 —— 走 `util/numerics.ts` 的单源判据（且要 `⟦ref:N⟧` **指得出东西**，见该文件末的处置沿革）。
  *  - **R13 provenance 贯通**：每步一条 ProvenanceRef（source=TOOL_RESULT·toolCallId 指向该步 invoke_solver 审计）。
  *  - **口径**：含 LLM 综合 → trustLevel=`AGENT_EXPLORATORY`（绝不冒充 VERIFIED_WORKFLOW「数据库事实」）。
  */
@@ -99,11 +101,10 @@ function readOutputPath(data: unknown, outputPath: string): unknown {
   return cur;
 }
 
-/** 数字红线扫描：去掉 ⟦…⟧ 溯源标记后仍存在裸业务数字 → 未溯源（诚实标 unverifiedNumerics）。 */
-function scanUnverified(text: string): boolean {
-  const stripped = text.replace(/⟦[^⟧]*⟧/g, "");
-  return /\d/.test(stripped);
-}
+// 数字红线判据：**单源** `util/numerics.ts`（`scanBlocks`）—— 本文件原自写一份 `scanUnverified`
+// （「剥掉 ⟦…⟧ 后还有数字字符就算未溯源」），与单源的实际分叉是**反方向**的：它把**已指得出出处**的数字
+// 也标成未溯源（无差别标记），而两处判据对同一句可以给出相反结论。
+// ⚠ 本文件**不得**再自写第二份判据 —— 两份实现改一份不会红，这正是它上次分叉的方式。
 
 /**
  * 提取单步产物的**核心标量字段**（top-level number/string/boolean）→ 供确定性兜底内嵌可核数字。
@@ -128,7 +129,7 @@ export function coreScalars(data: unknown): { key: string; value: string }[] {
  *    等于让下一个读代码的人继续相信「走到这儿 = 没绑 provider」，而那正是 classifySynthFailure 刚治好的病。
  * WO-DIALOGUE-Q1Q2（治「未溯源空壳」类·reviewer flag）：**为所有 solver 步**内嵌其核心标量字段
  * （thresholdQty/capWanP90/baselineDemand/mainBottleneck/summary …），使无 LLM 时答案也显**可核数字**而非空 ⟦ref⟧ 壳；
- * 每数仍绑其步 ⟦ref:N⟧（→ provenance[N]·R13 溯源），非裸编（数字红线 scanUnverified 只对 LLM 综合启用·此处诚实标）。
+ * 每数仍绑其步 ⟦ref:N⟧（→ provenance[N]·R13 溯源），非裸编（数字红线**只对 LLM 综合启用**·此处诚实标）。
  */
 /**
  * 综合失败的**真实原因**（诚实分档）。此前一律说「无 LLM provider」，
@@ -282,7 +283,10 @@ export async function executePlan(plan: ComposePlan, ctx: ExecutePlanCtx): Promi
   }
 
   const blocks: AnswerBlock[] = [{ type: "text", markdown: synthText }];
-  const unverifiedNumerics = usedLlm ? scanUnverified(synthText) : false;
+  // 数字红线**单源判据**（`util/numerics.ts`）：豁免的判据是「⟦ref:N⟧ **指得出东西**」（N 落在
+  // `[0, provenance.length)`），不是「有标记」。`provenanceCount` 取本答案**自己那张表**的长度 ——
+  // 综合指令里 N 的语义就是有序步下标（inputs[N]），与下方 `provenance` 逐位对齐，不新引依赖。
+  const unverifiedNumerics = usedLlm ? scanBlocks(blocks, provenance.length) : false;
   const answer: Answer = {
     trustLevel: "AGENT_EXPLORATORY", // 含 LLM 综合 → 非 VERIFIED_WORKFLOW（绝不冒充「数据库事实」）
     blocks,
