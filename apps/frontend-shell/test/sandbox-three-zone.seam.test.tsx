@@ -127,7 +127,8 @@ const IMP_ROWS = IMP.impediments as { impedimentId: string }[];
  * R6 确定性：定值表，无时钟、无随机。
  */
 const SERVER_BASE: TickState = Object.fromEntries(
-  (Object.values(CFG.nodeObjectIds).flat() as string[]).map((id, i) => [
+  // `nodeObjectIds` 在契约里是可选（`Record<string, string[]> | undefined`）⇒ 取值前先兜住。
+  (Object.values(CFG.nodeObjectIds ?? ({} as Record<string, string[]>)).flat() as string[]).map((id, i) => [
     id,
     Object.fromEntries(STATE_VARS.map((v, j) => [v, 12 + i * 7 + j * 3])),
   ]),

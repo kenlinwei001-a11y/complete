@@ -142,7 +142,8 @@ let sessionDisabled: string[] = [];
  * 现在这份世界由**桩自己**定义：桩扮演的就是那个 `deriveSeedBaseSnapshot`。
  */
 const SERVER_BASE: TickState = Object.fromEntries(
-  (Object.values(CFG.nodeObjectIds).flat() as string[]).map((id, i) => [
+  // `nodeObjectIds` 在契约里是可选（`Record<string, string[]> | undefined`）⇒ 取值前先兜住。
+  (Object.values(CFG.nodeObjectIds ?? ({} as Record<string, string[]>)).flat() as string[]).map((id, i) => [
     id,
     Object.fromEntries(CFG.stateVars.map((v, j) => [v, 20 + i * 5 + j])),
   ]),
