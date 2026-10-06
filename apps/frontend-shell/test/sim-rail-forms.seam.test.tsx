@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { PropagationRule } from "@platform/contracts";
+import { CAPACITY_FACTOR_BINDINGS, type PropagationRule } from "@platform/contracts";
 
 /**
  * ══ WO-SIM-RAIL-FORMS · 左栏六个扰动子页的**接缝门**（SEAM-GATE：咬链路不咬函数）════
@@ -477,7 +477,30 @@ describe("WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门", () => {
     // ── ④a 屏上**标明**：OEE 那批在「今天扰不动」里，带机器可读的原因码 ──
     const oee = screen.getByTestId("rail-blocked-oee_current");
     expect(oee.getAttribute("data-reason")).toBe("NOT_A_STATE_VAR");
-    expect(oee.textContent).toContain("Equipment.oee_current");
+    /**
+     * ══ 🔄 重锚（2026-10-06）· 判据从「接线名上屏」改为**两向** ══════════════════════
+     *
+     * **改之前（X）**：`expect(oee.textContent).toContain("Equipment.oee_current")` ——
+     * 它要求把 `型.属性` 这条**接线名**打在用户屏上。
+     *
+     * **为什么它今天红**：`d21f5af29`（R-UI-4「接线名不上屏」）之后，
+     * `PerturbRail.tsx` 那一行渲染的是 `{b.factorName}`（契约因子册里的**业务名** `设备OEE`），
+     * 接线名只留在 `data-testid` / `data-reason` 这些**机器可读位**。
+     * 于是报错是 `expected '设备OEE' to contain 'Equipment.oee_current'` ——
+     * 红的是**测试还停在 R-UI-4 之前**，不是产品把业务名弄丢了。
+     *
+     * **改之后（Y = 现在）**：两向都咬 ——
+     *   ① 第一层文本 = 契约里那个**业务名**（期望值从因子册现取，不写死：
+     *      因子册改名时这里跟着走，不会变成第二份真相源）；
+     *   ② 接线名**不许**出现在用户可见文本里（R-UI-4 的反向）。
+     * 而「接线身份没丢」由上面那行 `data-testid="rail-blocked-oee_current"` 咬住 ——
+     * 三样缺一不可：只咬①，把接线名打到屏上也不会红；只咬②，业务名被换成空串也不会红。
+     */
+    const oeeBinding = CAPACITY_FACTOR_BINDINGS.find((b) => b.prop === "oee_current");
+    expect(oeeBinding, "契约因子册里查不到 oee_current ⇒ 本条的前提变了，别当成产品红").toBeTruthy();
+    const oeeKey = `${oeeBinding!.objectType}.${oeeBinding!.prop}`;
+    expect(oee.textContent).toBe(oeeBinding!.factorName);
+    expect(oee.textContent, "接线名打到了用户可见文本上 ⇒ 破 R-UI-4（接线名不上屏）").not.toContain(oeeKey);
     expect(screen.getByTestId("rail-blocked-reason").textContent).toContain("world.state");
     // ── ④b 基线里它压根进不了下拉（一条传导规则都不提它）──
     expect(optionValues("rail-statevar")).not.toContain("oee_current");
