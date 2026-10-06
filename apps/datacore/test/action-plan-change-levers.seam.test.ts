@@ -640,11 +640,59 @@ describe("WO-C0828-P1 R3′ · adopt_sim_option 后规格层派生跟随", () =>
 
     const leadAfter = await readProp(t, "Material", mat!.id, "leadTime");
     expect(Number(leadAfter), "leadTime 未落到拨定值").toBeCloseTo(target, 6);
-    // 规格层 material_shortage_risk：COALESCE((dailyUse*leadTime − onHand − inTransit)*100/(dailyUse*leadTime), 0)
-    const expected = ((dailyUse * target - onHand - inTransit) * 100) / (dailyUse * target);
+    // 规格层 material_shortage_risk：
+    //   CLAMP(COALESCE((dailyUse*leadTime − onHand − inTransit)*100/(dailyUse*leadTime), 0), 0, 100)
+    //   2026-10-06 WO-DERIV-BACKFILL：式子加了取值域下界 0 ⇒ 本式的独立复算必须**连夹值一起算**，
+    //   否则会拿「未夹的负值」去比「已夹的 0」（实测 pos_lfp 未夹 −48.5737、世界读 0）。
+    //   界 0/100 照抄自式子自身的两个端（可再用量 ≥ 0 ⇒ 缺口率 ≤ 100；可再用 ≥ 需求 ⇒ 取 0）。
+    const raw = ((dailyUse * target - onHand - inTransit) * 100) / (dailyUse * target);
+    const expected = Math.min(100, Math.max(0, raw));
     const riskAfter = Number(await readProp(t, "Material", mat!.id, "shortageRisk"));
     expect(riskAfter, "shortageRisk 未随 leadTime 派生更新（修前它停在原地）").not.toBeCloseTo(before, 6);
     expect(riskAfter, "shortageRisk 不等于规格层式子重算值").toBeCloseTo(expected, 4);
+  }, 120000);
+
+  it("E3-b′ 臂③：缺口转负时下界 0 必须落在**运行期**（不只落在播种期物化）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    await seedDemoDerivationSpecs(t.repos, t.services.ontologyCore, t.services.governance, t.adminCtx);
+    await recomputeDemoDerivationsAtSeed(t.repos, t.services.ontologyCore, t.adminCtx);
+    const res = await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Material&pageSize=500", headers: ADMIN });
+    const items = (res.json() as { items: { id: string; props: Record<string, unknown> }[] }).items;
+    const target = 10;
+    const num = (o: { props: Record<string, unknown> }, k: string) => Number(o.props[k]);
+    // 样本条件**两个都要**（缺一个本臂就没鉴别力）：
+    //   ① 拨到 target 后缺口为负 ⇒ 不夹的话读数是负的；
+    //   ② 拨之前读数为正 ⇒ 「拨后为 0」**只能**由「运行期真重算 + 夹值」解释，
+    //      不能被「压根没重算、停在播种期的 0」冒充 —— 这一条正是本臂存在的理由。
+    const pick = items.find(
+      (o) =>
+        Number.isFinite(num(o, "dailyUse")) &&
+        Number.isFinite(num(o, "onHand")) &&
+        Number.isFinite(num(o, "inTransit")) &&
+        num(o, "dailyUse") * target - num(o, "onHand") - num(o, "inTransit") < 0 &&
+        Number(o.props.shortageRisk) > 0,
+    );
+    expect(pick, "种子里应有「拨到 leadTime=10 后超储、而当前是短缺」的物料 —— 缺了本臂无样本").toBeTruthy();
+    const d = num(pick!, "dailyUse");
+    const h = num(pick!, "onHand");
+    const tr = num(pick!, "inTransit");
+    // 独立复算：**不夹**的话屏上会出现的那个数（本臂的对照项）。
+    const rawAtTarget = ((d * target - h - tr) * 100) / (d * target);
+    expect(rawAtTarget, "样本选错：本臂要的是**负**缺口率").toBeLessThan(0);
+    const before = Number(pick!.props.shortageRisk);
+    expect(before, "样本选错：拨之前必须为正，否则「拨后为 0」不构成证据").toBeGreaterThan(0);
+
+    const done = await submitAndApprove(t, "adopt_sim_option", {
+      source: "sim-console-options",
+      levers: [{ objectType: "Material", objectId: pick!.id, prop: "leadTime", value: target }],
+      reason: "WO-DERIV-BACKFILL E3-b′ 臂③",
+      evidence: { sessionId: "sess-test", candidateId: "cand_test", scenarioFingerprint: "fp-test", pricing: null, disclosure: { agentInvolved: false } },
+    });
+    expect(done.status, `执行未成功：${done.executionResult.error ?? ""}`).toBe("EXECUTED");
+    expect(Number(await readProp(t, "Material", pick!.id, "leadTime")), "leadTime 未落到拨定值").toBeCloseTo(target, 6);
+    const after = Number(await readProp(t, "Material", pick!.id, "shortageRisk"));
+    expect(after, `下界没落在运行期：读出了未夹的负缺口率（应夹到 0，未夹则是 ${rawAtTarget}）`).toBeCloseTo(0, 6);
   }, 120000);
 
   it("E3-b′ 臂②：Process.utilization → queuePressure 按 process_queue_pressure 式子跟随", async () => {
@@ -728,5 +776,23 @@ describe("WO-C0828-P1 R3′ · translateSpecFormula 方言桥（自属性才译�
     // 嵌套/非顶层 COALESCE：不猜，拒
     expect(translateSpecFormula("COALESCE(COALESCE(this.a, 1), 0)")).toBeNull();
     expect(translateSpecFormula("this.a + COALESCE(this.b, 0)")).toBeNull();
+    // ── CLAMP（WO-DERIV-BACKFILL 2026-10-06 补）───────────────────────────────
+    // 本仓规格层用 CLAMP 表达取值域下界。**桥不认它的代价是静默的**：整条式子落进
+    // 「函数调用一律拒译」⇒ 运行期不重算，而播种期走另一条求值器（ontology-core
+    // parseFormula+evaluate）认 CLAMP ⇒ 两条路读数分叉。实测：拨 Material.leadTime
+    // 杠杆后 shortageRisk 一位不动。故 CLAMP 必须有本组断言，且 clamp 两端是**解析结果**
+    // （施加在调用方），不是在这里夹。
+    expect(
+      translateSpecFormula("CLAMP(COALESCE((this.dailyUse * this.leadTime - this.onHand - this.inTransit) * 100 / (this.dailyUse * this.leadTime), 0), 0, 100)"),
+    ).toEqual({
+      inner: "(dailyUse * leadTime - onHand - inTransit) * 100 / (dailyUse * leadTime)",
+      fallback: 0,
+      clamp: [0, 100],
+    });
+    expect(translateSpecFormula("CLAMP(this.a * 2, 0, 100)")).toEqual({ inner: "a * 2", clamp: [0, 100] });
+    // 拒译面跟着 CLAMP 一起长（注释里那句「形状不认识的仍然拒」要有对照组，否则拒译形同虚设）
+    expect(translateSpecFormula("CLAMP(a, b), 0, 100)"), "…括号不配平的串不许被当成 CLAMP").toBeNull();
+    expect(translateSpecFormula("CLAMP(COALESCE(COALESCE(this.a, 1), 0), 0, 100)")).toBeNull();
+    expect(translateSpecFormula("MAX(this.a, 0)"), "未认识的函数形态仍拒（CLAMP 是逐个教的，不是放开函数）").toBeNull();
   });
 });

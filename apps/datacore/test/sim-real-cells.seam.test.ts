@@ -68,7 +68,7 @@ describe("WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合）", () 
   }, 180_000);
 
   // ── ⓒ 接缝驱动（验收判据 7）：编译→recompute→播种→读数 整条通 ─────────────────
-  it("ⓒ 接缝驱动：26 条规格编译入库 + 物化后 measuredCells 从 470 涨到 4183（主判据 3,896 过线）", () => {
+  it(`ⓒ 接缝驱动：${A_TIER.length} 条规格编译入库 + 物化后 measuredCells 从 470 涨到 5946（主判据 3,896 过线）`, () => {
     // 前态锚点：§1 只带 3 条旧规格时 measuredCells=470（WO 实测基线，含 Customer 那条 20 格）。
     // 20 条 A 档物化 +3,221 ⇒ 3691；A⚠ 5 条（仓主 2026-09-16 ③批）再 +480（Order 150×3 +
     // MaterialBatch 24 + Model 6）⇒ 4171 ≥ 主判据 3,896（+275）。orderChurn 停笔不减格（它从未物化）。
@@ -87,8 +87,18 @@ describe("WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合）", () 
     //   这次是格子**不再被创建** —— `Model.backlogHorizonDays` 唯一的产生规则
     //   `demo_order_leaddays_to_model_horizon` 靶格改到 `Model.costPressure` ⇒ 6 个 Model 各少 1 格。
     //   ⚠ 判据落在「6」这个数与 Model 对象数一致上，不是「反正红了就改小」。
+    // ⚠ WO-DERIV-BACKFILL（2026-10-06）**加 1,763**：4183→5946。两段各自可独立复核：
+    //   ① **+1,391** = 本单 A 档 17 条新规格的物化格。独立旁证（⛔ 不是从 measuredCells 反推）：
+    //      同一分支构建的活实例播种回执两数是 **实测 5574 / 哈希占位 801**，而 5574 − 4183 = 1391；
+    //      逐条的下限另由上面 ⓑ 守着（每条规格物化数 = 该类型进世界的对象数，逐条点名）。
+    //   ② **+372** = `exceptionevent_handling_backlog`（`IF(this.status == "OPEN", 1, 0)`）把
+    //      **ExceptionEvent 全型 372 格**从哈希占位转成实测 —— 回执 `derivedCells` **801 → 429**，
+    //      Δ = −372 与对象数逐位相等；且 **429 + 5946 = 801 + 5574 = 6375** ⇒ 两段账在同一张表上闭合。
+    //   ⛔ 别把这 +1,763 读成「多铺了 1,763 格」：`totalCells` 仍是 6375。换的是**出处章**
+    //     （哈希占位 → 实测），不是格子数 —— 与上面 FORECASTBIAS 那次「同一格换出处章」同形，
+    //     而 CONSOLE-DUE-CHANGE 那次才是「格子不再被创建」。三者别混。
     expect(totalCells).toBe(6375);
-    expect(measuredCells).toBe(4183);
+    expect(measuredCells).toBe(5946);
   });
 
   // ── ⓑ 指认粒度（验收判据 ⓑ）：逐条点名物化数，红了能指出是哪一条 ─────────────────
@@ -365,8 +375,10 @@ describe("WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合）", () 
     // 复原后必须能正常播种（证明变异真的被复原，不留残毒）。
     const ok = await deriveSeedBaseSnapshot(t.repos, "demo");
     // WO-PROP-REVIEW-V2：4171→4189（+18 库存环 coverDays 格）；
-    // WO-FORECASTBIAS-RETIRE：4189→4183（−6 Model.forecastBias 格退役回哈希）。理由见 ⓒ 段注释。
-    expect(ok.origin.measuredCells).toBe(4183);
+    // WO-FORECASTBIAS-RETIRE：4189→4183（−6 Model.forecastBias 格退役回哈希）；
+    // WO-DERIV-BACKFILL：4183→**5946**（+1391 十七条规定格 / +372 ExceptionEvent 全型）。
+    // 三段账的出处与闭合关系见 ⓒ 段注释 —— ⛔ 这里只跟着改数，不在这里重述理由（第二套真相源）。
+    expect(ok.origin.measuredCells).toBe(5946);
   });
 
   // ── WO-FORECASTBIAS-RETIRE（2026-09-20）：退役必须**两处同时**干净 ──────────────────

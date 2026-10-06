@@ -74,7 +74,10 @@ export function findPricingBinding(
 /**
  * 以真对象当前 props 为上下文、把杠杆 prop 替换为 toValue，按声明式公式算出压力目标值。
  * 求值语义与 `runDerivations`（ontology.ts 规格层后算段）逐条对齐：
- * 不可译 ⇒ null；坏式子抛 ⇒ null；非有限值 ⇒ 顶层 COALESCE 兜底，无兜底 ⇒ null；结果 round 6。
+ * 不可译 ⇒ null；坏式子抛 ⇒ null；非有限值 ⇒ 顶层 COALESCE 兜底，无兜底 ⇒ null；
+ * 顶层 CLAMP 夹值（在兜底之后、round 之前）；结果 round 6。
+ * ⚠ 这两处**必须同进同退**：`findPricingBinding` 拿「可译」当准入闸，一处认一处不认
+ * ⇒ 同一个式子「能定价」却「运行期不重算」（或反之），2026-10-06 WO-DERIV-BACKFILL 实测踩过。
  */
 export function computePressureTarget(
   spec: DerivationSpecRecord,
@@ -94,6 +97,9 @@ export function computePressureTarget(
   if (!Number.isFinite(value)) {
     if (translated.fallback === undefined) return null;
     value = translated.fallback;
+  }
+  if (translated.clamp) {
+    value = Math.min(translated.clamp[1], Math.max(translated.clamp[0], value));
   }
   return round(value, 6);
 }

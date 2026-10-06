@@ -21,7 +21,7 @@ import type { PerturbationInTick } from "../src/sim/propagation.js";
 const rule = (over: Partial<PropagationRule> = {}): PropagationRule => ({
   id: "r1", tenantId: "t", key: "k1",
   sourceTypeKey: "A", sourceStateVar: "demandPressure",
-  viaLinkKey: "l", targetTypeKey: "B", targetStateVar: "demandLoad",
+  viaLinkKey: "l", targetTypeKey: "B", targetStateVar: "utilPressure",
   coefficient: 1, delayTicks: 0, combine: "sum",
   // `weightRef`(WO-COEF-FROM-BOM) 与 `description`(WO-ONTOLOGY-EDGE-EDIT · 52e17495) 是本批
   // 另外两单给契约加的字段。两者都是 `.nullable().default(null)` ⇒ **推断出的输出类型里是必填**
@@ -38,10 +38,10 @@ const graph = {
   links: [{ fromId: "a1", toId: "b1", linkKey: "l" }],
 };
 /** 源恒 50（常量入流），目标从 0 起。 */
-const state0: TickState = { a1: { demandPressure: 50 }, b1: { demandLoad: 0 } };
+const state0: TickState = { a1: { demandPressure: 50 }, b1: { utilPressure: 0 } };
 const RULE_PARAMS = { [STATE_DECAY_RULE_KEY]: { [STATE_DECAY_PARAM_KEY]: PRESSURE_DECAY_PER_TICK } };
 
-/** 连推 n 拍，返回每拍 b1.demandLoad。 */
+/** 连推 n 拍，返回每拍 b1.utilPressure。 */
 function run(n: number, domains: Record<string, never> | ReturnType<typeof stateVarDomains>, params = RULE_PARAMS) {
   let st = state0;
   let pend: Parameters<typeof propagateTick>[3] = [];
@@ -53,7 +53,7 @@ function run(n: number, domains: Record<string, never> | ReturnType<typeof state
     // 「参数传错位置」这类错整类吞掉，正是本仓「假绿」的形态。
     const r = propagateTick(graph, st, [rule()], pend, t, params, {}, [], {}, domains);
     st = r.next; pend = r.pending; last = r;
-    out.push(st.b1!.demandLoad!);
+    out.push(st.b1!.utilPressure!);
   }
   return { series: out, last: last! };
 }
@@ -90,14 +90,14 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
   // ── §2 衰减率必须**走引用**拿到（C35），拿不到要诚实报缺而不是悄悄不衰减 ──────────
   it("§2 λ 走 C35 引用；规则参数缺失 ⇒ decayUnresolved 报缺、绝不补默认", () => {
     const ok = run(1, stateVarDomains()).last;
-    expect(ok.stateVarReport.decayApplied.demandLoad).toBe(PRESSURE_DECAY_PER_TICK);
+    expect(ok.stateVarReport.decayApplied.utilPressure).toBe(PRESSURE_DECAY_PER_TICK);
     expect(ok.stateVarReport.decayUnresolved).toEqual([]);
 
     // 变异：把 C35 的参数拿掉 ⇒ 必须报缺，且**不衰减**（回到纯积分器），不许静默兜一个 λ
     const missing = run(1, stateVarDomains(), {} as never).last;
     expect(missing.stateVarReport.decayApplied).toEqual({});
     const names = missing.stateVarReport.decayUnresolved.map((x) => x.stateVar);
-    expect(names).toContain("demandLoad");
+    expect(names).toContain("utilPressure");
     expect(missing.stateVarReport.decayUnresolved[0]!.ruleKey).toBe(STATE_DECAY_RULE_KEY);
   });
 
@@ -113,20 +113,26 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
     // 它是 47 条边里**唯一**「入边≠0 且出边≠0」的压力族量纲（入 `Process.queuePressure ×0.55`、
     // 出 `→ WorkOrder.releasePressure ×0.6`）⇒ 唯一一个把无界读数**泵进下游已声明链**的口子。
     // 漏声明的实测代价（真 datacore `SEED_DEMO=1`·种子世界 tick3 分支推 6 拍）：
-    //   130/130 格越界，max **2284.49**（上界的 22.8 倍）；补上后 130/130 全部落回 [0,100]，max 97.68。
-    // ⚠ 本条与上面两行**不矛盾**：那两个不声明是因为「没有上界的出处」，
-    //   而本键与其余 31 个压力族共用同两条既有出处，一条都没新发明。
+    //   130/130 格越界，max **2284.49**（上界的 22.8 倍）。
     // ⚠ WO-PROP-V2-REBASE 收编：canonical 这枚钉子与分支的换样**同时成立**（断言的是不同的键），
     //   故两段都留、⛔ 不是「取并集」—— 取并集指的是同一条目留下状态相反的两份。
+    // 🔴 WO-DERIV-BACKFILL（2026-10-06）**只改了这一格**：`max: 100 → null`，另三项一个字节没动。
+    //   钉子的另一半（漏声明的代价）照旧成立，**但原文那句收敛判据已被换掉**，不是悄悄删：
+    //   原写「补上后 130/130 全部落回 [0,100]，max 97.68」—— 该句的前提是这格的量纲 ≤100，
+    //   而它的**真实基值本来就超过 100**：规格输出实测 **27.72–182.73**（130/130 逐位相符，
+    //   49/130 越界，见 `battery.ts` 该键那段与 `/tmp` 的 tick0 越界普查）。
+    //   ⇒ 上限拦的已不是发散，而是**真实读数**；发散改由 `min: 0` + `restPoint: 0` + λ 挡
+    //     —— 那两半各有一条驱动测试：本节 §1（有界声明 ⇒ 留在 0–100）与 §9（无界声明 ⇒
+    //     不夹上界、但稳态仍收敛到 rest+inflow/λ）。⛔ 本行不是「放宽断言」：改的是**声明**。
     expect(d.blockedPressure).toBeDefined();
     expect(d.blockedPressure!.min).toBe(0);
-    expect(d.blockedPressure!.max).toBe(100);
+    expect(d.blockedPressure!.max).toBeNull();
     expect(d.blockedPressure!.restPoint).toBe(0);
     // 声明了域**还不够**——没有 decayRef 它仍是（带夹值的）纯积分器，会稳稳顶在上界附近。
     expect(d.blockedPressure!.decayRef?.ruleKey).toBe(STATE_DECAY_RULE_KEY);
     const { last } = run(1, d);
-    expect(last.stateVarReport.declaredStateVars).toContain("demandLoad");
-    // 本图上只有 demandPressure/demandLoad 两个量纲，都已声明 ⇒ 未声明表为空但字段必须在
+    expect(last.stateVarReport.declaredStateVars).toContain("utilPressure");
+    // 本图上只有 demandPressure/utilPressure 两个量纲，都已声明 ⇒ 未声明表为空但字段必须在
     expect(Array.isArray(last.stateVarReport.undeclaredStateVars)).toBe(true);
   });
 
@@ -159,17 +165,17 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
   it("§5 金丝雀 · 深度饱和的格子上，扰动依然按可预言方向改变读数", () => {
     const d = stateVarDomains();
     // 先把 b1 顶到深度饱和（原始值远超 100）
-    const hot: TickState = { a1: { demandPressure: 50 }, b1: { demandLoad: 5000 } };
+    const hot: TickState = { a1: { demandPressure: 50 }, b1: { utilPressure: 5000 } };
     const base = propagateTick(graph, hot, [rule()], [], 0, RULE_PARAMS, {}, [], {}, d);
     const bumped = propagateTick(
-      graph, { a1: { demandPressure: 500 }, b1: { demandLoad: 5000 } }, [rule()], [], 0, RULE_PARAMS, {}, [], {}, d,
+      graph, { a1: { demandPressure: 500 }, b1: { utilPressure: 5000 } }, [rule()], [], 0, RULE_PARAMS, {}, [], {}, d,
     );
     // 源 ×10 ⇒ 目标读数必须**更大**（而不是两者都钉在 100）
-    expect(bumped.next.b1!.demandLoad!).toBeGreaterThan(base.next.b1!.demandLoad!);
-    expect(bumped.next.b1!.demandLoad!).toBeLessThan(100);
+    expect(bumped.next.b1!.utilPressure!).toBeGreaterThan(base.next.b1!.utilPressure!);
+    expect(bumped.next.b1!.utilPressure!).toBeLessThan(100);
     // 且这次饱和必须被披露，不许静默夹住
-    expect(base.stateVarReport.saturations.some((s) => s.objectId === "b1" && s.stateVar === "demandLoad")).toBe(true);
-    const ev = base.stateVarReport.saturations.find((s) => s.stateVar === "demandLoad")!;
+    expect(base.stateVarReport.saturations.some((s) => s.objectId === "b1" && s.stateVar === "utilPressure")).toBe(true);
+    const ev = base.stateVarReport.saturations.find((s) => s.stateVar === "utilPressure")!;
     expect(ev.raw).toBeGreaterThan(100); // 原始值原样留在回执里，一个字节都不丢
     expect(ev.value).toBeLessThan(100);
     expect(ev.bound).toBe("max");
@@ -209,7 +215,7 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
     /** λ=0 = **显式**要纯积分器（引擎注释：「尊重它」）⇒ 衰减相一格不碰，动了就只能是饱和相。 */
     const NO_DECAY = { [STATE_DECAY_RULE_KEY]: { [STATE_DECAY_PARAM_KEY]: 0 } };
 
-    /** 连推 n 拍，回 (a1.demandPressure, b1.demandLoad) 两条轨迹。 */
+    /** 连推 n 拍，回 (a1.demandPressure, b1.utilPressure) 两条轨迹。 */
     function drive(n: number, st0: TickState, params: typeof RULE_PARAMS) {
       let st = st0;
       let pend: Parameters<typeof propagateTick>[3] = [];
@@ -217,7 +223,7 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
       for (let t = 0; t < n; t++) {
         const r = propagateTick(graph, st, [rule()], pend, t, params, {}, [], {}, d);
         st = r.next; pend = r.pending;
-        src.push(st.a1!.demandPressure!); tgt.push(st.b1!.demandLoad!);
+        src.push(st.a1!.demandPressure!); tgt.push(st.b1!.utilPressure!);
         satCount.push(r.stateVarReport.saturations.length);
       }
       return { src, tgt, satCount };
@@ -225,7 +231,7 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
 
     it("§7.0 🐤 非空金丝雀 · 本夹具里确实存在入度 0 的已声明量纲（否则 §7.1 什么都没测）", () => {
       const written = new Set([rule().targetStateVar]);
-      const exogenous = ["demandPressure", "demandLoad"].filter((v) => !written.has(v) && d[v] !== undefined);
+      const exogenous = ["demandPressure", "utilPressure"].filter((v) => !written.has(v) && d[v] !== undefined);
       expect(exogenous).toEqual(["demandPressure"]); // 入度 0 且已声明 ⇒ 非空
       // 且它高侧真的有压缩带（带宽为 0 的量纲根本不会出现本单的病）
       expect((d.demandPressure!.max! - d.demandPressure!.restPoint) * 0.25).toBe(25);
@@ -233,16 +239,16 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
 
     it("§7.1 外生量纲（入度 0）：合法值零漂移，超界值**只夹一次**且保序", () => {
       // 合法值 80 ∈ (kneeHi,max]：修前 12 拍漂到 76.470588235293，修后必须逐拍恒 80。
-      const legal = drive(12, { a1: { demandPressure: 80 }, b1: { demandLoad: 0 } }, RULE_PARAMS);
+      const legal = drive(12, { a1: { demandPressure: 80 }, b1: { utilPressure: 0 } }, RULE_PARAMS);
       expect(new Set(legal.src)).toEqual(new Set([80]));
 
       // 🐤 对照臂：拐点下的 74 修前修后**逐字节不变** —— 证明带内行为一个字节没动。
-      const ctrl = drive(12, { a1: { demandPressure: 74 }, b1: { demandLoad: 0 } }, RULE_PARAMS);
+      const ctrl = drive(12, { a1: { demandPressure: 74 }, b1: { utilPressure: 0 } }, RULE_PARAMS);
       expect(new Set(ctrl.src)).toEqual(new Set([74]));
 
       // 超界 150 / 200：第 1 拍各夹一次进域内，此后恒定（幂等）。
-      const a150 = drive(12, { a1: { demandPressure: 150 }, b1: { demandLoad: 0 } }, RULE_PARAMS);
-      const a200 = drive(12, { a1: { demandPressure: 200 }, b1: { demandLoad: 0 } }, RULE_PARAMS);
+      const a150 = drive(12, { a1: { demandPressure: 150 }, b1: { utilPressure: 0 } }, RULE_PARAMS);
+      const a200 = drive(12, { a1: { demandPressure: 200 }, b1: { utilPressure: 0 } }, RULE_PARAMS);
       expect(a150.src[0]).toBeCloseTo(93.75, 10);
       expect(a200.src[0]).toBeCloseTo(95.833333333333, 10);
       expect(new Set(a150.src)).toEqual(new Set([a150.src[0]]));   // 夹过就不再动
@@ -256,13 +262,13 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
     });
 
     it("§7.2 零入流累加器（入度>0 · λ=0 · inflow=0）：12 拍逐字节不动 —— 豁免修法在这里必红", () => {
-      // 源恒 0 ⇒ 贡献 = 1×0 = 0；λ=0 ⇒ 衰减相跳过 ⇒ 本拍**没有任何相位**动过 b1.demandLoad。
+      // 源恒 0 ⇒ 贡献 = 1×0 = 0；λ=0 ⇒ 衰减相跳过 ⇒ 本拍**没有任何相位**动过 b1.utilPressure。
       // 修前：80 → 76.470588235293，且每拍都记一次饱和事件（零动力学的暗流）。
-      const r = drive(12, { a1: { demandPressure: 0 }, b1: { demandLoad: 80 } }, NO_DECAY);
+      const r = drive(12, { a1: { demandPressure: 0 }, b1: { utilPressure: 80 } }, NO_DECAY);
       expect(new Set(r.tgt)).toEqual(new Set([80]));
       expect(r.satCount.reduce((a, b) => a + b, 0)).toBe(0); // 一次饱和都不该发生
       // 金丝雀：同一装置在**有**入流时照样会饱和（否则上一行只是"装置坏了"）
-      const hot = drive(1, { a1: { demandPressure: 5000 }, b1: { demandLoad: 80 } }, NO_DECAY);
+      const hot = drive(1, { a1: { demandPressure: 5000 }, b1: { utilPressure: 80 } }, NO_DECAY);
       expect(hot.satCount[0]).toBeGreaterThan(0);
     });
 
@@ -301,17 +307,17 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
   describe("§8 WO-HOLD-PERTURBATION · 生效期内的落点每拍按声明重施", () => {
     const d = stateVarDomains();
     /** 源恒 0 ⇒ 规则每拍贡献 0 ⇒ 目标格上**只剩衰减一个力**（判据一：不然测不出因果）。 */
-    const prePert: TickState = { a1: { demandPressure: 0 }, b1: { demandLoad: 60 } };
+    const prePert: TickState = { a1: { demandPressure: 0 }, b1: { utilPressure: 60 } };
     const pert = (over: Partial<Perturbation> = {}): PerturbationInTick => ({
       id: "p1", tenantId: "t", sessionId: "s",
       kind: "demand_shift",
-      targetObjectId: "b1", targetStateVar: "demandLoad",
+      targetObjectId: "b1", targetStateVar: "utilPressure",
       startTick: 1, durationTicks: null, magnitude: 30, mode: "delta",
       label: "测试用：目标格 +30", createdAt: "2026-01-01T00:00:00.000Z",
       ...over,
     });
 
-    /** 连推 n 拍，回 b1.demandLoad 轨迹 + 每拍重施/未重施的格数（**披露字段**，不是内部变量）。 */
+    /** 连推 n 拍，回 b1.utilPressure 轨迹 + 每拍重施/未重施的格数（**披露字段**，不是内部变量）。 */
     function drive(n: number, ps: PerturbationInTick[], from: TickState = prePert): { series: number[]; held: number[]; unresolved: number[] } {
       let st = from;
       let pend: Parameters<typeof propagateTick>[3] = [];
@@ -319,7 +325,7 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
       for (let t = 0; t < n; t++) {
         const r = propagateTick(graph, st, [rule()], pend, t, RULE_PARAMS, {}, ps, {}, d);
         st = r.next; pend = r.pending;
-        series.push(st.b1!.demandLoad!);
+        series.push(st.b1!.utilPressure!);
         held.push(r.stateVarReport.heldPerturbations.length);
         unresolved.push(r.stateVarReport.heldUnresolved.length);
       }
@@ -328,10 +334,10 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
     /** 无扰动臂的轨迹 —— **同一次 drive**，不是抄来的常数。下面每条都拿它当基准。 */
     const CONTROL = drive(4, []).series;
 
-    it("§8.0 🐤 前置金丝雀 · demandLoad 确实是「会被衰减」的那一类（否则本段什么都没测）", () => {
+    it("§8.0 🐤 前置金丝雀 · utilPressure 确实是「会被衰减」的那一类（否则本段什么都没测）", () => {
       // ① 它是某条规则的 target ⇒ 进 writtenVars（衰减相只碰这一类）；② 它有域声明且 λ 解析得出。
-      expect(rule().targetStateVar).toBe("demandLoad");
-      expect(d.demandLoad).toBeDefined();
+      expect(rule().targetStateVar).toBe("utilPressure");
+      expect(d.utilPressure).toBeDefined();
       // 无扰动 ⇒ 一格不重施，且它自己就在散：60 → 37.8 → 23.814 → 15.00282
       const { series, held, unresolved } = drive(3, []);
       expect(held).toEqual([0, 0, 0]);
@@ -366,7 +372,7 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
       //   —— 「落地一次」与「每拍重施」在这个夹具上给出逐位相同的轨迹，断言恒真。
       //   形态：「我用『这条断言在正确实现下通过』当作『它抓得住错误实现』的证据」。
       //   金丝雀就在下面一行：有入流时两版必然分开（57.7 vs 58.2），无入流时分开不了。
-      const from: TickState = { a1: { demandPressure: 1 }, b1: { demandLoad: 60 } };
+      const from: TickState = { a1: { demandPressure: 1 }, b1: { utilPressure: 60 } };
       const ctl = drive(3, [], from).series;
       const { series } = drive(3, [pert({ mode: "scale", magnitude: 1.5 })], from);
       // 判据：整条轨迹 = 自然轨迹 ×1.5。入流若被排除在缩放之外（落地一次的旧行为），第一拍就是 57.7 ≠ 58.2。
@@ -379,9 +385,46 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
       const r = propagateTick(graph, prePert, [rule()], [], 0, RULE_PARAMS, {}, [], {}, d);
       expect(r.stateVarReport.heldPerturbations).toEqual([]);
       expect(r.stateVarReport.heldUnresolved).toEqual([]);
-      expect(r.next.b1!.demandLoad).toBe(37.8);
+      expect(r.next.b1!.utilPressure).toBe(37.8);
       // 判据落在**值**上而不是清单上：清单为空可能只是"没登记"，值不动才说明真的没碰。
-      expect(JSON.stringify(r.next)).toBe(JSON.stringify({ ...prePert, b1: { demandLoad: 37.8 } }));
+      expect(JSON.stringify(r.next)).toBe(JSON.stringify({ ...prePert, b1: { utilPressure: 37.8 } }));
     });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // §9 WO-DERIV-BACKFILL · `max: null` 的语义：**上界真的没了，λ 那一半一个字节没丢**
+  //
+  // 本单把 9 格从压力族名单移出、改声明 `max: null`，判据是**式子的分母是产能/额度、不是占比**：
+  // 件÷日产能、元÷授信额度这些量，分子超过分母是**真实业务状态**（超负荷接单 / 应收超授信），
+  // 实测基值就落在 100 以上（`Line.blockedPressure` 27.72–182.73、`Base.loadIndex` 74.18–552.02），
+  // 原先一律盖 `max: 100` 是把真实读数夹成 100。
+  //
+  // ⚠ 上面 §1–§8 的夹具**已改钉到仍有上界的 `utilPressure`**（原先钉在 `demandLoad` 上）——
+  //   那份「声明后留在 0–100 内」的断言是 WO-PROP-CLAMP 的核心，**不许为了本单把它放宽**，
+  //   换一个仍然有界的样本，牙就还在。本节补的才是新语义自己那一半。
+  //
+  // 判据落在一个能**闭式手算**的数上（铁律 1.5 判据一）：`x(t+1) = rest + (1−λ)x(t) + inflow`
+  // （propagation.ts 衰减相原文）⇒ 稳态 `rest + inflow/λ`；rest=0、入流 50、λ=0.37 ⇒ **50/0.37**。
+  // ══════════════════════════════════════════════════════════════════════════
+  it("§9 `max: null` ⇒ 不夹上界、稳态仍是可手算的有限值 rest + inflow/λ", () => {
+    const d = stateVarDomains();
+    expect(d.demandLoad?.max, "本臂前提：demandLoad 已改无界声明（若拍回 100，本臂退化成 §1）").toBeNull();
+    expect(d.demandLoad?.restPoint).toBe(0);
+    const unbounded = rule({ targetStateVar: "demandLoad" });
+    let st: TickState = { a1: { demandPressure: 50 }, b1: { demandLoad: 0 } };
+    let pend: Parameters<typeof propagateTick>[3] = [];
+    let last: ReturnType<typeof propagateTick> | null = null;
+    // 40 拍：离稳态的距离是 0.63⁴⁰ ≈ 9.4e−9（手算得出），足够把稳态读到 4 位。
+    for (let t = 0; t < 40; t++) {
+      const r = propagateTick(graph, st, [unbounded], pend, t, RULE_PARAMS, {}, [], {}, d);
+      st = r.next; pend = r.pending; last = r;
+    }
+    const v = st.b1!.demandLoad!;
+    expect(v, "上界还在（读数被压回 100 以内）⇒ 本单的 max:null 没落到引擎里").toBeGreaterThan(100);
+    expect(v, "稳态 ≠ rest + inflow/λ ⇒ 无界那一半改了，衰减那一半也被动了").toBeCloseTo(50 / PRESSURE_DECAY_PER_TICK, 4);
+    expect(
+      last!.stateVarReport.saturations.some((s) => s.stateVar === "demandLoad"),
+      "无界声明不该再报上界饱和（报了就是把 null 当成了某个数在夹）",
+    ).toBe(false);
   });
 });

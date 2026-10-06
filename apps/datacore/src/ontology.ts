@@ -174,30 +174,57 @@ export function evalArithmetic(expr: string, props: Record<string, unknown>): nu
  * 明写「不互通」。本桥只译**自属性式子**（语义 1:1，与该头注同一判据）：
  * - `this.` 前缀机械剥离；
  * - 顶层 `COALESCE(inner, <数字>)` ⇒ inner 求值非有限（除零/NaN）时取 fallback；
+ * - 顶层 `CLAMP(inner, <数字>, <数字>)` ⇒ 同 fallback 之约，两端交**调用方**施加（本桥只解析）；
  * - 含 `out(`/`in(` 单跳导航聚合 ⇒ 返回 null（运行期不译，调用方诚实跳过——
  *   这类式子需要链路求值器，翻过来就是编造口径）；
  * - 嵌套/非顶层 COALESCE、括号不配平 ⇒ 返回 null（不猜）。
+ *
+ * ⛔ **CLAMP 一度是本桥的盲区，代价 2026-10-06 实测过一次**（WO-DERIV-BACKFILL）：
+ *   它落进下面那句「函数调用一律拒译」⇒ 整条规格静默降级成「运行期不重算」，
+ *   于是播种期物化（走 `OntologyCore.recompute` 的**另一个**求值器，认 CLAMP）与运行期
+ *   （本桥）**读数分叉**：拨 `Material.leadTime` 杠杆，屏上报「已采纳」，而 `shortageRisk`
+ *   **一位都不动** —— 正是 R3′ 那条接缝门要咬的病，只不过这次病因在桥上不在执行器上。
+ *   形态：「**我拿『式子写对了』当作『式子会生效』的证据，而两条求值路各自认哪几种形状，
+ *   没有任何东西在守。**」⇒ 规格层每加一种形状，必须**同时**教本桥认它。
  */
-export function translateSpecFormula(formula: string): { inner: string; fallback?: number } | null {
+export function translateSpecFormula(formula: string): {
+  inner: string;
+  fallback?: number;
+  /** 取值域夹值两端（`CLAMP` 的两个界）；由调用方施加，与 fallback 同一约定。 */
+  clamp?: readonly [number, number];
+} | null {
   if (/\b(?:out|in)\s*\(/.test(formula)) return null;
   // 函数调用一律拒译（evalArithmetic 只识数字/标识符/四则/括号）：spec 方言里聚合只剩
   // AVG/SUM(out|in(...))，已被上一行拦住；这里兜底 COUNT/MAX 等他方言串与不认识的形状，
   // 译出去就是编造口径。判据 = 「标识符紧跟 (」；纯分组括号（前头是运算符或串首）不误伤。
   const hasCall = (s: string) => /[A-Za-z_][A-Za-z0-9_.]*\s*\(/.test(s);
+  const balanced = (s: string) =>
+    (s.match(/\(/g) ?? []).length === (s.match(/\)/g) ?? []).length;
+  /** 剥壳后的自属性体 → {inner, fallback}；调用/嵌套 COALESCE/括号不配平 ⇒ null。 */
+  const body = (s: string): { inner: string; fallback?: number } | null => {
+    const m = s.match(/^COALESCE\((.*),\s*(-?\d+(?:\.\d+)?)\)$/s);
+    if (m) {
+      const inner = m[1]!;
+      if (/COALESCE\s*\(/.test(inner)) return null;
+      if (hasCall(inner)) return null;
+      if (!balanced(inner)) return null;
+      return { inner, fallback: Number(m[2]) };
+    }
+    if (/COALESCE\s*\(/.test(s)) return null;
+    if (hasCall(s)) return null;
+    return { inner: s };
+  };
   const stripped = formula.replace(/\bthis\./g, "");
-  const m = stripped.match(/^COALESCE\((.*),\s*(-?\d+(?:\.\d+)?)\)$/s);
-  if (m) {
-    const inner = m[1]!;
-    if (/COALESCE\s*\(/.test(inner)) return null;
-    if (hasCall(inner)) return null;
-    const opens = (inner.match(/\(/g) ?? []).length;
-    const closes = (inner.match(/\)/g) ?? []).length;
-    if (opens !== closes) return null;
-    return { inner, fallback: Number(m[2]) };
+  // CLAMP(<体>, lo, hi)：贪婪 `.*` 配 `$` 锚点 ⇒ 只可能切在最后的 `, lo, hi)` 上；
+  // 但 `CLAMP(a,b),0,100)` 这类不配平的串同样能匹配 ⇒ 必须补一次括号配平（同 COALESCE 那条）。
+  const c = stripped.match(/^CLAMP\((.*),\s*(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)\)$/s);
+  if (c) {
+    if (!balanced(c[1]!)) return null;
+    const inner = body(c[1]!);
+    if (inner === null) return null;
+    return { ...inner, clamp: [Number(c[2]), Number(c[3])] as const };
   }
-  if (/COALESCE\s*\(/.test(stripped)) return null;
-  if (hasCall(stripped)) return null;
-  return { inner: stripped };
+  return body(stripped);
 }
 
 function primaryKeyProp(type: ObjectTypeDef): string {
@@ -1638,6 +1665,11 @@ export class OntologyService {
             if (!Number.isFinite(value)) {
               if (translated.fallback === undefined) continue;
               value = translated.fallback;
+            }
+            // CLAMP 的两端在**最外层**（式子本体先算完、兜底再算完，才轮到夹值）——
+            // 与 `ontology-dsl` §2.4 的求值次序一致，否则两条路会在边界值上分叉。
+            if (translated.clamp) {
+              value = Math.min(translated.clamp[1], Math.max(translated.clamp[0], value));
             }
             value = round(value, 6);
             if (obj.props[s.targetProp] !== value) {
