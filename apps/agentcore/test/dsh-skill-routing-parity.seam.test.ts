@@ -35,7 +35,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { fileURLToPath } from "node:url";
-import type { SkillDefinition } from "@platform/contracts";
+import type { SkillCapability, SkillDefinition } from "@platform/contracts";
 import { buildSkillSection } from "../src/agent/prompts.js";
 import { rankSkills, lexTokens } from "../src/agent/skill-router.js";
 import { selectTenantSkills } from "../src/router/orchestrator.js";
@@ -458,7 +458,12 @@ function synthSkills(n: number): SkillDefinition[] {
       `synth_${i}`,
       `第${i}号触发器：当用户问${topics[i % topics.length]}相关口径时使用`,
       `BODY-${i}`,
-      { id: `skl_synth_${i}`, name: `合成技能${i}`, capability: ["analysis", "planning", "quality"][i % 3] },
+      // ⚠ `"quality"` **不在** `SkillCapabilitySchema`（7 成员）里 —— 这里只收窄类型、**不改值**：
+      // 合成夹具的 capability 在运行期只作**词元**参与打分（`agent/skill-router.ts` 的 lexTokens，
+      // 本文件 :327/:332 自己重算了同一条路），值是**承重**的。
+      // 实测：把 `"quality"` 换成合法成员 `"optimization"`，§3 的 `handScore` 第一名与第二名之差
+      // 从 >0.05 掉到 **0.0399**，该用例当场转红 ⇒ 「换个合法成员就行」是错的。
+      { id: `skl_synth_${i}`, name: `合成技能${i}`, capability: ["analysis", "planning", "quality"][i % 3] as SkillCapability },
     ),
   );
 }

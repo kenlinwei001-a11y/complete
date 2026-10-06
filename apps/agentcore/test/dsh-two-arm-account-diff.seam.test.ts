@@ -112,7 +112,9 @@ const REAL = {
   baseUrl: REAL_BASE,
   apiKey: REAL_KEY,
   model: REAL_MODEL,
-  kind: REAL_KIND,
+  // 显式收窄：`REAL_KIND` 是 `"anthropic" | "openai_compatible"`，但裸对象字面量会把属性**加宽成 `string`**，
+  // 于是下面 `const provider: LlmProvider = { kind: REAL.kind, … }` 报 TS2322。收窄在定义处一次，好过每处调用点各转一次。
+  kind: REAL_KIND as LlmProvider["kind"],
   enabled: typeof REAL_KEY === "string" && REAL_KEY.length > 0 && typeof REAL_BASE === "string" && REAL_BASE.length > 0,
 };
 
@@ -257,7 +259,9 @@ describe("WO-TWO-ARM-ACCOUNT-DIFF · §1-a③ 同 task 双臂 token 账对照（
           repos: createMemoryRepos(),
           config,
           metrics: new Metrics(),
-          directory,
+          // `stubDirectory` 只造接缝用得到的那 3 个成员，而 `DataCoreProviderDirectory` 有 17 个；
+          // 与下面 `providerDirectory: directory as never` 同一处既有约定，别在这里另发明一套。
+          directory: directory as never,
         });
         const t: TestApp = await createTestApp({
           llm: new RoutingLlmClient(registry),
