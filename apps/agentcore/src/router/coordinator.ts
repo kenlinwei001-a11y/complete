@@ -1,5 +1,6 @@
-import type { Answer, AnswerBlock, CoordinatorPlan, PageContext, RoleDispatch } from "@platform/contracts";
+import type { Answer, AnswerBlock, CoordinatorPlan, PageContext, ProvenanceRef, RoleDispatch } from "@platform/contracts";
 import { AGENT_ROLE_ORDER } from "@platform/contracts";
+import { scanBlocks } from "../util/numerics.js"; // 数字红线单源判据（交付出口据实判定·见 synthesize 内注）
 import { roleProfile } from "../mocks/seed.js";
 import { roleSystemFragment } from "../agent/prompts.js";
 import { pageContextSummary } from "../agent/prompts.js";
@@ -289,18 +290,27 @@ export function synthesize(plan: CoordinatorPlan, answers: RoleAnswerInput[]): A
     markdown: `**跨域协调（Coordinator）**：${plan.trigger}。已分派 ${answers.length} 个角色协作作答，汇总如下。`,
   });
 
+  // ★ 数字红线（本函数是 Coordinator 路的**交付出口**）：下面每块里嵌的是各角色 agent（**走 LLM**）的
+  //   产出文本，**逐字上屏**（无过滤、无模板加工）。故这一路的 `unverifiedNumerics` 必须**拿这些块真算**，
+  //   不能写死 —— 实测（引擎级真跑）：角色答里的裸数（如「缺口 1200 台」）与指空指针（角色答里的
+  //   `⟦ref:0⟧` 指向**它自己那张** provenance 表，而本答案的表是空的）都会原样进交付面，
+  //   而写死的 `false` 会把两者都报成「已注明出处」。
+  //   `scanBlocks` 是**单源判据**（`util/numerics.ts`，与原生路/dsh 路同一个函数）。
+  const roleBlocks: AnswerBlock[] = [];
   const signals: Record<string, "风险" | "良好" | "中性"> = {};
   for (const a of answers) {
     const label = ROLE_LABELS[a.role] ?? a.role;
     const scopeBadge = a.scope.allBases ? "全域" : `基地[${a.scope.baseIds.join(",") || "行级过滤"}]`;
     signals[a.role] = riskSignal(a.answerText);
-    blocks.push({
+    const block: AnswerBlock = {
       type: "text",
       markdown:
         `### 【${label}】 ⟨scope: ${scopeBadge} · 对象域: ${a.objectTypes.join("/") || "全域"}⟩\n` +
         `**子问**：${a.subQuestion}\n\n` +
         `**${label} agent（${a.agentId}）作答**：${a.answerText || "（无文本结论）"}`,
-    });
+    };
+    blocks.push(block);
+    roleBlocks.push(block);
   }
 
   const kinds = new Set(Object.values(signals));
@@ -313,5 +323,14 @@ export function synthesize(plan: CoordinatorPlan, answers: RoleAnswerInput[]): A
       : `**综合结论**：各角色作答如上，未见互相冲突的判断。`;
   blocks.push({ type: "text", markdown: `---\n${consensusLine}\n\n_每角色结论均来自其专职 agent 在自身 scope 内的取证（越界已被拒）。_` });
 
-  return { trustLevel: "AGENT_EXPLORATORY", blocks, provenance: [], unverifiedNumerics: false };
+  // R13：本答案的 provenance 表**恒为空**（各角色的取证留在各自那一次 agent 运行的审计里，
+  // 本函数不把它们并表、也不重编号 ⟦ref:N⟧）。故 `provenanceCount` 取 0 = 「交付面上这张表是空的」——
+  // 角色答里的 `⟦ref:N⟧` 在本答案里**指不出任何东西**，据实按指空处理。
+  // ⚠ 扫的面是**角色答那几块**，不是全部 blocks：首尾两块是本函数**确定性模板**（我们自己写的字），
+  //   `已分派 N 个角色` 里的 N 是角色计数不是业务数字 —— 若把它算进扫描面，则每个 Coordinator 答案
+  //   **恒**判 true（实测：仅脚手架那句即触发），这个诚实标就退化成恒真、零信息。
+  const provenance: ProvenanceRef[] = [];
+  const unverifiedNumerics = scanBlocks(roleBlocks, provenance.length);
+
+  return { trustLevel: "AGENT_EXPLORATORY", blocks, provenance, unverifiedNumerics };
 }
