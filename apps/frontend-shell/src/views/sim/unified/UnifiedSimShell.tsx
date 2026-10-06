@@ -895,7 +895,13 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
             className={styles.tab}
             data-testid={`usim-status-${a.target.toLowerCase()}`}
             disabled={!enabled || statusM.isPending}
-            title={enabled ? a.hint : "先要有一个会话，才谈得上迁移它的状态"}
+            // ⛔ 不用原生 `title=` 承载口径（R-UI-3）：它是 runtime 三元，落在
+            //   `provenance-popover-legibility` 的「解析不到」档里，棘轮 33→34 当场红。
+            //   该门自己给的正解 = 「改成浮层内的可见文字或 aria-label」，此处取后者。
+            //   ⚠ 无障碍名必须**以可见标签开头**（WCAG 2.5.3 标签在名称里）——所以是 `${a.label}·…`，
+            //     不是把 hint 单独塞进去。
+            //   会话缺失时的可见说明另有出处（同屏 `usim-status-absent` 那句），故这里不丢可见信息。
+            aria-label={enabled ? `${a.label}·${a.hint}` : `${a.label}·先要有一个会话，才谈得上迁移它的状态`}
             onClick={() => {
               say(`请求把会话迁到「${a.target}」`);
               statusM.mutate(a.target);
