@@ -1,0 +1,23 @@
+=== Base.loadIndex + Line.utilPressure 语义归位 · 验收 ===
+改动：STATE_VAR_SEMANTICS 增两行（Base|loadIndex / Line|utilPressure = DEVIATION）
+build rc=0 ✓
+
+### 判据：tick0 全量扫（4052 重启后）
+  量名                     格数     非0格数 改前
+  loadIndex              13        0 13（全非0）
+  utilPressure          130        0 130（全非0）
+  costPressure          156        0 0（保持）
+
+### ★ 同一次扫描暴露：我的清单不完整
+  demandPressure        150      148 ← 也在 world-read.ts:119 有偏离读消费端，却没进我的清单
+  shortageRisk          158      147 ← 待定（无偏离读消费端）
+  queuePressure         650      650 ← 待定
+
+### 清单为何漏了 demandPressure
+  我的 14 格清单来自「传导规则 × 派生规格」交集（WO-AB-DUALWRITER-census）。
+  而 order_demand_pressure：**有规格产水平值，但没有传导规则** ⇒ 被那个交集筛掉。
+  ⇒ 它仍然满足本病的全部条件（规格产水平 + 消费端按偏离读），**只是没有第三只手来打架**，
+    所以它不像 Order.costPressure 那样在屏上打出假信号 —— 但『静息态被播成非0』这件事是一样的。
+
+  ⇒ **真正的清单应按「有按偏离读的消费端 ∩ 有规格产水平值」出，不是按『有没有传导规则』。**
+    本单的 14 格清单口径偏窄，**已如实标注，不算数**。

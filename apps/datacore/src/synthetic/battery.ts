@@ -4126,6 +4126,15 @@ export const STATE_VAR_SEMANTICS: Record<string, "LEVEL" | "DEVIATION"> = {
   //    及其下游全部订单。未发作是因为它的 base 2.93 未越 `knee=75`（`world-projection.ts` 的压缩支）
   //    ——**不是因为它健康**：同构的 `Order.costPressure` base 90.38 越了 knee 就在屏上打出 8.09 假信号。
   "Model|costPressure": "DEVIATION",
+  // 裁定依据：`world-read.ts:105` 投影规则按偏离读 ——
+  //   `formula: "可用产能' = 产能 ×（1 − 负荷指数 ÷ divisor）"`（按偏离）而
+  //   `source: "负荷指数按定义就是产能已被占用的比例"`（按水平）⇒ **同一条规则里两个语义打架**。
+  //   域表 `restPoint = 0` 站"偏离"一侧 ⇒ 播种该播 0（改前播的是水平 97.5181）。
+  //   ⚠ 它一直没被发现的原因：该公式在水平语义下**碰巧**也给合理结果
+  //     （`1 − 0.975 = 0.025` ⇒ 报"可用产能 2.5%"，看起来对），于是没人追。
+  "Base|loadIndex": "DEVIATION",
+  // 同 `loadIndex`（`world-read.ts:112`，`可用产能' = 产能 ×（1 − 利用率压力 ÷ divisor）`）。
+  "Line|utilPressure": "DEVIATION",
 };
 
 /** `(类型,变量)` → 量纲语义（未登记 → `LEVEL` = 保持现状）。全平台唯一入口，⛔ 不许在调用侧另写缺省。 */
