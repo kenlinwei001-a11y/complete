@@ -60,3 +60,61 @@ C 登记的验收判据「`ZERO=1` 臂恒 90.384615384615 且 saturations 恒空
 2. **第 2 步**：接第 3 处的守卫（C2 跳过 `DEVIATION`）
 3. **第 3 步**：接第 2 处的播种值
 4. 每步后跑 §五 判据；任一步判据不达 ⇒ 停，不叠加
+
+---
+
+## 七、执行决策（自决，附理由）
+
+**4051 保持原样不动，另起 4052 装改后代码。** 理由：
+1. 4051 进程内存里是**改前**旧代码（rebuild 不影响已加载进程）⇒ 天然是「改前臂」，零成本
+2. 已入册 435 件证据全部以 4051 行为为准（82.291509 / 90.384615 / 拐点悬崖表）；
+   **重启它会毁掉这些证据的可复现性基础** —— 而 C 判据①的反证（"只改系数应无效应"）
+   恰恰需要「改前行为」还在场
+3. 重启 4051 **不可逆**；起 4052 **可逆**
+⇒ 天然 A/B：**4051 = 改前臂，4052 = 改后臂**，同一探针脚本打两边。
+  这比"改前跑一遍记下、改后再跑一遍"强：后者靠记忆，前者靠同时在场。
+
+**⚠ 第 2 步与第 3 步必须同批：** 只做第 2 步（C2 跳过 DEVIATION 格）会让零臂的
+`−λx` 与 `+λ·base` 失去抵消 ⇒ 88.38 指数衰减到 0 ⇒ 中间态是坏的。
+⇒ 两步同一提交、同一批验证。判据不达 ⇒ 整批回退，不叠加。
+
+---
+
+## 八、第 2+3 步的精确改法（落盘，待接续）
+
+### 改点 A · 播种值（`seed-world.ts:492-497`）
+
+```js
+:492  const real = o.props[v];                      // props.costPressure = 115
+:493  if (typeof real === "number" && Number.isFinite(real)) {
+:494    row[v] = real;                               // ← 改点：DEVIATION 格这里该写 restPoint
+:495    originRow[v] = "measured";                  // ← ⚠ 未决（见下）
+:497    measuredCells += 1; measuredVarKeys.add(…); measuredRefVarKeys.add(…)
+:544  const tick0Ledger = projectWorldCells(state, tick0Start, domains);   // 115 → 90.3846
+```
+
+拟改：`:494` 前插入分支 —— `stateVarSemantics(typeKey, v) === "DEVIATION"` 时
+`row[v] = domains[v].restPoint`（**⚠ 取不到 restPoint 不许退回 0**，须点名）。
+
+**⛔ 未决（动手前必须先读，不许猜）：**
+1. **`originRow[v]` 该标什么？** 现在标 `"measured"` = "值来自对象实测属性"。
+   改成 `restPoint` 后值不再来自实测 ⇒ **继续标 `measured` 就是在出处上写假话**，
+   而"出处说假话"正是本单在治的病。须先读 `CellOrigin` 的档位定义与出处章的消费侧。
+2. **`measuredCells` / `measuredVarKeys` / `measuredRefVarKeys` 三个计数** 在该格上是否仍该计？
+   它们喂给 `stateVarReport`（`mergeStateVarDisclosure`）与 `GET /sim/view-config` 的出处展示。
+3. **`Order.costPressure` 的 `props` 值 115 是否仍有别的消费者**（屏？本体面？）。
+   若有，改播种值是否会让"本体面 115 / 世界态 0"两处不一致 —— 那是新的一种名实分家。
+
+### 改点 B · C2 守卫（`spec-base-synthesis.ts:86-98`）
+
+拟改：把「`stateVarValueRef(tk, sv) !== undefined`」这一道守卫**升级**为
+「`stateVarSemantics(tk, sv) === "LEVEL"`」⇒ `DEVIATION` 格跳过 C2（其锚已是 `restPoint`，
+C2 对它是恒等变换）。
+
+**⚠ 与改点 A 必须同批**（见 §七）：只做 B 会让零臂失去 `−λx` 与 `+λ·base` 的抵消。
+
+### 动手前置（⛔ 顺序不可颠倒）
+
+1. 读 `CellOrigin` 定义 → 定 `originRow` 该标什么（**这是本单"不许出处说假话"纪律的直接要求**）
+2. 查 `props.costPressure` 的非世界态消费者 → 定改播种值会不会造出新的名实分家
+3. 两步同一提交 → build（rc 必落盘）→ 起 4052 → 跑 §五 四条判据（4051 作改前对照臂同时在场）
