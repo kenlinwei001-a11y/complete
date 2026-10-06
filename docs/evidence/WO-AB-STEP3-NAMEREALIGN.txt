@@ -1,0 +1,23 @@
+=== ③ props.costPressure 名实归位 · 验收 ===
+改法：规格 specKey order_cost_pressure → order_credit_utilization，落点 targetProp costPressure → creditUtilization
+      并移除 STATE_VAR_VALUE_REFS 的 Order|costPressure 绑定（⛔ 移除绑定 ≠ 退役规格，规格还在还在物化）
+      引用面实测仅 3 处（规格定义 / valueRef 登记 / 注释），改名安全
+
+### 判据1 · props 名实（4052 重启后实测，GET /a/v1/objects/Order/obj_order_SO-3391）
+  必然命中的对照（证解析正确）: leadDays=14 · creditUsedRatio=1.15 · qty=7259 · unitPrice=22198 ✓
+  costPressure      = <不存在>   ✓ 「成本压力」这个名字不再装授信占用率
+  creditUtilization = 115        ✓ 值回到名字正确的位置
+  props 全部键 = bases,businessType,creditUsedRatio,creditUtilization,cust,customerId,demandDelta,
+                 demandPressure,due,dueMonth,early,leadDays,model,outsourceRatio,pri,qty,
+                 shortageRisk,so,status,unitPrice,value
+
+### 判据2 · 无副作用（世界态行为须不变）
+  ③ 后 Order.costPressure 末拍 = 0.020636512938
+  ③ 前同一读数           = 0.020636512938   ⇒ 逐位相同 ✓
+  sat=[] 恒空保持 ✓    build rc=0 ✓
+
+### ⚠ 自曝一处我的读数错（已用金丝雀当场抓住）
+  第一次读 props 报 costPressure/creditUtilization 双双『不存在』——
+  真因是**我的 python 取错路径**（回包是 {data:{props:…}}，我取了顶层 props）。
+  加入『必然命中的对照』（leadDays 也报不存在）⇒ 当场证明是解析错、不是数据缺。
+  ⛔ 若不加这个对照，就会把「我读错了」写成「数据没有」，本单的结论会整个反过来。

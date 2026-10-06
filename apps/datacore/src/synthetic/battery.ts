@@ -4075,7 +4075,10 @@ export const STATE_VAR_VALUE_REFS: Record<string, { specKey: string }> = {
   // ⚠ `Order|costPressure` 2026-10-05 曾退役，**终裁否掉并已回退**（WO-COSTPRESSURE-IDENTITY）。
   //    退役 = 删掉两个互斥口径里的一个来消灭矛盾，而两个口径各有消费端在守 ⇒ 属 A 类不许抹。
   //    正解走 (b) 消费端减静息点 / (c) 规格直接产出偏离。理由全文见 `seed-derivation-specs.ts` 该段。
-  "Order|costPressure": { specKey: "order_cost_pressure" },
+  // ⛔ `"Order|costPressure": { specKey: "order_cost_pressure" }` 已于 2026-10-06 移除（WO-SEMANTICS-DECLARED）。
+  //    该格的语义已裁定为 `DEVIATION`（见上方 STATE_VAR_SEMANTICS）⇒ 它由**语义声明 + 传导边**管，
+  //    不由派生规格物化。原规格已名实归位为 `order_credit_utilization`（落 `Order.creditUtilization`）。
+  //    ⚠ 这是**移除绑定**，不是**退役规格** —— 规格还在、还在物化，只是不再冒充 `costPressure`。
   "Order|demandPressure": { specKey: "order_demand_pressure" },
   "Order|shortageRisk": { specKey: "order_shortage_risk" },
   "MaterialBatch|procurementDelay": { specKey: "materialbatch_procurement_delay" },

@@ -190,7 +190,15 @@ export const DEMO_DERIVATION_SPECS: readonly {
   //   退役 = 把那个语义删掉来消灭矛盾，而屏（0–100 压力标度）与求解器（偏离百分点）两个口径
   //   **各自都有消费端在守** ⇒ 属「删了用户会看到坏东西」。正解方向走 (b)/(c)（换算只在消费端一处
   //   或规格直接产出偏离），⛔ 不许再退役。真源与现状实测见 `docs/evidence/` 本单证据档。
-  { specKey: "order_cost_pressure", targetType: "Order", targetProp: "costPressure", formula: "COALESCE(this.creditUsedRatio * 100, 0)" },
+  // ★ WO-SEMANTICS-DECLARED（2026-10-06）名实归位：本条原名 `order_cost_pressure` / 落点 `costPressure`，
+  //   但它算的**从来不是**成本压力，是**授信占用率**（`creditUsedRatio×100`，实测 115）。
+  //   一个装授信占用率的属性叫「成本压力」，与「规格产出的量纲 ≠ 格子语义」是同一种病。
+  //   ⇒ 名、形、实三者对齐：specKey → `order_credit_utilization`，落点 → `Order.creditUtilization`。
+  //   ⚠ 原落点 `Order.costPressure` 的语义已裁定为 `DEVIATION`（见 `battery.ts` STATE_VAR_SEMANTICS）
+  //     ⇒ 该格由语义声明 + 传导边管，**不再由规格物化**；对应的 valueRef 登记已同步移除。
+  //   ⛔ 注意：本改**不是**退役（仓主明令「⛔ 不许再退役」针对的是退役本身）——
+  //     退役 = 把那个语义删掉来消灭矛盾；本改 = 把语义放回它该在的格上，矛盾随之消失。
+  { specKey: "order_credit_utilization", targetType: "Order", targetProp: "creditUtilization", formula: "COALESCE(this.creditUsedRatio * 100, 0)" },
   // Order.demandPressure：需求压力 = 需求增量比例 × 100。出处：demandDelta（仓规：超 50% 触发承接评审线）。实测 0–60。
   { specKey: "order_demand_pressure", targetType: "Order", targetProp: "demandPressure", formula: "COALESCE(this.demandDelta * 100, 0)" },
   // Order.shortageRisk：短缺风险 = 外协比例 × 100（外协依赖度 = 供应敞口）。出处：outsourceRatio。实测 0–35。
