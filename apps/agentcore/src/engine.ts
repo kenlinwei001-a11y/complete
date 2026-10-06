@@ -760,6 +760,33 @@ export class ExecutionEngine {
       const keep = new Set(full.map((t) => t.name));
       tools = expanded.filter((t) => t.binding.kind !== "MCP" || keep.has(t.name));
     }
+
+    // WO-MCP-TOP8-VS-ROSTER · **模型面终态的求解器授予集**（供导航图广告面收窄：广告面 ⊆ 可调用面）。
+    //
+    // 今天的行为是 X：提示词目录段自称「**全部可调用的**求解器目录」，成员资格只过
+    //   `toolFilter ∩ 对象域`，**不看上面那次 top-k 收窄** —— 对 MCP 工具 >8 个的 agent
+    //   （如 16 求解器的 analyst）目录段点名的 16 条里，只有 6 条进了模型 `tools`；其余 10 条
+    //   既不在工具面上、`discover(kind:"mcp_tools")` 今天又是空表（按需加载模式未启用）
+    //   ⇒ 模型**真的调不到**，而那句话在断言它们可调（实测：真链路首轮 prompt 16 vs 授予 6，差集 10 条）。
+    // 应该是 Y：把本 run 真实的求解器工具面（`mcp__solvers__*`）随 scope 一起进投影，
+    //   广告面收窄到这批 —— 与 toolFilter 那层是同一条判据的两层，不是新判据。
+    //
+    // 三态（别混）：
+    //   · `undefined` —— **不收窄**（旧行为逐字节不变）。两种情形：①该 agent 的 solver 面不是
+    //     MCP 工具面（授予了 BUILTIN `invoke_solver` ⇒ 任意 solver 都调得动；或压根不调 solver）；
+    //     ②本 run 走 DSH 臂（子进程挂的 solver server 把 toolFilter 全量目录给模型，top-k 收窄
+    //     不在那条路上 —— 那边广告全量才是诚实的）。
+    //   · 非空数组 —— 收窄到这批全名；
+    //   · 空数组 —— 求解器 MCP 工具被 top-k 全截掉 ⇒ 一条求解器都不广告（诚实缺席）。
+    //
+    // ⚠ 分叉判据与下方 DSH 守卫**同一表达式**（照本文件既有先例：守卫本身不抽公共变量，
+    //   `check-dsh-dormancy` D3 判据要求它原地直读 `process.env.DSH_HARNESS`）。此处只用于**投影口径**。
+    const nativeKernel = !(agent.kernel === "EXTERNAL" || (agent.kernel === undefined && process.env.DSH_HARNESS === "1"));
+    const hasBuiltinInvokeSolver = tools.some((t) => t.binding.kind === "BUILTIN" && t.name === "invoke_solver");
+    const solverGrantedToolNames =
+      nativeKernel && !hasBuiltinInvokeSolver
+        ? tools.filter((t) => t.binding.kind === "MCP" && parseSolverMcpToolName(t.name) !== undefined).map((t) => t.name)
+        : undefined;
     // WO-AGENT-RUNTIME-S01 · item 6（治 workflow_capacity_check DENIED）：scopeToolNames = 声明白名单 ∪ **本 agent 实际
     // 被授予的工具名**（expanded：BUILTIN/workflow_<key>/mcp__…）。根因——seed 给 agt_capacity_planner 配了 workflow_capacity_check
     // 工具，但其 scopeDeclaration.toolNames 漏列该名 → 调用即 AGENT_SCOPE_VIOLATION DENIED（子 agent 盲扫烧预算的一环）。
@@ -782,7 +809,14 @@ export class ExecutionEngine {
     // WO-ROSTER-RESPECT-TOOLFILTER · 授予面（`tools[].toolFilter` 原文）随 scope 一起进投影：
     // 目录段/详情段的成员资格 = 对象域 ∩ **可调用面**。缺省（undefined）⇒ 不收窄（旧行为逐字节不变）。
     const solverToolFilter = await this.solverMcpToolFilterOf(agent);
-    const navSlice = projectNavigationSlice(opts.prompt, undefined, { ...agent.scopeDeclaration, solverToolFilter }, liveCatalog);
+    // WO-MCP-TOP8-VS-ROSTER · 授予面随 scope 一起进投影（见上方 `solverGrantedToolNames` 三态）：
+    // 广告面 = 对象域 ∩ toolFilter（配置允许）∩ **本 run 模型面终态**（top-k 之后）。
+    const navSlice = projectNavigationSlice(
+      opts.prompt,
+      undefined,
+      { ...agent.scopeDeclaration, solverToolFilter, ...(solverGrantedToolNames !== undefined ? { solverGrantedToolNames } : {}) },
+      liveCatalog,
+    );
     const sliceSection = renderNavigationSlice(navSlice);
     // WO-QOS-ONTOLOGY-CONTEXT · 口径语义锚定（缺口③文档三层投喂第二层）：紧随导航图 append 各字段/规则口径
     //（Metric formula/unit·派生公式·规则 expression·取自 A 单一真值 getTypeSemantics·TTL60s 缓存·只列涉及项）——
