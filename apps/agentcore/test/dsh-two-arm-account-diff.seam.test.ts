@@ -44,10 +44,23 @@
  * | 发车 | `stub.requests.length` | 请求体 model/bearer 锚（证明那几发是自己的、不是旁路的） |
  * 对照实验（判据一）= §2 三行场景表：只动命中桶 ⇒ 总量不动而桶间分配动；动 `prompt_tokens` ⇒ 总量动。
  *
+ * **鉴别力反证实测读数（2026-10-06）** —— 折出和只可能来自本文件的 `dshFolded` 一处，把那一处故意算错：
+ * | 变异 | 改法 | 实测 | 读数（场景 A/B/C） |
+ * |---|---|---|---|
+ * | M1 单桶当总量（2026-10-03 前的旧口径） | `= uncachedInputTokens` | **3/3 红** | 90 / 130 / 110 |
+ * | M2 两桶各加一遍（双计） | `= uncached + 2 * cacheReadTokens` | **3/3 红** | 210 / 170 / 230 |
+ * 两行读数逐位等于 `expectationsOf()` 的 `singleBucket` / `doubleCount` 列 ⇒ 红的是**被判据点名的那个错**，
+ * 不是「碰巧红了」。两次变异均**先自证已落下**（`git diff --stat` 1 insertion / 1 deletion + `grep` 命中变异行）
+ * 再跑；还原走 `cp` 备份，`git diff --exit-code HEAD` 为空 ⇒ 提交态 = 交付态（⛔ 未提交实现禁用 `git checkout` 还原）。
+ *
  * ══ 四、怎么跑（stub 一跳今天就能跑；真供应商一跳换两个 env）════════════════════════
  * ```bash
  * # ① stub（默认，无凭据；本机唯一可验证形态）
- * cd apps/agentcore && npx vitest run test/dsh-two-arm-account-diff.seam.test.ts
+ * #    本机（load 60–150 的共享机）实测可用档：--pool=forks --poolOptions.forks.singleFork=true --maxWorkers=1
+ * #    不加这几档时 collect 阶段会撞 vitest worker 握手超时（`Timeout calling "fetch"`，实测两次，
+ * #    耗时 600s 且零输出）—— 那是环境慢，不是本臂红；先换档重跑再定性。
+ * cd apps/agentcore && npx vitest run test/dsh-two-arm-account-diff.seam.test.ts \
+ *   --pool=forks --poolOptions.forks.singleFork=true --maxWorkers=1
  *
  * # ② 真供应商（凭据到位时）—— **换这两个 env 即跑同一套判据**（env 名沿用 dsh-e2e-real-triad 既有门控）
  * DSH_REAL_BASE_URL='https://<供应商>/v1' DSH_REAL_API_KEY='<真 key>' \
