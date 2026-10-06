@@ -182,6 +182,20 @@ export class GuardedToolExecutor {
         solverKey: solverKeyFromMcp,
         args: wrapped && typeof wrapped === "object" ? (wrapped as Record<string, unknown>) : flat,
       };
+      // ⚠️ binding 必须**跟着一起归一**（WO-DSH-ARM-FAILURE-VISIBLE 实测补）。
+      //
+      // 今天的行为是 X：本 shim 只把 `toolName` 归一成 `invoke_solver`，**不动 binding**。原生臂
+      //   （`agent/loop.ts` 对 MCP 绑定工具传 `binding={kind:"MCP"}`）于是把它派进 `McpRuntime`
+      //   （当一条 MCP wire 调用发出去），而平台内置 stdio server 默认禁用
+      //   （`MCP_STDIO_ENABLED` 未设 ⇒ `validateStdioTransport` 当场拒）——实测报文：
+      //   `{"error":"TOOL_ERROR","message":"stdio 启动被拒：stdio 传输默认禁用：需部署方设置
+      //     MCP_STDIO_ENABLED=1 与 MCP_STDIO_COMMAND_ALLOWLIST"}`
+      //   ⇒ 原生臂里 `mcp__solvers__{key}` **一次都执行不到** `dataCore.solver.invoke`
+      //   （活服务实测：0-1ms ERROR + DataCore 零请求；同一批里 `mcp__ontology__resolve_slice`
+      //   却是 OK 126ms —— 差别就是本体 shim 显式归了 binding）。
+      // 应该是 Y：与下方本体 shim 同一条理由、同一个写法 —— **执行落点是本 executor 的 BUILTIN 分发**，
+      //   MCP 面只是它的协议门。DSH 臂逐字节不变（反向通道端点不传 binding ⇒ 缺省本就 BUILTIN）。
+      binding = { kind: "BUILTIN" as const };
     }
 
     // WO-DSH-RESOURCE-REACH · 本体切片 MCP 工具：mcp__ontology__{plan_slice|resolve_slice} →
