@@ -723,6 +723,9 @@ export function projectNavigationSlice(
         // R6 确定性：按 **key 字典序**。⛔ 刻意不按 rank / 使用频次 / 命中次数排 ——
         // 「按热度排」正是本单要拆的那个自锁循环的来源（冷门排后面 → 更少被选 → 更冷）。
         // 字典序还有一个额外好处：与问句无关 ⇒ 同租户所有问句的目录段逐字节相同，可被 prompt 缓存命中。
+        // ⚠️ WO-MCP-TOP8-VS-ROSTER 起有例外：**成员资格**对「MCP 工具被 top-k 收窄的 agent」随问句变
+        //    （授予面那一层是 top-k 的产物）—— **排序**仍是字典序（R6 不破），但这类 agent 的目录段
+        //    不再逐字节跨问句相同、吃不满 prompt 缓存。这是「广告面 ⊆ 可调用面」的代价，不许改回。
         .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
         .map(([key, entry]) => ({ key, brief: briefOf(entry.capability) }));
 
