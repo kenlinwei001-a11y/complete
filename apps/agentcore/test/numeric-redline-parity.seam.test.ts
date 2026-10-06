@@ -50,6 +50,13 @@ const FABRICATED = "常州基地 9 月产能缺口 1200 台，建议下调接单
 const SOURCED = "根据求解器结果，常州基地 9 月产能缺口 1200 台 ⟦ref:0⟧。建议优先保交付。";
 /** 完全无数字的句子（检测器必不咬 —— 反向金丝雀）。 */
 const NO_NUMBER = "建议优先保交付，具体口径以求解器结论为准。";
+/** 一条 provenance（`SOURCED` 里的 ⟦ref:0⟧ 靠它才指得出东西）—— 修后「有标记」不构成「有出处」。 */
+const PROV_1 = [{ toolCallId: "tc_parity_1", outputPath: "$" }];
+/** 两条 provenance（供 ⟦ref:1⟧ 指得出东西；⟦ref:9⟧ 在此表长下仍越界）。 */
+const PROV_2 = [
+  { toolCallId: "tc_parity_1", outputPath: "$" },
+  { toolCallId: "tc_parity_2", outputPath: "$" },
+];
 
 function agentDef(partial: Partial<AgentDefinition> & { id: string; key: string }): AgentDefinition {
   return {
@@ -75,37 +82,74 @@ function agentDef(partial: Partial<AgentDefinition> & { id: string; key: string 
 describe("§0 金丝雀 · 检测器鉴别力自证（一切否定结论的前置）", () => {
   it("0.1 已知违规必咬 ∧ 已知合规必不咬 —— 两侧都中才算量法是好的", () => {
     expect(
-      hasUnverifiedNumerics(FABRICATED),
+      hasUnverifiedNumerics(FABRICATED, 0),
       "金丝雀不中 ⇒ 【检测器坏了】，本文件后续所有「未拦下」结论一律作废，不许读作『产出干净』",
     ).toBe(true);
     expect(
-      hasUnverifiedNumerics(SOURCED),
+      hasUnverifiedNumerics(SOURCED, 1),
       "已溯源的数字被咬 ⇒ 检测器无差别拦截（比不拦更糟：合法答案也会被毙）",
     ).toBe(false);
-    expect(hasUnverifiedNumerics(NO_NUMBER)).toBe(false);
+    expect(hasUnverifiedNumerics(NO_NUMBER, 1)).toBe(false);
     // 两侧结论必须相反 —— 若相同，说明检测器恒真或恒假，此时「未拦下」不度量任何东西
-    expect(hasUnverifiedNumerics(FABRICATED)).not.toBe(hasUnverifiedNumerics(SOURCED));
+    expect(hasUnverifiedNumerics(FABRICATED, 0)).not.toBe(hasUnverifiedNumerics(SOURCED, 1));
   });
 
   it("0.2 有序列表序号**不再**被当业务数字（双向：序号剥得掉 ∧ 数字剥不掉）", () => {
     // 咬不动侧：一段**零业务数字**的纯有序列表，修前判 TRUE（误报），修后必须 false
     expect(
-      hasUnverifiedNumerics("1. 提高产能\n2. 优化排程\n3. 加强协同"),
+      hasUnverifiedNumerics("1. 提高产能\n2. 优化排程\n3. 加强协同", 0),
       "纯序号被咬 ⇒ 合法答案会被误杀（实测占触发量 58%）",
     ).toBe(false);
-    expect(hasUnverifiedNumerics("1、提高产能")).toBe(false);
-    expect(hasUnverifiedNumerics("1) 提高产能")).toBe(false);
+    expect(hasUnverifiedNumerics("1、提高产能", 0)).toBe(false);
+    expect(hasUnverifiedNumerics("1) 提高产能", 0)).toBe(false);
 
     // ★ 反向金丝雀（缺这一半，上面的「false」可能只是判据被改瞎了）：
     //   剥的必须是**序号标记本身**，不是整句 —— 序号后面的业务数字照样要溯源。
     expect(
-      hasUnverifiedNumerics("1. 常州基地 9 月产能缺口 1200 台"),
+      hasUnverifiedNumerics("1. 常州基地 9 月产能缺口 1200 台", 0),
       "剥序号把整句一起剥掉了 ⇒ 判据被改瞎，非法产出会静默通过",
     ).toBe(true);
     // 小数不得被当序号剥（`1.5` 的句点若被吞，`1.5` 会读成 `5`）
-    expect(hasUnverifiedNumerics("缺口 1.5 万台")).toBe(true);
-    // 既有豁免（⟦ref:N⟧）不因剥序号而失效
-    expect(hasUnverifiedNumerics("1. 缺口 1200 台 ⟦ref:0⟧")).toBe(false);
+    expect(hasUnverifiedNumerics("缺口 1.5 万台", 0)).toBe(true);
+    // 既有豁免（⟦ref:N⟧）不因剥序号而失效 —— 表里确有 0 号（provenanceCount=1）
+    expect(hasUnverifiedNumerics("1. 缺口 1200 台 ⟦ref:0⟧", 1)).toBe(false);
+  });
+
+  // ── ★ WO-NUM-FLAG-TRUTH 的病根金丝雀（2026-10-06）────────────────────────────
+  // 修前：豁免判据是「句内**有**⟦ref:N⟧ 标记」，于是**指空**的标记照样洗白整句。
+  // 修后：豁免判据是「句内**每个**标记都指得出东西」—— N 必须落在 [0, provenanceCount)。
+  it("0.3 【病根】标记指空 ⇒ 必须咬住（修前此处判 false = 那个谎）", () => {
+    // 同一句话、同一个标记，**只有 provenance 表长变**：
+    expect(
+      hasUnverifiedNumerics(SOURCED, 0),
+      "provenance 0 条 ⇒ ref:0 指空 ⇒ 正文里的 1200 台没有任何出处，必须判 true",
+    ).toBe(true);
+    expect(
+      hasUnverifiedNumerics(SOURCED, 1),
+      "同一句话、表里确有 0 号 ⇒ 指得出东西 ⇒ 不许咬（否则就是无差别拦截）",
+    ).toBe(false);
+    // **越界**同样是指空（表长 2 但 N=9）：只改下发正文里的 N，其余不动
+    const outOfRange = SOURCED.replace("⟦ref:0⟧", "⟦ref:9⟧");
+    expect(
+      hasUnverifiedNumerics(outOfRange, 2),
+      "表长 2 而 N=9 ⇒ 越界 ⇒ 指空必须咬住（只按「有没有标记」判会漏掉这一整类）",
+    ).toBe(true);
+    expect(
+      hasUnverifiedNumerics(SOURCED, 2),
+      "同表长下把 N 改回 0 ⇒ 指得出东西 ⇒ 必须翻回 false（双向咬住，否则判据恒真）",
+    ).toBe(false);
+    // 形态不合的标记（非数字体）也算指不出东西 —— 不许当成「有标记就豁免」
+    expect(hasUnverifiedNumerics("缺口 1200 台 ⟦ref:abc⟧", 2)).toBe(true);
+    // ⚠️ 剥掉的只是**标记语法本身**：悬空标记的 `ref:9` 里的 `9` 不许被当成业务数字，
+    //    而句里**其余**数字照样要溯源（本条是上面那些 true 的鉴别力来源）
+    expect(hasUnverifiedNumerics("详见 ⟦ref:9⟧。", 2), "标记自身的字符进了扫描面 ⇒ 误报").toBe(false);
+    expect(hasUnverifiedNumerics("缺口 1200 台详见 ⟦ref:9⟧。", 2)).toBe(true);
+  });
+
+  it("0.4 句内多个标记：**有一个指空就不豁免**（不许半个指针洗白整句）", () => {
+    const both = "利用率 90.5%–93.1%⟦ref:0⟧–⟦ref:1⟧。";
+    expect(hasUnverifiedNumerics(both, 2), "两个都指得出 ⇒ 豁免").toBe(false);
+    expect(hasUnverifiedNumerics(both, 1), "ref:1 指空 ⇒ 整句不许豁免").toBe(true);
   });
 });
 
@@ -134,12 +178,17 @@ describe("§1 对齐不变量 · 同一条答案两路同处置", () => {
     t.metrics.numericRedline.get({ path: "AGENT_NATIVE", action: "would_block" });
 
   /** 原生路：模型直接 final_answer 给定正文（形态照 numeric-redline-paths.seam.test.ts）。 */
-  async function runNative(t: TestApp, taskId: string, markdown: string) {
+  async function runNative(
+    t: TestApp,
+    taskId: string,
+    markdown: string,
+    provenance: { toolCallId: string; outputPath: string }[] = [],
+  ) {
     await t.repos.agents.insert(
       agentDef({ id: `agt_${taskId}`, key: `k_${taskId}`, kernel: "NATIVE" }),
     );
     t.llm.queueAgentTurn({
-      content: [toolUse("final_answer", { blocks: [{ type: "text", markdown }], provenance: [] })],
+      content: [toolUse("final_answer", { blocks: [{ type: "text", markdown }], provenance })],
     });
     return t.deps.engine.runRegisteredAgent({
       taskId,
@@ -230,7 +279,9 @@ describe("§1 对齐不变量 · 同一条答案两路同处置", () => {
         {
           toolCall: {
             name: "final_answer",
-            arguments: JSON.stringify({ blocks: [{ type: "text", markdown: SOURCED }], provenance: [] }),
+            // WO-NUM-FLAG-TRUTH：`⟦ref:0⟧` 要指得出东西，**表里必须有 0 号** —— 修前这里传的是
+            // `provenance: []`，断言 false 靠的是「有标记即豁免」那个谎（本单修掉的正是它）。
+            arguments: JSON.stringify({ blocks: [{ type: "text", markdown: SOURCED }], provenance: PROV_1 }),
           },
           usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 },
         },
@@ -241,7 +292,7 @@ describe("§1 对齐不变量 · 同一条答案两路同处置", () => {
         env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" },
       });
 
-      const nat = await runNative(t, "task_parity_ok_native", SOURCED);
+      const nat = await runNative(t, "task_parity_ok_native", SOURCED, PROV_1);
       const dsh = await runDsh(t, "task_parity_ok_dsh", SOURCED);
 
       expect(dsh.outcome).toBe("ANSWERED");
@@ -251,6 +302,84 @@ describe("§1 对齐不变量 · 同一条答案两路同处置", () => {
       expect(wouldBlockNative(t)).toBe(0);
 
       await stub.close();
+    },
+  );
+
+  // ── ★★ WO-NUM-FLAG-TRUTH 的**交付级对照实验**（2026-10-06）──────────────────────────────
+  //
+  // 守的不变量：**「这个数字有没有出处」只由「⟦ref:N⟧ 指不指得出东西」决定**，
+  //   而「指不指得出」= `0 ≤ N < provenance.length`。三份实参**只差这两处**，其余逐字节相同：
+  //
+  //   | 用例 | 正文里的 N | provenance 条数 | 指得出？ | 诚实标（预言） | 计数（预言） |
+  //   | A    | 1          | 0               | 否（1≮0）| **true**       | 1            |
+  //   | B    | 1          | 2               | 是（1<2）| **false**      | 0            |
+  //   | C    | 9          | 2               | 否（9≮2）| **true**       | 1            |
+  //
+  // 「计数」= 本次运行是否记了一笔 `numericRedline would_block`，**一次运行至多 +1**
+  //   ⇒ 我独立复算的方式：counters = 「本用例两次运行里 flag 为 true 的次数」（A:2 次? 见下）。
+  // ⚠️ 每个用例用**全新的 app**（`createTestApp`），计数器从 0 起 ⇒ 每个用例的期望值
+  //    = 「该用例两条臂各自是否计一笔」，与上表逐行对得上，不需要读被测代码来算。
+  it(
+    "1.3 ★ 对照实验：只改 N 与表长 ⇒ 诚实标按可预言方向翻转（两臂同实参·六个读数）",
+    { timeout: 120_000 },
+    async () => {
+      const refText = (n: number) => `常州基地 9 月产能缺口 1200 台 ⟦ref:${n}⟧。`;
+      const cases = [
+        { name: "A 指空（表 0 条·N=1）", markdown: refText(1), provenance: [] as typeof PROV_2, expect: true },
+        { name: "B 指得出（表 2 条·N=1）", markdown: refText(1), provenance: PROV_2, expect: false },
+        { name: "C 越界（表 2 条·N=9）", markdown: refText(9), provenance: PROV_2, expect: true },
+      ];
+      const observed: { name: string; nat: boolean; dsh: boolean; wbNat: number; wbDsh: number }[] = [];
+
+      for (const c of cases) {
+        // 两臂**同一组实参**：同一段正文、同一张 provenance 表（原生臂经 final_answer 入参，
+        // dsh 臂经 stub OpenAI 回同一份 final_answer 入参）。
+        const stub = await startStubOpenAi([
+          {
+            toolCall: {
+              name: "final_answer",
+              arguments: JSON.stringify({ blocks: [{ type: "text", markdown: c.markdown }], provenance: c.provenance }),
+            },
+            usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 },
+          },
+          { text: "stub final answer", usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 } },
+        ]);
+        const t = await createTestApp({
+          providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never,
+          env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" },
+        });
+        const nat = await runNative(t, `task_ctrl_nat_${c.name.slice(0, 1)}`, c.markdown, c.provenance);
+        const dsh = await runDsh(t, `task_ctrl_dsh_${c.name.slice(0, 1)}`, c.markdown);
+        observed.push({
+          name: c.name,
+          nat: nat.answer.unverifiedNumerics,
+          dsh: dsh.answer.unverifiedNumerics,
+          wbNat: wouldBlockNative(t),
+          wbDsh: wouldBlockDsh(t),
+        });
+        await stub.close();
+
+        // 值校验（逐用例）：两臂的**值**都必须等于上表预言的那个布尔
+        expect(dsh.outcome, `${c.name}：dsh 路不该因此被拒（降的是处置不是检测）`).toBe("ANSWERED");
+        expect(nat.answer.unverifiedNumerics, `${c.name}：原生路诚实标与预言不符`).toBe(c.expect);
+        expect(dsh.answer.unverifiedNumerics, `${c.name}：dsh 路诚实标与预言不符`).toBe(c.expect);
+      }
+
+      // ★ 四个数（两方向各两数）—— 这就是本单的验收读数
+      const [A, B, C] = observed;
+      expect(A!.nat && A!.dsh, "A（表 0 条）：20 处指空那一类 ⇒ 两臂都必须 true").toBe(true);
+      expect(B!.nat || B!.dsh, "B（表 2 条 · N=1）：指得出 ⇒ 两臂都必须 false").toBe(false);
+      expect(C!.nat && C!.dsh, "C（表 2 条 · N=9）：越界 ⇒ 两臂都必须 true").toBe(true);
+      // 判别力：三个用例不许同值（同值 ⇒ 判据恒真/恒假，上面那些读数不度量任何东西）
+      expect(new Set([A!.nat, B!.nat, C!.nat]).size, "三例同值 ⇒ 这把尺子没有鉴别力").toBe(2);
+
+      // 计数（独立复算：每个用例的新 app 上，计数 = 该臂是否记了一笔）
+      expect(A!.wbNat, "A：原生路该记一笔").toBe(1);
+      expect(A!.wbDsh, "A：dsh 路该记一笔").toBe(1);
+      expect(B!.wbNat, "B：指得出 ⇒ 一笔都不该记").toBe(0);
+      expect(B!.wbDsh).toBe(0);
+      expect(C!.wbNat, "C：越界之一种（N 越界）同样该记").toBe(1);
+      expect(C!.wbDsh).toBe(1);
     },
   );
 });
@@ -315,7 +444,7 @@ describe("§3 软收尾与红线的关系", () => {
     const headerText = header && "markdown" in header ? (header.markdown as string) : "";
     expect(headerText).toContain("loopRepeatCap=3");
     // 这条豁免是**承重的**：该摘要正文确实会触发检测器（否则本节在守一个空命题）
-    expect(scanBlocks([{ type: "text", markdown: headerText }])).toBe(true);
+    expect(scanBlocks([{ type: "text", markdown: headerText }], 0)).toBe(true);
   });
 });
 
@@ -343,6 +472,6 @@ describe("§4 覆盖边界 · 检测面只扫 text 块", () => {
     const r = reassembleDshRun(events);
     // 今天的真实行为：放行。钉住它 —— 哪天扩了检测面，这条会红，逼人来读这段说明。
     expect(r.ok, "若此处变红：检测面已扩到非 text 块，属行为变更，需连同两条路的 flag 语义一起裁决").toBe(true);
-    expect(scanBlocks([{ type: "kpi", markdown: undefined } as never])).toBe(false);
+    expect(scanBlocks([{ type: "kpi", markdown: undefined } as never], 0)).toBe(false);
   });
 });

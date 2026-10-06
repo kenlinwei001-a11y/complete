@@ -29,6 +29,8 @@ const planner = { tenantId: TENANT, userId: "user-planner", roles: ["planner"] }
 const FABRICATED = "常州基地 9 月产能缺口 1200 台，建议下调接单量。";
 /** 同一结论，但数字挂了溯源指针（平台既有的「已溯源」表达法）。 */
 const SOURCED = "根据求解器结果，常州基地 9 月产能缺口 1200 台 ⟦ref:0⟧。建议优先保交付。";
+/** 使 `SOURCED` 的 `⟦ref:0⟧` **指得出东西**的那一条 provenance（修后：有标记 ≠ 有出处）。 */
+const PROVIDED_1 = [{ toolCallId: "tc_paths_1", outputPath: "$" }];
 
 function agentDef(partial: Partial<AgentDefinition> & { id: string; key: string }): AgentDefinition {
   return {
@@ -74,7 +76,7 @@ const blocked = () => t.metrics.numericRedline.get({ path: "AGENT_DSH", action: 
 describe("§1 实验 1 · 同一份凭空数字，两条路处置不同", () => {
   it("1.1 原生路：**放行**（outcome ANSWERED·正文原样上屏），但 would_block 计数 +1", async () => {
     // 金丝雀：先证检测器咬得动这句话，否则下面的「计数 +1」不度量任何东西
-    expect(hasUnverifiedNumerics(FABRICATED), "金丝雀不中 ⇒ 【检测器坏了】").toBe(true);
+    expect(hasUnverifiedNumerics(FABRICATED, 0), "金丝雀不中 ⇒ 【检测器坏了】").toBe(true);
     expect(wouldBlock()).toBe(0);
 
     const r = await runNative("task_native_bad", FABRICATED);
@@ -95,9 +97,11 @@ describe("§1 实验 1 · 同一份凭空数字，两条路处置不同", () => 
 
 describe("§2 实验 2 · 反向对照：合法产出必须放行且计数不增", () => {
   it("2.1 原生路：数字全部挂 ⟦ref:0⟧ ⇒ 放行 ∧ unverifiedNumerics=false ∧ would_block 不增", async () => {
-    expect(hasUnverifiedNumerics(SOURCED), "已溯源的句子若被咬 ⇒ 无差别拦截").toBe(false);
+    // WO-NUM-FLAG-TRUTH：`⟦ref:0⟧` 要指得出东西，**表里必须有 0 号**（修前这里传空表，
+    // 断言 false 靠的是「有标记即豁免」那个谎）。
+    expect(hasUnverifiedNumerics(SOURCED, 1), "已溯源的句子若被咬 ⇒ 无差别拦截").toBe(false);
 
-    const r = await runNative("task_native_ok", SOURCED);
+    const r = await runNative("task_native_ok", SOURCED, PROVIDED_1);
 
     expect(r.outcome).toBe("ANSWERED");
     expect(r.answer.unverifiedNumerics).toBe(false);
@@ -106,9 +110,21 @@ describe("§2 实验 2 · 反向对照：合法产出必须放行且计数不增
   });
 
   it("2.2 反向对照的**判别力**：同一条路，换成裸数就计数、换回溯源就不计数", async () => {
-    await runNative("task_pair_ok", SOURCED);
+    await runNative("task_pair_ok", SOURCED, PROVIDED_1);
     expect(wouldBlock()).toBe(0);
     await runNative("task_pair_bad", FABRICATED);
     expect(wouldBlock(), "两个用例结果必须相反，否则这把尺子恒真/恒假").toBe(1);
+  });
+
+  it("2.3 ★ 病根对照：同一句 ⟦ref:0⟧，表空 ⇒ 计数 +1（修前此处是 0 = 那个谎）", async () => {
+    const r = await runNative("task_pair_dangling", SOURCED, []); // ← 唯一变量：provenance 表空
+
+    expect(r.outcome, "指空不该被拒（降的是处置不是检测）").toBe("ANSWERED");
+    expect(
+      r.answer.unverifiedNumerics,
+      "正文引 0 号而表是空的 ⇒ 1200 台没有任何出处 ⇒ 诚实标必须是 true",
+    ).toBe(true);
+    expect(wouldBlock(), "指空却没计数 ⇒ 这个数不再度量「该拦多少」").toBe(1);
+    expect(hasUnverifiedNumerics(SOURCED, 0), "纯函数侧同判据（与上面同一组实参）").toBe(true);
   });
 });
