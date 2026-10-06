@@ -157,7 +157,7 @@ let sessionDisabled: string[] = [];
  * ⚠ 值刻意避开 50 附近那一族（`hash01` 派生值收敛到 50）。R6 确定性：定值表，无时钟无随机。
  */
 const SERVER_BASE: TickState = Object.fromEntries(
-  (Object.values(CFG.nodeObjectIds).flat() as string[]).map((id, i) => [
+  (Object.values(CFG.nodeObjectIds ?? {}).flat() as string[]).map((id, i) => [
     id,
     Object.fromEntries(CFG.stateVars.map((v, j) => [v, 11 + i * 5 + j * 4])),
   ]),
