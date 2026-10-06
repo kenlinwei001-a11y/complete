@@ -599,8 +599,20 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     expect(btn.hasAttribute("disabled")).toBe(false);
     // 路 ②：口径不许塞进原生 title（disabled 元素上多数浏览器根本不渲染它；且违反 R-UI-3）。
     expect(btn.getAttribute("title")).toBeNull();
-    // 路 ③：理由在第一层就已经摆着，不用点开也读得到。
-    expect(btn.textContent ?? "").toContain("无任何实例");
+    // 路 ③（WO-UI-DESC-POPOVER 起改锚）：理由不再铺在第一层，改挂 `?` 浮层 ——
+    // 但**必须仍到得了**。这一条守的从来不是「摆在哪一层」，而是「用户摸不摸得到」；
+    // 锚点从「按钮文本」换成「触发器 + 浮层正文」，守的东西一个字没变。
+    // 第一层留的记号 = 状态「今天落不了地」+ `?` 触发器（InfoPopover 的触发器永远可见、Tab 到得了）。
+    expect(btn.textContent ?? "").toContain("今天落不了地");
+    const why = screen.getByTestId("info-c0828-ev-why-equipment-down");
+    expect(why).not.toBeDisabled();
+    expect(why.getAttribute("title")).toBeNull(); // 仍不许塞原生 title（R-UI-3）
+    // 浮层正文**默认不在 DOM**（「收纳起来了」才算数），悬停后才出现，且**有字**。
+    expect(screen.queryByTestId("info-body-c0828-ev-why-equipment-down")).toBeNull();
+    fireEvent.mouseEnter(why);
+    const tip = await screen.findByTestId("info-body-c0828-ev-why-equipment-down");
+    expect((tip.textContent ?? "").trim().length).toBeGreaterThan(20);
+    expect(tip.textContent ?? "").toContain("不是取数失败");
 
     // 点开 ⇒ 解释面板出现，且**有字**（空面板与「没有面板」在屏上一样难用）。
     fireEvent.click(btn);
