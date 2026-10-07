@@ -420,7 +420,7 @@ function PricingReadout({
             : ""}
           {outcome.missingBinding === null
             ? ""
-            : `：${outcome.missingBinding.objectType}.${outcome.missingBinding.prop} 无对应派生规格`}
+            : `：${outcome.missingBinding.objectType}.${outcome.missingBinding.prop} 没有对应的算式，拨了也不会变`}
         </>
       ) : (
         <>
@@ -455,7 +455,7 @@ function PricingReadoutDetail({
           ? outcome.reason === "HORIZON_BELOW_REACH"
             ? ""
             : " —— 该杠杆当前没有可传导的派生式子，如实缺格，⛔ 不返 0。"
-          : `：${outcome.missingBinding.objectType}.${outcome.missingBinding.prop} 无对应派生规格`}
+          : `：${outcome.missingBinding.objectType}.${outcome.missingBinding.prop} 没有对应的算式，拨了也不会变`}
       </p>
     );
   }
