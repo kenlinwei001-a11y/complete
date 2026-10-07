@@ -1,0 +1,33 @@
+=== WO-SLOT-MODEL · 槽位4 【收口】—— 并纠正我两次误列的账 ===
+
+### 真账（已收完）
+  金额口径：公式声明一处（order-amount.ts ORDER_VALUE_FORMULA）· 实现一处（orderAmountOf）
+           · 消费四处（finance-world / pair-weights×2 / service）· 本体层 orderDerived 引用同一常量
+  摊销集合：MONEY_CHARGE_BASIS 登记表 + 逐条随 pressures[].denominator 下发
+  ⇒ 这两件是槽位4（数据槽位）的实质内容：**公式从哪来 + 输入从哪个集合取**，两处都有单一出处。
+
+### ⛔ 我误列的账（两次，形态相同）
+  ① chain-loss-matrix.ts:186 —— 我当成'同一条金额口径的第五处手抄'。**不是。**
+     orderMoneyShape() 做的是**字段存在性**判断（props.value 是有限数 ⇒ 用它），拿不到才回落。
+     它要的是「有没有值」，不是「值是几」—— 换成 orderAmountOf() 会丢掉「有值且恰好为 0」
+     与「没有值」的区别，**那是改语义，不是收口径**。⇒ 不动。
+  ② extended.ts:1019 —— 我当成'第六处'。**不是。**
+     那是**加权均价** Σ(qty×unitPrice)/Σqty，**不是金额** ⇒ 口径本来就不同。⇒ 不动。
+  ③ restReference 的取值顺序 —— 我说'散在函数里'。**不是。**
+     它是一处函数，上方有完整次序声明（propagation.ts:780-798），写清了①baseSnapshot
+     ②domains.restPoint ③undefined 三档及「⛔ 不许 ?? 0」的理由。⇒ 已是唯一出处。
+  ④ 规格的输入从哪取 —— 我说'无承载物'。**不是。**
+     输入写在 formula 字符串里（this.qty * this.unitPrice），由 DSL 求值器读对象属性；
+     **公式字符串就是那个承载物**。
+
+### 错误的形态（第十一次同族）
+  我把「提到 qty×unitPrice 的地方」当成了「同一条口径的地方」；
+  把「我没看到集中声明」当成了「没有声明」。
+  ⇒ **判据不度量目标**的又一形态：用『文本出现』度量『口径同一』，用『我没找到』度量『不存在』。
+
+### 槽位4 结论
+  **实质已完成**：公式来源单一 + 摊销集合登记单一。
+  ⛔ 但我**不声称四槽位全建成** —— 槽位4 覆盖的是【本单遇到并修过的那条轴（金额）】，
+    不是「所有量的公式输入都登记了」。别的量（如 Model.costPressure 的 unitCost/unitPrice）
+     仍走 formula 字符串，未逐条登记输入来源。**那是有意的**（DSL 求值器就是那个机制），
+     不是遗漏 —— 但也不该被说成『已完全解决』。
