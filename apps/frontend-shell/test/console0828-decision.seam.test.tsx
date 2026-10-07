@@ -669,7 +669,10 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     // 两句各自的**可判定内核**也要在（只比"不相等"的话，改一个标点就能骗过去）。
     expect(whyNoInst).toContain("无任何实例");
     expect(whyStateVar).toContain("无传导路径");
-    expect(noinst.textContent).not.toBe(statevar.textContent);
+    // ⚠ 这里原有 `expect(noinst.textContent).not.toBe(statevar.textContent)` —— 比的是**两块面板**。
+    // WO-UI-DESC-POPOVER 后措辞已挪出面板（面板只剩明细），而且**这条本来就不该在**：
+    // 两块面板的明细天然不同 ⇒ 把两种措辞改成同一句它照样成立 = 注释里写的那个假绿。
+    // 「两句不许一样」由上面 `whyNoInst` vs `whyStateVar` 那对（同一锚点、只有措辞）守着。
 
     /* ── 「0」是**逐格**判出来的，不是整屏坏了 ──────────────────────────────────
      *
