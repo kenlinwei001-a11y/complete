@@ -78,7 +78,7 @@ const FACE_SPECS: readonly FaceSpec[] = [
   {
     id: "material",
     name: "物料",
-    blurb: "从一家供应商 / 一种物料出发：到货延迟、价格冲击、来料检验与清关。",
+    blurb: "到货延迟 · 价格冲击 · 来料检验 · 清关",
     typeKeys: [
       "Supplier",
       "Material",
