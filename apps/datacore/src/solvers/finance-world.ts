@@ -353,7 +353,30 @@ export async function projectFinanceWorld(
   const invoices = await populationOf("ARInvoice", "overduePressure");
 
   /** 订单金额 = 数量 × 单价（种子里没有现成的 `value` 字段，这两个是真字段·`battery.ts:3793–3794`）。 */
-  const orderValue: WeightFn = (o) => num(o.props.qty) * num(o.props.unitPrice);
+  /**
+   * ★ WO-SLOT-MODEL · 金额口径**唯一出处**（数据槽位）。
+   *
+   * 🔴 改前形态（2026-10-07 实测）：同一条金额口径写在**三处**、靠注释粘着 ——
+   *   · 本处：`num(qty) * num(unitPrice)` —— **只有回落那一半**
+   *   · `sim/pair-weights.ts` 的 `valueOf` —— **带优先链**：优先 `props.value`，拿不到才回落
+   *   · `solvers/service.ts` 的 `orderValueYuan`
+   *   而 `pair-weights.ts` 的注释写着「与 `finance-world.ts` 的 `orderValue` **同一个式子**」——
+   *   **那句话只对了回落那一半**，两处的**优先链不同**。
+   *
+   * ⚠ 为什么一直没人发现：当前数据下两者**数值相等**
+   *   （`Order.value = 161135282 = qty 7259 × unitPrice 22198`，500/500 都是）
+   *   ⇒ 一旦 `value` 与 `qty×unitPrice` 分家，两处金额口径就分家，**而没有任何东西会报**。
+   *   **这正是本单那条「两个动态量之比」的同族形态**：两处各自取值，都"讲得通"，
+   *   差值不是常量 ⇒ 读起来像口径差异，不像 bug。
+   *
+   * ⇒ 本处与 `pair-weights.ts` **取同一支**：优先本体真值 `props.value`，拿不到才回落乘积。
+   *   改后当前数据下**数值逐位不变**（两条支路同值），但**结构上不再可能分家**。
+   */
+  const orderValue: WeightFn = (o) => {
+    const direct = num(o.props.value);
+    if (direct > 0) return direct;
+    return Math.max(0, num(o.props.qty) * num(o.props.unitPrice)); // 负金额不是权重，按 0 计（与 pair-weights 同一条）
+  };
   /** 客户金额权重 = 该客户名下发票金额之和（经真链路 `customer_has_invoice` 归集，见下）。 */
   const invoiceAmount: WeightFn = (o) => num(o.props.amount);
 

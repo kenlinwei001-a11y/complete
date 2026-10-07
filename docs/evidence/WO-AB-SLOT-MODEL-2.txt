@@ -1,0 +1,28 @@
+=== WO-SLOT-MODEL 续 · 槽位4（数据槽位）第一步：金额口径收成一支 ===
+
+### 实测发现的形态：同一条金额口径写在三处、靠注释粘着
+  · solvers/finance-world.ts:356  num(qty)×num(unitPrice)        ← 只有回落那一半
+  · sim/pair-weights.ts:669       valueOf() —— 优先 props.value，拿不到才回落  ← 带优先链
+  · solvers/service.ts            orderValueYuan
+  而 pair-weights.ts 的注释写着「与 finance-world.ts 的 orderValue【同一个式子】」
+  ⇒ **那句话只对了回落那一半**，两处的优先链不同。
+
+### 为什么一直没人发现
+  当前数据下两者【数值相等】：Order.value = 161135282 = qty 7259 × unitPrice 22198（500/500 都是）
+  ⇒ 一旦 value 与 qty×unitPrice 分家，两处金额口径就分家，**而没有任何东西会报**。
+  ⇒ 与本单那条「两个动态量之比」同族：两处各自取值、都讲得通、差值不是常量 ⇒ 像口径差异不像 bug。
+
+### 修法：本处与 pair-weights 取同一支
+  优先本体真值 props.value；拿不到才回落 qty×unitPrice（负金额按 0 计，与 pair-weights 同一条）。
+  注释也一并改正（不再声称'同一个式子'，改为说清两支的同源关系）。
+
+### 判据（交付级：改后数值须逐位不变）
+  实测  value=0.004602 · den.n=150 · den.w=15663001584 · COST delta=+0.026744
+  对照（改前实测）        value=0.004602 · den.n=150 · den.w=15663001584 · COST delta=+0.026744
+  ⇒ 逐位相同 ✅（两条支路当前同值，故口径统一不改变任何读数）
+  build rc=0 ✅
+
+### 槽位4 仍欠（如实标，未做）
+  · solvers/service.ts 的 orderValueYuan —— 第三处，未与本文对齐
+  · restReference 的取值顺序（baseSnapshot → domains.restPoint）仍散在函数里
+  · 每个规格的输入从哪取（如 creditUsedRatio 来自本体属性）无承载物
