@@ -638,8 +638,12 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     const statevar = await screen.findByTestId("c0828-absent-rush-order");
     expect(statevar.textContent ?? "").toContain("无传导路径");
 
-    // ⚠ 左栏一次只展开一件事 ⇒ 先把这一句取下来再去点下一件，否则它的面板已经收走了。
-    const whyStateVar = screen.getByTestId("c0828-absent-why-rush-order").textContent ?? "";
+    // ⚠ WO-UI-DESC-POPOVER（2026-10-06）起改锚：那句措辞从**面板**挪到了按钮的 `?` 浮层，
+    // 面板只留「它找过哪些落点」的明细。**守的命题一个字没变** —— 仍咬「那句措辞」本身，
+    // 不咬整块面板（那正是本单早先修过的一处假绿）；换的只是锚点位置。
+    fireEvent.mouseEnter(screen.getByTestId("info-c0828-ev-why-rush-order"));
+    const whyStateVar =
+      (await screen.findByTestId("info-body-c0828-ev-why-rush-order")).textContent ?? "";
 
     // 同为「落不了地」，措辞必须与 no-instance 那条不同 —— 合并即红。
     fireEvent.click(screen.getByTestId("c0828-ev-equipment-down"));
@@ -651,9 +655,13 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
      * 门全绿。变异反证当场抖出来的：把 `LANDING_ABSENCE_TEXT` 两条改成同一句 ⇒ 14/14 全过。
      * 形态（铁律 0.6 句式）：
      * 「我用『两块面板的文本不相等』当作『两种措辞不一样』的证据，而前者并不度量后者。」
-     * 故改咬 `c0828-absent-why-*` —— 那个锚点上**只有**那一句措辞。
+     * 故改咬「那句措辞」本身 —— 本单当时挂在 `c0828-absent-why-*`，
+     * WO-UI-DESC-POPOVER 后随措辞一起挪到浮层正文 `info-body-c0828-ev-why-*`
+     *（那个锚点上同样**只有**那一句措辞，判据等效）。
      */
-    const whyNoInst = screen.getByTestId("c0828-absent-why-equipment-down").textContent ?? "";
+    fireEvent.mouseEnter(screen.getByTestId("info-c0828-ev-why-equipment-down"));
+    const whyNoInst =
+      (await screen.findByTestId("info-body-c0828-ev-why-equipment-down")).textContent ?? "";
     expect(whyStateVar.trim().length).toBeGreaterThan(10);
     expect(whyNoInst.trim().length).toBeGreaterThan(10);
     expect(whyNoInst).not.toBe(whyStateVar);

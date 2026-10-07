@@ -2285,13 +2285,11 @@ export default function Console0828({
 
                 {isOpen && !ok && L !== undefined && L.kind !== "ok" ? (
                   <div className={styles.expand} data-testid={`c0828-absent-${ev.id}`}>
-                    {/* ⚠ 这一句**单独挂锚点**：接缝门 ②b 要咬的命题是「两种缺失措辞不许一样」，
-                        而整块面板的 textContent 里还混着「它找过哪些落点」那段逐事件明细 ——
-                        拿整块去比，两种措辞**改成一模一样也照样不相等**，断言等于没咬。
-                        （本单实测：把两条措辞改成同一句，门仍然全绿。）*/}
-                    <p className={styles.calibre} data-testid={`c0828-absent-why-${ev.id}`}>
-                      {LANDING_ABSENCE_TEXT[L.kind]}
-                    </p>
+                    {/* ⚠ WO-UI-DESC-POPOVER（2026-10-06）：这里原来直出 `LANDING_ABSENCE_TEXT[L.kind]`
+                        整段（100+ 字）。**同一段文字现在挂在按钮的 `?` 浮层上**
+                        （`info-c0828-ev-why-{id}`）—— 面板里再来一份就是同一句话摆两处，
+                        而面板本来的职责是「点开看**逐项明细**」（下面那个 details）。
+                        ⇒ 这段删掉，锚点移到浮层正文（接缝门 ②b 已同步改锚）。 */}
                     <details className={styles.more}>
                       <summary>它找过哪些落点</summary>
                       <div className={styles.moreBody}>
