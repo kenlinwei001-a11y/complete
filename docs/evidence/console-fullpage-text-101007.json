@@ -1,0 +1,327 @@
+[
+ {
+  "t": "全域数字化智能决策支撑系统",
+  "tid": "",
+  "where": "初始"
+ },
+ {
+  "t": "500 张单 · 20 家客户",
+  "tid": "c0828-kpi-book",
+  "where": "初始"
+ },
+ {
+  "t": "基地13 · 客户20 · 供应商15 · 物料8 · 型号6 · 需求段3",
+  "tid": "c0828-kpi-entity",
+  "where": "初始"
+ },
+ {
+  "t": "选择扰动事件，推演其叠加影响",
+  "tid": "c0828-rail",
+  "where": "初始"
+ },
+ {
+  "t": "选择供应商 · 延迟天数",
+  "tid": "c0828-ev-inbound-delay",
+  "where": "初始"
+ },
+ {
+  "t": "= 30 天（30 拍），推演至 2026-02-03（第 33 拍）",
+  "tid": "c0828-horizon-echo",
+  "where": "初始"
+ },
+ {
+  "t": "专家工作台 · 8 档页签",
+  "tid": "c0828-expert",
+  "where": "初始"
+ },
+ {
+  "t": "对策看板 · 18 处受阻环节",
+  "tid": "c0828-board",
+  "where": "初始"
+ },
+ {
+  "t": "按严重度排序 · 系统不给推荐",
+  "tid": "c0828-board",
+  "where": "初始"
+ },
+ {
+  "t": "堵点 · 落点 elyte_b2",
+  "tid": "c0828-row-imp_CONGESTION.MATERIAL.batch-idle_elyte_b2",
+  "where": "初始"
+ },
+ {
+  "t": "121.00 / 90.00 天",
+  "tid": "c0828-row-imp_CONGESTION.MATERIAL.batch-idle_elyte_b2",
+  "where": "初始"
+ },
+ {
+  "t": "堵点 · 落点 cu_foil_b2",
+  "tid": "c0828-row-imp_CONGESTION.MATERIAL.batch-idle_cu_foil_b2",
+  "where": "初始"
+ },
+ {
+  "t": "116.00 / 90.00 天",
+  "tid": "c0828-row-imp_CONGESTION.MATERIAL.batch-idle_cu_foil_b2",
+  "where": "初始"
+ },
+ {
+  "t": "卡点 · 落点 changzhou",
+  "tid": "c0828-row-imp_BOTTLENECK.CAPACITY.cross-segment-contention_changzhou",
+  "where": "初始"
+ },
+ {
+  "t": "3974.32 / 1760.00 套/日",
+  "tid": "c0828-row-imp_BOTTLENECK.CAPACITY.cross-segment-contention_changzhou",
+  "where": "初始"
+ },
+ {
+  "t": "堵点 · 落点 neg_graphite_b2",
+  "tid": "c0828-row-imp_CONGESTION.MATERIAL.batch-idle_neg_graphite_b2",
+  "where": "初始"
+ },
+ {
+  "t": "101.00 / 90.00 天",
+  "tid": "c0828-row-imp_CONGESTION.MATERIAL.batch-idle_neg_graphite_b2",
+  "where": "初始"
+ },
+ {
+  "t": "卡点 · 落点 zaozhuang",
+  "tid": "c0828-row-imp_BOTTLENECK.CAPACITY.cross-segment-contention_zaozhuang",
+  "where": "初始"
+ },
+ {
+  "t": "2985.92 / 620.00 套/日",
+  "tid": "c0828-row-imp_BOTTLENECK.CAPACITY.cross-segment-contention_zaozhuang",
+  "where": "初始"
+ },
+ {
+  "t": "堵点 · 落点 pos_ncm_b2",
+  "tid": "c0828-row-imp_CONGESTION.MATERIAL.batch-idle_pos_ncm_b2",
+  "where": "初始"
+ },
+ {
+  "t": "105.00 / 90.00 天",
+  "tid": "c0828-row-imp_CONGESTION.MATERIAL.batch-idle_pos_ncm_b2",
+  "where": "初始"
+ },
+ {
+  "t": "堵点 · 落点 pos_lfp_b2",
+  "tid": "c0828-row-imp_CONGESTION.MATERIAL.batch-idle_pos_lfp_b2",
+  "where": "初始"
+ },
+ {
+  "t": "109.00 / 90.00 天",
+  "tid": "c0828-row-imp_CONGESTION.MATERIAL.batch-idle_pos_lfp_b2",
+  "where": "初始"
+ },
+ {
+  "t": "断点 · 落点 mbal-6",
+  "tid": "c0828-row-imp_BREAK.MATERIAL.material-gap_mbal-6",
+  "where": "初始"
+ },
+ {
+  "t": "398.00 / 0.00 吨",
+  "tid": "c0828-row-imp_BREAK.MATERIAL.material-gap_mbal-6",
+  "where": "初始"
+ },
+ {
+  "t": "堵点 · 落点 sep_film_b2",
+  "tid": "c0828-row-imp_CONGESTION.MATERIAL.batch-idle_sep_film_b2",
+  "where": "初始"
+ },
+ {
+  "t": "96.00 / 90.00 天",
+  "tid": "c0828-row-imp_CONGESTION.MATERIAL.batch-idle_sep_film_b2",
+  "where": "初始"
+ },
+ {
+  "t": "断点 · 落点 mbal-3",
+  "tid": "c0828-row-imp_BREAK.MATERIAL.material-gap_mbal-3",
+  "where": "初始"
+ },
+ {
+  "t": "698.00 / 0.00 吨",
+  "tid": "c0828-row-imp_BREAK.MATERIAL.material-gap_mbal-3",
+  "where": "初始"
+ },
+ {
+  "t": "断点 · 落点 mbal-7",
+  "tid": "c0828-row-imp_BREAK.MATERIAL.material-gap_mbal-7",
+  "where": "初始"
+ },
+ {
+  "t": "166.00 / 0.00 吨",
+  "tid": "c0828-row-imp_BREAK.MATERIAL.material-gap_mbal-7",
+  "where": "初始"
+ },
+ {
+  "t": "断点 · 落点 mbal-1",
+  "tid": "c0828-row-imp_BREAK.MATERIAL.material-gap_mbal-1",
+  "where": "初始"
+ },
+ {
+  "t": "1858.00 / 0.00 吨",
+  "tid": "c0828-row-imp_BREAK.MATERIAL.material-gap_mbal-1",
+  "where": "初始"
+ },
+ {
+  "t": "查看选中那一处的四栏对策 →",
+  "tid": "c0828-drill-board",
+  "where": "初始"
+ },
+ {
+  "t": "还没算 —— 不是算不出来。",
+  "tid": "c0828-ai-stream",
+  "where": "初始"
+ },
+ {
+  "t": "调到哪：utilization ↓ 90% · 杠杆：金华分切线",
+  "tid": "c0828-ai-actions",
+  "where": "初始"
+ },
+ {
+  "t": "调到哪：utilization ↑ 100% · 杠杆：在 LINE-WS-jinhua-slitting-assembly 直接相连的上一环",
+  "tid": "c0828-ai-actions",
+  "where": "初始"
+ },
+ {
+  "t": "调到哪：attendance ↑ 100% · 杠杆：在 LINE-WS-jinhua-slitting-coating 直接相连的上一环",
+  "tid": "c0828-ai-actions",
+  "where": "初始"
+ },
+ {
+  "t": "交由 agent 生成对策 →",
+  "tid": "c0828-ai-ask-agent",
+  "where": "初始"
+ },
+ {
+  "t": "金华分切线 · 4 种对策",
+  "tid": "c0828-options-title",
+  "where": "页签:c0828-tab-options"
+ },
+ {
+  "t": "金华分切线 · utilization ↓ 90%",
+  "tid": "c0828-opt-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Line.utilization_LINE-WS-jinhua-slitting_PEER_BEST_89.9153",
+  "where": "页签:c0828-tab-options"
+ },
+ {
+  "t": "定价缺格 · 未找到压力绑定：Process.attendance 无对应派生规格",
+  "tid": "c0828-price-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Process.attendance_LINE-WS-jinhua-slitting-coating_PEER_BEST_1",
+  "where": "页签:c0828-tab-options"
+ },
+ {
+  "t": "能力不够，做不过来 —— 加产能有用",
+  "tid": "c0828-kind-BOTTLENECK",
+  "where": "页签:c0828-tab-scan"
+ },
+ {
+  "t": "能力够，但流不动 —— 加产能没用",
+  "tid": "c0828-kind-CONGESTION",
+  "where": "页签:c0828-tab-scan"
+ },
+ {
+  "t": "链条接不上，上一环给不了这一环要的",
+  "tid": "c0828-kind-BREAK",
+  "where": "页签:c0828-tab-scan"
+ },
+ {
+  "t": "这是推演结论，非加载失败。",
+  "tid": "c0828-watchonly",
+  "where": "页签:c0828-tab-scan"
+ },
+ {
+  "t": "交由 agent 生成对策 ▸",
+  "tid": "c0828-ask-agent",
+  "where": "页签:c0828-tab-scan"
+ },
+ {
+  "t": "8 档页签 · 指标卡墙 · 右栏检视",
+  "tid": "usim-expert-bar",
+  "where": "页签:c0828-expert"
+ },
+ {
+  "t": "自动选中最近一条正在推演的会话",
+  "tid": "usim-session-reason",
+  "where": "页签:c0828-expert"
+ },
+ {
+  "t": "世界态出处：结构派生的占位读数，不是实测 · 种子世界的 tick0 读数分两种：5946 格是实测（直接读了对象上的真实业务数）；其余 429 格是结构派生的确定性占位。拿占位格当起点算出的差值，量级不可当实测读；实测格没有这个问题。其中 ARInvoice.overduePressure、Base.loadIndex、Certification.qualificationQueue、ChangeoverMatrix.changeoverPressure、Customer.receivablePressure、CustomsClearance.clearanceQueueDays、DefectRecord.defectPressure、Equipment.equipmentFailure、Equipment.loadPressure、ExceptionEvent.handlingBacklog、FinishedGoodsInventory.coverDays、FinishedGoodsInventory.drawdownPressure、IncomingInspection.queueDays、InterBaseTransfer.transferPressure、Line.blockedPressure、Line.utilPressure、MaintPlan.windowSqueeze、Material.priceShock、Material.shortageRisk、MaterialAlternative.switchPressure、MaterialBalance.gapPressure、MaterialBatch.procurementDelay、MaterialBatch.turnoverPressure、Model.backlogPriceTop、Model.backlogQtyTop、Model.costPressure、Model.demandLoad、Model.supplyRisk、Order.costPressure、Order.demandPressure、Order.shortageRisk、OrderLine.splitPressure、OverdueRecord.collectionPressure、Process.queuePressure、PurchaseOrder.expeditePressure、PurchaseOrder.procurementDelay、QualityLot.inspectBacklog、Shipment.inboundExpeditePressure、Supplier.deliveryDelay、Supplier.procurementDelay、Supplier.reviewPressure、WIPLot.feedPressure、WorkOrder.releasePressure 由显式规格绑定取值（每条公式的口径见派生规格表，规格缺失会在播种时直接报错，不会退回占位）。 · 实测格 5946/6375",
+  "tid": "usim-origin",
+  "where": "页签:c0828-expert"
+ },
+ {
+  "t": "从一家供应商 / 一种物料出发：到货延迟、价格冲击、来料检验与清关。",
+  "tid": "rail-face-blurb",
+  "where": "页签:c0828-expert"
+ },
+ {
+  "t": "起始拍（不早于第 3 拍）",
+  "tid": "rail-panel-face-material",
+  "where": "页签:c0828-expert"
+ },
+ {
+  "t": "持续拍数（留空 = 永久）",
+  "tid": "rail-panel-face-material",
+  "where": "页签:c0828-expert"
+ },
+ {
+  "t": "交付延迟 +10 · 第 4 拍起 · 永久",
+  "tid": "rail-preview",
+  "where": "页签:c0828-expert"
+ },
+ {
+  "t": "需求突变 +51.0022 · 生效中 ▸",
+  "tid": "ptl-bar-sims_demo_seed_world_p0",
+  "where": "页签:c0828-expert"
+ },
+ {
+  "t": "被推动 = 变化量 ≥ 任何非零变化 · 口径 = 浮点噪声底 1e-9×max(1,|基线|,|当前|)",
+  "tid": "usim-threshold",
+  "where": "页签:c0828-expert"
+ },
+ {
+  "t": "被推动 0 · 未变化 10",
+  "tid": "usim-group",
+  "where": "页签:c0828-expert"
+ },
+ {
+  "t": "被推动 1 · 未变化 18",
+  "tid": "usim-group",
+  "where": "页签:c0828-expert"
+ },
+ {
+  "t": "推演投影·非实测（种子世界的 tick0 读数分两种：5946 格是实测（直接读了对象上的真实业务数）；其余 429 格是结构派生的确定性占位。拿占位格当起点算出的差值，量级不可当实测读；实测格没有这个问题。其中 ARInvoice.overduePressure、Base.loadIndex、Certification.qualificationQueue、ChangeoverMatrix.changeoverPressure、Customer.receivablePressure、CustomsClearance.clearanceQueueDays、DefectRecord.defectPressure、Equipment.equipmentFailure、Equipment.loadPressure、ExceptionEvent.handlingBacklog、FinishedGoodsInventory.coverDays、FinishedGoodsInventory.drawdownPressure、IncomingInspection.queueDays、InterBaseTransfer.transferPressure、Line.blockedPressure、Line.utilPressure、MaintPlan.windowSqueeze、Material.priceShock、Material.shortageRisk、MaterialAlternative.switchPressure、MaterialBalance.gapPressure、MaterialBatch.procurementDelay、MaterialBatch.turnoverPressure、Model.backlogPriceTop、Model.backlogQtyTop、Model.costPressure、Model.demandLoad、Model.supplyRisk、Order.costPressure、Order.demandPressure、Order.shortageRisk、OrderLine.splitPressure、OverdueRecord.collectionPressure、Process.queuePressure、PurchaseOrder.expeditePressure、PurchaseOrder.procurementDelay、QualityLot.inspectBacklog、Shipment.inboundExpeditePressure、Supplier.deliveryDelay、Supplier.procurementDelay、Supplier.reviewPressure、WIPLot.feedPressure、WorkOrder.releasePressure 由显式规格绑定取值（每条公式的口径见派生规格表，规格缺失会在播种时直接报错，不会退回占位）。）",
+  "tid": "usim-calibre-shortageRisk",
+  "where": "页签:c0828-expert"
+ },
+ {
+  "t": "被推动 1 · 未变化 17",
+  "tid": "usim-group",
+  "where": "页签:c0828-expert"
+ },
+ {
+  "t": "还没有选中任何状态变量 —— 点中央任一张卡进入检视。",
+  "tid": "usim-inspector-empty",
+  "where": "页签:c0828-expert"
+ },
+ {
+  "t": "扰动因素 · 关掉看变化",
+  "tid": "edge-active-sim-unified-panel",
+  "where": "页签:c0828-expert"
+ },
+ {
+  "t": "55 条边 · 已关 0",
+  "tid": "edge-active-sim-unified-count",
+  "where": "页签:c0828-expert"
+ },
+ {
+  "t": "「应用」把当前开关落到会话上（此后这个世界按\"关掉\"跑 tick）。本体里的规则发布态一个字节不动。",
+  "tid": "edge-active-sim-unified-panel",
+  "where": "页签:c0828-expert"
+ },
+ {
+  "t": "这些量只登记在对象属性上，没有进入推演世界态（world.state），而传导引擎 propagateTick 只读世界态 —— 放进下拉就会变成「选了、请求成功、下游一动不动」。要扰它，得先由后端把这个属性投进状态层，不是在这里补一个兜底。",
+  "tid": "rail-blocked-reason",
+  "where": "details展开第1轮(1)"
+ }
+]
