@@ -1,4 +1,5 @@
 import { pairWeightNormalizeOf, type PairWeightNormalize, type PropagationRule } from "@platform/contracts";
+import { orderAmountOf } from "./order-amount.js"; // WO-SLOT-MODEL · 金额口径唯一出处
 import { bomRowCost, selectEffectiveBom } from "../bom.js";
 import type { ObjectInstance } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
@@ -663,19 +664,18 @@ export async function buildPairWeights(
       // 判据同 `bom_cost_share` 拿整份 BOM 当分母那一条，逐字相同。
       const sources = await byType(rule.sourceTypeKey);
       /**
-       * 一个源实例的金额。**优先读已物化的派生属性 `value`**（`Order.value`，本仓 500/500 都有），
-       * 拿不到才回落 `qty × unitPrice` —— 与 `solvers/finance-world.ts` 的 `orderValue`
-       * 及 `solvers/service.ts` 的 `orderValueYuan` **同一个式子**，不另起第二套金额口径。
+       * 一个源实例的金额 —— 口径**唯一出处** = `order-amount.ts`。
+       *
+       * ⛔ 改前此处**优先读物化属性 `props.value`**，与另外两处（`finance-world` / `service`）**优先链不同**；
+       *    当时靠一句「与 `finance-world.ts` 的 `orderValue` **同一个式子**」的注释粘着 ——
+       *    **那句话只对了回落那一半**（本单实测：三处口径数值相等 500/500，故一直没人发现）。
+       * 裁定**取活值**：物化值可能陈旧（`service.ts` 那条有理由的设计原文：
+       *    「派生尚未重跑时读陈值会让『溯源数』与『它算出来的份额』对不上，那是换一种失真」），
+       *    活值永远与对象当前状态一致。三处里两处已按此办，本次把第三处也收到这一支。
        */
       const valueOf = (o: ObjectInstance): { v: number; how: string; fields: string[] } => {
-        const direct = num(o.props.value);
-        if (direct > 0) return { v: direct, how: `金额 value ${direct}`, fields: [`${rule.sourceTypeKey}.value`] };
         const q = num(o.props.qty), p = num(o.props.unitPrice);
-        return {
-          v: Math.max(0, q * p), // 负金额不是权重，按 0 计（不翻转方向）——与 source_qty_relative 同一条
-          how: `数量 ${q} × 单价 ${p}`,
-          fields: [`${rule.sourceTypeKey}.qty`, `${rule.sourceTypeKey}.unitPrice`],
-        };
+        return { v: orderAmountOf({ qty: q, unitPrice: p }), how: `数量 ${q} × 单价 ${p}`, fields: [`${rule.sourceTypeKey}.qty`, `${rule.sourceTypeKey}.unitPrice`] };
       };
       // 全域基数 = 本租户该类型**全部**实例（不只是图里有边的那些）的金额均值。
       // 用全部实例而不是 `edges` 的源：范围裁剪（LOCAL）时分母也不该跟着缩，
@@ -722,7 +722,9 @@ export async function buildPairWeights(
       // 🔴 金额口径取 `qty × unitPrice`，与 `solvers/finance-world.ts` 的 `orderValue` **同一支**
       //    （那里是聚合权重的既有单源）。另立一个"订单金额"的算法就是第二套真相源。
       const targets = await byType(rule.targetTypeKey);
-      const valueOf = new Map(targets.map((o) => [o.id, Math.max(0, num(o.props.qty) * num(o.props.unitPrice))]));
+      // 口径唯一出处 = `order-amount.ts`（WO-SLOT-MODEL）—— 此处原为内联的 `Math.max(0, qty*unitPrice)`，
+      // 是同一条口径的**第四处**手抄。收成一支后，改口径只需改一个文件。
+      const valueOf = new Map(targets.map((o) => [o.id, orderAmountOf(o)]));
       /** 源实例 id → 其在手金额敞口（Σ 名下目标实例的 qty×unitPrice）。 */
       const exposure = new Map<string, number>();
       for (const e of edges) exposure.set(e.fromId, (exposure.get(e.fromId) ?? 0) + (valueOf.get(e.toId) ?? 0));

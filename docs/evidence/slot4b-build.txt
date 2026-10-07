@@ -1,0 +1,7 @@
+Scope: 3 of 7 workspace projects
+packages/contracts build$ tsc -p tsconfig.json
+packages/llm-adapters build$ tsc -p tsconfig.json
+packages/llm-adapters build: Done
+packages/contracts build: Done
+apps/datacore build$ tsc -p tsconfig.json && node -e "require('fs').copyFileSync('src/solvers/sandbox-runner.mjs','dist/solvers/sandbox-runner.mjs')"
+apps/datacore build: Done

@@ -1,4 +1,5 @@
 import type { AuthCtx, CalibrationForecastRecord, ObjectInstance, ObjectTypeDef } from "../domain.js";
+import { orderAmountOf } from "../sim/order-amount.js"; // WO-SLOT-MODEL · 金额口径唯一出处
 import type { AccessDecision, AuthzService } from "../authz.js";
 import type { Repos } from "../repo/repo.js";
 import type { OntologyCoreService } from "../ontology-core.js";
@@ -2059,7 +2060,7 @@ export class SolverService {
     //   「溯源数」与「它算出来的份额」对不上，那是换一种失真。
     // 缺 unitPrice → 0：与 `orderVal` 同一「诚实缺席·禁止静默兜底」判定（WO-UNITPRICE-SCALE 已结案），绝不兜一个业务常数。
     // 门：`test/prov-drillfield-truth.test.ts`（效果层·逐叶断言 drillValue === DB `Order.value` + 前端渲染串）。
-    const orderValueYuan = (o: Record<string, unknown>) => round(num(o.qty) * num(o.unitPrice), 6); // 元 = 套 × 元/套（≡ 本体派生属性 Order.value）
+    const orderValueYuan = (o: Record<string, unknown>) => orderAmountOf(o); // WO-SLOT-MODEL：口径唯一出处 = sim/order-amount.ts // 元 = 套 × 元/套（≡ 本体派生属性 Order.value）
     // ── 业务细分作用域（WO-SEG-ATTR-SCOPE·闭 §8 G-SEG-ATTR-CROSS-SEGMENT）──
     // seg_attain_{ess|pas|com} 是「细分达成率」，其根因下钻必须只归因**本细分**订单
     // （储能达成率→仅 storage 客户/订单）。目标业态优先取 Metric.businessType（种子经

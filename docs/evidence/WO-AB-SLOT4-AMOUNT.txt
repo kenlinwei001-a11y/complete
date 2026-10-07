@@ -1,0 +1,31 @@
+=== WO-SLOT-MODEL · 槽位4 金额口径收敛（本轮）===
+
+### 做了：新建唯一出处模块 + 收四处
+  新 apps/datacore/src/sim/order-amount.ts —— 导出 orderAmountOf(o)，口径 = qty × unitPrice（取活值）
+  收的四处（改前各自手抄）：
+    ① solvers/finance-world.ts   orderValue        （曾被我改成优先物化值 ⇒ 本轮回退为活值）
+    ② sim/pair-weights.ts:671    valueOf（主支）    （改前优先 props.value ⇒ 本轮去掉优先链）
+    ③ sim/pair-weights.ts:725    valueOf（第二处内联）
+    ④ solvers/service.ts:2062    orderValueYuan
+
+### 口径裁定：取【活值】qty × unitPrice，⛔ 不优先读物化属性 value
+  依据 = service.ts 那条【有理由的】设计原文：
+    「取活值而非直接读 o.value，是因为求解器归因用的就是当前 qty/unitPrice——
+      派生尚未重跑时读陈值会让『溯源数』与『它算出来的份额』对不上，那是换一种失真。」
+  ⇒ 物化值可能陈旧，活值永远与对象当前状态一致。三处里两处已按此办，本轮收第三处。
+
+### ⛔ 本轮我犯的错（自曝）
+  上一轮我把 finance-world 改成『优先 props.value』——**方向反了**：
+  那是向 pair-weights 靠，而不是向『取活值』这个多数且有理由的一支靠。
+  形态：同一句话（『统一口径』）在不同处指向不同的正确解，我没先看清三处各自的理由。
+
+### 判据
+  build rc=0 ✅（中途一次 rc=2 是我的脚本替换留了个孤立 '};'，已修）
+
+### ⛔ 仍欠（本轮未做，范围比预想大）
+  · **battery.ts 的 orderDerived（value = qty * unitPrice）** ← **源头**，本体派生属性的定义式
+    （domain.ts:454 注释自陈「= qty*unitPrice·订单金额，恰恰是最有业务含义的那一格」）
+  · solvers/chain-loss-matrix.ts:186 → return { value: qty * unitPrice, ... }
+  · solvers/extended.ts:1019 → Σ(qty×unitPrice)/Σqty（加权均价，口径可能本就不同，须先判）
+  ⇒ 现状：**消费者侧**收成了一支；**源头（本体层）与另外两处未收**。
+    ⛔ 不声称「槽位4 已解决」——它做了一半，且剩下的含真正的源头。
