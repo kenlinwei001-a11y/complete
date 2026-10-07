@@ -618,7 +618,8 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     fireEvent.click(btn);
     const panel = await screen.findByTestId("c0828-absent-equipment-down");
     expect((panel.textContent ?? "").trim().length).toBeGreaterThan(20);
-    expect(panel.textContent ?? "").toContain("不是取数失败");
+    // ⚠ 「那句措辞」已由上面的浮层断言验过（`tip`）⇒ 这里不再重复咬面板；
+    // 面板的职责是明细，下面这条才是它该咬的。
     // 它找过哪些落点 —— 名单来自事件目录，不是拼出来的一句空话。
     expect(panel.textContent ?? "").toContain("Equipment");
 
@@ -635,8 +636,8 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     const rush = screen.getByTestId("c0828-ev-rush-order");
     expect(rush.getAttribute("data-landable")).toBe("0");
     fireEvent.click(rush);
-    const statevar = await screen.findByTestId("c0828-absent-rush-order");
-    expect(statevar.textContent ?? "").toContain("无传导路径");
+    await screen.findByTestId("c0828-absent-rush-order");
+    // ⚠ 那句措辞的断言在下面（改锚到浮层正文）⇒ 这里不重复咬面板。
 
     // ⚠ WO-UI-DESC-POPOVER（2026-10-06）起改锚：那句措辞从**面板**挪到了按钮的 `?` 浮层，
     // 面板只留「它找过哪些落点」的明细。**守的命题一个字没变** —— 仍咬「那句措辞」本身，
@@ -728,10 +729,13 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     const btn = screen.getByTestId("c0828-ev-material-price-up");
     expect(btn.getAttribute("data-landable")).toBe("0");
     fireEvent.click(btn);
-    const panel = await screen.findByTestId("c0828-absent-material-price-up");
-    // 而且它说的是**结构**那句，不是「没有实例」那句 —— 两句话今天不许再被混为一谈。
-    expect(panel.textContent ?? "").toContain("无传导路径");
-    expect(panel.textContent ?? "").not.toContain("无任何实例");
+    await screen.findByTestId("c0828-absent-material-price-up");
+    // ⚠ WO-UI-DESC-POPOVER 起：那句措辞在按钮的 `?` 浮层正文里（面板只留明细）⇒ 改锚。
+    // 守的命题一个字没变，仍是「它说的是**结构**那句，不是『没有实例』那句」。
+    fireEvent.mouseEnter(screen.getByTestId("info-c0828-ev-why-material-price-up"));
+    const why = (await screen.findByTestId("info-body-c0828-ev-why-material-price-up")).textContent ?? "";
+    expect(why).toContain("无传导路径");
+    expect(why).not.toContain("无任何实例");
   });
 
   it("③ 加事件 → 暂存：件数跟着变，**加两件必须显示 2 件**（1 件与多件在模型层不是同一段）", async () => {
