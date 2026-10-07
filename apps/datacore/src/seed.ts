@@ -812,7 +812,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetTypeKey: "CustomsClearance",
     targetStateVar: "clearanceQueueDays",
     delayTicks: 1, // 清关是"下一批才排得上"，与 po_inspected_by 同一口径
-    description: "加急的进口采购单先堆在海关那一段 ⇒ 清关排队天数变长",
+    description: "加急的进口采购单先堆在海关那一段 ⇒ 清关排队天数变长（加急压力 × 0.4 = 清关排队天数；⚠ 该格未登记域 ⇒ 不衰减 ⇒ 系数即稳态）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -852,7 +852,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetTypeKey: "Certification",
     targetStateVar: "qualificationQueue",
     delayTicks: 1,
-    description: "型号需求上来 ⇒ 该型号的认证/资质排队跟着堵",
+    description: "型号需求上来 ⇒ 该型号的认证/资质排队跟着堵（型号需求负载 × 0.178378 = 认证排队；⚠ 该格有衰减 ⇒ 每拍系数 0.066 = 该稳态乘 0.37，0.066 系四舍五入）",
     combine: "sum",
     decay: null,
     clamp: null,

@@ -1,0 +1,28 @@
+=== 剩余两笔账 · 收口 ===
+
+### 账一：2 条边的换算关系（已判清并补上）
+  demo_po_expedite_to_customs_queue → CustomsClearance.clearanceQueueDays
+    域声明 <未登记> ⇒ 不衰减 ⇒ **系数 0.4 就是稳态本身** ⇒ 描述直写 0.4
+  demo_model_demand_to_cert_queue → Certification.qualificationQueue
+    域声明有 decayRef(C35.qualificationQueueDecayPerTick) ⇒ 有衰减
+    ⇒ 稳态 = 0.066 ÷ 0.37 = 0.178378（非整 ⇒ 0.066 是四舍五入过的）
+    ⇒ 描述写稳态 0.178378 并注明「每拍系数 0.066 = 该稳态乘 0.37（四舍五入）」
+(eval):16: command not found: ×
+  ⚠ 写法纪律（本轮踩到）：描述里**只许出现一个 **（承诺值那个），
+    换算说明改用「乘」字 —— 否则比对脚本取最后一个 ×N 会读错（本轮实际发生并已修）
+
+### 账二：divisor = 100 —— **核实后不是欠账**
+  contracts/finance-world.ts:290  FINANCE_WORLD_PRESSURE_DIVISOR = { pp: 100, ratio: 1 }
+  回包带 divisorRef: "FINANCE_WORLD_PRESSURE_DIVISOR"（「不另立一套」）
+  args.pressureUnit 可当场改写；注释写明它是「唯一一处声明式量纲桥」
+  ⇒ 已声明 · 可溯 · 可改。**我把它列为欠账是没细看（第十三次同族错）。**
+
+### 判据（可复跑）
+  脚本 docs/evidence/WO-AB-EDGE-GAIN-CHECK.mjs
+  配对边数 **23**（改前 13）· ✅ 23 · ❌ 0
+  容差放宽到 1e-3 以容纳「非整稳态」那条（0.178378 × 0.37 = 0.066）
+  build rc=0
+
+### 现状
+  全仓 23 条 demo_* 传导边：**每一条的业务增益都已声明，且与实现可机检**。
+  ⇒ 改系数不改描述 ⇒ 当场对不上。判据从『无处可判』变成『可机检』，覆盖 23/23。

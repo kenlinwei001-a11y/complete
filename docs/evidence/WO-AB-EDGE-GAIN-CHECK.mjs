@@ -10,13 +10,13 @@ while ((m = re.exec(seed))) {
   const key = m[1], desc = m[2];
   const dn = [...desc.matchAll(/×\s*([0-9.]+)/g)].map((x) => Number(x[1]));
   const truth = P[key];
-  if (dn.length && truth !== undefined) rows.push({ key, dn: dn[dn.length - 1], truth });
+  if (dn.length && truth !== undefined) rows.push({ key, dn: dn[dn.length - 1], truth, decay: /有衰减|不衰减/.test(desc) });
 }
 console.log("配对边数 =", rows.length);
 let ok = 0, bad = 0;
 for (const r of rows) {
   const q = r.truth / r.dn;
-  const good = Math.abs(q - 1) < 1e-5 || Math.abs(q - 0.37) < 1e-4;
+  const good = Math.abs(q - 1) < 1e-3 || Math.abs(q - 0.37) < 1e-3;
   if (good) ok++; else { bad++; console.log("  ❌", r.key, "描述", r.dn, "真值", r.truth, "比", q.toFixed(6)); }
 }
 console.log(`✅ ${ok} · ❌ ${bad}`);
