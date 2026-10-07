@@ -1,0 +1,28 @@
+=== WO-SLOT-MODEL · 槽位4 · 收源头（本体层）===
+
+### 收法：不是撤一处，是【让公式本身同源】
+  先判清：Order.value 的两处**不是第二份真相**，是**同一公式的两个求值时机**——
+    · 本体层 battery.ts:1903 orderDerived  formula:"qty * unitPrice"  时机=物化（runDerivations）
+    · 消费者 order-amount.ts orderAmountOf()                        时机=即时
+  service.ts 那条理由说明了两处都要在：物化值可能陈旧，活值必须能当场算。
+  ⇒ 故正确的收法是**公式声明只许一处**，两处引用它。
+
+### 做了
+  · order-amount.ts 新增导出常量 ORDER_VALUE_FORMULA = "qty * unitPrice"（公式的唯一声明）
+  · battery.ts 的 orderDerived 改为引用该常量（不再手写字符串）⇒ **物理上抄不岔**
+  · 注释写明：DSL 求值器与 TS 实现形态不同，只能对齐声明、不能共享代码；
+    故本常量就是那个「必须同改」的可 grep 锚点。
+
+### 判据
+  ① Order.value 物化值不变：161135282 == qty 7259 × unitPrice 22198 ✅
+  ② 三行钱不变：value=0.004602 · den.w=15663001584 · COST +0.026744 ✅ 与收源头前逐位相同
+  build rc=0 ✅
+
+### 现状（槽位4 的数据槽位）
+  **公式声明一处（ORDER_VALUE_FORMULA）· 实现一处（orderAmountOf）· 消费四处（finance-world /
+  pair-weights×2 / service）** ⇒ 改口径只改一个文件，且漏改会与常量对不上。
+
+### ⛔ 仍欠（未做）
+  · solvers/chain-loss-matrix.ts:186 → return { value: qty * unitPrice, ... }
+  · solvers/extended.ts:1019 → Σ(qty×unitPrice)/Σqty（加权均价，口径可能本就不同，须先判）
+  · 槽位4 的另两项：restReference 的取值顺序 · 每个规格的输入从哪取

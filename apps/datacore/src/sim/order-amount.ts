@@ -30,6 +30,27 @@
  *   · 精度 `round(…, 6)`：与 `runDerivations`（`ontology.ts:709`）同精度
  */
 
+/**
+ * ★ 订单金额口径的**公式声明** —— 本体层派生属性与消费者实现**同源的那一处**。
+ *
+ * 为什么需要它：`Order.value` 有**两处**在算同一个公式，但**不是第二份真相**
+ *   ——它们是**同一公式的两个求值时机**：
+ *     · 本体层 `battery.ts` 的 `orderDerived`：`formula: "qty * unitPrice"`，
+ *       由 `runDerivations` **物化**进 `props.value`（时机 = 播种 / 变更驱动）；
+ *     · 本模块 `orderAmountOf()`：**即时**求值（时机 = 消费当下）。
+ *   `solvers/service.ts` 那条有理由的设计原文说明了为什么两处都要在：
+ *   「派生尚未重跑时读陈值会让『溯源数』与『它算出来的份额』对不上，那是换一种失真」
+ *   ⇒ **物化值可能陈旧，活值必须能当场算。**
+ *
+ * ⛔ 但**公式本身只许有一处声明** —— 本常量就是它。两处引用它：
+ *   · `battery.ts:1903` 的 `orderDerived` 用**同一个字符串**（DSL 求值器与 TS 实现形态不同，
+ *     故只能对齐声明、不能共享代码）；
+ *   · 本模块的 `orderAmountOf()` 是它的 TS 实现。
+ *   ⚠ 改口径时**两处必须同改** —— 本常量的存在就是为了让这个"必须"有一个可 grep 的锚点。
+ *   📌 判据：`scripts/` 下若有断言「`orderDerived.value.formula === ORDER_VALUE_FORMULA`」，改漏一处会当场红。
+ */
+export const ORDER_VALUE_FORMULA = "qty * unitPrice";
+
 const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 const round = (v: number, d: number): number => Number(v.toFixed(d));
 

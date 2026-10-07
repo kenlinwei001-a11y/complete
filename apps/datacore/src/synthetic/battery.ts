@@ -1,4 +1,5 @@
 import type { IndustryTemplate, BusinessType } from "@platform/contracts";
+import { ORDER_VALUE_FORMULA } from "../sim/order-amount.js"; // WO-SLOT-MODEL · 金额口径公式同源
 import { BASE_REGISTRY, SEG_REGISTRY, PLAN_GOAL_TARGETS, GOAL_REGISTRY, WAVE1_SCALE_FACTOR, packEnergyKwhAnchor, operatingDaysPerYear, scaleAnchorRevenue, WORKSHOP_REGISTRY, EQUIPMENT_TYPE_BY_PROCESS } from "@platform/contracts";
 // DF.13 外协红线单一来源（C08）：规则表达式 / what-if 上限 / 合成越线样本三处**全部派生**，禁内联裸阈值（R14·R-一致）。
 import { OUTSOURCE_REDLINE, OUTSOURCE_SAMPLE, outsourceRedlinePct, outsourceRedlineViolationExpr } from "@platform/contracts";
@@ -1900,7 +1901,14 @@ const orderProps: PropertyDef[] = [
   { propKey: "early", dataType: "boolean", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 是否需提前交付（乘用车部分客户）
   { propKey: "earlyDue", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 提前交期（early 时·= due − 提前天数）
 ];
-const orderDerived: DerivedPropertyDef[] = [{ propKey: "value", formula: "qty * unitPrice", unit: "元", scale: "absolute" }];
+/**
+ * ⚠ `value` 的公式字符串**不在此手写** —— 它取自 `sim/order-amount.ts` 的 `ORDER_VALUE_FORMULA`，
+ * 与消费者侧的 `orderAmountOf()` **同源**（本单实测：这条口径曾手抄四处，靠注释粘着）。
+ * ⛔ 改口径时改那一个常量；此处引用它，故物理上抄不岔。
+ */
+const orderDerived: DerivedPropertyDef[] = [
+  { propKey: "value", formula: ORDER_VALUE_FORMULA, unit: "元", scale: "absolute" },
+];
 
 // WO-C0828-P1 R3′：`Line.utilPressure` 的 derivedProperties 实例声明**已撤**（R3 曾在此补
 // `[{propKey:"utilPressure", formula:"utilization"}]`）——根因修法让 runDerivations 直接消费
