@@ -76,7 +76,7 @@ import { clarifyPromptFor, fillSlots } from "./slots.js";
 import { resolveCeoRoute, isCeoQuestion, ceoIntentKeyForRoute, isCeoIntentKey, resolveBlockRoute, hasBlockContext, decisionCommitIntent, shouldUseFreeLLM } from "./ceo-route.js"; // WO-CEO-6 · CEO 深问确定性路由（闭 G-3）· WO-BLOCK-DIALOGUE 块级定向路由（闭 G-3 块级）· WO-DECISION-KERNEL-WIRE 成决策意图分档 · WO-REAL-LLM-FREE-QUERY 真 LLM 自由多跳判定
 import { domainResolve, domainResolveMulti, preferDeterministicSolver, DETERMINISTIC_PREFERENCE_THRESHOLD, type DomainRoute } from "./domain-resolver.js"; // WO-QOS-1 · 确定性优先门（有对口 solver 的高置信题在 path-B 入口前拉回 path-A·闭 G-AGENT-BLIND-REACT 路由侧）· WO-DETERMINISTIC-CROSS-DOMAIN domainResolveMulti（跨域逐域枚举）
 import { selectDeterministicMultiRoute, detectCoupledPairs, runParallelRoutes, selectMultiIntent, type MultiIntentCandidate, type MultiIntentSelection } from "./multi-route.js"; // WO-QOS-CROSS-DOMAIN-UNIFIED · ②确定性多域 + ⑤LLM 多意图 **共享后半** runParallelRoutes（并行 solver + 零 LLM 块装配）
-import { planCoordination, planStalledCoordination, buildDispatchSteps, synthesize, detectSingleRole, ROLE_LABELS, type RoleAnswerInput } from "./coordinator.js"; // WO-FIVE-ROLE-AI-EMPLOYEE P1 · 跨域多角色 Coordinator 编排 + WO-LOOP-CONTROL-P2.5 rung② 反应式停滞兜底拆解 + WO-ROUTE-1 旁白角色标识
+import { planCoordination, planStalledCoordination, buildDispatchSteps, synthesize, detectSingleRole, buildClassifierDomainCatalog, ROLE_LABELS, type RoleAnswerInput } from "./coordinator.js"; // WO-FIVE-ROLE-AI-EMPLOYEE P1 · 跨域多角色 Coordinator 编排 + WO-LOOP-CONTROL-P2.5 rung② 反应式停滞兜底拆解 + WO-ROUTE-1 旁白角色标识 + WO-DOMAIN-BY-INTENT 域目录（分类器意图分析→域归属）
 import { resolveOptWhatifRoute, extractOptWhatifData, assembleOptWhatifAnswer, type OptWhatifRoute } from "./opt-whatif-route.js"; // WO-OPTWHATIF-NL-WIRING · 结构化优化 what-if 会话路由抽取 + 决策切换答案装配（R6·leaf 模块）
 import { buildL2Prompt, parseSolverPlan, buildSlotBag, validateSolverPlan, deterministicSlotFloor, mergeSlotFloor } from "./l2-decompose.js"; // WO-L2-DECOMPOSE · L2 真分解（LLM 产 solver 计划 → 纯校验层验真 → 接同一后半 runParallelRoutes·复用不新造）；WO-SLOT-HARVEST · 主链路确定性槽位底座（同一份确定性抽取器·单源）
 import { isCombinationAsk, runL3CoupledPath } from "./l3-coupled.js"; // PRD-multi-intent-L2L3 P2 · L3 耦合联合求解（一次 portfolio 守恒解·真传导·真残差外协·升格判挂 runMultiRoute）
@@ -1311,7 +1311,9 @@ export class Orchestrator {
     // WO-PROMPT-DEFAULTS-WIRING：先读 DataCore 可配 classifier 模板（OBO·TTL60s 缓存）——admin 配了 TENANT_OVERRIDE
     // 则替换硬编码指令头（灭漂移）；无配置 / A 不可达 / 非 admin 403 → undefined → 兜底硬编码（fail-open·R6·绝不阻断）。
     const promptOverride = await resolvePromptOverride(this.deps.engine.deps.dataCore.prompts, auth, "classifier");
-    const system = buildClassifierSystem(catalog, promptOverride);
+    // WO-DOMAIN-BY-INTENT：域目录（投影自角色画像目录·单一来源）随 prompt 下发 —— 分类器据此回 `domainRole`，
+    // 下游 `detectSingleRole` 据以选角色 agent（关键词表退为兜底）。域目录是运行时数据·恒追加，租户改模板不会弄丢。
+    const system = buildClassifierSystem(catalog, promptOverride, buildClassifierDomainCatalog());
     const user = buildClassifierUser({ query: task.query, historySummary, contextSummary });
 
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -1931,8 +1933,10 @@ export class Orchestrator {
 
     // WO-FIVE-ROLE-AI-EMPLOYEE P1 · C2：单域问题 → 按 role 选对应角色 agent（非永远 universal loop）。
     // 暗发门（agent.coordinator·defaultOn:false）后：coordinatorEnabled("ALL")=false → 既有通用 path-B 逐字节不变（C4）。
+    // ★ WO-DOMAIN-BY-INTENT：判据从「关键词正则」换成**对本 query 的意图分析**（`classification.domainRole`，
+    //   由分类器真 LLM 给出·随 prompt 的域目录）——关键词表只在分析缺席时兜底。三态语义见 `detectSingleRole`。
     if (coordinatorEnabled(enabledFeatures)) {
-      const role = detectSingleRole(task.query);
+      const role = detectSingleRole(task.query, classification);
       const prof = role ? roleProfile(role) : undefined;
       if (prof?.agentId && (await this.deps.repos.agents.get(prof.agentId))) {
         await this.runRolePathB(taskId, auth, task, prof, enabledFeatures, classification);
@@ -2673,6 +2677,12 @@ export class Orchestrator {
     tauLow: number,
   ): Promise<boolean> {
     if (!coordinatorEnabled(enabledFeatures)) return false;
+    // ★ WO-DOMAIN-BY-INTENT · 意图分析在场 ⇒ **角色归属已定**，不再按关键词拉多角色会诊：
+    //   分析给了域 ⇒ 本题是**单域题**（落该域角色 agent，`detectSingleRole` 同一份判据），会诊无据；
+    //   分析判**判不出域**（null）⇒ 本题不属于任何域 ⇒ 落**通用 agent**（工单 §3 的"应该是 Y"原话：
+    //   「该域就落该域的角色 agent；判不出域才落通用 agent」）。两个方向都不该再由词面召集三角会诊。
+    //   ⚠ 兜底仍在：**没有这份分析**（分类器没跑/确定性桩/老任务）⇒ 本门不开火，既有关键词路径逐字节不变。
+    if (classification.domainRole !== undefined) return false;
     const top = classification.candidates[0];
     // ② 与下方 path-B 分支**同一个谓词**（改一处两处同步·不会再长出第二套阈值）。
     const classifierCannotAnswer = classification.outOfCatalog === true || !top || top.confidence < tauLow;

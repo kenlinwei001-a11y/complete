@@ -1,4 +1,4 @@
-import type { Answer, AnswerBlock, CoordinatorPlan, PageContext, ProvenanceRef, RoleDispatch } from "@platform/contracts";
+import type { Answer, AnswerBlock, ClassificationResult, CoordinatorPlan, PageContext, ProvenanceRef, RoleDispatch } from "@platform/contracts";
 import { AGENT_ROLE_ORDER } from "@platform/contracts";
 import { scanBlocks } from "../util/numerics.js"; // 数字红线单源判据（交付出口据实判定·见 synthesize 内注）
 import { roleProfile } from "../mocks/seed.js";
@@ -21,12 +21,48 @@ import { selectDeterministicMultiRoute } from "./multi-route.js";
  * P2 双向 A2A（角色间相互提问/协商）标"二期"·不在本模块。
  */
 
-/** 角色关键词表（命中即该角色相关·确定性）。 */
+/** 角色关键词表（命中即该角色相关·确定性）。**WO-DOMAIN-BY-INTENT 起降为兜底/金丝雀** —— 首选判据见 `detectSingleRole`。 */
 const ROLE_KEYWORDS: { role: RoleDispatch["role"]; focusHint: string; re: RegExp }[] = [
   { role: "supply-chain", focusHint: "物料齐套", re: /(物料|齐套|供应商|供应|采购|断供|缺料|库存|长协|到货|BOM)/ },
   { role: "production", focusHint: "产能瓶颈", re: /(产能|产线|瓶颈|排产|换型|爬坡|工序|装配|化成|涂布|卷绕|注液|OEE|利用率)/ },
   { role: "quality", focusHint: "良率", re: /(质量|良率|合格|检验|不良|缺陷|一致性|合规|SPC)/ },
 ];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WO-DOMAIN-BY-INTENT · 域归属的**首选判据 = 意图分析**（关键词正则降为兜底/金丝雀）
+//
+// 病灶（审核方活服务实测·§3）：域归属**纯靠词面命中**，一个 token 就定生死——
+//   「把 EquipmentOEE 的前 3 条记录列出来」命中 `OEE` ⇒ 判生产域 ⇒ 落生产角色 agent（对象域被限权，读不到它）；
+//   「把 QualityLot 的前 3 条记录列出来」一个中文域关键词都不含 ⇒ 判不出域 ⇒ 落通用 agent。
+//   **同一个"列记录"的意图，只因表名里有没有 OEE 三个字母，落点天差地别。**
+//
+// 判据搬家：域归属改由**分类器（真 LLM）对 query 意图的分析**给出（`ClassificationResult.domainRole`），
+//   本文件的三张关键词正则**只在该分析缺席时**参与（无 LLM / 确定性桩 / 老任务）——见 `detectSingleRole`。
+//   三态语义是命门（`string`=该域 / `null`=判不出域 / `undefined`=**没有这份分析**），不许把 null 读成"没分析"。
+//
+// ⛔ 只换「选哪个域」，**不动「域内能看什么」**：角色 agent 的 scope（objectTypes/toolNames）一个字未放宽，
+//   由绑定 agent 的 scopeDeclaration 在执行器强制（越界拒）——改的是**落点**，不是围栏。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 可被意图分析指派的角色域集 —— **派生自本文件 ROLE_KEYWORDS**（单一来源），⛔ 不新写第三张域清单：
+ * 新增一个域 = 在 ROLE_KEYWORDS / ROLE_PROFILES 各加一条，关键词兜底、域目录、本判据同时生效。
+ */
+const ANALYZABLE_ROLES: ReadonlySet<string> = new Set(ROLE_KEYWORDS.map((k) => k.role));
+
+/**
+ * **分类器域目录**（`buildClassifierSystem` 的域归属段）：投影自 ROLE_KEYWORDS（域清单·单一来源）×
+ * `roleProfile`（既有角色画像目录：取证对象域 / 关注指标）——**没有新增任何业务常数或域表**。
+ * 供分类器据以判断「这句话的意图属于哪个域」，其回值即 `ClassificationResult.domainRole` 的合法取值集。
+ */
+export function buildClassifierDomainCatalog(): string {
+  return ROLE_KEYWORDS.map((k) => {
+    const prof = roleProfile(k.role);
+    const objects = prof?.objectTypes?.length ? prof.objectTypes.join("/") : "（运行期现算）";
+    const metrics = prof?.focusMetrics?.length ? `关注指标 ${prof.focusMetrics.join("/")}；` : "";
+    return `- ${k.role}（${ROLE_LABELS[k.role] ?? k.role}·${k.focusHint}）：${metrics}对口取证对象域 ${objects}`;
+  }).join("\n");
+}
 
 /**
  * 复合跨域触发：交付风险/综合诊断/整体评估等——即便只显式命中一个域关键词，也应召集"交付风险三角"
@@ -211,13 +247,32 @@ export function planStalledCoordination(
 
 /**
  * WO-FIVE-ROLE P1 · C2：单域问题 → 该域角色（path-B 按 role 选对应 agent·非永远 universal）。
- * 恰好命中一个角色关键词组、且**非**跨域触发（交付风险/复合）→ 返该角色；否则 undefined（走通用 path-B）。
+ *
+ * ★ WO-DOMAIN-BY-INTENT · **首选判据 = 意图分析**（分类器对 query 意图的域归属判断），关键词正则降为兜底：
+ *   | `classification.domainRole` | 含义 | 本函数返回 |
+ *   |---|---|---|
+ *   | `"supply-chain"` / `"production"` / `"quality"` | 分析判定本题意图属于该域 | 该角色（**词面不参与**） |
+ *   | `null` | 分析判定**判不出域**（意图不属于任何域） | `undefined` ⇒ 通用 agent（**不是**回落到关键词） |
+ *   | `undefined`（字段缺省） | **没有这份分析**（分类器没跑/确定性桩/老任务） | 走下方关键词兜底（金丝雀） |
+ *   | 域目录外的值（模型编造） | 不采信 | `undefined` ⇒ 通用 agent（不回落关键词——回落等于让词面重新定生死） |
+ *   ⚠ `null` 与 `undefined` 语义**不同**（前者是"有信息的不确定"，后者是"没有信息"）：合并二者会让
+ *   「分析说判不出域」的题被关键词重新判一遍 —— 那正是本单要消灭的那条路。
  */
-export function detectSingleRole(question: string): RoleDispatch["role"] | undefined {
+export function detectSingleRole(
+  question: string,
+  classification?: Pick<ClassificationResult, "domainRole">,
+): RoleDispatch["role"] | undefined {
   const q = question ?? "";
   // WO-AGENT-RUNTIME-S01：产能可行性变体不落单域角色 agent（该 agent 仍需把「上浮X%/N周」映射成 solver 参·同样盲扫）——
   // 让它落到 runPathB 组合路径（compileSolverPlan→capacity_forecast）或既有 path-B 导航切片（对口 solver 一步到位）。
+  // 定式意图的**结构性**让位（与词面无关），故排在意图分析判据之前，两版判据下一致。
   if (isCapacityFeasibilityQuery(q)) return undefined;
+  // ★ 意图分析在场 ⇒ 它说了算（含"判不出域"这个答案）。关键词表在这条分支上**一次都不参与**。
+  const analyzed = classification?.domainRole;
+  if (analyzed !== undefined) {
+    return analyzed !== null && ANALYZABLE_ROLES.has(analyzed) ? (analyzed as RoleDispatch["role"]) : undefined;
+  }
+  // ↓ 以下为**分析缺席**时的兜底（金丝雀）：既有确定性关键词判据，逐字节未改。
   // WO-ROUTE-1：与 planCoordination 同一份中和视图（同一结构判据两处一致——否则「涂布良率」在这里仍被判 2 域
   // 落通用 agent，而不是落对口的质量角色 agent）。
   const qDomains = stripQualifierDomainTokens(q);
