@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ClassificationResult } from "@platform/contracts";
 import { createTestApp, PLANNER, submitQuery, TENANT, waitForTask, type TestApp } from "./helpers.js";
 import { toolUse } from "../src/llm/mock.js";
+import { AnthropicLlmClient } from "../src/llm/anthropic.js";
+import { OpenAiLlmClient, type OpenAiChatCompletion, type OpenAiChatPort } from "../src/llm/openai.js";
 import { GENERAL_AGENT_ID, GENERAL_AGENT_KEY, seedRegistry } from "../src/mocks/seed.js";
 import { defaultOnKeys } from "../src/features/registry.js";
 import { buildClassifierDomainCatalog, detectSingleRole, planCoordination } from "../src/router/coordinator.js";
@@ -74,6 +76,29 @@ const say = (s: string): void => {
   // eslint-disable-next-line no-console
   console.log(s);
 };
+
+/** Stubbed openai SDK shape（无网络·与 `llm-providers.test.ts` 同一手法）。 */
+class StubOpenAi implements OpenAiChatPort {
+  readonly requests: Record<string, unknown>[] = [];
+  readonly script: ((params: Record<string, unknown>) => OpenAiChatCompletion)[] = [];
+  chat = {
+    completions: {
+      create: async (params: Record<string, unknown>): Promise<OpenAiChatCompletion> => {
+        this.requests.push(params);
+        const next = this.script.shift();
+        if (!next) throw new Error("StubOpenAi: no scripted completion");
+        return next(params);
+      },
+    },
+  };
+}
+
+function assistant(msg: { content: string | null }, finish = "stop"): OpenAiChatCompletion {
+  return {
+    choices: [{ message: { role: "assistant", content: null, ...msg }, finish_reason: finish }],
+    usage: { prompt_tokens: 100, completion_tokens: 20 },
+  };
+}
 
 const savedEnv: Record<string, string | undefined> = {};
 beforeEach(() => {
@@ -290,5 +315,58 @@ describe("WO-DOMAIN-BY-INTENT · detectSingleRole 三态", () => {
     // 定式让位仍前置（与词面/分析均无关的结构判据·两版判据下一致）
     expect(detectSingleRole("4680-NCM 上浮10%，8周还能接吗", { domainRole: "production" })).toBeUndefined();
     expect(logs.length).toBeGreaterThanOrEqual(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 适配器层（⇐ 上面几臂走的是 scripted mock，**绕过适配器**）：真适配器必须让 domainRole 穿过去
+// —— 三条适配器的窄 schema 历史上就是「证据在自己这一层被删掉」的地方（WO-SLOT-HARVEST 的 slot 同款病）。
+// anthropic 是 live 部署用的那条路（provider kind=anthropic），故它必须有一条。
+// ─────────────────────────────────────────────────────────────────────────────
+describe("WO-DOMAIN-BY-INTENT · 适配器层透传（openai / anthropic）", () => {
+  it("openai：raw 里的 domainRole 穿到 RawClassification（空串 ⇒ null；缺字段 ⇒ undefined）", async () => {
+    const run = async (payload: Record<string, unknown>) => {
+      const stub = new StubOpenAi();
+      stub.script.push(() => assistant({ content: JSON.stringify(payload) }));
+      const llm = new OpenAiLlmClient({ client: stub });
+      const r = await llm.classify({ model: "m", system: "sys", user: "u" });
+      return { r, stub };
+    };
+    const a = await run({ candidates: [{ intentKey: "x", confidence: 0.9 }], outOfCatalog: false, domainRole: "quality" });
+    const b = await run({ candidates: [], outOfCatalog: true, domainRole: "" });
+    const c = await run({ candidates: [], outOfCatalog: true });
+    say(
+      `[WO-DOMAIN-BY-INTENT 适配器·openai] domainRole="quality" ⇒ ${JSON.stringify(a.r.domainRole)} · ` +
+        `"" ⇒ ${JSON.stringify(b.r.domainRole)} · 缺字段 ⇒ ${JSON.stringify(c.r.domainRole)}`,
+    );
+    expect(a.r.domainRole).toBe("quality");
+    expect(b.r.domainRole).toBeNull();
+    expect(c.r.domainRole).toBeUndefined();
+    // 模型侧提示（json_schema）里也必须带这个字段，否则模型根本不知道要回它。
+    const schema = (a.stub.requests[0] as { response_format: { json_schema: { schema: { properties: Record<string, unknown> } } } })
+      .response_format.json_schema.schema;
+    expect(Object.keys(schema.properties)).toContain("domainRole");
+  });
+
+  it("anthropic（live 部署那条路）：parsed_output 里的 domainRole 穿到 RawClassification", async () => {
+    const seen: Record<string, unknown>[] = [];
+    const stubClient = {
+      messages: {
+        parse: async (params: Record<string, unknown>) => {
+          seen.push(params);
+          return {
+            parsed_output: { candidates: [], outOfCatalog: true, extractedSlots: {}, domainRole: "production" },
+            usage: { input_tokens: 12, output_tokens: 3 },
+          };
+        },
+      },
+    };
+    const llm = new AnthropicLlmClient(undefined, { client: stubClient as never });
+    const r = await llm.classify({ model: "deepseek-flash", system: "sys", user: "u" });
+    say(`[WO-DOMAIN-BY-INTENT 适配器·anthropic] domainRole=${JSON.stringify(r.domainRole)}`);
+    expect(r.domainRole).toBe("production");
+    // 结构化输出 schema（发给模型的那一份）也必须声明该字段。
+    const fmt = (seen[0] as { output_config: { format: { schema: { properties: Record<string, unknown> } } } }).output_config.format;
+    expect(Object.keys(fmt.schema.properties)).toContain("domainRole");
   });
 });
