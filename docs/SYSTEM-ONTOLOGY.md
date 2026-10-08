@@ -698,6 +698,22 @@ ExecutionPlan --render--> AnswerBlock{ table|kpi|text|rule_violation|action_draf
                        │  CoordinatorPlan{dispatches} --invoke_agent 扇出(enforceObjectScope)--> {供应链|生产|质量} 角色 Agent
                        │  (各按 scopeDeclaration.objectTypes 取证·越界 AGENT_SCOPE_VIOLATION 拒) --synthesize--> 多角色汇总 Answer
                        │  · 单域 --detectSingleRole--> path-B 选对应角色 Agent（非永远 universal·C2）· P2 双向 A2A 二期
+                       │  · ★**WO-DOMAIN-BY-INTENT（2026-10-08）· 域归属改由「意图分析」判**：`detectSingleRole(query, classification)`
+                       │    首选判据 = 分类器对问句**意图**的域判断 `ClassificationResult.domainRole`（三态：域 key / null=判不出域 /
+                       │    缺省=**没有这份分析**）。`null` 与「缺省」必须走**不同**分支——前者落通用 agent、后者才落关键词兜底
+                       │    （`ROLE_KEYWORDS` 三张正则自本单起**只是兜底/金丝雀**）；域目录里没有的域 key（模型编造）不采信、**不回落关键词**。
+                       │  · **域目录 = 配置面**（提示词键 `classifier_domains`：租户 override ← `PLATFORM_PROMPT_DEFAULTS` 出厂默认，
+                       │    与 classifier 指令头同一条 OBO+TTL60s+`prompt.updated` 失效链）——**每域一条描述（覆盖什么/不覆盖什么）**，
+                       │    改描述**不改代码**；分类器按「问句意图 ↔ 描述」语义匹配选域（与"按描述挑工具/挑 skill"同一模式）。
+                       │  · **描述与权限分离**（不可合并的一份 vs 另一份）：域目录/`domainRole` 只决定**选哪个域**；
+                       │    选上之后能看什么仍由角色 agent 的 `scopeDeclaration.objectTypes/toolNames` 在 GuardedToolExecutor 强制
+                       │    （越界 `AGENT_SCOPE_VIOLATION` 拒）——本单对 scope **一个字未放宽**。可路由的域仍以角色目录
+                       │    （`ROLE_KEYWORDS` 角色集·`ANALYZABLE_ROLES`）为名单：描述里写一个没有角色 agent 的域，路由不过去。
+                       │  · **判断可审计**：`classification.{domainRole, domainReason, domainBasis}` 随任务落库——`domainBasis` =
+                       │    哪份域目录（TENANT_OVERRIDE/PLATFORM_DEFAULT）+ 哪一版 + **命中哪一行描述原文**；两域都沾边时
+                       │    `domainReason` 必须写明取舍（⛔ 不许静默任选，判不出唯一主域 → `domainRole=null` 落兜底）。
+                       │  · **Coordinator 兜底门同步**：分析在场（含 `domainRole=null`）⇒ `maybeRunCoordinator` 不开火（不再按关键词拉三角会诊）；
+                       │    分析缺席才走既有关键词路径（逐字节不变）。反应式 rung②（`planStalledCoordination`）仍是关键词兜底·不在本单范围。
                        │  · **WO-AGENT-RUNTIME-S01（G-S01-VARIANT-ROUTING）**：产能可行性变体（型号+上浮X%+N周+能不能接）
                        │    planCoordination/detectSingleRole **返 undefined**（有对口单一 solver·不拆多角色）；且 orchestrator
                        │    在 Coordinator **之前**插 `tryInheritScenarioVariant`（会话继承 scenarioIntentKey→path-A capacity_forecast）
