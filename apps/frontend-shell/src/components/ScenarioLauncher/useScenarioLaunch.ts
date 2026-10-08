@@ -81,29 +81,76 @@ export function useQuickLaunch(): (input: {
  * ⚠ `useQuickLaunch` **保持原样不动**：它服务的是「数据构建发动机一键推演」那类
  *   **没有场景卡**的启动（没有 scenarioKey 可传给 launch 端点）。把它一起改掉就是
  *   拿一条端点去顶两种不同的入参 —— 那才是真的接错地方。
+ *
+ * ══ WO-LAUNCHER-TO-DSH：**用户改过输入框之后，路径必须由那句 query 自己决定** ═════════
+ *
+ * 今天的行为（X）：卡片的输入框允许用户覆盖问句（WO-SCENARIO-INPUT-PHASE0），
+ *   但覆盖后的文本**只参与槽位抽取，不参与路径判断** —— launch 端点无条件把卡片的
+ *   `scenarioIntentKey` 塞进 context，编排器 §2.4 命中即直接绑定该意图 → path-A 求解器。
+ *   实测（2026-10-08 · demo · S01）：往卡里敲「常州基地当前的产能利用率是多少？瓶颈在哪道工序？」
+ *   → `path=WORKFLOW` · `classification.model=deterministic:scenario-bind` ·
+ *   `extractedSlots={base:"changzhou"}`（**卡自带的槽位**）· 无任何 agent run；
+ *   同一句走正常提问（不带 scenarioIntentKey）→ `path=AGENT` ·
+ *   `classification.model=agent:role:production` · run 记录 `kernel=EXTERNAL`（DSH）。
+ *   ⇒ **输入与路由不一致**：用户改写了问题，路由却仍按卡片走。
+ *
+ * 应该是（Y）：**用户改过的 query 走正常的意图判断**（该 workflow 就 workflow、该 agent 就 agent）；
+ *   **只有用户没改、用的就是卡片自带问句时**，才走那条确定性快路（`scenarioIntentKey`）。
+ *   判据 = **输入与路由一致**，不是「统统改走 agent」。
+ *
+ * 为什么快路本身是对的、不能整条删掉：它买的是「**点卡不被 classifier 死活/目录/缓存影响**」
+ *   （§2.4 原文：卡的闭包已长成则正序确定运作）——这个理由只对**卡自己的问句**成立；
+ *   用户换了一个问题，卡上那句的意图就不再是这句话的意图。
+ *
+ * ⚠ 已知边界（本单未改、登记在案）：这里只是**本前端**不再替用户改过的问句钉死路径；
+ *   `POST /b/v1/scenarios/:key/launch` 端点自身仍无条件绑定卡意图 —— 直接打该端点的
+ *   其它调用方（curl/CLI/测试）拿到的是旧行为。根治点在那个端点（或编排器 §2.4 处
+ *   加「query 与卡 triggerQuestion 一致才绑定」的门），不在本文件。
  */
 export function useScenarioLaunch(): (card: ScenarioCardVM, userQuery?: string) => Promise<void> {
   const navigate = useNavigate();
+  const { data: workspace } = useWorkspace();
+  const packageId = workspace?.scenarioPackages[0] ?? "";
   return async (card: ScenarioCardVM, userQuery?: string) => {
     // 同上：原样用后端给的键，不做别名换算（换算出来的规范名路由不认）。
     const canonicalView = card.presetContext.targetView;
     const store = useSessionStore.getState();
+    // 「用户改过没有」= 输入框内容与卡片自带问句（trim 后）是否逐字相同；空输入 = 没改（用卡片问句）。
+    const typed = userQuery?.trim() ?? "";
+    const askedQuery = typed || card.triggerQuestion;
+    // 改过的问句走正常意图判断需要 packageId（QOS 提交必填）；工作区没加载出来时退回端点路，
+    // 不让「改了字反而发不出去」——那是比路由不理想更坏的 UX。
+    const useFastPath = typed === "" || typed === card.triggerQuestion.trim() || !packageId;
     // 本地会话态照旧在**发请求之前**摆好：屏上先进落点视图、先起对话线程，
     // 用户不必盯着一个没反应的按钮等网络（这一段与原实现逐字同义，只换了那一跳网络调用）。
     store.setView(canonicalView);
     store.setSelectedObjects(card.presetContext.selectedObjects);
     const localId = safeUuid();
-    store.startConversation({ localId, query: userQuery?.trim() || card.triggerQuestion });
+    store.startConversation({ localId, query: askedQuery });
     store.setDockExpanded(true);
     navigate(`/v/${canonicalView}`);
     try {
-      // 服务端按 SCENARIO_CATALOG 单源组装 presetContext + 归一化槽位 + 绑定 intentKey，
-      // 前端只把「哪张卡 + 用户改写的问句」交出去。
-      // ⚠ 卡片 VM 上的 `sNo` **就是** `scenarioKey`（后端 `GET /b/v1/scenarios` 那一跳
-      //   逐字写着 `sNo: s.scenarioKey`）。卡上没有第二个叫 scenarioKey 的字段 —— 想当然写
-      //   `card.scenarioKey` 会编译报错（2026-08-14 实测，复验：`npx tsc -p apps/frontend-shell/tsconfig.json --noEmit`
-      //   报 `Property 'scenarioKey' does not exist on type 'ScenarioCardVM'`）。留此免得下一个人再撞一次。
-      const res = await launchScenario(card.sNo, userQuery);
+      // 没改（用卡片原问句）→ 服务端组装快路：卡意图确定性绑定（秒级·不受 classifier 死活影响）。
+      // 改过 → 走与 CLI/对话坞同一条 QOS 管线，**不带 scenarioIntentKey**（也就不带 scenarioKey），
+      //   让编排器第一步的意图判断决定路径；卡的 presetContext 照旧注入（选中对象 + presetSlots）。
+      // ⚠ 卡片 VM 上的 `sNo` **就是** `scenarioKey`（后端 `GET /b/v1/scenarios` 那一跳逐字写着
+      //   `sNo: s.scenarioKey`）。卡上没有第二个叫 scenarioKey 的字段 —— 想当然写 `card.scenarioKey`
+      //   会编译报错（2026-08-14 实测；复验 `tsc -p apps/frontend-shell/tsconfig.json --noEmit`）。
+      const res = useFastPath
+        ? await launchScenario(card.sNo)
+        : await submitQuery(
+            {
+              packageId,
+              query: typed,
+              context: {
+                view: canonicalView,
+                selectedObjects: card.presetContext.selectedObjects,
+                filters: {},
+                presetSlots: card.presetContext.slotPresets,
+              },
+            },
+            safeUuid(),
+          );
       store.updateConversation(localId, { taskId: res.taskId });
       store.setConversationId(res.taskId);
     } catch (e) {
