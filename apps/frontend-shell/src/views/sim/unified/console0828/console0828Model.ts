@@ -692,7 +692,7 @@ export function candidateJoinWhy(c: CandidateVM): string {
     case "LOCUS_PROP":
       return `杠杆就长在 ${loc}（${c.lever.objectId}）这个环节上，动它最直接。`;
     case "LINK_HOP":
-      return `杠杆不在卡住的环节本身，而在与 ${loc} 直接相连的上一环${c.join.path ? `（${c.join.path}）` : ""}——谁连着谁取自现场数据。`;
+      return `杠杆不在卡住的环节本身，而在与 ${loc} 直接相连的上一环——谁连着谁取自现场数据。`;
     case "KEY_JOIN":
       return `两处记的是同一个东西（编号一致：${c.join.path || "同一编号"}），所以动 ${loc} 也管这一处。`;
     case "RULE_GATE":
