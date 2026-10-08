@@ -65,10 +65,7 @@ registerRenderer("optimize-whatif", () => import("./OptimizeWhatifView"));
 // ── 推演沙盘指控台（WO-SIM-FE-HOME / -DETAIL · 规格 docs/ux-spec/sandbox/）────────────
 // 与既有 `sim-sandbox` 并存**不替换**：旧屏是否退役属产品决策，本次只把新屏接上，
 // 不在接线这一步顺手删别人的入口（删了出问题就说不清是接线错还是退役错）。
-registerRenderer("sim-conduction", () => import("./sim/console/SandboxDetailRoute"));
-registerRenderer("sim-attribution", () => import("./sim/console/SandboxAttrRoute"));
 // WO-SIM-FE-OPT 方案寻优台（帕累托前沿解集 · 规格 docs/ux-spec/sandbox/sandbox-opt.html + pg4.png）。
-registerRenderer("sim-optimize", () => import("./sim/console/SandboxOptRoute"));
 registerRenderer("ledger", () => import("./LedgerView"));
 registerRenderer("plan-audit", () => import("./sim/PlanAuditView"));
 registerRenderer("plan-generate", () => import("./sim/PlanGenerateView"));
