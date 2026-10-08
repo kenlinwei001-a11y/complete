@@ -1,0 +1,16 @@
+## WO-3 R3 · 真机两扰动 · 完整记录扰动列表
+金丝雀① c0828 外壳节点数 = 0  ❌ 页面没起来
+会话 sims_sp8mr0f8cwxrzdhx
+  加扰动 -3 ⇒ HTTP 201
+  加扰动 -12 ⇒ HTTP 201
+
+### 扰动列表（完整）
+  条数 = 2
+    simpert_f22eca22k7g6a8nc | obj_order_SO-3391.leadDays | mag=-3 | startTick=0 | mode=delta
+    simpert_dk131jqrs0jkp4d4 | obj_order_SO-3391.leadDays | mag=-12 | startTick=0 | mode=delta
+  幅度合计 = -15
+
+### API 侧读数（该会话）：COST = 1434.29 万元
+  对照：真机 R2 屏上 1434.3 万元 / 单扰动 −3 天 = 286.86 万元
+
+WROTE /tmp/wt-ab/docs/evidence/WO3-R3-two-pert.txt
