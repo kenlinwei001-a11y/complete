@@ -1,0 +1,63 @@
+npm warn Unknown env config "side-effects-cache". This will stop working in the next major version of npm.
+
+ RUN  v3.2.6 /private/tmp/wt-ab/apps/datacore
+
+ DEPRECATED  'basic' reporter is deprecated and will be removed in Vitest v3.
+Remove 'basic' from 'reporters' option. To match 'basic' reporter 100%, use configuration:
+{
+  "test": {
+    "reporters": [
+      [
+        "default",
+        {
+          "summary": false
+        }
+      ]
+    ]
+  }
+}
+ ❯ test/edge-money-weight.seam.test.ts (12 tests | 1 failed | 9 skipped) 20ms
+   ↓ §1 应收压力：按金额算，不按条数算 > ① 修前形态复现：无 weightRef ⇒ 读数只跟**条数**走，金额 4.2 倍的两家拿到逐字节相同的数
+   ↓ §1 应收压力：按金额算，不按条数算 > ② 修后·实验 1「同条数、不同金额」⇒ 读数按**金额比**拉开（4 个数缺一不可）
+   ↓ §1 应收压力：按金额算，不按条数算 > ③ 修后·实验 2「同金额、不同条数」⇒ 读数**相等**（否则就没真换成金额）
+   ↓ §1 应收压力：按金额算，不按条数算 > ④ 🔴 变异反证：换成**组内**均值归一 ⇒ 读数逐字节退回修前（这就是为什么分母必须是全域）
+   ↓ §1 应收压力：按金额算，不按条数算 > ⑤ 保总量：全域 Σ权重 = 源实例条数 ⇒ 换口径不改变世界的总体量级
+   ↓ §1 应收压力：按金额算，不按条数算 > ⑥ 声明了口径却拿不到整张表 ⇒ 不传导 + 显式报缺，**绝不退回 1**
+   ↓ §2 口径登记册 > source_value_relative 在册且归一为 IN_EDGES_GLOBAL_MEAN
+   ↓ §2 口径登记册 > 🔴 与 source_qty_relative 的归一必须**不同** —— 相同就说明分母又退回组内了
+   ✓ §3 描述里的系数 = 真系数 > 🐤 金丝雀先行：把一条相符的边变异成不符，对账必须当场抓到 6ms
+   ✓ §3 描述里的系数 = 真系数 > 🐤 金丝雀②：**排版减号 U+2212** 的声明数必须抽得出来（旧正则在这里整条放过） 2ms
+   × §3 描述里的系数 = 真系数 > 种子里 0 条描述与真系数不符 11ms
+     → 屏上正在说与实际不符的话（GET /a/v1/sim/propagation-rules 原样下发 description）: expected [ Array(1) ] to deeply equal []
+   ↓ §4 种子把口径接上了 > demo_order_cost_to_customer_receivable 声明 source_value_relative
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/edge-money-weight.seam.test.ts > §3 描述里的系数 = 真系数 > 种子里 0 条描述与真系数不符
+AssertionError: 屏上正在说与实际不符的话（GET /a/v1/sim/propagation-rules 原样下发 description）: expected [ Array(1) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "demo_model_demand_to_cert_queue: 描述 ×0.178378 vs 真值 0.3",
++ ]
+
+ ❯ test/edge-money-weight.seam.test.ts:322:7
+    320|       bad.map((r) => `${r.key}: 描述 ×${r.stated.join("/")} vs 真值 ${r.co…
+    321|       "屏上正在说与实际不符的话（GET /a/v1/sim/propagation-rules 原样下发 description）",
+    322|     ).toEqual([]);
+       |       ^
+    323|   });
+    324| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 2 passed | 9 skipped (12)
+   Start at  15:20:44
+   Duration  3.09s (transform 1.24s, setup 0ms, collect 2.50s, tests 20ms, environment 0ms, prepare 179ms)
+

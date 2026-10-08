@@ -1,0 +1,44 @@
+## WO-2 R2 可加性 · BASE=http://127.0.0.1:4052 · TICKS=10 · 幅度 3（A=priceShock, B=utilPressure）
+zero=sims_dy7nfqtvgdfyjzpm
+A=sims_d0dew0jjm5sb5j3h
+B=sims_wdnyhwz7rwys7ms7
+AB=sims_2q32a7c6hjq9k8z2
+  A 落点 priceShock: 5（zero=2）
+  B 落点 utilPressure: 0.029547908756（zero=0）
+  AB 落点 priceShock: 5（zero=2）
+
+检查 344 格（|rA| 或 |rB| > 1e-12）；不可加(err>1e-6) 0 格
+  blockedPressure: 0/1
+  collectionPressure: 0/2
+  costPressure: 0/156
+  defectPressure: 0/1
+  deliveryHoldRisk: 0/27
+  feedPressure: 0/2
+  handlingBacklog: 0/1
+  inspectBacklog: 0/2
+  overduePressure: 0/51
+  priceShock: 0/1
+  promiseRisk: 0/15
+  queuePressure: 0/5
+  receivablePressure: 0/17
+  releasePressure: 0/2
+  shortageRisk: 0/58
+  supplyRisk: 0/2
+  utilPressure: 0/1
+top 15 by err：
+  obj_arinvoice_arinvoice_3_0.overduePressure: z=0 rA=0.000046563876 rB=0.000018276324 rAB=0.000064840199 err=1.54e-8
+  obj_arinvoice_arinvoice_3_1.overduePressure: z=0 rA=0.000046563876 rB=0.000018276324 rAB=0.000064840199 err=1.54e-8
+  obj_arinvoice_arinvoice_3_2.overduePressure: z=0 rA=0.000046563876 rB=0.000018276324 rAB=0.000064840199 err=1.54e-8
+  obj_customer_cust_3.receivablePressure: z=0 rA=0.000205476881 rB=0.000114656087 rAB=0.000320132965 err=9.37e-9
+  obj_arinvoice_arinvoice_6_0.overduePressure: z=0 rA=0.000147056712 rB=0.000067581153 rAB=0.000214637864 err=4.66e-9
+  obj_arinvoice_arinvoice_6_1.overduePressure: z=0 rA=0.000147056712 rB=0.000067581153 rAB=0.000214637864 err=4.66e-9
+  obj_arinvoice_arinvoice_6_2.overduePressure: z=0 rA=0.000147056712 rB=0.000067581153 rAB=0.000214637864 err=4.66e-9
+  obj_arinvoice_arinvoice_12_0.overduePressure: z=0 rA=0.000184592379 rB=0.000054773976 rAB=0.000239366354 err=4.18e-9
+  obj_arinvoice_arinvoice_12_1.overduePressure: z=0 rA=0.000184592379 rB=0.000054773976 rAB=0.000239366354 err=4.18e-9
+  obj_arinvoice_arinvoice_12_2.overduePressure: z=0 rA=0.000184592379 rB=0.000054773976 rAB=0.000239366354 err=4.18e-9
+  obj_customer_cust_6.receivablePressure: z=0 rA=0.000648931258 rB=0.000423968777 rAB=0.001072900033 err=1.86e-9
+  obj_overduerecord_od-sd.collectionPressure: z=0 rA=0.001412929751 rB=0.00003023397 rAB=0.001443163723 err=1.39e-9
+  obj_arinvoice_arinvoice_9_0.overduePressure: z=0 rA=0.00220899834 rB=0.000283191693 rAB=0.00249219003 err=1.20e-9
+  obj_arinvoice_arinvoice_9_1.overduePressure: z=0 rA=0.00220899834 rB=0.000283191693 rAB=0.00249219003 err=1.20e-9
+  obj_arinvoice_arinvoice_9_2.overduePressure: z=0 rA=0.00220899834 rB=0.000283191693 rAB=0.00249219003 err=1.20e-9
+DONE 2026-10-07T07:39:56.170Z

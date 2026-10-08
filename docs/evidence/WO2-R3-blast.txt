@@ -1,0 +1,21 @@
+## (1) 4052 种子→世界 t0 · blockedPressure 格 130
+  baseSnapshot > 100（越声明上界）的格 = 0
+  seed ≤ 100 但在带内(>75) 的格 = 76
+  seed ≠ t0（被 tick0 投影改过的格）= 0
+
+## (2) 零臂逐拍 diff（4052 vs 4054）
+  t=0  差异格 136  {"blockedPressure":130,"forecastBias":6}
+  t=1  差异格 136   blockedPressure:130 forecastBias:6
+  t=2  差异格 136   blockedPressure:130 forecastBias:6
+  t=3  差异格 136   blockedPressure:130 forecastBias:6
+  t=4  差异格 136   blockedPressure:130 forecastBias:6
+  t=5  差异格 136   blockedPressure:130 forecastBias:6
+  t=6  差异格 136   blockedPressure:130 forecastBias:6
+  t=7  差异格 136   blockedPressure:130 forecastBias:6
+  t=8  差异格 136   blockedPressure:130 forecastBias:6
+  t=9  差异格 136   blockedPressure:130 forecastBias:6
+  t=10 差异格 136   blockedPressure:130 forecastBias:6
+  t=11 差异格 136   blockedPressure:130 forecastBias:6
+  t=12 差异格 136   blockedPressure:130 forecastBias:6
+DONE 2026-10-07T08:06:59.925Z
+CAPTURED_RC=0

@@ -1,0 +1,16 @@
+## WO-2 R2 · 全格扫描 · BASE=http://127.0.0.1:4052 · TICKS=10 · P1 Order.leadDays 落点 obj_order_SO-3391.leadDays · 幅度 3/20
+zero=sims_s12p5q1ed1xt0wpc a=sims_gcyrnxt0w35ae79n b=sims_ezj5mn28tcny71gh
+被扰动格终态：zero=14  +3=17  +20=34
+✅ 脉冲金丝雀：扰动已落地
+
+检查 1 格；超差(>1e-6) 0 格；期望比 6.666667
+
+按量名聚合（bad/checked）：
+  leadDays: 0/1
+
+top 30 by |dev|：
+  obj_order_SO-3391.leadDays: z=14 a=17 b=34 da=3 db=20 r=6.666666666666667 dev=0.00e+0 
+
+r 分位：p10=6.666666666666667 p50=6.666666666666667 p90=6.666666666666667
+dev 分位：p10=0 p50=0 p90=0
+DONE 2026-10-07T07:40:23.493Z

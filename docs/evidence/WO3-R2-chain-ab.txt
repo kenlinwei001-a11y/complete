@@ -1,0 +1,17 @@
+── 金丝雀：4052 会话列表含 sims_bxx8gv6w3eeyvwqk ?
+1
+── [P1 世界所在进程] POST http://127.0.0.1:4052 invoke worldId=sims_bxx8gv6w3eeyvwqk
+HTTP 200
+{"data":{"worldId":"sims_bxx8gv6w3eeyvwqk","curTick":132,"worldStateSource":"TICK","worldObjectCount":4425,"available":true,"notes":["收入行**故意不动**：世界态的需求侧变量（demandPressure/demandLoad）与 FinancePlan 收入行之间今天**没有任何传导规则**（`seed.ts` 13 条里六方向全查过）。凭空折算一个收入弹性就是引擎自己发明一个系数 �
+
+── [P2 另一台 datacore · 同一世界名] POST http://127.0.0.1:4053 invoke worldId=sims_bxx8gv6w3eeyvwqk
+HTTP 404
+{"error":{"code":"NOT_FOUND","message":"sim world not found","requestId":"req_g3fm9fwdn3yaseb4"}}
+
+── [P3 世界所在进程 · 不存在的名] POST http://127.0.0.1:4052 invoke worldId=sims_no_such_world_zzzz
+HTTP 404
+{"error":{"code":"NOT_FOUND","message":"sim world not found","requestId":"req_n1y13z4rykhpek13"}}
+
+── 前端那一跳（经 agentcore 4055 → 4052）：
+HTTP 200
+{"data":{"worldId":"sims_bxx8gv6w3eeyvwqk","curTick":132,"worldStateSource":"TICK","worldObjectCount":4425,"available":true,"notes":["收入行**故意不动**：世界态的需求侧变量（demandPressure/demandLoad）与 FinancePlan 收入行之间今天**没有任何传导规则**（`seed.ts` 13

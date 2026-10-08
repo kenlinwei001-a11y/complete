@@ -1,0 +1,15 @@
+## WO2-EVAL census · BASE=http://127.0.0.1:4052 · DOMS=/tmp/wt-ab/apps/datacore/dist · session=sims_tvgmy1hnn07tkbvb · TICKS=12
+格 6375 · 未声明量名格 565 · sat 分歧 0（应为 0）
+★ 金丝雀（必然为真对照）：逐字节冻结 4941 (>0 ⇒ 探针读到了东西) · 域内硬越界 0
+带内（sat(v)≠v）79 格 · 其中冻结（幽灵）77 格 · 其中在动（自走）2 格
+
+带内量名（2 个）：
+  blockedPressure        带内   76/ 130 · 冻结   74 · 自走   2 · 域内极值 [27.7166, 99.9405]
+      e.g. obj_line_LINE-WS-handan-assembly=92.161132007791→sat=85.17591985232973
+      e.g. obj_line_LINE-WS-handan-calendering=95.291040092461→sat=86.20036107088573
+      e.g. obj_line_LINE-WS-handan-coating=95.291040092461→sat=86.20036107088573
+  forecastBias           带内    3/   6 · 冻结    3 · 自走   0 · 域内极值 [-98, 77]
+      e.g. obj_model_2170-NCM=-98→sat=-86.97916666666667
+      e.g. obj_model_4680-LFP=77→sat=76.85185185185185
+      e.g. obj_model_方形-LFP=-85→sat=-82.14285714285714
+DONE 2026-10-07T08:12:03.837Z

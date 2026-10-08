@@ -1,0 +1,13 @@
+## P1 A/B · A=http://127.0.0.1:4052 (sims_5kc0p384ptw0t55k)  B=http://127.0.0.1:4054 (sims_f2f06m0csqp7ht2n)
+
+(a) blockedPressure: A 格数 130 非0 130 极值[27.7166, 99.9405]  |  B 格数 130 非0 0 极值[0, 0]  ✅ 全格 == restPoint(0)
+
+(a) forecastBias: A 格数 6 非0 6 极值[-98, 77]  |  B 格数 6 非0 0 极值[0, 0]  ✅ 全格 == restPoint(0)
+
+对照（必然为真）：A(4052) blockedPressure 带内(>75) 格数 = 76（>0 才证明 (a) 不是空集）；样本 obj_line_LINE-WS-handan-assembly = 92.161132007791
+
+(c) tick0 diff：对象数 A=4425 B=4425（应相等 ✅）· 格数 A=6375 B=6375（应相等）· 数值不同的格 136（占 2.13%）
+    差异按量名: {"blockedPressure":130,"forecastBias":6}
+    ⇒ 差异是否只落在 {blockedPressure, forecastBias}: ✅
+DONE 2026-10-07T08:05:39.035Z
+CAPTURED_RC=0

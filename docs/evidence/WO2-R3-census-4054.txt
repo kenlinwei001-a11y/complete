@@ -1,0 +1,10 @@
+## 幽灵格普查 · BASE=http://127.0.0.1:4054 session=sims_svnpspc8pfe94p3n TICKS=12
+全格 6375 格 · 全字段冻结 5508 格（★"必然为真"对照 > 0）· 冻结且在带内（= 幽灵） 0 格
+
+幽灵量名（0 个）—— 按幽灵格数降序：
+
+带内但**在动**（非幽灵，供口径对照）:
+
+末拍回执 saturations 条数 = 8；declaredStateVars=38 undeclared=9
+DONE 2026-10-07T08:05:56.911Z
+CAPTURED_RC=0

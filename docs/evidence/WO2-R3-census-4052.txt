@@ -1,0 +1,12 @@
+## 幽灵格普查 · BASE=http://127.0.0.1:4052 session=sims_tgnscg4843ahkd8e TICKS=12
+全格 6375 格 · 全字段冻结 5506 格（★"必然为真"对照 > 0）· 冻结且在带内（= 幽灵） 77 格
+
+幽灵量名（2 个）—— 按幽灵格数降序：
+  blockedPressure            幽灵   74 / 格  130 · 带内   76 · 冻结  128 · 域内极值 [27.7166, 99.9405] · 样本 obj_line_LINE-WS-zigong-winding=99.9405 → sat=87.485107
+  forecastBias               幽灵    3 / 格    6 · 带内    3 · 冻结    6 · 域内极值 [-98.0000, 77.0000] · 样本 obj_model_2170-NCM=-98 → sat=-86.979167
+
+带内但**在动**（非幽灵，供口径对照）:
+
+末拍回执 saturations 条数 = 14；declaredStateVars=38 undeclared=9
+DONE 2026-10-07T07:59:40.461Z
+RC=0

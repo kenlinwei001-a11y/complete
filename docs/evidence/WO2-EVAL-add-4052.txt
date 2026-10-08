@@ -1,0 +1,41 @@
+## WO2-EVAL 可加性 · BASE=http://127.0.0.1:4052 · DOMS=/tmp/wt-ab/apps/datacore/dist · TICKS=10 · MAG=3
+zero=sims_7e4h33habcrj8nas A=sims_mef33xqexhpzdv3p B=sims_gzd42w4hwyxwgksn AB=sims_h4q72pkbqggbd835
+  金丝雀 A 落点 obj_material_al_foil.priceShock: zero=2 臂=5 ⇒ ✅ 已落地
+  金丝雀 B 落点 obj_line_LINE-WS-changzhou-assembly.utilPressure: zero=0 臂=0.029547908756 ⇒ ✅ 已落地
+  金丝雀 AB 落点 obj_material_al_foil.priceShock: zero=2 臂=5 ⇒ ✅ 已落地
+
+检查 344 格（|rA| 或 |rB| > 1e-12）；不可加(err>1e-6) 0 格
+  静息带内格：0，其中不可加 0
+  静息带外格：344，其中不可加 0
+  未声明域：0
+  blockedPressure: 不可加 0/1（其中静息带内 0）
+  collectionPressure: 不可加 0/2（其中静息带内 0）
+  costPressure: 不可加 0/156（其中静息带内 0）
+  defectPressure: 不可加 0/1（其中静息带内 0）
+  deliveryHoldRisk: 不可加 0/27（其中静息带内 0）
+  feedPressure: 不可加 0/2（其中静息带内 0）
+  handlingBacklog: 不可加 0/1（其中静息带内 0）
+  inspectBacklog: 不可加 0/2（其中静息带内 0）
+  overduePressure: 不可加 0/51（其中静息带内 0）
+  priceShock: 不可加 0/1（其中静息带内 0）
+  promiseRisk: 不可加 0/15（其中静息带内 0）
+  queuePressure: 不可加 0/5（其中静息带内 0）
+  receivablePressure: 不可加 0/17（其中静息带内 0）
+  releasePressure: 不可加 0/2（其中静息带内 0）
+  shortageRisk: 不可加 0/58（其中静息带内 0）
+  supplyRisk: 不可加 0/2（其中静息带内 0）
+  utilPressure: 不可加 0/1（其中静息带内 0）
+top 12 by err：
+  obj_arinvoice_arinvoice_3_0.overduePressure: z=0 带内=false rA=4.656388e-5 rB=1.827632e-5 rAB=6.484020e-5 err=1.54e-8
+  obj_arinvoice_arinvoice_3_1.overduePressure: z=0 带内=false rA=4.656388e-5 rB=1.827632e-5 rAB=6.484020e-5 err=1.54e-8
+  obj_arinvoice_arinvoice_3_2.overduePressure: z=0 带内=false rA=4.656388e-5 rB=1.827632e-5 rAB=6.484020e-5 err=1.54e-8
+  obj_customer_cust_3.receivablePressure: z=0 带内=false rA=2.054769e-4 rB=1.146561e-4 rAB=3.201330e-4 err=9.37e-9
+  obj_arinvoice_arinvoice_6_0.overduePressure: z=0 带内=false rA=1.470567e-4 rB=6.758115e-5 rAB=2.146379e-4 err=4.66e-9
+  obj_arinvoice_arinvoice_6_1.overduePressure: z=0 带内=false rA=1.470567e-4 rB=6.758115e-5 rAB=2.146379e-4 err=4.66e-9
+  obj_arinvoice_arinvoice_6_2.overduePressure: z=0 带内=false rA=1.470567e-4 rB=6.758115e-5 rAB=2.146379e-4 err=4.66e-9
+  obj_arinvoice_arinvoice_12_0.overduePressure: z=0 带内=false rA=1.845924e-4 rB=5.477398e-5 rAB=2.393664e-4 err=4.18e-9
+  obj_arinvoice_arinvoice_12_1.overduePressure: z=0 带内=false rA=1.845924e-4 rB=5.477398e-5 rAB=2.393664e-4 err=4.18e-9
+  obj_arinvoice_arinvoice_12_2.overduePressure: z=0 带内=false rA=1.845924e-4 rB=5.477398e-5 rAB=2.393664e-4 err=4.18e-9
+  obj_customer_cust_6.receivablePressure: z=0 带内=false rA=6.489313e-4 rB=4.239688e-4 rAB=1.072900e-3 err=1.86e-9
+  obj_overduerecord_od-sd.collectionPressure: z=0 带内=false rA=1.412930e-3 rB=3.023397e-5 rAB=1.443164e-3 err=1.39e-9
+DONE 2026-10-07T08:14:58.145Z

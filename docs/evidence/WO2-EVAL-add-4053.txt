@@ -1,0 +1,37 @@
+## WO2-EVAL 可加性 · BASE=http://127.0.0.1:4053 · DOMS=/tmp/wt-base4053/apps/datacore/dist · TICKS=10 · MAG=3
+zero=sims_hvmh2ge14j53796g A=sims_1dwgpa49wh40bx6a B=sims_rdfjprs2hgsr8yjf AB=sims_j7ykqb00s11p9m6d
+  金丝雀 A 落点 obj_material_al_foil.priceShock: zero=2 臂=5 ⇒ ✅ 已落地
+  金丝雀 B 落点 obj_line_LINE-WS-changzhou-assembly.utilPressure: zero=92.5496 臂=82.847176168302 ⇒ ✅ 已落地
+  金丝雀 AB 落点 obj_material_al_foil.priceShock: zero=2 臂=5 ⇒ ✅ 已落地
+
+检查 207 格（|rA| 或 |rB| > 1e-12）；不可加(err>1e-6) 39 格
+  静息带内格：59，其中不可加 22
+  静息带外格：148，其中不可加 17
+  未声明域：0
+  blockedPressure: 不可加 0/1（其中静息带内 0）
+  costPressure: 不可加 22/156（其中静息带内 21）
+  defectPressure: 不可加 0/1（其中静息带内 0）
+  deliveryHoldRisk: 不可加 3/6（其中静息带内 0）
+  feedPressure: 不可加 0/2（其中静息带内 0）
+  handlingBacklog: 不可加 0/1（其中静息带内 0）
+  inspectBacklog: 不可加 0/2（其中静息带内 0）
+  overduePressure: 不可加 6/12（其中静息带内 0）
+  priceShock: 不可加 0/1（其中静息带内 0）
+  queuePressure: 不可加 0/5（其中静息带内 0）
+  receivablePressure: 不可加 8/17（其中静息带内 1）
+  releasePressure: 不可加 0/2（其中静息带内 0）
+  utilPressure: 不可加 0/1（其中静息带内 0）
+top 12 by err：
+  obj_customerlocation_LOC-cust_3-0.deliveryHoldRisk: z=0 带内=false rA=7.117920e-5 rB=0.000000e+0 rAB=0.000000e+0 err=1.00e+0
+  obj_customerlocation_LOC-cust_3-1.deliveryHoldRisk: z=0 带内=false rA=7.117920e-5 rB=0.000000e+0 rAB=0.000000e+0 err=1.00e+0
+  obj_order_SO-900221.costPressure: z=90.384615384615 带内=true rA=-8.097027e+0 rB=-8.099461e+0 rAB=-8.099743e+0 err=1.00e+0
+  obj_order_SO-900468.costPressure: z=90.384615384615 带内=true rA=-8.097027e+0 rB=-8.099461e+0 rAB=-8.099743e+0 err=1.00e+0
+  obj_order_SO-900199.costPressure: z=89 带内=true rA=-7.100640e+0 rB=-7.102982e+0 rAB=-7.103527e+0 err=1.00e+0
+  obj_order_SO-900384.costPressure: z=89 带内=true rA=-7.100640e+0 rB=-7.102982e+0 rAB=-7.103527e+0 err=1.00e+0
+  obj_order_SO-900233.costPressure: z=88 带内=true rA=-6.397341e+0 rB=-6.399599e+0 rAB=-6.400365e+0 err=9.99e-1
+  obj_order_SO-900319.costPressure: z=87 带内=true rA=-5.709313e+0 rB=-5.711474e+0 rAB=-5.712487e+0 err=9.99e-1
+  obj_customer_cust_6.receivablePressure: z=91.731819925653 带内=true rA=-9.342748e+0 rB=-9.335742e+0 rAB=-9.342838e+0 err=9.99e-1
+  obj_order_SO-900442.costPressure: z=90.384615384615 带内=true rA=-8.097265e+0 rB=-8.104849e+0 rAB=-8.105371e+0 err=9.99e-1
+  obj_order_SO-900056.costPressure: z=85 带内=true rA=-4.386089e+0 rB=-4.388043e+0 rAB=-4.389615e+0 err=9.99e-1
+  obj_order_SO-900090.costPressure: z=85 带内=true rA=-4.386089e+0 rB=-4.388043e+0 rAB=-4.389615e+0 err=9.99e-1
+DONE 2026-10-07T08:13:55.554Z

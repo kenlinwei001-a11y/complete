@@ -4184,6 +4184,18 @@ export const STATE_VAR_SEMANTICS: Record<string, "LEVEL" | "DEVIATION"> = {
   "PurchaseOrder|expeditePressure": "DEVIATION",
   "WIPLot|feedPressure": "DEVIATION",
   "WorkOrder|releasePressure": "DEVIATION",
+  // ★ WO-2 评估第②项终裁（2026-10-08）：blockedPressure 是**同款病**，forecastBias **不是**。
+  //
+  // · `blockedPressure`：域 `min=0 max=100 restPoint=0` ⇒ **端点支 = 压力族**（静息在下界）
+  //   ⇒ 静息态必须是 0。**实测 4052 改后：130 格 · p50 = 82.28 · 76 格 >75（落进压缩带）。**
+  //   改前它**未登记语义** ⇒ 播种走「真读数」支 ⇒ 播了**水平值** ⇒ 与本单治过的 15 个量同款。
+  "Line|blockedPressure": "DEVIATION",
+  // ⛔ `forecastBias` **不登记** —— 它的域是 `min=-100 max=100 restPoint=0`，**内点支（散布型）**：
+  //   `castSeedBaseValue` 的内点支刻意「两侧对称展开、负半轴可达」（本仓既有设计），
+  //   因为「预测偏差」**天然有正负**，静息态为 0 但**值本身可以远离 0**。
+  //   ⇒ 它落在 |值|>75 里是**设计的正常态**，不是「静息态被播成非静息值」。
+  //   ⚠ 这也意味着：采样守卫的「|值|>75 ⇒ 在带内」这条判据**对散布型量名不适用** ——
+  //     散布型的「带内/带外」该按**偏离量**判，而不是按绝对值。已在守卫注释里记。
 };
 
 /** `(类型,变量)` → 量纲语义（未登记 → `LEVEL` = 保持现状）。全平台唯一入口，⛔ 不许在调用侧另写缺省。 */

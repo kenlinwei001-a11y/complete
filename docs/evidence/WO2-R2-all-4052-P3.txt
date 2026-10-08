@@ -1,0 +1,60 @@
+## WO-2 R2 · 全格扫描 · BASE=http://127.0.0.1:4052 · TICKS=10 · P3 Line.utilPressure 落点 obj_line_LINE-WS-changzhou-assembly.utilPressure · 幅度 3/20
+zero=sims_9nztnpg84gwpebp9 a=sims_3jh5q541j4k64p7h b=sims_59k4j82e9gb27tqg
+被扰动格终态：zero=0  +3=0.029547908756  +20=0.196986058376
+✅ 脉冲金丝雀：扰动已落地
+
+检查 230 格；超差(>1e-6) 0 格；期望比 6.666667
+
+按量名聚合（bad/checked）：
+  blockedPressure: 0/1
+  collectionPressure: 0/2
+  costPressure: 0/60
+  defectPressure: 0/1
+  deliveryHoldRisk: 0/22
+  feedPressure: 0/2
+  handlingBacklog: 0/1
+  inspectBacklog: 0/2
+  overduePressure: 0/42
+  promiseRisk: 0/15
+  queuePressure: 0/5
+  receivablePressure: 0/14
+  releasePressure: 0/2
+  shortageRisk: 0/58
+  supplyRisk: 0/2
+  utilPressure: 0/1
+
+top 30 by |dev|：
+  obj_overduerecord_od-sd.collectionPressure: z=0 a=0.00003023397 b=0.000201559806 da=0.00003023397 db=0.000201559806 r=6.666666865118938 dev=2.98e-8 
+  obj_arinvoice_arinvoice_11_0.overduePressure: z=0 a=0.00002015598 b=0.000134373204 da=0.00002015598 db=0.000134373204 r=6.666666865118937 dev=2.98e-8 
+  obj_arinvoice_arinvoice_11_1.overduePressure: z=0 a=0.00002015598 b=0.000134373204 da=0.00002015598 db=0.000134373204 r=6.666666865118937 dev=2.98e-8 
+  obj_arinvoice_arinvoice_11_2.overduePressure: z=0 a=0.00002015598 b=0.000134373204 da=0.00002015598 db=0.000134373204 r=6.666666865118937 dev=2.98e-8 
+  obj_arinvoice_arinvoice_5_0.overduePressure: z=0 a=0.0000271242 b=0.000180827995 da=0.0000271242 db=0.000180827995 r=6.666666482329433 dev=2.77e-8 
+  obj_arinvoice_arinvoice_5_1.overduePressure: z=0 a=0.0000271242 b=0.000180827995 da=0.0000271242 db=0.000180827995 r=6.666666482329433 dev=2.77e-8 
+  obj_arinvoice_arinvoice_5_2.overduePressure: z=0 a=0.0000271242 b=0.000180827995 da=0.0000271242 db=0.000180827995 r=6.666666482329433 dev=2.77e-8 
+  obj_arinvoice_arinvoice_3_0.overduePressure: z=0 a=0.000018276324 b=0.000121842157 da=0.000018276324 db=0.000121842157 r=6.666666502519872 dev=2.46e-8 
+  obj_arinvoice_arinvoice_3_1.overduePressure: z=0 a=0.000018276324 b=0.000121842157 da=0.000018276324 db=0.000121842157 r=6.666666502519872 dev=2.46e-8 
+  obj_arinvoice_arinvoice_3_2.overduePressure: z=0 a=0.000018276324 b=0.000121842157 da=0.000018276324 db=0.000121842157 r=6.666666502519872 dev=2.46e-8 
+  obj_customerlocation_LOC-cust_14-0.deliveryHoldRisk: z=0 a=0.000099055294 b=0.000660368617 da=0.000099055294 db=0.000660368617 r=6.666666569078075 dev=1.46e-8 
+  obj_customerlocation_LOC-cust_14-1.deliveryHoldRisk: z=0 a=0.000099055294 b=0.000660368617 da=0.000099055294 db=0.000660368617 r=6.666666569078075 dev=1.46e-8 
+  obj_customerlocation_LOC-cust_5-0.deliveryHoldRisk: z=0 a=0.000048581005 b=0.000323873363 da=0.000048581005 db=0.000323873363 r=6.666666591191351 dev=1.13e-8 
+  obj_customerlocation_LOC-cust_5-1.deliveryHoldRisk: z=0 a=0.000048581005 b=0.000323873363 da=0.000048581005 db=0.000323873363 r=6.666666591191351 dev=1.13e-8 
+  obj_arinvoice_arinvoice_9_0.overduePressure: z=0 a=0.000283191693 b=0.001887944603 da=0.000283191693 db=0.001887944603 r=6.6666666066366576 dev=9.00e-9 
+  obj_arinvoice_arinvoice_9_1.overduePressure: z=0 a=0.000283191693 b=0.001887944603 da=0.000283191693 db=0.001887944603 r=6.6666666066366576 dev=9.00e-9 
+  obj_arinvoice_arinvoice_9_2.overduePressure: z=0 a=0.000283191693 b=0.001887944603 da=0.000283191693 db=0.001887944603 r=6.6666666066366576 dev=9.00e-9 
+  obj_arinvoice_arinvoice_1_0.overduePressure: z=0 a=0.000144399044 b=0.000962660286 da=0.000144399044 db=0.000962660286 r=6.666666615881473 dev=7.62e-9 
+  obj_arinvoice_arinvoice_1_1.overduePressure: z=0 a=0.000144399044 b=0.000962660286 da=0.000144399044 db=0.000962660286 r=6.666666615881473 dev=7.62e-9 
+  obj_arinvoice_arinvoice_1_2.overduePressure: z=0 a=0.000144399044 b=0.000962660286 da=0.000144399044 db=0.000962660286 r=6.666666615881473 dev=7.62e-9 
+  obj_customerlocation_LOC-cust_6-0.deliveryHoldRisk: z=0 a=0.000121041741 b=0.000806944934 da=0.000121041741 db=0.000806944934 r=6.66666661709699 dev=7.44e-9 
+  obj_customerlocation_LOC-cust_11-0.deliveryHoldRisk: z=0 a=0.000036100523 b=0.000240670155 da=0.000036100523 db=0.000240670155 r=6.666666712834049 dev=6.93e-9 
+  obj_arinvoice_arinvoice_6_0.overduePressure: z=0 a=0.000067581153 b=0.000450541017 da=0.000067581153 db=0.000450541017 r=6.666666622275592 dev=6.66e-9 
+  obj_arinvoice_arinvoice_6_1.overduePressure: z=0 a=0.000067581153 b=0.000450541017 da=0.000067581153 db=0.000450541017 r=6.666666622275592 dev=6.66e-9 
+  obj_arinvoice_arinvoice_6_2.overduePressure: z=0 a=0.000067581153 b=0.000450541017 da=0.000067581153 db=0.000450541017 r=6.666666622275592 dev=6.66e-9 
+  obj_arinvoice_arinvoice_19_0.overduePressure: z=0 a=0.000065128588 b=0.000434190584 da=0.000065128588 db=0.000434190584 r=6.6666666257220255 dev=6.14e-9 
+  obj_arinvoice_arinvoice_19_1.overduePressure: z=0 a=0.000065128588 b=0.000434190584 da=0.000065128588 db=0.000434190584 r=6.6666666257220255 dev=6.14e-9 
+  obj_arinvoice_arinvoice_19_2.overduePressure: z=0 a=0.000065128588 b=0.000434190584 da=0.000065128588 db=0.000434190584 r=6.6666666257220255 dev=6.14e-9 
+  obj_customerlocation_LOC-cust_1-0.deliveryHoldRisk: z=0 a=0.000258627011 b=0.001724180063 da=0.000258627011 db=0.001724180063 r=6.666666626712088 dev=5.99e-9 
+  obj_customerlocation_LOC-cust_1-1.deliveryHoldRisk: z=0 a=0.000258627011 b=0.001724180063 da=0.000258627011 db=0.001724180063 r=6.666666626712088 dev=5.99e-9 
+
+r 分位：p10=6.666666626712088 p50=6.666666666712401 p90=6.666666668363532
+dev 分位：p10=1.4631922340413438e-10 p50=2.0001706957373243e-10 p90=6.658661222402884e-9
+DONE 2026-10-07T07:37:26.255Z

@@ -1,0 +1,15 @@
+边 demo_material_price_to_model_cost  c=0.109318171  λ 由落点 decayRef 定  weightRef={"basis":"bom_cost_share"}
+屏上描述: 物料涨价 ⇒ 用它的型号成本上抬（价格冲击 × 0.295455 = 型号成本压力）
+Model.costPressure 全部入边: demo_material_price_to_model_cost · demo_order_leaddays_to_model_horizon · demo_wo_release_to_model_cost
+w(pos_ncm 在 4680-NCM 生效 BOM 的成本占比) = 0.298451952  （Σ行成本=632.84，现算）
+金丝雀：两臂状态格差别数 = 143（必须 > 0；=0 表示脉冲没落地，本探针什么都没量到）
+源格 obj_material_pos_ncm.priceShock  零臂=8  扰动臂=23   Δ源=15.000000
+靶格 obj_model_4680-NCM.costPressure 零臂=0  扰动臂=1.322671922244   Δ靶=1.322671922
+
+读数           = 1.322671922
+② 引擎口径预测 = c×w×Δ/λ×(1−0.63^T) = 1.322671922   （T=25，收敛因子=0.999990372）
+③ 会计恒等式   = w×Δ = 4.476779280
+比值 ③/读数    = 3.3846   ← 「业务上应付出去的」是「引擎给出的」几倍
+比值 ②/读数    = 1.000000000   ← 应 ≈1（证明读数完全由 c 决定）
+屏上承诺的增益 = 0.295455（= c/λ 的显示投影，稳态口径：×w×Δ = 1.322686822）
+DONE 2026-10-07T07:18:51.833Z

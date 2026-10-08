@@ -1,0 +1,7 @@
+## WO2-EVAL census · BASE=http://127.0.0.1:4054 · DOMS=/tmp/wt-p1/apps/datacore/dist · session=sims_vb9nw2b9ykd83cq1 · TICKS=12
+格 6375 · 未声明量名格 565 · sat 分歧 0（应为 0）
+★ 金丝雀（必然为真对照）：逐字节冻结 4943 (>0 ⇒ 探针读到了东西) · 域内硬越界 0
+带内（sat(v)≠v）0 格 · 其中冻结（幽灵）0 格 · 其中在动（自走）0 格
+
+带内量名（0 个）：
+DONE 2026-10-07T08:12:09.192Z

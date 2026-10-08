@@ -1,0 +1,206 @@
+{
+ "base": "http://127.0.0.1:5294",
+ "steps": [
+  {
+   "n": "0 登录（demo/admin/demo1234）",
+   "ok": true,
+   "v": "http://127.0.0.1:5294/"
+  },
+  {
+   "n": "1 goto /v/sim-unified",
+   "ok": true,
+   "v": "ok"
+  },
+  {
+   "n": "2 金丝雀A·外壳 c0828-rail 在场",
+   "ok": true,
+   "v": "ok"
+  },
+  {
+   "n": "3 金丝雀B·事件按钮数",
+   "ok": true,
+   "v": "12（应 =12）"
+  },
+  {
+   "n": "4 会话就绪标志 c0828-horizon-echo",
+   "ok": true,
+   "v": "= 30 天（30 拍），推演至 2027-04-17（第 192 拍）"
+  },
+  {
+   "n": "5 落点下拉选项",
+   "ok": true,
+   "v": "501 项: 请选择（500 个） | 广汽集团 · SO-3391 | 长安汽车 · SO-3402 | 吉利汽车 · SO-3415"
+  },
+  {
+   "n": "6 选中落点",
+   "ok": true,
+   "v": "obj_order_SO-3391"
+  },
+  {
+   "n": "7 幅度",
+   "ok": true,
+   "v": "默认 20 → 填 -3"
+  },
+  {
+   "n": "8 已加入暂存区",
+   "ok": true,
+   "v": "已添加 1 件扰动事件"
+  },
+  {
+   "n": "9 c0828-go disabled?",
+   "ok": false,
+   "v": "false"
+  },
+  {
+   "n": "10 结果门开 c0828-money 挂进 DOM",
+   "ok": true,
+   "v": "ok"
+  },
+  {
+   "n": "10b 财务影响页签是当前页签吗（pane hidden?）",
+   "ok": true,
+   "v": "true"
+  },
+  {
+   "n": "10c 切到「财务影响」页签后 c0828-money 可见",
+   "ok": true,
+   "v": "true"
+  }
+ ],
+ "dump": {
+  "nocalc": [
+   "本次无法计算",
+   "本次无法计算",
+   "本次无法计算"
+  ],
+  "moneyCells": {
+   "新增成本": null,
+   "毛利差额": null,
+   "占压应收": null
+  },
+  "calibre": null,
+  "detail": null,
+  "exposure": "36.3亿元",
+  "exposureSub": "24 张单 · 占订单簿 8.0%",
+  "moneyWholeText": "3财务影响1 件扰动事件叠加 · 推演至 2027-04-17（第 192 拍）与下方卡点、对策同源于本次推演结果被推动的订单敞口36.3亿元估24 张单 · 占订单簿 8.0%毛利差额本次无法计算新增成本本次无法计算占压应收本次无法计算主因：订单改交期金额勾稽「被推动的订单敞口」= 本次推演中读数发生变化的订单，按对象层成交额合计。 其口径是「受影响订单的金额规模」，不是「利润损失」—— 后者本次无法计算，见下。订单簿合计 454.6亿元，共 500 张单（逐页取全后累加， 并与服务端返回的总数勾稽）。被推动 24 张，合计 36.3亿元。毛利差额：推演层订单仅有 0–100 的压力读数，无金额字段；将压力折算为毛利需要一个全平台未登记的系数，自拟系数即构造口径。新增成本：同上：成本增量需由压力读数折算，而折算系数无出处。占压应收：客户对象确有应收数，但其计量单位（元 / 万元）无登记册可据，两者相差 10000 倍，故不上屏。本次共 65 格读数发生变化；世界态自 2027-03-18（第 162 拍） 推进至 2027-04-17（第 192 拍）。金丝雀：读取到 500 张单（为 0 表示遍历失效，不是「无波及」）。波及面为什么按全局差分算，而不看被扰动的那一格源变量常被约束在域上界附近，即使施加 100 倍量级，源格变动可能仅千分之几， 而下游变动显著 —— 拿源格判定「扰动生没生效」会误判。本屏波及面按全局差分计算。落库回执： 订单改交期（起始 2027-03-18（第 162 拍））查看这笔敞口卡在哪些环节 →"
+ },
+ "net": [
+  {
+   "kind": "res",
+   "status": 200,
+   "url": ":4052/a/v1/sim/propagation-rules?published=true",
+   "snippet": "{\"items\":[{\"id\":\"simpr_demo_alt_to_material\",\"key\":\"demo_alt_switch_to_material_shortage\",\"sourceTypeKey\":\"MaterialAlternative\",\"sourceStateVar\":\"switchPressure\",\"viaLinkKey\":\"alt_for_material\",\"targetTypeKey\":\"Material\",\"targetStateVar\":\"shortageRisk\",\"delayTicks\":1,\"description\":\"替代料切换压力高 ⇒ Plan B 在启用，主料的短缺风险被缓解（替代料负反馈）\",\"combine\":\"sum\",\"decay\":null,\"clamp\":null,\"weightRef\":{\"basis\":\"equal_share"
+  },
+  {
+   "kind": "res",
+   "status": 200,
+   "url": ":4052/a/v1/sim/view-config",
+   "snippet": "{\"tenantId\":\"demo\",\"nodeTypes\":[\"ARAging\",\"ARInvoice\",\"AdoptedMitigation\",\"AnnualScenario\",\"BOMDetail\",\"BOMHeader\",\"BackupSupplierPool\",\"Base\",\"BidRecord\",\"Cadence\",\"CapacityPool\",\"CapexProject\",\"CarbonFactor\",\"CausalFactor\",\"Certification\",\"ChangeoverMatrix\",\"CommodityPriceTrend\",\"CompetitorPrice\",\"CompetitorShare\",\"Customer\",\"CustomerLocation\",\"CustomsClearance\",\"DSO\",\"DataSourceHealth\",\"Decisio"
+  },
+  {
+   "kind": "res",
+   "status": 200,
+   "url": ":4052/a/v1/sim/drill/state-var-layers",
+   "snippet": "{\"layers\":[{\"stateVar\":\"backlogPriceTop\",\"layer\":\"末端\",\"label\":\"在手订单最高单价（元）\"},{\"stateVar\":\"backlogQtyTop\",\"layer\":\"末端\",\"label\":\"在手订单最大单台数（套）\"},{\"stateVar\":\"blockedPressure\",\"layer\":\"枢纽\",\"label\":\"产线受阻压力\"},{\"stateVar\":\"changeoverPressure\",\"layer\":\"末端\",\"label\":\"换型压力\"},{\"stateVar\":\"clearanceQueueDays\",\"layer\":\"末端\",\"label\":\"清关排队天数\"},{\"stateVar\":\"collectionPressure\",\"layer\":\"末端\",\"label\":\"逾期催收压力\"},{\"state"
+  },
+  {
+   "kind": "res",
+   "status": 200,
+   "url": ":4052/a/v1/sim/sessions",
+   "snippet": "{\"items\":[{\"id\":\"sims_demo_seed_world\",\"tenantId\":\"demo\",\"scope\":{\"seedWorld\":true,\"label\":\"demo 种子世界\",\"baseSnapshotOrigin\":{\"kind\":\"DERIVED\",\"formula\":\"两档取值。① 真读数：状态变量名恰好是该对象的一个数值属性时，直接取该属性的值，不做任何二次折算（该属性自己的口径见对象类型里它的说明）；本次命中 Equipment.equipmentFailure、Equipment.loadPressure、FinishedGoodsInventory.coverDays、Line.blockedPressure、Material.priceShock、MaterialBatch.procurementDelay、Order.leadDays、Ord"
+  },
+  {
+   "kind": "res",
+   "status": 200,
+   "url": ":4052/a/v1/sim/drill/state-var-layers",
+   "snippet": "{\"layers\":[{\"stateVar\":\"backlogPriceTop\",\"layer\":\"末端\",\"label\":\"在手订单最高单价（元）\"},{\"stateVar\":\"backlogQtyTop\",\"layer\":\"末端\",\"label\":\"在手订单最大单台数（套）\"},{\"stateVar\":\"blockedPressure\",\"layer\":\"枢纽\",\"label\":\"产线受阻压力\"},{\"stateVar\":\"changeoverPressure\",\"layer\":\"末端\",\"label\":\"换型压力\"},{\"stateVar\":\"clearanceQueueDays\",\"layer\":\"末端\",\"label\":\"清关排队天数\"},{\"stateVar\":\"collectionPressure\",\"layer\":\"末端\",\"label\":\"逾期催收压力\"},{\"state"
+  },
+  {
+   "kind": "res",
+   "status": 200,
+   "url": ":4052/a/v1/sim/sessions/sims_bxx8gv6w3eeyvwqk/perturbations",
+   "snippet": "{\"items\":[{\"id\":\"simpert_feejdjsgdmb51e0r\",\"tenantId\":\"demo\",\"sessionId\":\"sims_bxx8gv6w3eeyvwqk\",\"kind\":\"demand_shift\",\"targetObjectId\":\"obj_order_SO-3391\",\"targetStateVar\":\"leadDays\",\"startTick\":12,\"durationTicks\":null,\"magnitude\":-3,\"mode\":\"delta\",\"label\":\"订单改交期 · 广汽集团 · SO-3391\",\"createdAt\":\"2026-10-07T08:24:09.812Z\"},{\"id\":\"simpert_11czv9tk1ntrghvc\",\"tenantId\":\"demo\",\"sessionId\":\"sims_bxx8gv6w"
+  },
+  {
+   "kind": "res",
+   "status": 200,
+   "url": ":4002/b/v1/solvers/chain_impediments/run",
+   "snippet": "{\"data\":{\"scanId\":\"scan_5aa9e04a\",\"scope\":{},\"ruleSetVersion\":\"rsv_b0897bc9\",\"impediments\":[{\"impedimentId\":\"imp_CONGESTION.MATERIAL.batch-idle_elyte_b2\",\"tenantId\":\"demo\",\"scanId\":\"scan_5aa9e04a\",\"kind\":\"CONGESTION\",\"stage\":\"MATERIAL\",\"scope\":{},\"locus\":{\"objectType\":\"MaterialBatch\",\"objectId\":\"elyte_b2\",\"label\":\"电解液\"},\"severity\":59,\"evidence\":{\"solverKey\":\"chain_impediments\",\"ruleKey\":\"C28\",\"met"
+  },
+  {
+   "kind": "res",
+   "status": 200,
+   "url": ":4052/a/v1/sim/sessions/sims_bxx8gv6w3eeyvwqk/metric-series?limit=500&stateVars=backlogPriceTop%2CbacklogQtyTop%2CblockedPressure%2CchangeoverPressure%2CclearanceQueueDays%2CcollectionPressure%2CcostPressure%2CcoverDays%2CdefectPressure%2CdeliveryDelay%2CdeliveryHoldRisk%2CdemandLoad%2CdemandPressure%2CdrawdownPressure%2CequipmentFailure%2CexpeditePressure%2CfeedPressure%2CforecastBias%2CgapPressure%2ChandlingBacklog%2CinboundExpeditePressure%2CinspectBacklog%2CleadDays%2CloadIndex%2CloadPressure%2CorderChurn%2CoverduePressure%2CpriceShock%2CprocurementDelay%2CpromiseRisk%2Cqty%2CqualificationQueue%2CqueueDays%2CqueuePressure%2CreceivablePressure%2CreleasePressure%2CrepairBacklog%2CreviewPressure%2CshortageRisk%2CsplitPressure%2CsupplyRisk%2CswitchPressure%2CtransferPressure%2CturnoverPressure%2CunitPrice%2CutilPressure%2CwindowSqueeze",
+   "snippet": "{\"sessionId\":\"sims_bxx8gv6w3eeyvwqk\",\"fromTick\":0,\"toTick\":162,\"ticks\":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,10"
+  },
+  {
+   "kind": "res",
+   "status": 200,
+   "url": ":4052/a/v1/sim/sessions/sims_bxx8gv6w3eeyvwqk/world",
+   "snippet": "{\"tick\":162,\"state\":{\"obj_arinvoice_arinvoice_0_0\":{\"overduePressure\":0.039849932703},\"obj_arinvoice_arinvoice_0_1\":{\"overduePressure\":0.039849932703},\"obj_arinvoice_arinvoice_0_2\":{\"overduePressure\":0.039849932703},\"obj_arinvoice_arinvoice_1_0\":{\"overduePressure\":0.017301208208},\"obj_arinvoice_arinvoice_1_1\":{\"overduePressure\":0.017301208208},\"obj_arinvoice_arinvoice_1_2\":{\"overduePressure\":0.017"
+  },
+  {
+   "kind": "res",
+   "status": 200,
+   "url": ":4052/a/v1/sim/sessions/sims_bxx8gv6w3eeyvwqk/pricing",
+   "snippet": "{\"items\":[{\"kind\":\"priced\",\"candidateId\":\"cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Line.utilization_LINE-WS-jinhua-slitting_PEER_BEST_89.9153\",\"specKey\":\"line_util_pressure\",\"fingerprint\":\"45029a907e9fdb4b2cfb91a30d18fa238789227883f1801901383ce96127e9f2\",\"perturbation\":{\"targetObjectId\":\"LINE-WS-jinhua-slitting\",\"targetStateVar\":\"utilPressure\",\"mode\":\"set\",\"mag"
+  },
+  {
+   "kind": "res",
+   "status": 200,
+   "url": ":4052/a/v1/sim/sessions/sims_bxx8gv6w3eeyvwqk/counterfactual",
+   "snippet": "{\"fromTick\":162,\"ticks\":30,\"disabledRuleKeys\":[],\"suppressedRules\":[{\"id\":\"simpr_demo_customer_reaction_cut_order\",\"key\":\"demo_customer_reaction_cut_order\",\"sourceTypeKey\":\"Customer\",\"sourceStateVar\":\"receivablePressure\",\"viaLinkKey\":\"customer_places_order\",\"targetTypeKey\":\"Order\",\"targetStateVar\":\"orderChurn\",\"delayTicks\":1,\"description\":\"客户被成本转嫁压过容忍线 ⇒ 主动砍单（订单变更频度上升）。对手方还手，非物理传导\",\"combine\":\"sum\""
+  },
+  {
+   "kind": "res",
+   "status": 201,
+   "url": ":4052/a/v1/sim/sessions/sims_bxx8gv6w3eeyvwqk/perturbations",
+   "snippet": "{\"perturbation\":{\"id\":\"simpert_dm5pr7zexxewvcvb\",\"tenantId\":\"demo\",\"sessionId\":\"sims_bxx8gv6w3eeyvwqk\",\"kind\":\"demand_shift\",\"targetObjectId\":\"obj_order_SO-3391\",\"targetStateVar\":\"leadDays\",\"startTick\":162,\"durationTicks\":null,\"magnitude\":-3,\"mode\":\"delta\",\"label\":\"订单改交期 · 广汽集团 · SO-3391\",\"createdAt\":\"2026-10-07T09:53:30.896Z\"},\"curTick\":162,\"state\":{\"obj_arinvoice_arinvoice_0_0\":{\"overduePressure"
+  },
+  {
+   "kind": "res",
+   "status": 200,
+   "url": ":4052/a/v1/sim/sessions/sims_bxx8gv6w3eeyvwqk/tick",
+   "snippet": "{\"curTick\":192,\"state\":{\"obj_arinvoice_arinvoice_0_0\":{\"overduePressure\":0.047822091414},\"obj_arinvoice_arinvoice_0_1\":{\"overduePressure\":0.047822091414},\"obj_arinvoice_arinvoice_0_2\":{\"overduePressure\":0.047822091414},\"obj_arinvoice_arinvoice_1_0\":{\"overduePressure\":0.020762392916},\"obj_arinvoice_arinvoice_1_1\":{\"overduePressure\":0.020762392916},\"obj_arinvoice_arinvoice_1_2\":{\"overduePressure\":0."
+  },
+  {
+   "kind": "res",
+   "status": 200,
+   "url": ":4052/a/v1/sim/sessions/sims_bxx8gv6w3eeyvwqk/world",
+   "snippet": "{\"tick\":192,\"state\":{\"obj_arinvoice_arinvoice_0_0\":{\"overduePressure\":0.047822091414},\"obj_arinvoice_arinvoice_0_1\":{\"overduePressure\":0.047822091414},\"obj_arinvoice_arinvoice_0_2\":{\"overduePressure\":0.047822091414},\"obj_arinvoice_arinvoice_1_0\":{\"overduePressure\":0.020762392916},\"obj_arinvoice_arinvoice_1_1\":{\"overduePressure\":0.020762392916},\"obj_arinvoice_arinvoice_1_2\":{\"overduePressure\":0.020"
+  },
+  {
+   "kind": "res",
+   "status": 404,
+   "url": ":4002/b/v1/solvers/finance_world_projection/run",
+   "snippet": "{\"error\":{\"code\":\"NOT_FOUND\",\"message\":\"DataCore POST /a/v1/solvers/finance_world_projection/invoke -> 404 {\\\"error\\\":{\\\"code\\\":\\\"NOT_FOUND\\\",\\\"message\\\":\\\"sim world not found\\\",\\\"requestId\\\":\\\"req_135qqjh1mkhhg7dd\\\"}}\",\"requestId\":\"req-2l\"}}"
+  },
+  {
+   "kind": "res",
+   "status": 200,
+   "url": ":4052/a/v1/sim/sessions/sims_bxx8gv6w3eeyvwqk/perturbations",
+   "snippet": "{\"items\":[{\"id\":\"simpert_feejdjsgdmb51e0r\",\"tenantId\":\"demo\",\"sessionId\":\"sims_bxx8gv6w3eeyvwqk\",\"kind\":\"demand_shift\",\"targetObjectId\":\"obj_order_SO-3391\",\"targetStateVar\":\"leadDays\",\"startTick\":12,\"durationTicks\":null,\"magnitude\":-3,\"mode\":\"delta\",\"label\":\"订单改交期 · 广汽集团 · SO-3391\",\"createdAt\":\"2026-10-07T08:24:09.812Z\"},{\"id\":\"simpert_11czv9tk1ntrghvc\",\"tenantId\":\"demo\",\"sessionId\":\"sims_bxx8gv6w"
+  },
+  {
+   "kind": "res",
+   "status": 200,
+   "url": ":4052/a/v1/sim/sessions/sims_bxx8gv6w3eeyvwqk/perturbations",
+   "snippet": "{\"items\":[{\"id\":\"simpert_feejdjsgdmb51e0r\",\"tenantId\":\"demo\",\"sessionId\":\"sims_bxx8gv6w3eeyvwqk\",\"kind\":\"demand_shift\",\"targetObjectId\":\"obj_order_SO-3391\",\"targetStateVar\":\"leadDays\",\"startTick\":12,\"durationTicks\":null,\"magnitude\":-3,\"mode\":\"delta\",\"label\":\"订单改交期 · 广汽集团 · SO-3391\",\"createdAt\":\"2026-10-07T08:24:09.812Z\"},{\"id\":\"simpert_11czv9tk1ntrghvc\",\"tenantId\":\"demo\",\"sessionId\":\"sims_bxx8gv6w"
+  },
+  {
+   "kind": "res",
+   "status": 200,
+   "url": ":4052/a/v1/sim/sessions",
+   "snippet": "{\"items\":[{\"id\":\"sims_demo_seed_world\",\"tenantId\":\"demo\",\"scope\":{\"seedWorld\":true,\"label\":\"demo 种子世界\",\"baseSnapshotOrigin\":{\"kind\":\"DERIVED\",\"formula\":\"两档取值。① 真读数：状态变量名恰好是该对象的一个数值属性时，直接取该属性的值，不做任何二次折算（该属性自己的口径见对象类型里它的说明）；本次命中 Equipment.equipmentFailure、Equipment.loadPressure、FinishedGoodsInventory.coverDays、Line.blockedPressure、Material.priceShock、MaterialBatch.procurementDelay、Order.leadDays、Ord"
+  }
+ ],
+ "consoleErrs": [
+  "[console] Failed to load resource: the server responded with a status of 404 (Not Found)",
+  "[console] Failed to load resource: the server responded with a status of 404 (Not Found)",
+  "[console] Warning: validateDOMNesting(...): %s cannot appear as a descendant of <%s>.%s <summary> p \n    at summary\n    at details\n    at p\n    at div\n    at div\n    at main\n    at div\n    at div\n    at Console0828 (http://127.0.0.1:5294/src/views/sim/unified/console0828/Console0828.tsx?t=1791353199896:258:3)",
+  "[console] Warning: validateDOMNesting(...): %s cannot appear as a descendant of <%s>.%s <p> p \n    at p\n    at div\n    at details\n    at p\n    at div\n    at div\n    at main\n    at div\n    at div\n    at Console0828 (http://127.0.0.1:5294/src/views/sim/unified/console0828/Console0828.tsx?t=1791353199896:258:3)\n",
+  "[console] Warning: validateDOMNesting(...): %s cannot appear as a descendant of <%s>.%s <div> p \n    at div\n    at details\n    at p\n    at div\n    at div\n    at main\n    at div\n    at div\n    at Console0828 (http://127.0.0.1:5294/src/views/sim/unified/console0828/Console0828.tsx?t=1791353199896:258:3)\n    at ",
+  "[console] Warning: validateDOMNesting(...): %s cannot appear as a descendant of <%s>.%s <details> p \n    at details\n    at p\n    at div\n    at div\n    at main\n    at div\n    at div\n    at Console0828 (http://127.0.0.1:5294/src/views/sim/unified/console0828/Console0828.tsx?t=1791353199896:258:3)\n    at div\n   "
+ ],
+ "screenshot": "/tmp/wt-ab/docs/evidence/WO3-R2-shot-money-5294.png"
+}

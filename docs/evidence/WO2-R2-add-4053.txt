@@ -1,0 +1,40 @@
+## WO-2 R2 可加性 · BASE=http://127.0.0.1:4053 · TICKS=10 · 幅度 3（A=priceShock, B=utilPressure）
+zero=sims_texpjvf3nj2gaexm
+A=sims_rs20k0d9ea9z951c
+B=sims_cjs6061es5e13510
+AB=sims_twbg5qnjxrsy5bwc
+  A 落点 priceShock: 5（zero=2）
+  B 落点 utilPressure: 82.847176168302（zero=92.5496）
+  AB 落点 priceShock: 5（zero=2）
+
+检查 207 格（|rA| 或 |rB| > 1e-12）；不可加(err>1e-6) 39 格
+  blockedPressure: 0/1
+  costPressure: 22/156
+  defectPressure: 0/1
+  deliveryHoldRisk: 3/6
+  feedPressure: 0/2
+  handlingBacklog: 0/1
+  inspectBacklog: 0/2
+  overduePressure: 6/12
+  priceShock: 0/1
+  queuePressure: 0/5
+  receivablePressure: 8/17
+  releasePressure: 0/2
+  utilPressure: 0/1
+top 15 by err：
+  obj_customerlocation_LOC-cust_3-0.deliveryHoldRisk: z=0 rA=0.000071179199 rB=0 rAB=0 err=1.00e+0
+  obj_customerlocation_LOC-cust_3-1.deliveryHoldRisk: z=0 rA=0.000071179199 rB=0 rAB=0 err=1.00e+0
+  obj_order_SO-900221.costPressure: z=90.384615384615 rA=-8.097027315184008 rB=-8.099461080029002 rAB=-8.09974289633901 err=1.00e+0
+  obj_order_SO-900468.costPressure: z=90.384615384615 rA=-8.097027315184008 rB=-8.099461080029002 rAB=-8.09974289633901 err=1.00e+0
+  obj_order_SO-900199.costPressure: z=89 rA=-7.100640405454996 rB=-7.102981726067995 rAB=-7.103526961327006 err=1.00e+0
+  obj_order_SO-900384.costPressure: z=89 rA=-7.100640405454996 rB=-7.102981726067995 rAB=-7.103526961327006 err=1.00e+0
+  obj_order_SO-900233.costPressure: z=88 rA=-6.397341126493998 rB=-6.399598562834996 rAB=-6.4003649072910065 err=9.99e-1
+  obj_order_SO-900319.costPressure: z=87 rA=-5.709312627713004 rB=-5.7114737543199965 rAB=-5.7124871765399945 err=9.99e-1
+  obj_customer_cust_6.receivablePressure: z=91.731819925653 rA=-9.342748058135996 rB=-9.335742248070005 rAB=-9.342837991604995 err=9.99e-1
+  obj_order_SO-900442.costPressure: z=90.384615384615 rA=-8.097265224482001 rB=-8.104849303706004 rAB=-8.105370905800001 err=9.99e-1
+  obj_order_SO-900056.costPressure: z=85 rA=-4.386089172213005 rB=-4.388042840306994 rAB=-4.389615368351997 err=9.99e-1
+  obj_order_SO-900090.costPressure: z=85 rA=-4.386089172213005 rB=-4.388042840306994 rAB=-4.389615368351997 err=9.99e-1
+  obj_order_SO-900223.costPressure: z=85 rA=-4.386089172213005 rB=-4.388042840306994 rAB=-4.389615368351997 err=9.99e-1
+  obj_order_SO-900402.costPressure: z=84 rA=-3.755277971092994 rB=-3.7571450318649937 rAB=-3.7590113340770017 err=9.99e-1
+  obj_order_SO-900496.costPressure: z=87 rA=-5.709592622553998 rB=-5.717689058730997 rAB=-5.718985933881996 err=9.98e-1
+DONE 2026-10-07T07:40:07.949Z
