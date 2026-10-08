@@ -572,27 +572,54 @@ describe("WO-BEFE-D ④ 场景（launch / closure / publish-chain）", () => {
   beforeEach(() => loginAs("planner"));
   afterEach(() => cleanup());
 
-  it("④-A ★接了线接错地方的修正：点▶启动 打的是 /b/v1/scenarios/:key/launch，**不再**是通用 /b/v1/queries", async () => {
+  it("④-A ★没改输入框（用卡片原问句）→ 走服务端组装快路：打 /b/v1/scenarios/:key/launch，不打通用 /b/v1/queries", async () => {
     const user = userEvent.setup();
-    const userQuery = "4680-NCM 加 20% 1天交付能不能接？";
     renderApp("/scenarios");
     await screen.findByTestId("scenario-launcher");
-    // 用户在卡上**改写**问句（后端据此跑归一化；前端拼装那条路根本没有这一步）
+    // 输入框留空 = 用卡片自带问句（用户没改）
+    await user.click(await screen.findByTestId("launcher-launch-S01"));
+
+    await waitFor(() => expect(hits(reqLog, "/b/v1/scenarios/S01/launch").length, "点了▶启动却没打 launch 端点 ⇒ 卡自己的问句没走快路").toBe(1));
+    expectRecorderAlive(reqLog);
+    expect(hits(reqLog, "/b/v1/scenarios/S01/launch")[0]!.method).toBe("POST");
+    // ★ 反面判据：卡自己的问句不该另打通用 queries（两条路都走 = 改了个寂寞）
+    expect(
+      hits(reqLog, "/b/v1/queries").filter((c) => c.method === "POST").map((c) => c.url),
+      "卡片原问句仍在打通用 /b/v1/queries ⇒ 快路没接住",
+    ).toEqual([]);
+    const launched = [...db.tasks.values()].find((t) => (t.context as { scenarioKey?: string }).scenarioKey === "S01");
+    expect(launched, "launch 打了但后端没落任务 ⇒ 这条链只走了一半").toBeTruthy();
+  });
+
+  it("④-A1 ★WO-LAUNCHER-TO-DSH：用户**改写**问句后 → 走正常意图判断（打通用 /b/v1/queries），不再被卡片意图钉死路径", async () => {
+    const user = userEvent.setup();
+    const userQuery = "常州基地当前的产能利用率是多少？瓶颈在哪道工序？";
+    renderApp("/scenarios");
+    await screen.findByTestId("scenario-launcher");
     fireEvent.change(await screen.findByTestId("launcher-query-S01"), { target: { value: userQuery } });
     await user.click(screen.getByTestId("launcher-launch-S01"));
 
-    await waitFor(() => expect(hits(reqLog, "/b/v1/scenarios/S01/launch").length, "点了▶启动却没打 launch 端点 ⇒ 仍走的是老路").toBe(1));
+    await waitFor(
+      () => expect(hits(reqLog, "/b/v1/queries").filter((c) => c.method === "POST").length, "改写过问句却没打通用 queries ⇒ 那句 query 仍不参与路径判断").toBe(1),
+    );
     expectRecorderAlive(reqLog);
-    expect(hits(reqLog, "/b/v1/scenarios/S01/launch")[0]!.method).toBe("POST");
-    // ★ 反面判据：通用 queries 端点**一次都不许**被打（打了就是两条路都走 = 改了个寂寞）
+    // ★ 反面判据：launch 端点一次都不许被打（打了 = 卡片意图又压过了用户输入）
     expect(
-      hits(reqLog, "/b/v1/queries").filter((c) => c.method === "POST").map((c) => c.url),
-      "场景卡启动仍在打通用 /b/v1/queries ⇒ 接线没换过来",
+      hits(reqLog, "/b/v1/scenarios/S01/launch").map((c) => `${c.method} ${c.url}`),
+      "改写过问句仍打 launch 端点 ⇒ 卡片意图仍在覆盖用户输入",
     ).toEqual([]);
-    // ★ 用户改写的问句真的进了 body（不是被 triggerQuestion 顶掉）—— 由服务端落到任务上证明
-    const launched = [...db.tasks.values()].find((t) => (t.context as { scenarioKey?: string }).scenarioKey === "S01");
-    expect(launched, "launch 打了但后端没落任务 ⇒ 这条链只走了一半").toBeTruthy();
-    expect(launched!.query, "用户改写的问句被丢了").toBe(userQuery);
+    // ★ 用户改写的那句真的进了 body，且**不带** scenarioIntentKey（带=路径又被钉死）
+    //   body 由记录器异步落位 ⇒ 先 waitFor 到它出现再断言（与上方同一条纪律）。
+    await waitFor(() => {
+      const posted = hits(reqLog, "/b/v1/queries").filter((c) => c.method === "POST")[0]!;
+      expect((posted.body as { query?: string } | undefined)?.query, "用户改写的问句被丢了").toBe(userQuery);
+    });
+    const posted = hits(reqLog, "/b/v1/queries").filter((c) => c.method === "POST")[0]!;
+    const body = posted.body as { query?: string; context?: Record<string, unknown> } | undefined;
+    expect(body?.context?.scenarioIntentKey, "改写过问句却仍带卡片意图键 ⇒ 路径仍由卡片决定").toBeUndefined();
+    expect(body?.context?.scenarioKey, "改写过问句却仍带卡片键").toBeUndefined();
+    // 卡的 presetContext 照旧注入（选中对象仍在）
+    expect((body?.context?.selectedObjects as { objectId?: string }[] | undefined)?.some((o) => o.objectId === "4680-NCM")).toBe(true);
   });
 
   it("④-A2 归一化槽位由**服务端**回填（前端做不了这一步）：launch 之后任务上下文带 _normalizedSlots", async () => {
