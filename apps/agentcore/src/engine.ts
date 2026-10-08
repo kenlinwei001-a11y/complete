@@ -511,20 +511,10 @@ export class ExecutionEngine {
 
   /** Expand AgentToolRef[] → AgentToolSpec[] (BUILTIN / MCP discovered tools / WORKFLOW-as-tool). */
   /**
-   * WO-SOLVERS-MCP-REAL · 本 run 的求解器目录（`mcp__solvers__*` 的**唯一**供给源）。
-   *
-   * 与本体那件不同，求解器目录**随租户与 entitlement 变**（关某求解器 feature ⇒ 注册表不返回
-   * ⇒ 工具必须消失，R3 先于 authz），故**不能**像本体那样走静态投影。单源 = 与治理端点
-   * `/b/v1/mcp/servers/solvers` **同一只** `catalog.solverRegistry(ctx)`（不新造第二份名单）。
-   *
-   * 失败 ⇒ 空集（**诚实缺席**）：该 run 看不到任何求解器 MCP 工具，而不是看到一批调不通的名字。
-   * ⛔ 不缓存：目录随 entitlement 变，缓存会把「刚被关掉的求解器」继续发出去。
-   */
-  /**
    * WO-GENERAL-AGENT-DSH · **本体对象类型目录**（`GET /a/v1/ontology/object-types`）的现算键集。
    *
    * 单源：与 `discover(kind:"object_types")`、DRIL 的 object_type 投影**同一条 A 侧只读面**
-   * （`deps.dataCore.listObjectTypeKeys` ⇒ A 侧已按 ACTIVE 过滤），不新造第二份名单。
+   * （`deps.dataCore.ontology.listObjectTypeKeys` ⇒ A 侧已按 ACTIVE 过滤），不新造第二份名单。
    * ⛔ 不缓存：目录会变（新建对象类型），缓存会让「新类型」在 TTL 内读不到 —— 而本函数存在的
    * 全部理由就是「新增类型自动跟随」。调用点是**声明了 allObjectTypes 的 agent** 的 run（低频）。
    *
@@ -540,6 +530,16 @@ export class ExecutionEngine {
     }
   }
 
+  /**
+   * WO-SOLVERS-MCP-REAL · 本 run 的求解器目录（`mcp__solvers__*` 的**唯一**供给源）。
+   *
+   * 与本体那件不同，求解器目录**随租户与 entitlement 变**（关某求解器 feature ⇒ 注册表不返回
+   * ⇒ 工具必须消失，R3 先于 authz），故**不能**像本体那样走静态投影。单源 = 与治理端点
+   * `/b/v1/mcp/servers/solvers` **同一只** `catalog.solverRegistry(ctx)`（不新造第二份名单）。
+   *
+   * 失败 ⇒ 空集（**诚实缺席**）：该 run 看不到任何求解器 MCP 工具，而不是看到一批调不通的名字。
+   * ⛔ 不缓存：目录随 entitlement 变，缓存会把「刚被关掉的求解器」继续发出去。
+   */
   private async solverCatalogItems(ctx: ToolAuthCtx | undefined): Promise<SolverCatalogItem[]> {
     if (!ctx) return [];
     try {
