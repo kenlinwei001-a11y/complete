@@ -26,7 +26,13 @@ const _b = require("/tmp/wt-ab/apps/datacore/dist/synthetic/battery.js");
 const DOM = (_b.stateVarDomains ? _b.stateVarDomains() : _b.STATE_VAR_DOMAINS) || {};
 const bandApplies = (name) => {
   const d = DOM[name];
-  return d !== undefined && typeof d.max === "number" && Number.isFinite(d.max);
+  if (d === undefined || typeof d.max !== "number" || !Number.isFinite(d.max)) return false;
+  // ★ 再排除【内点支（散布型）】：restPoint 严格落在 min/max 之间 ⇒ 该量天然有正负散布
+  //   （如 forecastBias min=-100 max=100 restPoint=0），其「带内/带外」须按**偏离量**判，
+  //   按绝对值判会把设计的正常态误报成异常（本守卫第二轮踩的坑）。
+  //   ⛔ 形态同族：拿「端点支（压力族）的判据」去判「内点支（散布型）」。
+  const innerPoint = d.restPoint > d.min && d.restPoint < d.max;
+  return !innerPoint;
 };
 
 const s = await newSess();

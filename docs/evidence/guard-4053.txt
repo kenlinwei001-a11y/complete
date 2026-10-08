@@ -1,0 +1,18 @@
+## 采样守卫 · BASE=http://127.0.0.1:4053
+世界态量名总数 = 32 · 有格且%在带内>0 的量名 = 9
+
+⚠ 存在带内格，量名如下（9 个）：
+   queuePressure            格数=  650  带内=650  ❌ 未采样
+   feedPressure             格数=  260  带内=260  ❌ 未采样
+   costPressure             格数=  156  带内=50  [已采样]
+   blockedPressure          格数=  130  带内=76  ❌ 未采样
+   utilPressure             格数=  130  带内=130  [已采样]
+   expeditePressure         格数=   30  带内=9  ❌ 未采样
+   receivablePressure       格数=   20  带内=1  [已采样]
+   loadIndex                格数=   13  带内=12  [已采样]
+   demandLoad               格数=    6  带内=1  ❌ 未采样
+
+❌【采样不足】5 个带内量名未被采样：queuePressure, feedPressure, blockedPressure, expeditePressure, demandLoad ⇒ 这些量名上的超差【看不见】⇒ 绿不作数
+
+判据：采样清单必须覆盖【全部在带内的量名】。未覆盖 ⇒ 报「采样不足」，⛔ 不许报绿。
+DONE 2026-10-08T03:19:18.712Z
