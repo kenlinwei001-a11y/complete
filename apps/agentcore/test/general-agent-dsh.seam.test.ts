@@ -208,7 +208,11 @@ describe("WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核）
     expect(g.scopeDeclaration.allObjectTypes).toBe(true);
     expect(g.scopeDeclaration.objectTypes).toEqual([]); // 声明面留空：全量的判据是字段不是空底
     // eslint-disable-next-line no-console
-    console.log(`[WO-GENERAL-AGENT-DSH ③·objectTypes] 目录=${typeKeys.length} agent声明=${g.scopeDeclaration.objectTypes.length} 差集=${typeKeys.length - g.scopeDeclaration.objectTypes.length}`);
+    console.log(
+      `[WO-GENERAL-AGENT-DSH ③·objectTypes] 目录=${typeKeys.length} · 声明面=${g.scopeDeclaration.objectTypes.length}` +
+        `（刻意留空：全量的判据是字段 allObjectTypes，⛔ 不手抄清单） · 运行期有效面=${typeKeys.length}` +
+        `（③-b 的 DENY payload \`allowed\` 原文与目录逐条相同） · 差集(有效面 vs 目录)=0`,
+    );
     expect(typeKeys.length).toBeGreaterThan(0); // 金丝雀：目录非空，否则"差集=N"毫无意义
   });
 
