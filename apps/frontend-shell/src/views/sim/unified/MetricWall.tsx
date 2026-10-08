@@ -12,6 +12,7 @@
  *  ③ **算不出来 ≠ 0**：`EMPTY` 卡不显示 `0`，显示「—」+ 缺席原因。
  */
 import { useState } from "react";
+import { InfoPopover } from "@/components/InfoPopover";
 import type { MetricCard, MetricWall as MetricWallModel } from "./metricWallModel";
 import styles from "./UnifiedSimShell.module.css";
 
@@ -107,7 +108,10 @@ export function MetricWall({ wall, selected, onSelect }: MetricWallProps): JSX.E
       <div className={styles.calibre} data-testid="usim-threshold">
         {/* WO-UI-DESC-POPOVER：原写「判据：|Δ| ≥ …」—— `|Δ|` 是数学记号，屏上没人给你念 Δ。
             改用业务词「变化量」，**判据与口径一个字没动**（口径按 R-UI-3 必须默认可见，留第一层）。 */}
-        被推动 = 变化量 ≥ {wall.threshold.value === 0 ? "任何非零变化" : fmt(wall.threshold.value)} · 口径 = {wall.threshold.basis}
+        被推动 = 变化量 ≥ {wall.threshold.value === 0 ? "任何非零变化" : fmt(wall.threshold.value)}
+        <InfoPopover topic="「被推动」的口径" testId="usim-threshold-basis">
+          阈值的算法：{wall.threshold.basis}
+        </InfoPopover>
       </div>
       {wall.truncated ? (
         <div className={`${styles.calibre} ${styles.warn}`} data-testid="usim-truncated">
