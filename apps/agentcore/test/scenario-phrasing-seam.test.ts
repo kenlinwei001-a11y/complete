@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createTestApp, ADMIN, TENANT, submitQuery, waitForTask, type TestApp } from "./helpers.js";
 import { text, toolUse } from "../src/llm/mock.js";
 import { defaultOnKeys } from "../src/features/registry.js";
-import { seedRegistry } from "../src/mocks/seed.js";
+import { GENERAL_AGENT_KEY, seedRegistry } from "../src/mocks/seed.js";
 import { exploratoryGoldset, phrasingGoldset, scenariosMissingVariants, type PhrasingCase } from "./fixtures/scenario-phrasing-goldset.js";
 
 /**
@@ -54,7 +54,12 @@ interface Outcome {
 async function routeOne(c: PhrasingCase): Promise<Outcome> {
   const t: TestApp = await createTestApp();
   t.deps.features.mock.set(TENANT, DEMO_PROD_FEATURES);
-  for (const ag of seedRegistry().agents) if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert(ag);
+  // WO-GENERAL-AGENT-DSH：出厂通用 agent 带 `kernel:"EXTERNAL"`，本测试环境无 dsh harness/stub provider
+  //（本文件验的是**措辞鲁棒性**与**探索题可达性**）⇒ 不播它，落回旧探索路（本单保留的降级支）。
+  for (const ag of seedRegistry().agents) {
+    if (ag.key === GENERAL_AGENT_KEY) continue;
+    if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert(ag);
+  }
   // 语义层理想态：分类器恒判对（本门不考核 LLM，只考核它前面那 10 道门有没有抢答抢错）。
   t.llm.queueClassification({
     candidates: [{ intentKey: c.expectIntent, confidence: 0.95 }],
@@ -147,7 +152,12 @@ describe("场景启动器 · 过程可见接缝门（旁白须在每条 agent �
   ): Promise<{ narrations: number; agentRoundTrips: number; model: string }> {
     const t: TestApp = await createTestApp();
     t.deps.features.mock.set(TENANT, NARRATION_FEATURES);
-    for (const ag of seedRegistry().agents) if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert(ag);
+    // WO-GENERAL-AGENT-DSH：出厂通用 agent 带 `kernel:"EXTERNAL"`，本测试环境无 dsh harness/stub provider
+    //（本文件验的是**措辞鲁棒性**与**探索题可达性**）⇒ 不播它，落回旧探索路（本单保留的降级支）。
+    for (const ag of seedRegistry().agents) {
+      if (ag.key === GENERAL_AGENT_KEY) continue;
+      if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert(ag);
+    }
     if (opts.outOfCatalog) t.llm.queueClassification({ candidates: [], outOfCatalog: true, extractedSlots: {} });
     for (let i = 0; i < 12; i++) {
       t.llm.queueAgentTurn({ content: [text(`第${i + 1}轮：先查一下再说。`), toolUse("discover", { kind: "solvers" })] });
@@ -211,7 +221,12 @@ describe("场景启动器 · 探索型推演接缝门（16 条真开放题）", 
     for (const c of exploratoryGoldset()) {
       const t: TestApp = await createTestApp();
       t.deps.features.mock.set(TENANT, DEMO_PROD_FEATURES);
-      for (const ag of seedRegistry().agents) if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert(ag);
+      // WO-GENERAL-AGENT-DSH：出厂通用 agent 带 `kernel:"EXTERNAL"`，本测试环境无 dsh harness/stub provider
+      //（本文件验的是**措辞鲁棒性**与**探索题可达性**）⇒ 不播它，落回旧探索路（本单保留的降级支）。
+      for (const ag of seedRegistry().agents) {
+        if (ag.key === GENERAL_AGENT_KEY) continue;
+        if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert(ag);
+      }
       // 真开放题：分类器诚实报 outOfCatalog（本体内无对口意图）。
       t.llm.queueClassification({ candidates: [], outOfCatalog: true, extractedSlots: {} });
       // agent 脚本：先真取证两轮（非 final_answer 工具），再带 provenance 收尾。

@@ -1,5 +1,6 @@
 import type {
   AgentBudget,
+  AgentDefinition,
   AgentRunRecord,
   Answer,
   AnswerBlock,
@@ -79,7 +80,7 @@ import { planCoordination, planStalledCoordination, buildDispatchSteps, synthesi
 import { resolveOptWhatifRoute, extractOptWhatifData, assembleOptWhatifAnswer, type OptWhatifRoute } from "./opt-whatif-route.js"; // WO-OPTWHATIF-NL-WIRING · 结构化优化 what-if 会话路由抽取 + 决策切换答案装配（R6·leaf 模块）
 import { buildL2Prompt, parseSolverPlan, buildSlotBag, validateSolverPlan, deterministicSlotFloor, mergeSlotFloor } from "./l2-decompose.js"; // WO-L2-DECOMPOSE · L2 真分解（LLM 产 solver 计划 → 纯校验层验真 → 接同一后半 runParallelRoutes·复用不新造）；WO-SLOT-HARVEST · 主链路确定性槽位底座（同一份确定性抽取器·单源）
 import { isCombinationAsk, runL3CoupledPath } from "./l3-coupled.js"; // PRD-multi-intent-L2L3 P2 · L3 耦合联合求解（一次 portfolio 守恒解·真传导·真残差外协·升格判挂 runMultiRoute）
-import { roleProfile } from "../mocks/seed.js"; // WO-FIVE-ROLE P1 · 角色画像（path-B 按 role 选 agent）
+import { roleProfile, GENERAL_AGENT_KEY } from "../mocks/seed.js"; // WO-FIVE-ROLE P1 · 角色画像（path-B 按 role 选 agent）· WO-GENERAL-AGENT-DSH · 通用 agent key
 import { roleSystemFragment } from "../agent/prompts.js";
 import { injectScenarioRuleStep } from "./scenario-rules.js";
 import { recordOutOfDomain, recordResolutionAttempts } from "./perception-metrics.js";
@@ -1939,7 +1940,22 @@ export class Orchestrator {
       }
     }
 
-    await this.enterExecuting(taskId, { status: "EXECUTING_AGENT", path: "AGENT" }, "探索模式（单 agent 自由多跳）"); // D2 · 进门即挂终态看门狗
+    // ★ WO-GENERAL-AGENT-DSH · **通用 agent 落点**（本函数就是「无角色关键词」的兜底路）：
+    // 出厂通用 agent 在场 ⇒ 本 run 的执行体换成它（走 `engine.runRegisteredAgent` 既有分叉：
+    // 人设/技能/对象域门/规则后验/两内核分叉一次到位），**落点之外的一切（组合路径 → 收尾 →
+    // 升级阶梯 → 终态看门狗）逐字不变**。缺该 agent（未播种/被删/租户自建）⇒ `undefined`
+    // ⇒ 逐字节落回改造前的探索路（诚实降级，不因缺一条配置就答不出题）。
+    // ⛔ `systemOverride` 的两条路（CEO/块级深问）不在此列：那两条带**自己的**人设覆盖，
+    // 落到通用 agent 会把覆盖丢掉（人设轴的产品决策，不在本单范围）。
+    const generalAgent = opts?.systemOverride ? undefined : await this.generalAgentFor(task.tenantId);
+    // §2.2 留痕容器：只有通用 agent 落点会往里放（旧探索路无 agent 无引用）⇒ 尾部按非空才写。
+    const resolvedRefsThisRun: ResolvedRef[] = [];
+
+    await this.enterExecuting(
+      taskId,
+      { status: "EXECUTING_AGENT", path: "AGENT" },
+      generalAgent ? "通用 agent 作答（全域）" : "探索模式（单 agent 自由多跳）",
+    ); // D2 · 进门即挂终态看门狗
     this.deps.metrics.recordRouting(false);
     await this.deps.events.emit(taskId, "routing.completed", { path: "AGENT", note: "进入探索模式" });
 
@@ -1975,14 +1991,17 @@ export class Orchestrator {
     //   取不到 → undefined → 退降级镜像（fail-open·绝不阻断查询）。检索确定性 ⇒ R6 不破。
     //   跳过条件同 engine：本轮工具集调不了 solver → 图里不会列 solver → 不必打 A 侧目录。
     const toolNamesThisTurn = tools.map((t) => t.name);
-    const liveCatalog = scopeCanInvokeSolvers(toolNamesThisTurn)
-      ? await fetchLiveSolverCatalog(
-          this.deps.engine.capabilityMapSource(),
-          auth,
-          task.query,
-          task.context.pageContext,
-        )
-      : undefined;
+    // WO-GENERAL-AGENT-DSH：通用 agent 落点下这一段**不参与**（engine.runRegisteredAgent 自建
+    // 同源的导航切片/语义锚定，这里再取一次纯属白花 A 侧往返且会把同一信息注入两遍）。
+    const liveCatalog =
+      generalAgent === undefined && scopeCanInvokeSolvers(toolNamesThisTurn)
+        ? await fetchLiveSolverCatalog(
+            this.deps.engine.capabilityMapSource(),
+            auth,
+            task.query,
+            task.context.pageContext,
+          )
+        : undefined;
     const navSlice = projectNavigationSlice(task.query, task.context.pageContext, { toolNames: toolNamesThisTurn }, liveCatalog);
     const sliceSection = renderNavigationSlice(navSlice);
     // ★ WO-Phase2-C-COMPLETE · 组合路径挂点（本会落 path-B 的题·在 navSlice 之后、runAgentLoop 之前插·最小 additive）。
@@ -2050,7 +2069,11 @@ export class Orchestrator {
     // 「各字段/规则的口径定义」（Metric formula/unit·派生公式·规则 expression）取自 A 单一真值（getTypeSemantics·
     // TTL60s 缓存·只列 slice 涉及项）——综合 LLM 看的是"带口径标注的数据"而非"带字段名的数据"。fail-open·纯 additive。
     // 合并注（Phase2-C 并入）：compose 命中经上方 early-return 不达此层·executePlan 自有 llm.compose 综合；此层只服务下方 runAgentLoop 路径的 userContent。
-    const semanticSection = await buildOntologySemanticContext(navSlice, auth, this.deps.engine.deps.dataCore.ontology);
+    // WO-GENERAL-AGENT-DSH：通用 agent 落点跳过（engine 侧自建同一段·见上方 liveCatalog 注）。
+    const semanticSection =
+      generalAgent === undefined
+        ? await buildOntologySemanticContext(navSlice, auth, this.deps.engine.deps.dataCore.ontology)
+        : "";
     const baseUser = buildAgentUser(task, priorSummary || undefined);
     // ★ WO-DRIL-P4 · Path-B Agent Loop DRIL 组包注入挂点（PRD §8.3·在 userContent 组装前、runAgentLoop 之前·**自成一格 additive**）。
     // 暗发门（qos.dril-routing·defaultOn:false）：关（含 "ALL" 降级）→ drilSection="" → userContent 逐字节等同既有 → 既有 path-B 不劫持（C4）。
@@ -2089,20 +2112,47 @@ export class Orchestrator {
       providerAvailable?: (tenantId: string | undefined, role: string, explicit?: string) => Promise<boolean>;
     };
     const summaryProviderAvailable =
-      typeof settingsForSummary.providerAvailable === "function"
+      generalAgent === undefined && typeof settingsForSummary.providerAvailable === "function"
         ? await settingsForSummary.providerAvailable(task.tenantId, "compose").catch(() => false)
         : false;
     // #90 · 默认自由问答挂载租户技能（暗发·关 = 下面 system/工具集逐字节同旧）。
     // 关键差别与注册 agent 路径：那边 skill 绑在 `agent.skills`，泛化 path-B 没有 agent，
     // 故技能来源是**租户级已发布集**（selectTenantSkills·R6 确定性）；注入量仍由 buildSkillSection
     // 的语义路由收窄（top-k 全文 + 其余降级为 id/名，模型需要时 load_skill 取全文）。
-    const skillOnFreeQa = skillOnFreeQaEnabled(enabledFeatures);
+    // WO-GENERAL-AGENT-DSH：通用 agent 的技能来自**它自己的绑定**（seed 按技能目录现算），
+    // 这里不再注入租户全集（否则同一批技能在提示词里出现两遍）。
+    const skillOnFreeQa = generalAgent === undefined && skillOnFreeQaEnabled(enabledFeatures);
     const freeQaSkills = skillOnFreeQa ? selectTenantSkills(await this.deps.repos.skills.listByTenant(task.tenantId)) : [];
     const baseSystem = opts?.systemOverride ?? AGENT_SYSTEM_CORE;
     const systemWithSkills =
       freeQaSkills.length > 0 ? `${baseSystem}${buildSkillSection(freeQaSkills, { query: task.query })}` : baseSystem;
 
-    const result = await runAgentLoop({
+    // ★ WO-GENERAL-AGENT-DSH · **落点分叉**（只换执行体，前段装配与后段收尾全部复用）：
+    //   · 通用 agent 在场 ⇒ `engine.runRegisteredAgent`（既有注册 agent 分叉：人设 + 技能 + 对象域门
+    //     + 规则后验 + `agent.kernel` 决定的两内核分叉一次到位）；归属从「无」翻成它自己（REGISTERED），
+    //     这是**诚实**的：本 run 真的解析并执行了一版 AgentDefinition（旧记录仍区分得开——见
+    //     `attributionFields` 三态：不传 = 未知、无 agentId = EXPLORATORY、有 agentId = REGISTERED）。
+    //     prompt 只喂**用户问句 + 前情摘要**：导航切片/口径语义/技能段由 engine 侧装配（同源同函数），
+    //     在这里再拼一遍就是同一信息注入两遍。
+    //   · 不在场 ⇒ 逐字节落回既有 `runAgentLoop`（下方原样）。
+    const result = generalAgent
+      ? await this.deps.engine.runRegisteredAgent({
+          taskId,
+          agentId: generalAgent.id,
+          version: "latest",
+          prompt: baseUser,
+          ctx: auth,
+          nesting: { callChain: [], budget },
+          emit: (e, p) => this.deps.events.emit(taskId, e, p).then(() => undefined),
+          isCancelled: () => this.cancelled.has(taskId),
+          onResolvedRef: (r) => resolvedRefsThisRun.push(r),
+          // 对象域门开（通用 agent 声明 `allObjectTypes` ⇒ 目录现算的全集；其它 agent 仍是声明面）。
+          enforceObjectScope: true,
+          // WO-AGENTRUN-FANOUT-PERSIST：通用 agent 是**这个任务本身**那次循环 ⇒ ROOT。
+          placement: { origin: "ROOT" },
+          ...(reasoningTraceEnabled(enabledFeatures) ? { emitNarration: true } : {}),
+        })
+      : await runAgentLoop({
       taskId,
       model,
       tenantId: task.tenantId,
@@ -2243,6 +2293,9 @@ export class Orchestrator {
       status: "COMPLETED",
       answer: result.answer,
       classification,
+      // §2.2 留痕：通用 agent 落点写它**真解析到**的 agent/skill/rule 版本
+      //（旧探索路无引用 ⇒ 键不出，逐字节兼容）。去重单源 = `dedupeRefs`（与 runRolePathB 同一去处）。
+      ...(dedupeRefs(resolvedRefsThisRun) ? { resolvedRefs: dedupeRefs(resolvedRefsThisRun) } : {}),
       completedAt: new Date().toISOString(),
     });
     for (const block of result.answer.blocks) {
@@ -2459,6 +2512,20 @@ export class Orchestrator {
     }
     // 无确定性落点（如纯沙盘 NL 深问但无 CEO 意图）→ 换个问法兜底（诚实·不编造）。
     await this.completeWorkflowOnlyMiss(task, candidates);
+  }
+
+  /**
+   * ★ WO-GENERAL-AGENT-DSH · 出厂**通用 agent**（无角色关键词时的落点）的现查。
+   *
+   * 判据落在**配置**上，不落在代码上：按 `GENERAL_AGENT_KEY` 现查本租户最新一版
+   * （`latestByKey` ⇒ 租户改过 / 升过版 / 换过内核，路由自动跟随，不需要改这行代码）。
+   * 取不到 ⇒ `undefined` ⇒ 调用方落回改造前的探索路（**诚实降级**：少一条出厂配置不该让题答不出来）。
+   *
+   * ⛔ 不按名字/描述猜：key 是从种子模块 import 的同一个常量（单一来源），
+   * 不在路由里另写一份字面量（两份会漂）。
+   */
+  private async generalAgentFor(tenantId: string): Promise<AgentDefinition | undefined> {
+    return this.deps.repos.agents.latestByKey(tenantId, GENERAL_AGENT_KEY);
   }
 
   /**

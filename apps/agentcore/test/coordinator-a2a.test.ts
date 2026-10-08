@@ -3,7 +3,7 @@ import { createTestApp, submitQuery, waitForTask, ADMIN, TENANT, type TestApp } 
 import { text, toolUse } from "../src/llm/mock.js";
 import { defaultOnKeys } from "../src/features/registry.js";
 import { planCoordination, detectSingleRole, synthesize } from "../src/router/coordinator.js";
-import { seedRegistry, roleProfile } from "../src/mocks/seed.js";
+import { GENERAL_AGENT_KEY, seedRegistry, roleProfile } from "../src/mocks/seed.js";
 
 /**
  * WO-FIVE-ROLE-AI-EMPLOYEE P1 · SEAM（跨域 Coordinator 编排·**mock LLM 证接线非蒙**）。
@@ -20,6 +20,7 @@ import { seedRegistry, roleProfile } from "../src/mocks/seed.js";
 /** 把 seed 注册表 agents 灌入测试 repos（helpers 默认只种 package/intents/plans）。 */
 async function seedAgents(t: TestApp): Promise<void> {
   for (const ag of seedRegistry().agents) {
+    if (ag.key === GENERAL_AGENT_KEY) continue;
     if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert(ag);
   }
 }
@@ -156,7 +157,10 @@ describe("WO-FIVE-ROLE P1 · SEAM 跨域真拆→invoke_agent 真调 ≥2 角色
     const t = await createTestApp();
     t.deps.features.mock.set(TENANT, [...defaultOnKeys(), "agent.coordinator"]);
     // 篡改供应链 agent scope：移除 Material → 它再读 Material 应被拒（证 scope 真进执行器·改 scope 取证范围变）。
+    // WO-GENERAL-AGENT-DSH：出厂通用 agent 带 `kernel:"EXTERNAL"`，本测试环境无 dsh harness/stub provider
+    // ⇒ 不播它（本文件验的是角色 scope 隔离）；通用 agent 的落点面由 `general-agent-dsh.seam.test.ts` 覆盖。
     for (const ag of seedRegistry().agents) {
+      if (ag.key === GENERAL_AGENT_KEY) continue;
       const copy = ag.id === "agt_supply_chain"
         ? { ...ag, scopeDeclaration: { ...ag.scopeDeclaration, objectTypes: ["Supplier", "PurchaseOrder"] } }
         : ag;

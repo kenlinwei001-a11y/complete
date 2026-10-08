@@ -35,7 +35,7 @@ import type { SceneEntryConfig } from "@platform/contracts";
 import { ADMIN, createTestApp, lastToolCallId, submitQuery, TENANT, waitForTask, type TestApp } from "./helpers.js";
 import { text, toolUse } from "../src/llm/mock.js";
 import { defaultOnKeys } from "../src/features/registry.js";
-import { seedRegistry } from "../src/mocks/seed.js";
+import { GENERAL_AGENT_KEY, seedRegistry } from "../src/mocks/seed.js";
 import type { LlmBudgetPort } from "../src/ops/llm-budget.js";
 
 /** 可观测的假账本：每次 `record` 都留痕（真账本走 HTTP，会掩盖「调用方漏挂」这一类缺陷）。 */
@@ -55,6 +55,10 @@ function fakeLedger(): LlmBudgetPort & { records: { tenantId: string; tokens: nu
 
 async function seedAgents(t: TestApp): Promise<void> {
   for (const ag of seedRegistry().agents) {
+    // WO-GENERAL-AGENT-DSH：出厂通用 agent 带 `kernel:"EXTERNAL"`，而本测试环境没有 dsh harness/
+    // stub provider（本文件验的是**记账**，不是内核）⇒ 不播它，走旧探索路（正是本单保留的降级支）。
+    // 通用 agent 的落点/内核/目录面由 `general-agent-dsh.seam.test.ts` 覆盖。
+    if (ag.key === GENERAL_AGENT_KEY) continue;
     if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert(ag);
   }
 }

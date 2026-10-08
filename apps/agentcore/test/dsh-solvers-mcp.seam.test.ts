@@ -30,7 +30,7 @@ import { Metrics } from "../src/metrics.js";
 import { GuardedToolExecutor } from "../src/tools/executor.js";
 import { BudgetTracker } from "../src/tools/budget.js";
 import { TENANT, createTestApp } from "./helpers.js";
-import { seedRegistry, seedMcpConfigs } from "../src/mocks/seed.js";
+import { GENERAL_AGENT_KEY, seedRegistry, seedMcpConfigs } from "../src/mocks/seed.js";
 import { buildSolverMcpWireTools, SOLVERS_MCP_CONFIG_ID, type SolverCatalogItem } from "../src/mcp/solvers-catalog.js";
 
 const SERVER_PATH = fileURLToPath(new URL("../dist/dsh-runtime/solvers-mcp-server.js", import.meta.url));
@@ -345,7 +345,11 @@ describe("WO-SOLVERS-MCP-REAL · D 组：引擎展开面（原生臂与 DSH 臂�
     for (const m of seedMcpConfigs()) await t.repos.mcpConfigs.insert(m);
     // 判据是**名单**而不是某一名写死的 agent：写死过 `finance_analyst`，它一被迁移这条反例就失效
     // （实测：撤掉这条写死后真红了 1 条 —— 那次红是对的，反例选错了对象）。
-    const others = seedRegistry().agents.filter((a) => !MIGRATED.includes(a.key));
+    // ⚠ WO-GENERAL-AGENT-DSH（2026-10-08）· 通用 agent 是**第三类**，不在本反例的范围内：
+    // 它的求解器 ref **不设 `toolFilter`**（= 不收窄 ⇒ 展开全量活目录，这正是该单判据③「差集=0」
+    // 的依据），故「未挂求解器面 ⇒ 0 条」这个反例对它不成立。显式排除并点名 —— 用 `!MIGRATED.includes`
+    // 隐式排除会让这名 agent 静默落进「应该有 0 条」那一档（反例选错对象，正是本行上一段注释记过的病）。
+    const others = seedRegistry().agents.filter((a) => !MIGRATED.includes(a.key) && a.key !== GENERAL_AGENT_KEY);
     expect(others.length, "没有『名单之外』的 agent ⇒ 反例空转，等于没测").toBeGreaterThan(0);
     expect(others.map((a) => a.key)).toContain("code_assistant"); // 独立旁证：这个反例对象是具体的、不是空集
     for (const agent of others) {

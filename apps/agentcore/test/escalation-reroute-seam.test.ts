@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createTestApp, submitQuery, waitForTask, ADMIN, PLANNER, TENANT, type TestApp } from "./helpers.js";
 import { toolUse } from "../src/llm/mock.js";
 import { defaultOnKeys } from "../src/features/registry.js";
-import { seedRegistry } from "../src/mocks/seed.js";
+import { GENERAL_AGENT_KEY, seedRegistry } from "../src/mocks/seed.js";
 
 /**
  * WO-LOOP-CONTROL-P2.5 · Escalation Ladder rung② SEAM（收口 P2 诚实延后的 rung②·经**真** submitQuery→runPathB→runAgentLoop）。
@@ -55,6 +55,9 @@ function queueStallTurns(t: TestApp, rounds: number): void {
 /** 把 seed 注册表 agents 灌入测试 repos（helpers 默认只种 package/intents/plans）。 */
 async function seedAgents(t: TestApp): Promise<void> {
   for (const ag of seedRegistry().agents) {
+    // WO-GENERAL-AGENT-DSH：出厂通用 agent 带 `kernel:"EXTERNAL"`，而本测试环境没有 dsh harness/
+    // stub provider（本文件验的是**升级阶梯**，不是内核）⇒ 不播它，落回旧探索路（本单保留的降级支）。
+    if (ag.key === GENERAL_AGENT_KEY) continue;
     if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert(ag);
   }
 }

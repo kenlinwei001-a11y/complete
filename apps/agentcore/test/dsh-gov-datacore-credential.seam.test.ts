@@ -68,7 +68,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHttpDataCore } from "../src/tools/datacore-http.js";
-import { seedRegistry } from "../src/mocks/seed.js";
+import { GENERAL_AGENT_KEY, seedRegistry } from "../src/mocks/seed.js";
 import { createTestApp } from "./helpers.js";
 
 const SERVICE_TOKEN = "seam-service-token-0000";
@@ -225,14 +225,19 @@ describe("WO-AGENT-DSH-DEFAULT · DSH 治理带外通道 → DataCore 凭据接�
     }
   });
 
-  it("③ 出厂 seed agent 一个都不带 kernel ⇒ 今天默认落 NATIVE（翻默认之前的基准线）", () => {
+  it("③ 出厂 seed agent 默认不带 kernel（**唯一例外**：通用 agent 显式 EXTERNAL）⇒ 出厂默认仍落 NATIVE", () => {
     const { agents } = seedRegistry();
     // 金丝雀：种子 agent 真的抽出来了（0 条时「没有 EXTERNAL」是空真理，不是结论）。
     expect(agents.length).toBeGreaterThan(0);
     expect(agents.map((a) => a.key).includes("analyst")).toBe(true);
-    // 本体：零个显式 kernel ⇒ 分叉守卫必落 `agent.kernel === undefined` 那一支，
+    // 本体：除通用 agent 外零个显式 kernel ⇒ 分叉守卫必落 `agent.kernel === undefined` 那一支，
     // 再回落 `process.env.DSH_HARNESS`（出货 compose 显式 `${DSH_HARNESS:-0}`）⇒ 全 NATIVE。
-    expect(agents.filter((a) => a.kernel !== undefined)).toEqual([]);
+    // ⚠ WO-GENERAL-AGENT-DSH（2026-10-08）改口径：**恰好一个** agent 显式带 kernel ——
+    //   通用 agent（`general`）带 `kernel:"EXTERNAL"`，那是**per-agent 配置面**（本仓铁律：
+    //   内核走配置，不翻部署面 flag），**不是**把出厂默认翻成 DSH。断言因此改成「名单相等」：
+    //   多的（别人也带 kernel）与少的（通用 agent 的显式位被抹掉）都会红。
+    expect(agents.filter((a) => a.kernel !== undefined).map((a) => a.key)).toEqual([GENERAL_AGENT_KEY]);
+    expect(agents.find((a) => a.key === GENERAL_AGENT_KEY)?.kernel).toBe("EXTERNAL");
   });
 
   it("④ `cfg.DSH_HARNESS` 在 src 侧零消费方 ⇒ 改 config.ts 的 zod 缺省**翻不动**分叉（方案 A 是空操作）", () => {

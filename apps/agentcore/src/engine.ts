@@ -511,6 +511,26 @@ export class ExecutionEngine {
 
   /** Expand AgentToolRef[] → AgentToolSpec[] (BUILTIN / MCP discovered tools / WORKFLOW-as-tool). */
   /**
+   * WO-GENERAL-AGENT-DSH · **本体对象类型目录**（`GET /a/v1/ontology/object-types`）的现算键集。
+   *
+   * 单源：与 `discover(kind:"object_types")`、DRIL 的 object_type 投影**同一条 A 侧只读面**
+   * （`deps.dataCore.ontology.listObjectTypeKeys` ⇒ A 侧已按 ACTIVE 过滤），不新造第二份名单。
+   * ⛔ 不缓存：目录会变（新建对象类型），缓存会让「新类型」在 TTL 内读不到 —— 而本函数存在的
+   * 全部理由就是「新增类型自动跟随」。调用点是**声明了 allObjectTypes 的 agent** 的 run（低频）。
+   *
+   * 失败/空 ⇒ `undefined`（调用方**不收窄**，见 `runRegisteredAgent` 的注）。
+   */
+  private async objectTypeCatalogKeys(ctx: ToolAuthCtx | undefined): Promise<string[] | undefined> {
+    if (!ctx) return undefined;
+    try {
+      const keys = await this.deps.dataCore.ontology.listObjectTypeKeys(ctx);
+      return keys.length > 0 ? keys : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
    * WO-SOLVERS-MCP-REAL · 本 run 的求解器目录（`mcp__solvers__*` 的**唯一**供给源）。
    *
    * 与本体那件不同，求解器目录**随租户与 entitlement 变**（关某求解器 feature ⇒ 注册表不返回
@@ -628,6 +648,12 @@ export class ExecutionEngine {
         if (serverName === WORKFLOW_MCP_SERVER) {
           const wfs = await this.deps.repos.workflows.listByTenant(agent.tenantId);
           for (const wf of wfs) {
+            // WO-GENERAL-AGENT-DSH · **全量面（ref 无 toolFilter）只列已发布工作流**：DRAFT 是还没发布
+            // 的定义，不是可调用工具（与技能/意图/对象类型「发布才外发」同一惯例，也正是上一行注释
+            // 「随工作流**发布**变」的字面含义 —— 此前没有 agent 走无过滤这支，故从没人碰上）。
+            // ⛔ 显式 `toolFilter` 点名者**照旧**（含 DRAFT 目标）：显式配置优先，且改了会让既有
+            //    filtered agent（如 risk_advisor → risk_digest）的工具**静默消失**——那是更坏的病。
+            if (!ref.toolFilter && wf.status !== "PUBLISHED") continue;
             const spec = workflowMcpTool(wf);
             if (ref.toolFilter && !ref.toolFilter.includes(wf.key) && !ref.toolFilter.includes(spec.name)) continue;
             specs.push({
@@ -680,8 +706,22 @@ export class ExecutionEngine {
 
   /** Run a registered agent (B1 executor = §6.3 loop + scope gate + skills + rule POST_CHECK). */
   async runRegisteredAgent(opts: RunRegisteredAgentOpts): Promise<AgentLoopResult> {
-    const agent = await this.resolveAgent(opts.agentId, opts.version);
-    const model = await this.deps.llmSettings.roleModel(agent.tenantId, "agent", agent.model || undefined);
+    const resolved = await this.resolveAgent(opts.agentId, opts.version);
+    const model = await this.deps.llmSettings.roleModel(resolved.tenantId, "agent", resolved.model || undefined);
+    // WO-GENERAL-AGENT-DSH · **对象域「全量」= 目录现算**：`scopeDeclaration.allObjectTypes` 的 agent
+    // （通用 agent）在**本 run** 把有效对象域解析成对象类型目录的现全集（`GET /a/v1/ontology/object-types`，
+    // 与 `discover(kind:"object_types")` / DRIL 投影同一条 A 侧只读面 —— 不新造第二份名单）。
+    // 解析结果以**浅拷贝**形态往下一路走：executor 的对象域门、导航切片投影、DSH 的
+    // `governance.scopeObjectTypes` 读的都是同一个 `agent` 对象 ⇒ 三处同源，不会「宿主放行、子进程拦」。
+    // 目录不可得（A 侧不可达）⇒ **不收窄**（返回 undefined，落回「不设对象域门」= 本改造前探索路的
+    // 既有行为），因为此处是治理收窄不是安全边界（行级过滤在 A6），把 A 侧一次抖动放大成
+    // 「通用 agent 一个对象都读不了」是更坏的失败。
+    const allObjectTypes = resolved.scopeDeclaration.allObjectTypes === true;
+    const resolvedObjectTypes = allObjectTypes ? await this.objectTypeCatalogKeys(opts.ctx) : undefined;
+    const agent: AgentDefinition =
+      resolvedObjectTypes && resolvedObjectTypes.length > 0
+        ? { ...resolved, scopeDeclaration: { ...resolved.scopeDeclaration, objectTypes: resolvedObjectTypes } }
+        : resolved;
     // ctx 透传（WO-SOLVERS-MCP-REAL）：求解器 MCP 工具集随租户/entitlement 变，目录要用本 run
     // 的 OBO 身份去问 DataCore（`catalog.solverRegistry(ctx)`，与治理端点同源）。
     const expanded = await this.expandAgentTools(agent, opts.ctx);
@@ -798,7 +838,22 @@ export class ExecutionEngine {
     // 工具，但其 scopeDeclaration.toolNames 漏列该名 → 调用即 AGENT_SCOPE_VIOLATION DENIED（子 agent 盲扫烧预算的一环）。
     // 一个 agent 被显式配置的工具**绝不应被自身 scope 门拒**（「给它该工具」）；并集**只加不减**（声明已覆盖者 = 原集·byte-compatible），
     // 越界工具（未配置给该 agent）仍被拒（安全语义不变）。此处修 scope 派生，不动 seed（seed.ts 禁碰）。
-    const effectiveScopeToolNames = [...new Set([...agent.scopeDeclaration.toolNames, ...tools.map((t) => t.name)])];
+    // WO-GENERAL-AGENT-DSH · **工具面「全量」**：`scopeDeclaration.allTools` 的 agent（通用 agent）
+    // 并的是**完整授予面 `expanded`**（= `tools[]` 里不设 `toolFilter` 的 ref 在运行期从各自目录
+    // 现算的并集），而不是被 Phase6C 上下文 top-k 收窄过的 `tools` —— 否则「目录新长出来的工具」
+    // 在宿主 scope 门 / DSH 子进程 allow-list 上被**静默拒掉**（子进程看得见、调用却 DENIED）。
+    // 缺省 agent 行为逐字节不变（并集只加不减，来源仍是收窄后的授予面）。
+    const scopeGrantedNames = (agent.scopeDeclaration.allTools === true ? expanded : tools).map((t) => t.name);
+    const effectiveScopeToolNames = [...new Set([...agent.scopeDeclaration.toolNames, ...scopeGrantedNames])];
+    // WO-GENERAL-AGENT-DSH · 对象域门的实参：全量 agent 用**目录现算**那一份；目录不可得 ⇒ undefined
+    // = 不收窄（见上方 `resolvedObjectTypes` 注）。既有 agent = 原样（enforceObjectScope 才收窄）。
+    const effectiveScopeObjectTypes = allObjectTypes
+      ? agent.scopeDeclaration.objectTypes.length > 0
+        ? agent.scopeDeclaration.objectTypes
+        : undefined
+      : opts.enforceObjectScope
+        ? agent.scopeDeclaration.objectTypes
+        : undefined;
     // Phase5C skill 语义路由：按 query 相关性仅注入 top-k 全文 summary（其余 load_skill 按需取）。
     const system = `${agent.systemPrompt}\n\n${AGENT_SYSTEM_CORE}${buildSkillSection(skills, { query: opts.prompt, embedder })}`;
 
@@ -836,7 +891,7 @@ export class ExecutionEngine {
       opts.ctx,
       opts.nesting.budget,
       effectiveScopeToolNames,
-      opts.enforceObjectScope ? agent.scopeDeclaration.objectTypes : undefined,
+      effectiveScopeObjectTypes,
     );
 
     // Phase8：生产可启用 LLM 滚动摘要（QOS_ROLLING_SUMMARY_LLM=1）；缺省确定性拼接。
@@ -1057,7 +1112,10 @@ export class ExecutionEngine {
       const setup = buildSessionSetup({
         agent,
         agentSystemCore: AGENT_SYSTEM_CORE,
-        grantedToolNames: tools.map((t) => t.name),
+        // WO-GENERAL-AGENT-DSH · 与宿主 scope 门**同一份**授予面（`scopeGrantedNames`）——
+        // 全量 agent 这里拿到的是完整授予面，故子进程 allow-list 与宿主同判据；
+        // 既有 agent 逐字节不变（仍是收窄后的 `tools`）。
+        grantedToolNames: scopeGrantedNames,
         // WO-DSH-SOLVER-GATE：逐条把 solver 类 precondition 的 key 带给 harness（空清单 ⇒ 该键
         // 不出，逐字节旧行为）。抽取用的是 native 臂 loadSkill 门同一个 `skillRefKeys`——
         // 两臂的**声明面**由此同源；**状态面**（跑没跑过）两边都问宿主的

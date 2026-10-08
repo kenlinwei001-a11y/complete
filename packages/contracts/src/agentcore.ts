@@ -47,6 +47,30 @@ export const AgentDefinitionSchema = z.object({
   scopeDeclaration: z.object({
     objectTypes: z.array(z.string()),
     toolNames: z.array(z.string()),
+    /**
+     * WO-GENERAL-AGENT-DSH（additive·可选·向后兼容）：**对象域 = 全量（目录现算）**。
+     *
+     * true ⇒ 运行期把有效对象域解析为**本体对象类型目录**的现算全集（`GET /a/v1/ontology/object-types`），
+     * 之后新增的对象类型**自动跟随**，不需要改本 agent 的配置，也不需要重建任何名单；
+     * `objectTypes` 仍是声明面（与目录取并集），供读端展示与未来权限面板收窄。
+     * 缺省/false = 逐字节沿用既有静态声明（所有既有 agent 行为不变）。
+     *
+     * ⚠ 与「`objectTypes: []`」不是一回事：空数组在 opt-in 强制（`enforceObjectScope`）下是
+     * **一个对象都不许读**；本字段是显式的「全量」。两者语义相反，故必须显式声明，不许拿空表当省略。
+     */
+    allObjectTypes: z.boolean().optional(),
+    /**
+     * WO-GENERAL-AGENT-DSH（additive·可选·向后兼容）：**工具面 = 全量（目录/注册表现算）**。
+     *
+     * true ⇒ 本 run 的有效工具白名单在「声明面 ∪ 授予面」之外再并入**完整授予面**
+     * （`expandAgentTools` 产出、即上下文 top-k 收窄**之前**的那一份）—— 于是两件事同时成立：
+     * ① 目录侧新增工具（新求解器 / 新工作流 / 新 MCP 工具）**自动跟随**（授予面由 `tools[]`
+     *    里 `toolFilter` 不设的那些 ref 在运行期从各自目录现算）；
+     * ② 两内核的允许表同源（DSH 端子进程 allow-list 与宿主 scope 门同判据），
+     *    不会出现「子进程看得见、门却拒」的半开形态。
+     * 缺省/false = 逐字节旧行为（只并收窄后的授予面）。
+     */
+    allTools: z.boolean().optional(),
   }),
   budget: AgentBudgetSchema.partial().optional(),
   status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]),
