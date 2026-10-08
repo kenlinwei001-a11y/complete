@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import type { AgentDefinition, SkillDefinition } from "@platform/contracts";
 import { AgentRunRecordSchema } from "@platform/contracts";
 import { createTestApp, debugHeaders, PLANNER, submitQuery, TENANT, waitForTask, type TestApp } from "./helpers.js";
+import { GENERAL_AGENT_KEY, seedRegistry } from "../src/mocks/seed.js";
 import { toolUse } from "../src/llm/mock.js";
 import { loadConfig } from "../src/config.js";
 import { computeResidualBudget } from "../src/router/orchestrator.js";
@@ -31,7 +32,11 @@ import {
  * 真 insert → 真 HTTP 读**。引擎少填一个字段、归属取错版本、仓储漏掉租户过滤，都会在这里当场红。
  *
  * **诚实位同样被断言（③④⑤）**：
- *  - 通用探索路（`runPathB`）真的没有 AgentDefinition ⇒ 必须是 `EXPLORATORY` 且**不出现在任何 agent 的运行里**；
+ *  - 通用探索路（`runPathB`）的归属分两档，**两档都必须说真话**（WO-GENERAL-AGENT-DSH 改口径，
+ *    改动点与理由见该单报告 §5）：出厂**通用 agent 在场** ⇒ 本 run 真的解析并执行了一版
+ *    AgentDefinition（`REGISTERED` + `agentKey=general`，可被 `GET /b/v1/agents/:id/runs` 读到）；
+ *    **不在场** ⇒ 仍是 `EXPLORATORY`（正面声明"本次真的没有 Agent 定义"）且不出现在任何 agent 的运行里。
+ *    ⛔ 两档都不许"为了让列表有东西"而挂到**别的** agent 名下。
  *  - 未绑 LLM provider 的环境（`completeNoLlmDegradation`·`orchestrator.ts:2657`）压根不写 run ⇒
  *    端点必须返空列表而不是报错，也不许凭空造一条；
  *  - 归属上线**之前**写的旧记录（无归属字段）⇒ 一条都不许挂到某个 agent 名下充数。
@@ -140,11 +145,16 @@ describe("WO-AGENTRUN-ATTRIBUTION · 运行归属接缝", () => {
     expect(runs.filter((r) => r.agentId === "agt_v1").every((r) => r.agentVersion === 1)).toBe(true);
   });
 
-  it("③ 诚实位 · 通用探索路真的无归属对象 → EXPLORATORY，且**不挂到任何 agent 名下**", async () => {
-    const t = await createTestApp({ env: { QOS_AGENT_MAX_ROUND_TRIPS: "2" } });
-    await t.repos.agents.insert(agentDef({ id: "agt_bystander", key: "attr_bystander" }));
-
-    // 不绑场景入口 → 走分类 → outOfCatalog → runPathB 探索模式（工具集当场算，全程无 AgentDefinition）。
+  /**
+   * ③ 诚实位（口径已于 WO-GENERAL-AGENT-DSH 改写：**"无归属"= 没落到任何 agent**，
+   * 出厂通用 agent 另算一档 —— 因为那一次运行**真的**解析并执行了一版 AgentDefinition，
+   * 记成 EXPLORATORY（"确知没有 Agent 定义"）才是说假话）。
+   *
+   * 两臂都在：③-a 通用 agent 在场（生产形态：`main.ts` 播种出厂 registry）；
+   * ③-b 通用 agent 不在场 ⇒ 旧口径逐字保留。
+   */
+  async function runOpenQuestion(t: TestApp): Promise<string> {
+    // 不绑场景入口 → 走分类 → outOfCatalog → runPathB 探索模式。
     t.llm.queueClassification(OUT_OF_CATALOG);
     for (let i = 0; i < 12; i++) {
       t.llm.queueAgentTurn({ content: [toolUse("query_objects", { objectType: "Order", filter: {} })] });
@@ -152,7 +162,40 @@ describe("WO-AGENTRUN-ATTRIBUTION · 运行归属接缝", () => {
     const { taskId } = await submitQuery(t, PLANNER, "把所有能查的都翻一遍并给我一个综合自由结论", { view: "dash" });
     const task = await waitForTask(t, taskId, (x) => x.status === "COMPLETED", 15000);
     expect(task.path).toBe("AGENT"); // 确实走了 AGENT 路
+    return taskId;
+  }
 
+  it("③-a 通用 agent 在场 ⇒ 归属落在**它自己**名下（REGISTERED·agentKey=general），仍不挂到别的 agent", async () => {
+    const t = await createTestApp({ env: { QOS_AGENT_MAX_ROUND_TRIPS: "2" } });
+    await t.repos.agents.insert(agentDef({ id: "agt_bystander", key: "attr_bystander" }));
+    const general = seedRegistry().agents.find((a) => a.key === GENERAL_AGENT_KEY)!;
+    // 出厂记录带 `kernel: "EXTERNAL"`（WO 判据⑤）；本臂只验**归属**，故把内核钉回原生
+    //（DSH 臂的内核面由 general-agent-dsh.seam.test.ts 覆盖，那里有 stub provider + harness）。
+    await t.repos.agents.insert({ ...general, kernel: "NATIVE" });
+
+    const taskId = await runOpenQuestion(t);
+    const run = await t.repos.agentRuns.getByTask(taskId);
+    expect(run).toBeDefined();
+    // 新口径：本次运行归属于它真解析到的那版 agent（不是"无归属"，也不是别的 agent）。
+    expect(run!.attribution).toBe("REGISTERED");
+    expect(run!.agentId).toBe(general.id);
+    expect(run!.agentKey).toBe(GENERAL_AGENT_KEY);
+    expect(run!.tenantId).toBe(TENANT); // 租户仍在（tenant_id everywhere）
+    // 可被读端按 agent 查到（这正是不再走 EXPLORATORY 的可观察后果）。
+    const own = await listRuns(t, general.id);
+    expect((own.json() as { runs: unknown[] }).runs.length).toBe(1);
+
+    // 关键（旧断言原样保留）：它绝不许因为"列表里得有东西"而被算进**别的** agent 的运行。
+    const res = await listRuns(t, "agt_bystander");
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { runs: unknown[] }).runs.length).toBe(0);
+  });
+
+  it("③-b 通用 agent 不在场（未播种）⇒ 旧口径逐字成立：EXPLORATORY 且不挂到任何 agent 名下", async () => {
+    const t = await createTestApp({ env: { QOS_AGENT_MAX_ROUND_TRIPS: "2" } });
+    await t.repos.agents.insert(agentDef({ id: "agt_bystander", key: "attr_bystander" }));
+
+    const taskId = await runOpenQuestion(t);
     const run = await t.repos.agentRuns.getByTask(taskId);
     expect(run).toBeDefined();
     // 正面声明「本次真的没有 Agent 定义」——不是漏填。

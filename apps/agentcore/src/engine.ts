@@ -648,6 +648,12 @@ export class ExecutionEngine {
         if (serverName === WORKFLOW_MCP_SERVER) {
           const wfs = await this.deps.repos.workflows.listByTenant(agent.tenantId);
           for (const wf of wfs) {
+            // WO-GENERAL-AGENT-DSH · **全量面（ref 无 toolFilter）只列已发布工作流**：DRAFT 是还没发布
+            // 的定义，不是可调用工具（与技能/意图/对象类型「发布才外发」同一惯例，也正是上一行注释
+            // 「随工作流**发布**变」的字面含义 —— 此前没有 agent 走无过滤这支，故从没人碰上）。
+            // ⛔ 显式 `toolFilter` 点名者**照旧**（含 DRAFT 目标）：显式配置优先，且改了会让既有
+            //    filtered agent（如 risk_advisor → risk_digest）的工具**静默消失**——那是更坏的病。
+            if (!ref.toolFilter && wf.status !== "PUBLISHED") continue;
             const spec = workflowMcpTool(wf);
             if (ref.toolFilter && !ref.toolFilter.includes(wf.key) && !ref.toolFilter.includes(spec.name)) continue;
             specs.push({

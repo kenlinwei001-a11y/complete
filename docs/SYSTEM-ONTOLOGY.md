@@ -627,6 +627,30 @@ POST /b/v1/skill-graphs/run → { runId, source, layers[], nodeResults[] }
          即整段省略·modeling.ts 隔离区校验与 agentcore 执行器仅读 ok/violations→行为零漂移）。SEAM：`datacore/test/ontology-validate-semantics.test.ts`
          ——MUTATE 口径真值（upsertType unit %→pct/改 formula + rules C03 >0.5→>0.8 + publish）后**同一** validate-output 调用注解/规则判定随之变
          （证接线到本体单一真值·非快照·A-side 版 agentcore ontology-context.test）。
+   ★**通用 agent 落点（WO-GENERAL-AGENT-DSH·**探索路的执行体换人**·2026-10-08）**：
+     此前 `orchestrator.runPathB`（无角色关键词的兜底路）**直调 `runAgentLoop`**，全程没有 AgentDefinition
+     （run 归属记 `EXPLORATORY`）。现改为**落点分叉**：
+       task(无角色关键词·非 systemOverride 两条 CEO/块级深问路) --generalAgentFor(tenant, key="general" 现查最新版)-->
+         · 在场 → `engine.runRegisteredAgent`（**既有注册 agent 分叉**：人设/技能/对象域门/规则后验/
+           `agent.kernel` 两内核分叉一次到位）→ 前段装配（工具面/导航切片/语义锚定/租户技能注入）在 engine 侧同源构建，
+           本函数不再重复注入；后段收尾（组合路径 early-return → fallbackTraces → 取消 → 升级阶梯 rung② →
+           COMPLETED + answer.final + 经验回填）**逐字不变**（只换执行体，不换收尾）
+         · 不在场 → 逐字节落回原探索路（缺失一条出厂配置不该让题答不出来）
+     · **归属口径随之改写（§8 记号状态不动）**：这条 run 从「无归属」翻成 `REGISTERED`（`agentKey=general`，
+       可被 `GET /b/v1/agents/:id/runs` 读到）——这是**诚实**的：本 run 真的解析并执行了一版 AgentDefinition；
+       旧口径（"确知没有 Agent 定义"）在通用 agent 不在场时仍逐字成立（两档都有断言）。
+     · **四轴全部目录现算**（仓主约束：工具清单与数据范围不许写死 —— 将来加新工具/新对象类型要自动跟着长）：
+       工具 = `BUILTIN_TOOLS` 注册表现算 ∪ 三张 MCP 面（本体切片/求解器/工作流）**不设 `toolFilter`**（`expandAgentTools`
+       语义：不设 = 不收窄，运行期从各自目录现算；空数组才是全丢）；对象域 = `scopeDeclaration.allObjectTypes`
+       ⇒ run 期 `GET /a/v1/ontology/object-types` 现取全集（目录不可得 ⇒ 不收窄 = 本改造前探索路行为）；
+       技能 = 技能目录现算（已发布 ∧ 非写回型 —— 写回型不入静态绑定，否则 R4 闸门要求**每道**答案都带 action_draft）。
+       `scopeDeclaration` 新增两个 additive 可选位 `allTools`/`allObjectTypes`（缺省 = 既有 agent 逐字节不变）；
+       `allTools` 把**完整授予面**（top-k 收窄之前）并进 scope 允许表，使宿主 scope 门与 DSH 子进程 allow-list 同判据。
+     · **内核走配置面**：`agent.kernel = "EXTERNAL"`（种子记录字段），⛔ 不动部署面 `DSH_HARNESS`（休眠门判据不受影响）。
+     · 连带事实：工作流 MCP 面在**无 `toolFilter`**（全量）时只投影**已发布**工作流（DRAFT 未发布定义不是可调用工具；
+       显式 `toolFilter` 点名者照旧，含 DRAFT 目标 —— 既有 filtered agent 一个工具都不少）。
+     · SEAM：`apps/agentcore/test/general-agent-dsh.seam.test.ts`（①落点+kernel+归属 / ②内核对拍+缺 agent 回退 /
+       ③目录三数+目录外类型 allowed 原文 / ⑤角色关键词仍落角色 agent）· `agent-run-attribution.seam.test.ts` ③-a/③-b（两档归属）。
    ★**组合路径（WO-Phase2-C·path-A 单跳 ↔ path-B ReAct 之间的中间路径·已接线·可执行）**：在 runPathB 内 navSlice 之后、
      runAgentLoop 之前挂——
        navSlice(已投影本题图) + composeSlots(orchestrator.composeSlots·从 task.query/domainResolve.args/PageContext.focus 静态派生·R6)
