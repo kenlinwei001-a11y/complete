@@ -6,6 +6,7 @@ import { AnthropicLlmClient } from "../src/llm/anthropic.js";
 import { OpenAiLlmClient, type OpenAiChatCompletion, type OpenAiChatPort } from "../src/llm/openai.js";
 import { GENERAL_AGENT_ID, GENERAL_AGENT_KEY, seedRegistry } from "../src/mocks/seed.js";
 import { defaultOnKeys } from "../src/features/registry.js";
+import { BudgetTracker } from "../src/tools/budget.js";
 import { detectSingleRole, domainDescriptionLine, planCoordination } from "../src/router/coordinator.js";
 
 /**
@@ -230,8 +231,12 @@ describe("WO-DOMAIN-BY-INTENT ③ 判不出域 ⇒ 通用 agent（兜底在位�
     await seedAgents(t);
     await seedGeneralNative(t);
 
-    const q = "这批货的检验记录和生产节拍都有点怪，客户问能不能按时发";
-    t.llm.queueClassification(classified("quality", "主域是质量（检验记录/不良判断）；生产节拍只是时间背景，不构成生产域诉求。"));
+    // 无任何域关键词（金丝雀：本单之前必然落通用 agent），但语义上供应/质量两域都贴得住。
+    const q = "这批货到底是来料有问题还是我们工艺上出的岔子";
+    expect(detectSingleRole(q)).toBeUndefined();
+    t.llm.queueClassification(
+      classified("quality", "两域都沾边（来料→供应保障，工艺自放电→质量判定）；用户要定的是这批货本身合不合格 ⇒ 归质量域。"),
+    );
     t.llm.queueAgentTurn(FINAL);
     const { agentKey, taskId } = await ask(t, q);
     const task = await t.repos.tasks.get(taskId);
@@ -240,7 +245,8 @@ describe("WO-DOMAIN-BY-INTENT ③ 判不出域 ⇒ 通用 agent（兜底在位�
         `落点=${String(agentKey)}\n  · 理由=${JSON.stringify(task?.classification?.domainReason)}`,
     );
     expect(agentKey).toBe("quality_inspector");
-    expect(task?.classification?.domainReason).toBeTruthy(); // 不是静默任选：一定带着"为什么"
+    // 不是静默任选：留痕里一定带着"为什么"，且点明了撞上的另一个域（否则事后看不出这是次取舍）。
+    expect(task?.classification?.domainReason).toMatch(/供应|supply-chain/);
   });
 
   it("⑥-b 判不出唯一主域 ⇒ 落兜底（通用 agent），理由里说明是哪两域撞上了", { timeout: SEAM_TIMEOUT }, async () => {
@@ -305,7 +311,39 @@ describe("WO-DOMAIN-BY-INTENT ③ 判不出域 ⇒ 通用 agent（兜底在位�
 // 判据 ④ · 角色 agent 的 scope **一个字未放宽**（域内 agent 读域外类型仍被拒）
 // ─────────────────────────────────────────────────────────────────────────────
 describe("WO-DOMAIN-BY-INTENT ④ 落点变了，围栏没变（角色 agent 读域外类型仍被拒）", () => {
-  it("quality 角色 agent（经 ① 的路由落点）真跑一次读域外对象 ⇒ AGENT_SCOPE_VIOLATION", { timeout: SEAM_TIMEOUT }, async () => {
+  it("④-1 围栏本身（不经路由·两版代码同读数）：DENY payload 的 allowed 与声明面逐条相同", { timeout: SEAM_TIMEOUT }, async () => {
+    const t = await createTestApp();
+    await seedAgents(t);
+    const ctx = { tenantId: TENANT, userId: "user-planner", roles: ["planner"] };
+    const typeKeys = await t.dataCore.ontology.listObjectTypeKeys(ctx);
+    const probeType = typeKeys.includes("Material") ? "Material" : typeKeys[0]!;
+    const quality = seedRegistry().agents.find((a) => a.id === "agt_quality_inspector")!;
+    const declared = [...quality.scopeDeclaration.objectTypes];
+    expect(declared).not.toContain(probeType); // 金丝雀：探针类型真在声明面之外
+
+    t.llm.queueAgentTurn({ content: [toolUse("query_objects", { objectType: probeType, filter: {} })] });
+    t.llm.queueAgentTurn(FINAL);
+    await t.deps.engine.runRegisteredAgent({
+      taskId: "task_scope_quality",
+      agentId: "agt_quality_inspector",
+      version: "latest",
+      prompt: `读一下 ${probeType}`,
+      ctx,
+      nesting: { callChain: [], budget: new BudgetTracker({}) },
+      emit: async () => {},
+      enforceObjectScope: true, // 角色路（runRolePathB）的真实形态：对象域门开着
+    });
+    const calls = await t.repos.toolCalls.listByTask("task_scope_quality");
+    const payload = JSON.parse(
+      JSON.stringify(calls.find((c) => c.toolName === "query_objects")?.output ?? {}),
+    ) as { allowed?: string[] };
+    say(
+      `[WO-DOMAIN-BY-INTENT ④-1] quality 角色 agent 读域外类型 ${probeType} ⇒ allowed=[${(payload.allowed ?? []).join(",")}]（声明面=${JSON.stringify(declared)}）`,
+    );
+    expect(payload.allowed).toEqual(declared); // 运行期有效对象域 == 声明面（一个字没放宽）
+  });
+
+  it("④-2 quality 角色 agent（经 ① 的新落点）真跑一次读域外对象 ⇒ AGENT_SCOPE_VIOLATION", { timeout: SEAM_TIMEOUT }, async () => {
     const t = await createTestApp();
     t.deps.features.mock.set(TENANT, [...defaultOnKeys(), "agent.coordinator"]);
     await seedAgents(t);
