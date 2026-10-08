@@ -16,7 +16,7 @@ import { BUILTIN_TOOLS } from "../tools/registry.js";
 import { ONTOLOGY_MCP_CONFIG_ID, ONTOLOGY_MCP_TOOL_NAMES, ontologyMcpToolName } from "../tools/ontology-mcp.js";
 import { SOLVERS_MCP_CONFIG_ID } from "../mcp/solvers-catalog.js";
 import { SOLVERS_MCP_SERVER, solverMcpToolName } from "@platform/contracts";
-import { WORKFLOW_MCP_CONFIG_ID, workflowMcpToolName } from "../dsh-runtime/workflow-mcp.js";
+import { WORKFLOW_MCP_CONFIG_ID, workflowMcpToolName } from "../mcp/workflow-mcp.js";
 // DF.13 外协红线单一来源（C08）：场景建议问句里的红线百分数派生，禁手写。
 import { OUTSOURCE_REDLINE, outsourceRedlinePct } from "@platform/contracts";
 import { SCENARIO_CATALOG } from "../scenarios-catalog.js";
@@ -1823,7 +1823,7 @@ export function seedMcpConfigs(): McpServerConfig[] {
       // WO-WORKFLOW-MCP · 平台内置工作流 MCP server（DSH 原生 MCP 模式的载荷，与上一行同型）。
       // 工具面 = `mcp__workflow__{workflowKey}`，**工具清单是租户数据**（随工作流发布变），
       // 故不像本体那样静态投影 —— 由 engine.ts DSH 分叉按本 run 的授予面现算，
-      // 经 `PLATFORM_WORKFLOW_MCP_TOOLS` env 注入子进程（dsh-runtime/workflow-mcp.ts 头注）。
+      // 经 `PLATFORM_WORKFLOW_MCP_TOOLS` env 注入子进程（mcp/workflow-mcp.ts 头注）。
       // 执行同样不落在子进程里：tools/call 转回宿主反向通道 `kind:"workflow"` → 既有
       // `engine.runWorkflowAsTool`（零重写、零第二套执行体）。
       // transport 里的 command/args 与上一行同理，只是 **cwd=仓根 时的可用回落**；

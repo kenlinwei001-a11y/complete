@@ -39,7 +39,7 @@ import {
   parseWorkflowMcpToolName,
   workflowMcpTool,
   type WorkflowMcpToolSpec,
-} from "./dsh-runtime/workflow-mcp.js";
+} from "./mcp/workflow-mcp.js";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 

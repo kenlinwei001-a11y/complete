@@ -29,7 +29,7 @@ import { BudgetTracker } from "../src/tools/budget.js";
 import { scanBlocks } from "../src/util/numerics.js";
 import { MockMcpClient } from "../src/mcp/mock.js";
 import { encryptSecret } from "../src/crypto.js";
-import { WORKFLOW_MCP_CONFIG_ID, workflowMcpToolName } from "../src/dsh-runtime/workflow-mcp.js";
+import { WORKFLOW_MCP_CONFIG_ID, workflowMcpToolName } from "../src/mcp/workflow-mcp.js";
 import {
   STUB_DCP_SPEC,
   STUB_FAKE_KEY,
