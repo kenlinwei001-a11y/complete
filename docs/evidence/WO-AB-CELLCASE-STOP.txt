@@ -1,0 +1,24 @@
+=== 电芯壳体涨价 · 停止时的状态（2026-10-08）===
+
+### 已实测的事实（三条，均可复跑）
+① 真机扰动：{ kind:cost_shock, targetObjectId:obj_material_cell_case,
+              targetStateVar:priceShock, magnitude:-3, mode:delta, startTick:65 }
+   真机屏上：新增成本 397.3 万元 · 占压应收 2.69 万元 · 「1 件扰动事件叠加」
+
+② API 复现同一扰动（同对象/同 stateVar/同 magnitude，startTick 0）：
+   priceShock 立即读 = -1 → 5 拍后 = 0
+   Model.costPressure = 0 · Order.costPressure = 0 · COST = 0.00  ← 完全不传导
+   ⇒ **同一个扰动值，两处结果不同**
+
+③ priceShock 未归位：立即读 -1 ⇒ 说明世界态是 2（= 本体属性值）
+   而它的域 min=0 ⇒ 2-3=-1 被夹回 0 ⇒ 偏离消失
+   ⇒ 它仍是【水平语义】，不在已归位的 15 个量里
+
+### 未查完（如实标 NOT-MEASURED）
+  · 真机那个 397.3 万元由哪一段路径产生 —— 未量
+  · 「原材料涨价」事件前端传【负】magnitude（-3）是否语义反了 —— 未判
+  · 真机会话 sims_3z2ng71t2ypsjjw8 的逐拍 priceShock/costPressure —— 未读
+
+### 已落盘的相邻结论（见 2dab9df5d）
+  · 屏上「N 件扰动事件叠加」的 N 只数【前端暂存区】，不数会话里已有的 ⇒ 会低报
+  · 前端 auto 选会话用 pickLatestRunningSession ⇒ 可能选中带既有扰动的会话
