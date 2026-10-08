@@ -65,7 +65,6 @@ registerRenderer("optimize-whatif", () => import("./OptimizeWhatifView"));
 // ── 推演沙盘指控台（WO-SIM-FE-HOME / -DETAIL · 规格 docs/ux-spec/sandbox/）────────────
 // 与既有 `sim-sandbox` 并存**不替换**：旧屏是否退役属产品决策，本次只把新屏接上，
 // 不在接线这一步顺手删别人的入口（删了出问题就说不清是接线错还是退役错）。
-registerRenderer("sim-console", () => import("./sim/console/SandboxHomeRoute"));
 registerRenderer("sim-conduction", () => import("./sim/console/SandboxDetailRoute"));
 registerRenderer("sim-attribution", () => import("./sim/console/SandboxAttrRoute"));
 // WO-SIM-FE-OPT 方案寻优台（帕累托前沿解集 · 规格 docs/ux-spec/sandbox/sandbox-opt.html + pg4.png）。
@@ -149,4 +148,3 @@ registerRenderer("process-stuck", () => import("./ProcessStuckView"));
 // **＋ 左导航「推演」组之首的 `kind:"route"` 条目**（WO-SIM-NAV-UNIFIED 起）。
 // ⚠ 上一版这里写着「刻意不占导航位，理由登记在 `ShellLayout.ROUTE_NO_NAV`」——**该说法已作废**：
 //   仓主已裁决本页为「推演」组主入口，那条 `ROUTE_NO_NAV` 豁免同批删除（留着就是陈旧豁免）。
-registerRenderer("sim-unified", () => import("./sim/unified/UnifiedSimShell"));
