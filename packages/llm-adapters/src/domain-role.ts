@@ -20,6 +20,8 @@
 
 /** 判断字段名（单一来源·三条适配器引用同一个常量，防改名漂）。 */
 export const DOMAIN_ROLE_FIELD = "domainRole";
+/** 域判断理由字段名（同上·单一来源）。 */
+export const DOMAIN_REASON_FIELD = "domainReason";
 
 /** raw 分类响应 → 域归属三态（string | null | undefined）。**纯函数·无 IO**。 */
 export function readDomainRole(raw: unknown): string | null | undefined {
@@ -31,4 +33,16 @@ export function readDomainRole(raw: unknown): string | null | undefined {
   }
   if (v === null) return null;
   return undefined;
+}
+
+/**
+ * raw 分类响应 → 域判断**理由**（一句·两域都沾边的模糊问句靠它可见"为什么选了它/为什么都不选"）。
+ * 形态归一：非字符串 / 空串 / 全空白 → `undefined`（**没有理由**；⛔ 不编一个"无理由"的占位串）。
+ */
+export function readDomainReason(raw: unknown): string | undefined {
+  if (raw === null || typeof raw !== "object") return undefined;
+  const v = (raw as Record<string, unknown>)[DOMAIN_REASON_FIELD];
+  if (typeof v !== "string") return undefined;
+  const t = v.trim();
+  return t.length > 0 ? t : undefined;
 }

@@ -40,28 +40,33 @@ const ROLE_KEYWORDS: { role: RoleDispatch["role"]; focusHint: string; re: RegExp
 //   本文件的三张关键词正则**只在该分析缺席时**参与（无 LLM / 确定性桩 / 老任务）——见 `detectSingleRole`。
 //   三态语义是命门（`string`=该域 / `null`=判不出域 / `undefined`=**没有这份分析**），不许把 null 读成"没分析"。
 //
-// ⛔ 只换「选哪个域」，**不动「域内能看什么」**：角色 agent 的 scope（objectTypes/toolNames）一个字未放宽，
-//   由绑定 agent 的 scopeDeclaration 在执行器强制（越界拒）——改的是**落点**，不是围栏。
+// 域怎么被描述：**每个域一条描述（覆盖什么 / 不覆盖什么）**，住**配置面**（提示词键 `classifier_domains`：
+//   租户 override ← 平台默认），改描述**不改代码**——与"按描述挑工具 / 挑 skill"同一模式（描述驱动选择）。
+//   ⛔ 描述只决定**选哪个域**；选上之后能看什么由角色 agent 的 scopeDeclaration 另行强制（描述是路牌，
+//   权限表是门锁，两份数据不合并 —— 见下方 `ANALYZABLE_ROLES` 只做**名单校验**，不碰任何 scope）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * 可被意图分析指派的角色域集 —— **派生自本文件 ROLE_KEYWORDS**（单一来源），⛔ 不新写第三张域清单：
- * 新增一个域 = 在 ROLE_KEYWORDS / ROLE_PROFILES 各加一条，关键词兜底、域目录、本判据同时生效。
+ * 新增一个域 = 在 ROLE_KEYWORDS / ROLE_PROFILES 各加一条。**只用于校验模型回值是不是一个真有角色 agent 的域**：
+ * 域目录（描述文本）可被租户整体替换，但**能路由到的域**始终以角色目录为准 —— 描述加一个没有角色 agent 的域，
+ * 路由不过去（诚实落通用 agent），不会凭一段文本造出一个执行体。
  */
 const ANALYZABLE_ROLES: ReadonlySet<string> = new Set(ROLE_KEYWORDS.map((k) => k.role));
 
 /**
- * **分类器域目录**（`buildClassifierSystem` 的域归属段）：投影自 ROLE_KEYWORDS（域清单·单一来源）×
- * `roleProfile`（既有角色画像目录：取证对象域 / 关注指标）——**没有新增任何业务常数或域表**。
- * 供分类器据以判断「这句话的意图属于哪个域」，其回值即 `ClassificationResult.domainRole` 的合法取值集。
+ * 域目录里**该域那一行描述**的原文（域判断的「依据哪条描述」留痕用·R6 纯函数）：
+ * 匹配以该域 key 开头（容许 `-`/`*`/空白前缀）的那一行；目录里没有该行（租户自写的自由文本）→ null
+ * （诚实标"指不出具体哪一行"，不编）。
  */
-export function buildClassifierDomainCatalog(): string {
-  return ROLE_KEYWORDS.map((k) => {
-    const prof = roleProfile(k.role);
-    const objects = prof?.objectTypes?.length ? prof.objectTypes.join("/") : "（运行期现算）";
-    const metrics = prof?.focusMetrics?.length ? `关注指标 ${prof.focusMetrics.join("/")}；` : "";
-    return `- ${k.role}（${ROLE_LABELS[k.role] ?? k.role}·${k.focusHint}）：${metrics}对口取证对象域 ${objects}`;
-  }).join("\n");
+export function domainDescriptionLine(domainCatalog: string, role: string): string | null {
+  if (!role) return null;
+  const esc = role.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`^[\\s\\-*•]*(?:\\d+[.、)])?\\s*${esc}\\b`);
+  for (const raw of (domainCatalog ?? "").split("\n")) {
+    if (re.test(raw.trim())) return raw.trim();
+  }
+  return null;
 }
 
 /**

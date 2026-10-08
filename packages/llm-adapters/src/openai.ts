@@ -20,7 +20,7 @@ import type {
 import { runToolLoop } from "./toolloop.js";
 import { extractJsonCandidate, parseLlmJson, reportJsonRepairs } from "./json-repair.js";
 import { harvestClassificationSlots, reportUnconsumedSlots } from "./slot-harvest.js";
-import { DOMAIN_ROLE_FIELD, readDomainRole } from "./domain-role.js";
+import { DOMAIN_REASON_FIELD, DOMAIN_ROLE_FIELD, readDomainReason, readDomainRole } from "./domain-role.js";
 
 /**
  * OpenAI / OpenAI-compatible adapter（QOS-PRD §6 修订实现收编于 packages/llm-adapters，
@@ -114,6 +114,10 @@ const CLASSIFICATION_JSON_SCHEMA: Record<string, unknown> = {
     [DOMAIN_ROLE_FIELD]: {
       type: "string",
       description: "问句**意图**所属域的 key（见 system 提示的域目录）；不属于任何域、判不出域时输出空字符串 \"\"",
+    },
+    [DOMAIN_REASON_FIELD]: {
+      type: "string",
+      description: "域判断理由（一句话）：为什么选这个域，或为什么判不出域（两域都沾边时必须说明为何取其一）",
     },
   },
   required: ["candidates", "outOfCatalog", "extractedSlotsJson"],
@@ -238,6 +242,7 @@ export class OpenAiLlmClient implements FullLlmClient {
       extractedSlots: harvest.slots,
       // WO-DOMAIN-BY-INTENT：与槽位同一条纪律 —— 跑在 **raw** 上，不走窄 schema（`parsed.data` 会把该键剔掉）。
       domainRole: readDomainRole(raw),
+      domainReason: readDomainReason(raw),
     };
   }
 

@@ -25,6 +25,11 @@ export interface RawClassification {
    * 域 key 的合法集不在此层（本包不认识业务域名）——由调用侧按既有角色目录判。
    */
   domainRole?: string | null;
+  /**
+   * WO-DOMAIN-BY-INTENT · 域判断的**理由**（模型给的一句）：两个域都沾边的模糊问句据此可见
+   * 「为什么选了它 / 为什么都不选」——⛔ 不许静默任选。判不出域时**也应**给（说明为何都不适用）。
+   */
+  domainReason?: string;
 }
 
 export type LlmContentBlock =

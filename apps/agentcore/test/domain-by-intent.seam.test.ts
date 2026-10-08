@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ClassificationResult } from "@platform/contracts";
+import { PLATFORM_PROMPT_DEFAULTS, type ClassificationResult } from "@platform/contracts";
 import { createTestApp, PLANNER, submitQuery, TENANT, waitForTask, type TestApp } from "./helpers.js";
 import { toolUse } from "../src/llm/mock.js";
 import { AnthropicLlmClient } from "../src/llm/anthropic.js";
 import { OpenAiLlmClient, type OpenAiChatCompletion, type OpenAiChatPort } from "../src/llm/openai.js";
 import { GENERAL_AGENT_ID, GENERAL_AGENT_KEY, seedRegistry } from "../src/mocks/seed.js";
 import { defaultOnKeys } from "../src/features/registry.js";
-import { buildClassifierDomainCatalog, detectSingleRole, planCoordination } from "../src/router/coordinator.js";
+import { detectSingleRole, domainDescriptionLine, planCoordination } from "../src/router/coordinator.js";
 
 /**
  * ★ WO-DOMAIN-BY-INTENT · SEAM-GATE：**域归属 = 对 query 意图的分析**（关键词正则降为兜底/金丝雀）。
@@ -37,8 +37,11 @@ const Q_NO_DOMAIN = "帮我把能查的都翻一遍，给个综合的自由结�
 
 const FINAL = { content: [toolUse("final_answer", { blocks: [{ type: "text", markdown: "已作答。" }], provenance: [] })] };
 
-/** 分类器回一份**意图目录无对口意图、但域归属明确**的结果（域目录与意图目录相互独立·见 prompt 指令）。 */
-function classified(domainRole: string | null | undefined): ClassificationResult & Record<string, unknown> {
+/**
+ * 分类器回一份**意图目录无对口意图、但域归属明确**的结果（域目录与意图目录相互独立·见 prompt 指令）。
+ * `undefined` = **模型没吐该字段**（=没有这份分析）；`null` = 明确判"判不出域"—— 两者语义不同（见三态臂）。
+ */
+function classified(domainRole: string | null | undefined, reason?: string): ClassificationResult & Record<string, unknown> {
   return {
     candidates: [],
     outOfCatalog: true,
@@ -46,6 +49,7 @@ function classified(domainRole: string | null | undefined): ClassificationResult
     latencyMs: 1,
     model: "dcp:llmp_test:deepseek-flash",
     ...(domainRole === undefined ? {} : { domainRole }),
+    ...(reason === undefined ? {} : { domainReason: reason }),
   };
 }
 
@@ -95,7 +99,7 @@ class StubOpenAi implements OpenAiChatPort {
 
 function assistant(msg: { content: string | null }, finish = "stop"): OpenAiChatCompletion {
   return {
-    choices: [{ message: { role: "assistant", content: null, ...msg }, finish_reason: finish }],
+    choices: [{ message: { role: "assistant", ...msg }, finish_reason: finish }],
     usage: { prompt_tokens: 100, completion_tokens: 20 },
   };
 }
@@ -129,18 +133,26 @@ describe("WO-DOMAIN-BY-INTENT ① 无域关键词、意图属某域 ⇒ 该域�
     const before = detectSingleRole(Q_NO_KEYWORD_QUALITY);
     expect(before).toBeUndefined(); // 金丝雀不中 ⇒ 本臂测的确实是"词面判不出域"这一类
 
-    t.llm.queueClassification(classified("quality"));
+    t.llm.queueClassification(classified("quality", "问的是质量异常定位（自放电偏高），属质量域；与供应保障、产能排产无关。"));
     t.llm.queueAgentTurn(FINAL);
     const { agentKey, taskId } = await ask(t, Q_NO_KEYWORD_QUALITY);
     const task = await t.repos.tasks.get(taskId);
     say(
-      `[WO-DOMAIN-BY-INTENT ①] q=「${Q_NO_KEYWORD_QUALITY}」\n` +
+      `[WO-DOMAIN-BY-INTENT ①/⑤] q=「${Q_NO_KEYWORD_QUALITY}」\n` +
         `  · 关键词表（无分析时）detectSingleRole=${String(before)}\n` +
         `  · 分析 domainRole=${String(task?.classification?.domainRole)} · classification.model=${task?.classification?.model}\n` +
-        `  · 落点 agentKey=${String(agentKey)}（task.classification.model=${task?.classification?.model}）`,
+        `  · 依据（哪份域目录/哪版/哪行）=${JSON.stringify(task?.classification?.domainBasis)}\n` +
+        `  · 理由=${JSON.stringify(task?.classification?.domainReason)}\n` +
+        `  · 落点 agentKey=${String(agentKey)}`,
     );
     expect(agentKey).toBe("quality_inspector");
     expect(task?.classification?.model).toBe("agent:role:quality");
+    // ⑤ 的留痕判据：能看出「依据的是哪条描述」—— 哪份域目录、哪一版、命中哪一行原文。
+    const basis = task?.classification?.domainBasis;
+    expect(basis?.catalog).toBe("PLATFORM_DEFAULT");
+    expect(basis?.line).toBe(domainDescriptionLine(PLATFORM_PROMPT_DEFAULTS.classifier_domains, "quality"));
+    expect(basis?.line).toContain("quality");
+    expect(task?.classification?.domainReason).toContain("质量");
   });
 
   it("同族反面：域目录里没有的域 key（模型编造）⇒ 不采信，落通用 agent（不回落关键词）", { timeout: SEAM_TIMEOUT }, async () => {
@@ -196,11 +208,58 @@ describe("WO-DOMAIN-BY-INTENT ③ 判不出域 ⇒ 通用 agent（兜底在位�
     await seedGeneralNative(t);
 
     expect(detectSingleRole(Q_NO_DOMAIN)).toBeUndefined(); // 金丝雀：关键词本就不命中
-    t.llm.queueClassification(classified(null));
+    t.llm.queueClassification(classified(null, "既非供应保障也非产能/质量判定，属泛问。"));
     t.llm.queueAgentTurn(FINAL);
-    const { agentKey } = await ask(t, Q_NO_DOMAIN);
-    say(`[WO-DOMAIN-BY-INTENT ③] q=「${Q_NO_DOMAIN}」· domainRole=null ⇒ 落点 agentKey=${String(agentKey)}`);
+    const { agentKey, taskId } = await ask(t, Q_NO_DOMAIN);
+    const task = await t.repos.tasks.get(taskId);
+    say(
+      `[WO-DOMAIN-BY-INTENT ③] q=「${Q_NO_DOMAIN}」· domainRole=null ⇒ 落点 agentKey=${String(agentKey)}\n` +
+        `  · 依据=${JSON.stringify(task?.classification?.domainBasis)} · 理由=${JSON.stringify(task?.classification?.domainReason)}`,
+    );
     expect(agentKey).toBe(GENERAL_AGENT_KEY);
+    // 判"判不出域"同样要留下依据（catalog/version 有值、line=null：没有命中哪条描述）+ 一句理由。
+    expect(task?.classification?.domainBasis?.catalog).toBe("PLATFORM_DEFAULT");
+    expect(task?.classification?.domainBasis?.line).toBeNull();
+    expect(task?.classification?.domainReason).toBeTruthy();
+  });
+
+  // ── 判据 ⑥ · 两个域的描述都能套上 ⇒ 不许静默任选（要么说清为什么取其一，要么落兜底） ──
+  it("⑥-a 两域都沾边但能判主域 ⇒ 选它 + 理由里写明另一个域为何不适用", { timeout: SEAM_TIMEOUT }, async () => {
+    const t = await createTestApp();
+    t.deps.features.mock.set(TENANT, [...defaultOnKeys(), "agent.coordinator"]);
+    await seedAgents(t);
+    await seedGeneralNative(t);
+
+    const q = "这批货的检验记录和生产节拍都有点怪，客户问能不能按时发";
+    t.llm.queueClassification(classified("quality", "主域是质量（检验记录/不良判断）；生产节拍只是时间背景，不构成生产域诉求。"));
+    t.llm.queueAgentTurn(FINAL);
+    const { agentKey, taskId } = await ask(t, q);
+    const task = await t.repos.tasks.get(taskId);
+    say(
+      `[WO-DOMAIN-BY-INTENT ⑥-a] q=「${q}」⇒ domainRole=${JSON.stringify(task?.classification?.domainRole)} · ` +
+        `落点=${String(agentKey)}\n  · 理由=${JSON.stringify(task?.classification?.domainReason)}`,
+    );
+    expect(agentKey).toBe("quality_inspector");
+    expect(task?.classification?.domainReason).toBeTruthy(); // 不是静默任选：一定带着"为什么"
+  });
+
+  it("⑥-b 判不出唯一主域 ⇒ 落兜底（通用 agent），理由里说明是哪两域撞上了", { timeout: SEAM_TIMEOUT }, async () => {
+    const t = await createTestApp();
+    t.deps.features.mock.set(TENANT, [...defaultOnKeys(), "agent.coordinator"]);
+    await seedAgents(t);
+    await seedGeneralNative(t);
+
+    const q = "这条线的供应和产出到底哪个先出问题，我该先救哪头";
+    t.llm.queueClassification(classified(null, "供应保障与产能瓶颈两域都贴得住，无法唯一归域。"));
+    t.llm.queueAgentTurn(FINAL);
+    const { agentKey, taskId } = await ask(t, q);
+    const task = await t.repos.tasks.get(taskId);
+    say(
+      `[WO-DOMAIN-BY-INTENT ⑥-b] q=「${q}」⇒ domainRole=${JSON.stringify(task?.classification?.domainRole)} · ` +
+        `落点=${String(agentKey)}\n  · 理由=${JSON.stringify(task?.classification?.domainReason)}`,
+    );
+    expect(agentKey).toBe(GENERAL_AGENT_KEY);
+    expect(task?.classification?.domainReason).toContain("域");
   });
 
   it("兜底臂（回归）：**没有这份分析**（老分类结果·无 domainRole 字段）⇒ 关键词表照旧生效", { timeout: SEAM_TIMEOUT }, async () => {
@@ -279,10 +338,10 @@ describe("WO-DOMAIN-BY-INTENT ④ 落点变了，围栏没变（角色 agent 读
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 接缝的另一半：域目录**真的进了分类器 prompt**（否则分类器无从回 domainRole）
+// 接缝的另一半：域目录**真的进了分类器 prompt**，且它来自**配置面**（改描述不改代码）
 // ─────────────────────────────────────────────────────────────────────────────
-describe("WO-DOMAIN-BY-INTENT 接缝：域目录随分类器 prompt 下发", () => {
-  it("分类器 system 含域目录段（三域 · 投影自角色画像目录）", { timeout: SEAM_TIMEOUT }, async () => {
+describe("WO-DOMAIN-BY-INTENT 接缝：域目录 = 配置面（每域一条描述·覆盖/不覆盖）", () => {
+  it("平台默认那份域目录进 prompt：三域各一条、都写清『不覆盖』、且与角色目录不漂", { timeout: SEAM_TIMEOUT }, async () => {
     const t = await createTestApp();
     t.deps.features.mock.set(TENANT, [...defaultOnKeys()]);
     t.llm.queueClassification({ candidates: [], outOfCatalog: true, extractedSlots: {} });
@@ -290,13 +349,48 @@ describe("WO-DOMAIN-BY-INTENT 接缝：域目录随分类器 prompt 下发", () 
     await ask(t, Q_NO_DOMAIN);
 
     const system = t.llm.classifyRequests[0]?.system ?? "";
-    const catalog = buildClassifierDomainCatalog();
-    say(`[WO-DOMAIN-BY-INTENT 接缝] 分类器 system 含域目录段=${system.includes(catalog)} · 含 domainRole 指令=${system.includes("意图所属域（domainRole）")}`);
-    expect(system).toContain(catalog);
-    expect(system).toContain("意图所属域（domainRole）");
-    // 域目录投影自角色画像目录（单一来源·非手抄）：三条角色域各一行，且与 ROLE_PROFILES 的对口对象域同源。
-    expect(catalog.split("\n")).toHaveLength(3);
-    expect(catalog).toContain("Material/Supplier/PurchaseOrder/Shipment");
+    const catalog = PLATFORM_PROMPT_DEFAULTS.classifier_domains;
+    expect(system).toContain(catalog); // 域目录真的下发（否则模型无从回 domainRole）
+    expect(system).toContain("意图所属域（domainRole + domainReason）");
+    // 每域一条描述，且**覆盖 / 不覆盖都写了**（只写覆盖 ⇒ 两个域都套得上 ⇒ 判据退化）。
+    for (const role of ["supply-chain", "production", "quality"]) {
+      expect(domainDescriptionLine(catalog, role)).toContain("覆盖");
+      expect(domainDescriptionLine(catalog, role)).toContain("不覆盖");
+    }
+    // 漂移金丝雀：域目录里描述的域 == 角色目录里的域（改一处漏一处 → 这里红）。
+    const { ROLE_PROFILES } = await import("../src/mocks/seed.js");
+    const roleDomains = ROLE_PROFILES.map((p) => p.role).filter((r) => ["supply-chain", "production", "quality"].includes(r));
+    for (const r of roleDomains) expect(domainDescriptionLine(catalog, r)).not.toBeNull();
+    say(`[WO-DOMAIN-BY-INTENT 接缝·默认] 三域描述行齐备=${roleDomains.map((r) => domainDescriptionLine(catalog, r) !== null).join(",")}`);
+  });
+
+  it("租户 override 域目录（改描述不改代码）⇒ 进 prompt 且依据留痕标 TENANT_OVERRIDE@vN", { timeout: SEAM_TIMEOUT }, async () => {
+    const t = await createTestApp();
+    t.deps.features.mock.set(TENANT, [...defaultOnKeys(), "agent.coordinator"]);
+    await seedAgents(t);
+    await seedGeneralNative(t);
+
+    const CUSTOM = [
+      "- quality（质量）：覆盖 一切与电芯一致性/自放电有关的判定；不覆盖 供应与产能。",
+      "- supply-chain（供应链）：覆盖 来料与在途；不覆盖 质量判定。",
+      "- production（生产）：覆盖 节拍与瓶颈；不覆盖 质量判定。",
+    ].join("\n");
+    t.dataCore.prompts.setOverride(TENANT, "classifier_domains", CUSTOM);
+
+    t.llm.queueClassification(classified("quality", "按租户自定义描述：自放电属质量域。"));
+    t.llm.queueAgentTurn(FINAL);
+    const { agentKey, taskId } = await ask(t, Q_NO_KEYWORD_QUALITY);
+    const task = await t.repos.tasks.get(taskId);
+    const system = t.llm.classifyRequests[0]?.system ?? "";
+    say(
+      `[WO-DOMAIN-BY-INTENT 接缝·override] prompt 含租户自定义行=${system.includes(CUSTOM.split("\n")[0]!)} · ` +
+        `落点=${String(agentKey)} · 依据=${JSON.stringify(task?.classification?.domainBasis)}`,
+    );
+    expect(system).toContain(CUSTOM.split("\n")[0]!); // 改一处配置 → 分类器看到的描述随之变
+    expect(agentKey).toBe("quality_inspector");
+    expect(task?.classification?.domainBasis?.catalog).toBe("TENANT_OVERRIDE");
+    expect(task?.classification?.domainBasis?.version).toBeGreaterThan(0);
+    expect(task?.classification?.domainBasis?.line).toBe(domainDescriptionLine(CUSTOM, "quality"));
   });
 });
 

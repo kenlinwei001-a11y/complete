@@ -19,7 +19,7 @@ import type {
   SlotDef,
   SubmitQueryBody,
 } from "@platform/contracts";
-import { ErrorCodes } from "@platform/contracts";
+import { ErrorCodes, PLATFORM_PROMPT_DEFAULTS } from "@platform/contracts";
 import type { SkillDefinition } from "@platform/contracts";
 import type { LlmBudgetPort } from "../ops/llm-budget.js";
 import { resolvePlanForIntent } from "../catalog/service.js";
@@ -32,6 +32,7 @@ import {
   buildClassifierUser,
   classifierConversationSummary,
   resolvePromptOverride,
+  resolvePromptTemplate,
   AGENT_SYSTEM_CORE,
   CEO_DEEP_QUESTION_SYSTEM,
   buildSkillSection,
@@ -76,7 +77,7 @@ import { clarifyPromptFor, fillSlots } from "./slots.js";
 import { resolveCeoRoute, isCeoQuestion, ceoIntentKeyForRoute, isCeoIntentKey, resolveBlockRoute, hasBlockContext, decisionCommitIntent, shouldUseFreeLLM } from "./ceo-route.js"; // WO-CEO-6 · CEO 深问确定性路由（闭 G-3）· WO-BLOCK-DIALOGUE 块级定向路由（闭 G-3 块级）· WO-DECISION-KERNEL-WIRE 成决策意图分档 · WO-REAL-LLM-FREE-QUERY 真 LLM 自由多跳判定
 import { domainResolve, domainResolveMulti, preferDeterministicSolver, DETERMINISTIC_PREFERENCE_THRESHOLD, type DomainRoute } from "./domain-resolver.js"; // WO-QOS-1 · 确定性优先门（有对口 solver 的高置信题在 path-B 入口前拉回 path-A·闭 G-AGENT-BLIND-REACT 路由侧）· WO-DETERMINISTIC-CROSS-DOMAIN domainResolveMulti（跨域逐域枚举）
 import { selectDeterministicMultiRoute, detectCoupledPairs, runParallelRoutes, selectMultiIntent, type MultiIntentCandidate, type MultiIntentSelection } from "./multi-route.js"; // WO-QOS-CROSS-DOMAIN-UNIFIED · ②确定性多域 + ⑤LLM 多意图 **共享后半** runParallelRoutes（并行 solver + 零 LLM 块装配）
-import { planCoordination, planStalledCoordination, buildDispatchSteps, synthesize, detectSingleRole, buildClassifierDomainCatalog, ROLE_LABELS, type RoleAnswerInput } from "./coordinator.js"; // WO-FIVE-ROLE-AI-EMPLOYEE P1 · 跨域多角色 Coordinator 编排 + WO-LOOP-CONTROL-P2.5 rung② 反应式停滞兜底拆解 + WO-ROUTE-1 旁白角色标识 + WO-DOMAIN-BY-INTENT 域目录（分类器意图分析→域归属）
+import { planCoordination, planStalledCoordination, buildDispatchSteps, synthesize, detectSingleRole, domainDescriptionLine, ROLE_LABELS, type RoleAnswerInput } from "./coordinator.js"; // WO-FIVE-ROLE-AI-EMPLOYEE P1 · 跨域多角色 Coordinator 编排 + WO-LOOP-CONTROL-P2.5 rung② 反应式停滞兜底拆解 + WO-ROUTE-1 旁白角色标识 + WO-DOMAIN-BY-INTENT 域目录（分类器意图分析→域归属）
 import { resolveOptWhatifRoute, extractOptWhatifData, assembleOptWhatifAnswer, type OptWhatifRoute } from "./opt-whatif-route.js"; // WO-OPTWHATIF-NL-WIRING · 结构化优化 what-if 会话路由抽取 + 决策切换答案装配（R6·leaf 模块）
 import { buildL2Prompt, parseSolverPlan, buildSlotBag, validateSolverPlan, deterministicSlotFloor, mergeSlotFloor } from "./l2-decompose.js"; // WO-L2-DECOMPOSE · L2 真分解（LLM 产 solver 计划 → 纯校验层验真 → 接同一后半 runParallelRoutes·复用不新造）；WO-SLOT-HARVEST · 主链路确定性槽位底座（同一份确定性抽取器·单源）
 import { isCombinationAsk, runL3CoupledPath } from "./l3-coupled.js"; // PRD-multi-intent-L2L3 P2 · L3 耦合联合求解（一次 portfolio 守恒解·真传导·真残差外协·升格判挂 runMultiRoute）
@@ -1311,9 +1312,20 @@ export class Orchestrator {
     // WO-PROMPT-DEFAULTS-WIRING：先读 DataCore 可配 classifier 模板（OBO·TTL60s 缓存）——admin 配了 TENANT_OVERRIDE
     // 则替换硬编码指令头（灭漂移）；无配置 / A 不可达 / 非 admin 403 → undefined → 兜底硬编码（fail-open·R6·绝不阻断）。
     const promptOverride = await resolvePromptOverride(this.deps.engine.deps.dataCore.prompts, auth, "classifier");
-    // WO-DOMAIN-BY-INTENT：域目录（投影自角色画像目录·单一来源）随 prompt 下发 —— 分类器据此回 `domainRole`，
-    // 下游 `detectSingleRole` 据以选角色 agent（关键词表退为兜底）。域目录是运行时数据·恒追加，租户改模板不会弄丢。
-    const system = buildClassifierSystem(catalog, promptOverride, buildClassifierDomainCatalog());
+    /**
+     * ★ WO-DOMAIN-BY-INTENT · **域目录**（每个域一条描述：覆盖什么 / 不覆盖什么）—— 与 classifier 指令头同一条配置面：
+     *   `prompts.getPromptTemplate(…, "classifier_domains")`（OBO·TTL60s + `prompt.updated` 失效·与上方同一缓存机制）
+     *   → 租户 override ← **平台默认**（`PLATFORM_PROMPT_DEFAULTS.classifier_domains`·出厂单一来源）。
+     *   「改一个域的描述」= 一次 `PUT /a/v1/prompt-templates/classifier_domains`，**不改代码、不重 build**。
+     *   fail-open：客户端缺失 / A 不可达 / 非 admin 403 → 用平台默认（绝不阻断查询；⛔ 也绝不把"读不到"读成"没有域目录"）。
+     *   注：读取与 classifier 指令头同一条链（OBO + admin 门），故与它同寿同限——非 admin 会话看到的是平台默认那份。
+     */
+    const resolvedDomainCatalog = await resolvePromptTemplate(this.deps.engine.deps.dataCore.prompts, auth, "classifier_domains");
+    const domainCatalog = resolvedDomainCatalog?.template ?? PLATFORM_PROMPT_DEFAULTS.classifier_domains;
+    const domainCatalogSource = resolvedDomainCatalog
+      ? { catalog: "TENANT_OVERRIDE" as const, version: resolvedDomainCatalog.version }
+      : { catalog: "PLATFORM_DEFAULT" as const, version: 0 };
+    const system = buildClassifierSystem(catalog, promptOverride, domainCatalog);
     const user = buildClassifierUser({ query: task.query, historySummary, contextSummary });
 
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -1324,7 +1336,17 @@ export class Orchestrator {
         this.deps.metrics.classifierLatency.observe(latencyMs);
         // LLM Provider 增量 §1.3：每次调用的审计记录补 {providerId, modelId}
         const dc = parseDataCoreSpec(model);
-        return { ...raw, latencyMs, model, ...(dc ? { providerId: dc.providerId, modelId: dc.modelId } : {}) };
+        /**
+         * WO-DOMAIN-BY-INTENT · 域判断**依据留痕**（与 candidates/model 同族的审计面）：模型给了域判断
+         * （含 domainRole=null = 判定"判不出域"）时，记下**它当时依据的是哪份域目录、哪一版、命中哪一行描述**。
+         * 事后据此能回答「凭什么把这句话归到这个域」，而不是只看到一个域 key。
+         * ⚠ 只在**有这份判断**（`domainRole !== undefined`）时记：没这份分析的题落关键词兜底，记它反而误导。
+         */
+        const domainBasis =
+          raw.domainRole === undefined
+            ? {}
+            : { domainBasis: { ...domainCatalogSource, line: raw.domainRole === null ? null : domainDescriptionLine(domainCatalog, raw.domainRole) } };
+        return { ...raw, latencyMs, model, ...domainBasis, ...(dc ? { providerId: dc.providerId, modelId: dc.modelId } : {}) };
       } catch {
         // typed SDK errors retried (SDK 自带重试之外整体重试 2 次)
       }

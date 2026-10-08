@@ -226,6 +226,19 @@ export const SessionContextSchema = z.object({
 });
 export type SessionContext = z.infer<typeof SessionContextSchema>;
 
+/**
+ * WO-DOMAIN-BY-INTENT · 域归属判断的**依据留痕**（与 `candidates`/`model` 同族的审计面）。
+ * `catalog`/`version` = 这份判断当时用的是**哪一份域目录**（配置面来源）；`line` = 判中那个域在目录里的
+ * **描述原文**（判不出域 = null）。有了这两个，事后能回答「它凭什么把这句话归到这个域」——
+ * 而不是只看到一个域 key。⛔ 只记文本，不记权限（scope 不在域目录里·见 `classifier_domains` 键注）。
+ */
+export const DomainBasisSchema = z.object({
+  catalog: z.enum(["TENANT_OVERRIDE", "PLATFORM_DEFAULT"]),
+  version: z.number().int(),
+  line: z.string().nullable(),
+});
+export type DomainBasis = z.infer<typeof DomainBasisSchema>;
+
 export const ClassificationResultSchema = z.object({
   candidates: z.array(z.object({ intentKey: z.string(), confidence: z.number() })).max(3),
   outOfCatalog: z.boolean(),
@@ -237,6 +250,10 @@ export const ClassificationResultSchema = z.object({
    * ⚠ 与 `candidates` 无关：意图目录无对口意图（outOfCatalog=true）时**仍应**给出本字段。
    */
   domainRole: z.string().nullable().optional(),
+  /** WO-DOMAIN-BY-INTENT：域判断的**理由**（模型给的一句）—— 两个域都沾边的模糊问句据此可见「为什么选了它/为什么都不选」，⛔ 不许静默任选。 */
+  domainReason: z.string().optional(),
+  /** WO-DOMAIN-BY-INTENT：域判断**依据的是哪条描述**（可审计：哪份域目录 · 哪一版 · 命中哪行原文）。 */
+  domainBasis: DomainBasisSchema.optional(),
   latencyMs: z.number(),
   model: z.string(),
   /** LLM Provider 增量 §1.3（additive）：每次调用审计补 {providerId, modelId} */
