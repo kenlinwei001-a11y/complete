@@ -1,0 +1,26 @@
+=== #10 根因（5 问追到底）· 2026-10-08 ===
+
+问1 R4 三行钱为何 null ⇒ 投影调用返回 404「sim world not found」
+问2 world 为何找不到 ⇒ 前端把投影发到 agentcore 4002，而 4002 是 wo-live 的
+   （实测 ps：PID=46045 cwd=/Users/apple/deploy/wo-live SERVICE_TOKEN=wo-live-service-token）
+   ⇒ 它转发到 wo-live 的 datacore ⇒ 建在 4052 上的 worldId 在那台不存在
+问3 为何发到 4002 ⇒ 起 5294 时只覆盖 VITE_DATACORE_URL，未覆盖 VITE_AGENTCORE_URL
+   ⇒ 走 env.ts 默认值 4002
+问4 为何漏那一项 ⇒ 起服务时只想到『连我的 datacore』，未想到投影那一跳走 agentcore
+问5 为何盲点没暴露 ⇒ **代码的诚实位做得对**：投影失败显示「本次无法计算」+ 真实原因、
+   绝不冒充 0 ⇒ 它把『环境没配好』如实报成『算不出来』，而我把『算不出来』
+   读成了『渲染分支有问题』(WO-3 最初的判断)
+
+### 评估：是根源。且不在代码里，在起服务的方式里。
+### 反证（已有的独立证据）
+  · WO3 chain-ab 产物早写着「前端那一跳（经 agentcore 4055 → 4052）」⇒ R2 用的是 4055
+  · 我的 agentcore 实测：PID=63766 PORT=4055 DATACORE_BASE_URL=http://127.0.0.1:4052 ✓
+  ⇒ R2(5295) 配了 4055 出数；R4(5294) 未配 ⇒ 404。差异只此一项。
+
+### 修法与验证
+  修：重启 5294 带 VITE_AGENTCORE_URL=http://127.0.0.1:4055（已做，两项 env 自证生效）
+  验：重跑 R4（R5），看 moneyCells 是否出数
+
+### ★ 最值钱的一问是第 5 问
+  诚实位工作得太好，好到我把『算不出来』当成了渲染缺陷，绕一大圈去查前端分支、
+  怀疑 DOM、建真机通路 —— 实际是投影请求打错了地方。
