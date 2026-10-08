@@ -1,0 +1,32 @@
+=== 「事件影响与对策」事件打不上世界态 —— 根因闭环（2026-10-08）===
+
+### 症状（用户报：输入「电芯壳体涨价」，右侧结论都不对）
+  · 同一事件 advanceDays 3/30/300 ⇒ 结论 30 与 300【逐字节相同】（findings 指纹 11566 = 11566）
+  · worldCellsMoved = 0 / 6375 · appliedStateEffects = []
+  · 报告无 finance 段（我上轮按 finance.lines 找 ⇒ 判据错，第 19 次同族错，已纠正）
+
+### 根因链（每环有据）
+① 契约声明（sim-drill.ts:345）ORDER_RESCHEDULE 的 stateEffect：
+     objectType=Order · keyProp=so · stateVar=**shortageRisk** · magnitudeFrom=advanceDays
+     magnitudePerUnit=100/30（「30 天 = 一个全距 100 点 ⇒ 每天 3.33 点」）
+② 本会话把 Order.shortageRisk 归位成 DEVIATION ⇒ 世界态 150 格全 0（实测非零=0）
+③ app.ts:4249 drillStateEffectAbsolute(rangePct, svRange)：svRange 取该变量的**实测全距**
+     ⇒ 全距 0 ⇒ 返回 null ⇒ 【不施加】（代码原话：「硬按一个假全距施加会让屏上显示
+        『打上了』而其实与这个世界无关，故据实报缺」）
+④ ⇒ appliedStateEffects=[] · worldCellsMoved=0/6375 ⇒ 事件没打到世界态
+⑤ ⇒ 结论来自静态扫描 ⇒ 输入放大 10 倍几乎不动
+
+### ★ 系统的诚实位（五处全开，是读的人在漏）
+  · appliedStateEffects = []  （空 = 一条都没落）
+  · worldCellsMoved = 0 / 6375
+  · findings 含 key=state-effect::unapplied::ORDER_RESCHEDULE::SO-3391
+       kind=「未能评估」· why=「本世界里 Order.shortageRisk 的实测全距是 0 …故据实报缺」
+  · summary.text 写明「另有 1 条未能评估」
+  · dataMode = PARTIAL
+  ⇒ 系统说「我没推」，我听成「我推了」—— 本单第 N 次同一形态。
+
+### ⛔ 归因：本会话的语义归位引入的回归（责任在我）
+  归位让 Order.shortageRisk 由「每张单不同的缺料风险」变成「全世界 0」
+  ⇒ 该事件失去可施加的基准 ⇒ 据实报缺（正确行为），但**这一页的推演能力被削弱了**
+  ⚠ 同族风险：另外 14 个已归位量若也被某事件的 stateEffect 当落点，会有同样后果
+     ⇒ 未查（NOT-MEASURED）：11 个事件的 stateEffect 落点里有多少落在已归位量上

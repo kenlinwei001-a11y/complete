@@ -1,0 +1,5 @@
+0 登录 OK
+1 页面 dc 外壳=1 · 金丝雀 dc-go=1
+2 #z1 input 数=3（0=pickedId · 1=搜索词 q · 2+=payload）
+3 「加进去」disabled? true
+⛔ 仍禁用 ⇒ 停（判据未满足）
