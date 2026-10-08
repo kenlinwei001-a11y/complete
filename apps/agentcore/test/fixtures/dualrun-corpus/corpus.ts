@@ -14,7 +14,7 @@
  */
 import type { Answer, AnswerBlock, RuleVerdict } from "@platform/contracts";
 import { SCENARIO_CATALOG } from "../../../src/scenarios-catalog.js";
-import { workflowMcpToolName } from "../../../src/dsh-runtime/workflow-mcp.js";
+import { workflowMcpToolName } from "../../../src/mcp/workflow-mcp.js";
 import { text, toolUse, type ScriptedTurn } from "../../../src/llm/mock.js";
 import type { StubRound } from "../../helpers-dsh-stub.js";
 
@@ -93,7 +93,7 @@ export interface CorpusMcp {
  * WO-WORKFLOW-MCP（原 W8.5）：workflow 工具双臂对拍声明面（dr50-cm）。声明驱动——driver 两臂
  * 同 seed t.repos.workflows（WorkflowDefinition 行由声明映射，同 skillDef 手法），agentDef 条件
  * 散布 **MCP ref**（`mcp_builtin_workflow` + toolFilter 全名）。
- * 模型可见/调用名 = `mcp__workflow__${key}`（单源 `dsh-runtime/workflow-mcp.ts`，两臂同串）。
+ * 模型可见/调用名 = `mcp__workflow__${key}`（单源 `mcp/workflow-mcp.ts`，两臂同串）。
  * dsh 臂走 **DSH 原生 MCP 面**真执行（engine 注入 server + 目录 ⇒ harness dsh-mcp-client 起
  * stdio 子进程 ⇒ tools/call 转回宿主反向通道 `kind:"workflow"` ⇒ per-run 绑定表解析 ⇒
  * runWorkflowAsTool）；driver 对该任务 dsh 臂真 listen（freePort + PORT/SERVICE_TOKEN env 钉死，

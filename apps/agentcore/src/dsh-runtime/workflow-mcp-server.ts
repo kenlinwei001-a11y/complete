@@ -38,7 +38,7 @@ import {
   WORKFLOW_MCP_TOOLS_ENV,
   parseWorkflowMcpToolsEnv,
   type WorkflowMcpToolSpec,
-} from "./workflow-mcp.js";
+} from "../mcp/workflow-mcp.js";
 
 const EXEC_URL = process.env.PLATFORM_TOOL_EXEC_URL;
 const RUN_TOKEN = process.env.DSH_RUN_TOKEN;

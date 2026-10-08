@@ -50,7 +50,7 @@ import {
   WORKFLOW_MCP_DESC_PREFIX,
   WORKFLOW_MCP_SERVER,
   workflowMcpToolName,
-} from "../src/dsh-runtime/workflow-mcp.js";
+} from "../src/mcp/workflow-mcp.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const HARNESS_DIR = join(REPO_ROOT, "packages/dsh-harness");

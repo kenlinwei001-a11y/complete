@@ -55,7 +55,7 @@ import { truncateToolResultJson } from "../src/agent/context.js";
 import { enterNesting } from "../src/runtime.js";
 import type { ToolAuthCtx } from "../src/tools/clients.js";
 import { buildSessionSetup } from "../src/dsh-runtime/setup-spec.js";
-import { WORKFLOW_MCP_CONFIG_ID, workflowMcpToolName } from "../src/dsh-runtime/workflow-mcp.js";
+import { WORKFLOW_MCP_CONFIG_ID, workflowMcpToolName } from "../src/mcp/workflow-mcp.js";
 
 // apps/agentcore/test/ → 仓根 = ../../../
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
@@ -818,7 +818,7 @@ describe("W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedTo
 
 const WF_ID = "wf_w85_probe";
 const WF_KEY = "w85_probe";
-// WO-WORKFLOW-MCP：模型可见/调用名改走 **DSH 原生 MCP 面**（单源 dsh-runtime/workflow-mcp.ts）。
+// WO-WORKFLOW-MCP：模型可见/调用名改走 **DSH 原生 MCP 面**（单源 mcp/workflow-mcp.ts）。
 const WF_TOOL = workflowMcpToolName(WF_KEY);
 const WF_RUN_TOKEN = "dshr_w85";
 

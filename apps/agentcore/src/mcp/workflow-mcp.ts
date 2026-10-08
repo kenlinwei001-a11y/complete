@@ -1,5 +1,13 @@
 // WO-WORKFLOW-MCP · 工作流 MCP 面（DSH 原生「MCP 模式」载荷）。
 //
+// ⛔ **本文件刻意不住在 `dsh-runtime/` 下**（WO-DORMANCY-D3-FIX）：`engine.ts` 原生臂与
+// `mocks/seed.ts` 都要**静态** import 这些助手（工具名 / 配置行 id / 载荷构造），而
+// `dsh-runtime/` 是 `dsh-dormancy:check` D3 的白名单目录 —— 「从目录外静态 import 它」= 裸入口，
+// 会在**链接期**把该目录拖进启动图，绕过 `DSH_HARNESS` flag 判断（休眠护栏的不变量）。
+// 判据落在**内容性质**上：本模块是纯常量 + 纯函数、**零 `@deepseek-ai/*` 依赖**（金丝雀：
+// 同串查该文件命中 0），所以它既不该当入口、也不需要 flag 保护。中性位置与 `mcp/solvers-catalog.ts`、
+// `tools/ontology-mcp.ts` 同族。**改回 `dsh-runtime/` 下会让 D3 当场变红。**
+//
 // 【为什么有它】仓主 2026-10-05 令：每一类资源都要落到 DSH 的三种原生模式之一
 // （plugin / MCP / skill），而不是靠我方逐 run 推的数据。工作流此前**只**能靠
 // `agent.tools` 里的 WORKFLOW 授予 + `hostWorkflowTools` 专用字段逐 run 推给 DSH ——
