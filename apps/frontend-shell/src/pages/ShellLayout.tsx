@@ -398,7 +398,8 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
       //   `grep -c "feature\|Guard" views/sim/unified/UnifiedSimShell.tsx` = 0，金丝雀 `import|export` = 20）。
       //   填上就成了「导航里藏起来、URL 照样进得去」——把暗发做成假的。故本条不带 `feature`，
       //   转而逐条登记在 `GROUP_CONSOLIDATION_EXEMPT`（判据⑨ 要求：组内有收编承诺时其余成员须登记）。
-      { kind: "route" as const, key: "sim-unified", label: "统一推演控制台" },
+      // ⛔ 2026-10-08 仓主令：「统一推演控制台」从左侧导航移除（页面同批拆除）。
+      //    原行：{ kind: "route" as const, key: "sim-unified", label: "统一推演控制台" },
       // 旧沙盘**保留单列**：它是 `CONSOLIDATED_INTO_SANDBOX` 里 12 个键的收编宿主
       //   （那张表每条 `where` 都写着「沙盘模式切换 →…」）。把它从导航拿掉 = 那 12 页的
       //   到达路径当场断掉 —— 那是「把 IA 整理做成了功能消失」，本单硬红线禁止。
