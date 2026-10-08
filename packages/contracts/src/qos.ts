@@ -230,6 +230,13 @@ export const ClassificationResultSchema = z.object({
   candidates: z.array(z.object({ intentKey: z.string(), confidence: z.number() })).max(3),
   outOfCatalog: z.boolean(),
   extractedSlots: z.record(z.string(), z.unknown()),
+  /**
+   * WO-DOMAIN-BY-INTENT（additive·可选）：**意图分析**给出的域归属（域目录 key，如 `supply-chain`）。
+   * 三态：`string`=分析判定属于该域 · `null`=分析判定判不出域 · **缺省**=没有这份分析（老任务/确定性桩/模型未吐）
+   * ⇒ 角色选择（哪个域的角色 agent 作答）以此为**首选判据**，缺省时落既有关键词表兜底（金丝雀）。
+   * ⚠ 与 `candidates` 无关：意图目录无对口意图（outOfCatalog=true）时**仍应**给出本字段。
+   */
+  domainRole: z.string().nullable().optional(),
   latencyMs: z.number(),
   model: z.string(),
   /** LLM Provider 增量 §1.3（additive）：每次调用审计补 {providerId, modelId} */

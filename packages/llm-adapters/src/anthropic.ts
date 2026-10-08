@@ -20,6 +20,7 @@ import type {
 import { requireUsage } from "./types.js";
 import { runToolLoop } from "./toolloop.js";
 import { harvestClassificationSlots, reportUnconsumedSlots } from "./slot-harvest.js";
+import { readDomainRole } from "./domain-role.js";
 
 /** beta flag for server-side compaction (Agent 运行时增量 §1.3 第 2 刀). */
 export const COMPACTION_BETA = "compact-2026-01-12";
@@ -36,6 +37,11 @@ export const ClassificationSchema = z.object({
     .max(3),
   outOfCatalog: z.boolean(),
   extractedSlots: z.record(z.string(), z.unknown()),
+  /**
+   * WO-DOMAIN-BY-INTENT：意图所属域 key。**可空**（判不出域 → null）且**可缺**（模型未吐 → 调用侧落关键词兜底）。
+   * 刻意不设 enum：域目录是运行期数据（租户可配），硬编一份枚举就是第二张真相源。
+   */
+  domainRole: z.string().nullable().optional(),
 });
 
 export class ClassifierParseError extends Error {
@@ -162,6 +168,7 @@ export class AnthropicLlmClient implements FullLlmClient {
       candidates: resp.parsed_output.candidates,
       outOfCatalog: resp.parsed_output.outOfCatalog,
       extractedSlots: harvest.slots,
+      domainRole: readDomainRole(resp.parsed_output),
     };
   }
 
