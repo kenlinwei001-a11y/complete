@@ -89,6 +89,72 @@ const waitFor = async (expr, label, tries = 60) => {
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * 抽「?」触发器的公共实现：focus 开 → 读同 wrap 内 role=tooltip → blur 关。
+ * ⚠ 与 `c0828-desc-collapse.mjs` **同一条实现**（focus 不开口时补鼠标合成事件；
+ *   补出来的浮层只认真实 mouseout 才关，所以必须补那一下，否则浮层滞留会让后续判据失真）。
+ */
+const EXTRACT_JS = (tabKey) => `(async () => {
+  const root = document.querySelector('[data-testid="c0828-root"]');
+  const btns = [...root.querySelectorAll('button[aria-expanded]')].filter((b) => !!b.offsetParent);
+  const out = [];
+  const readTip = (b) => { const wrap = b.parentElement; return wrap ? wrap.querySelector('[role="tooltip"]') : null; };
+  for (const b of btns) {
+    b.focus();
+    await new Promise((r) => setTimeout(r, 90));
+    let tip = readTip(b);
+    if (!tip) {
+      const wrap = b.parentElement;
+      if (wrap) {
+        wrap.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+        wrap.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false }));
+        b.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      }
+      await new Promise((r) => setTimeout(r, 90));
+      tip = readTip(b);
+    }
+    out.push({
+      tab: ${JSON.stringify(tabKey)},
+      trigger: b.getAttribute('data-testid'),
+      aria: b.getAttribute('aria-label'),
+      open: b.getAttribute('aria-expanded') === 'true',
+      popTestId: tip ? tip.getAttribute('data-testid') : null,
+      popText: tip ? (tip.textContent ?? '') : null,
+    });
+    b.blur();
+    const w = b.parentElement;
+    if (w) w.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body }));
+    await new Promise((r) => setTimeout(r, 45));
+  }
+  const pane = document.querySelector('[data-testid="c0828-pane-${tabKey}"]');
+  return { total: btns.length, out, leftoverTips: root.querySelectorAll('[role="tooltip"]').length,
+           rootTxt: root.innerText, paneTxt: pane ? pane.innerText : null,
+           paneVisible: pane ? pane.offsetParent !== null : null,
+           aiState: root.getAttribute('data-ai') };
+})()`;
+
+/** 逐页签抽「?」+ 该页签第一层正文。`keys` 里不存在的页签自动跳过（未推演态只有 3 个基础页签）。 */
+const sweepTabs = async (keys, label) => {
+  const agg = { total: 0, out: [], perTab: {} };
+  console.log(`  ── ${label} ──`);
+  for (const t of keys) {
+    const has = await evalJs(`!!document.querySelector('[data-testid="c0828-tab-${t}"]')`);
+    if (!has) { console.log(`  页签 ${t}：本态不存在，跳过`); continue; }
+    await evalJs(`(() => { const b = document.querySelector('[data-testid="c0828-tab-${t}"]'); if (b) b.click(); return true; })()`);
+    await sleep(800);
+    const got = await evalJs(EXTRACT_JS(t));
+    const nText = got.out.filter((p) => p.popText !== null).length;
+    agg.total += got.total;
+    agg.out.push(...got.out);
+    agg.perTab[t] = { root: got.rootTxt, pane: got.paneTxt, paneVisible: got.paneVisible,
+                      triggers: got.total, extractable: nText, aiState: got.aiState };
+    console.log(`  页签 ${t}：可见「?」${got.total} 个 · 能抽出气泡正文的 ${nText} 个 · 收完仍开着的浮层 ${got.leftoverTips}（必须 0）· 该页签第一层 ${String(got.paneTxt ?? "").length} 字节 · 右栏 data-ai=${String(got.aiState)}`);
+    if (got.leftoverTips !== 0) bail(`量法坏了：抽完「?」后还有 ${got.leftoverTips} 个浮层挂在 DOM 里`, 2);
+  }
+  console.log(`  「?」触发器合计 = ${agg.total}；其中能抽出气泡正文的 = ${agg.out.filter((p) => p.popText !== null).length}`);
+  return agg;
+};
+
 await send("Page.enable"); await send("Network.enable"); await send("Runtime.enable");
 
 console.log("== ① 登录（不手敲 URL）==");
@@ -137,6 +203,14 @@ console.log("  未推演态: idle=" + beforeSnap.idle + " verdict=" + beforeSnap
   + " · 全屏 aria-expanded 触发器 " + beforeSnap.triggers + " 个");
 console.log("  可落地事件: " + JSON.stringify(beforeSnap.evLandable));
 console.log("  全部事件: " + JSON.stringify(beforeSnap.evAll));
+
+// 同一台机器、同一棵树、同一把尺子先量一遍**未推演态** —— 这就是判据③要的那个对照数。
+const beforeSweep = await sweepTabs(["board", "options", "scan"], "未推演态（同一把尺子先量）");
+if (beforeSweep.total === 0 || beforeSweep.out.filter((p) => p.popText !== null).length === 0) {
+  bail("量法坏了：未推演态就一个气泡正文都抽不到 ⇒ 尺子有问题，后面的对照不成立", 2);
+}
+writeFileSync(`${SHOTS}/${TAG}-pertab-before.json`, JSON.stringify(beforeSweep.perTab, null, 1) + "\n");
+writeFileSync(`${SHOTS}/${TAG}-pops-before.json`, JSON.stringify(beforeSweep.out, null, 1) + "\n");
 
 console.log("== ④ 左栏加一件**可落地**的扰动事件（走屏上默认值）==");
 const addRes = await evalJs(`(async () => {
@@ -206,75 +280,19 @@ const TARGETS = [
   { key: "agent-regen", trigger: "info-c0828-agent-regen", tab: "scan",
     where: "全流程扫描页签 · 「交由 agent 生成对策」按钮旁",
     expect: "系统已把这一处能走的路枚举穷尽" },
-  { key: "ai-actions-cal", trigger: "info-c0828-ai-actions-cal", tab: null,
-    where: "右栏 ③ 可选行动（本栏与中栏的关系）",
+  { key: "ai-actions-cal", trigger: "info-c0828-ai-actions-cal", tab: null, ensureAiOpen: true,
+    where: "右栏 ③ 可选行动（本栏与中栏的关系）· 右栏在 options/scan 两个宽页签下按设计**自动收起**（`data-ai=collapsed`），收起态第一层留 28px 竖边 + 展开按钮",
     expect: "四栏完整比较（含「不处置」那一栏）在中栏「对策方案」面板里" },
 ];
 
-/**
- * 抽「?」触发器的公共实现：focus 开 → 读同 wrap 内 role=tooltip → blur 关。
- * ⚠ 与 `c0828-desc-collapse.mjs` **同一条实现**（focus 不开口时补鼠标合成事件；
- *   补出来的浮层只认真实 mouseout 才关，所以必须补那一下，否则浮层滞留会让后续判据失真）。
- */
-const EXTRACT_JS = (tabKey) => `(async () => {
-  const root = document.querySelector('[data-testid="c0828-root"]');
-  const btns = [...root.querySelectorAll('button[aria-expanded]')].filter((b) => !!b.offsetParent);
-  const out = [];
-  const readTip = (b) => { const wrap = b.parentElement; return wrap ? wrap.querySelector('[role="tooltip"]') : null; };
-  for (const b of btns) {
-    b.focus();
-    await new Promise((r) => setTimeout(r, 90));
-    let tip = readTip(b);
-    if (!tip) {
-      const wrap = b.parentElement;
-      if (wrap) {
-        wrap.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-        wrap.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false }));
-        b.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-      }
-      await new Promise((r) => setTimeout(r, 90));
-      tip = readTip(b);
-    }
-    out.push({
-      tab: ${JSON.stringify(tabKey)},
-      trigger: b.getAttribute('data-testid'),
-      aria: b.getAttribute('aria-label'),
-      open: b.getAttribute('aria-expanded') === 'true',
-      popTestId: tip ? tip.getAttribute('data-testid') : null,
-      popText: tip ? (tip.textContent ?? '') : null,
-    });
-    b.blur();
-    const w = b.parentElement;
-    if (w) w.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body }));
-    await new Promise((r) => setTimeout(r, 45));
-  }
-  const pane = document.querySelector('[data-testid="c0828-pane-${tabKey}"]');
-  return { total: btns.length, out, leftoverTips: root.querySelectorAll('[role="tooltip"]').length,
-           rootTxt: root.innerText, paneTxt: pane ? pane.innerText : null,
-           paneVisible: pane ? pane.offsetParent !== null : null };
-})()`;
-
 console.log("== ⑥ 逐个页签抽「?」+ 第一层正文（推演后态）==");
 const TAB_KEYS = ["board", "options", "scan", "cust", "money", "log"];
-const BASE3 = new Set(["board", "options", "scan"]);
-const perTab = {};
-const pops = { total: 0, out: [], base3Total: 0, base3Text: 0 };
-for (const t of TAB_KEYS) {
-  const has = await evalJs(`!!document.querySelector('[data-testid="c0828-tab-${t}"]')`);
-  if (!has) { console.log(`  页签 ${t}：本态不存在，跳过`); continue; }
-  await evalJs(`(() => { const b = document.querySelector('[data-testid="c0828-tab-${t}"]'); if (b) b.click(); return true; })()`);
-  await sleep(800);
-  const got = await evalJs(EXTRACT_JS(t));
-  pops.total += got.total;
-  pops.out.push(...got.out);
-  if (BASE3.has(t)) { pops.base3Total += got.total; pops.base3Text += got.out.filter((p) => p.popText !== null).length; }
-  perTab[t] = { root: got.rootTxt, pane: got.paneTxt, paneVisible: got.paneVisible };
-  console.log(`  页签 ${t}：可见「?」${got.total} 个 · 能抽出气泡正文的 ${got.out.filter((p) => p.popText !== null).length} 个 · 收完仍开着的浮层 ${got.leftoverTips}（必须 0）· 该页签第一层 ${String(got.paneTxt ?? "").length} 字节`);
-  if (got.leftoverTips !== 0) bail(`量法坏了：抽完「?」后还有 ${got.leftoverTips} 个浮层挂在 DOM 里`, 2);
-}
+const afterSweep = await sweepTabs(TAB_KEYS, "推演后态（六个页签）");
+const perTab = afterSweep.perTab;
+const pops = { total: afterSweep.total, out: afterSweep.out };
 const extractable = pops.out.filter((p) => p.popText !== null).length;
-console.log(`  ── 「?」触发器合计 = ${pops.total}；其中能抽出气泡正文的 = ${extractable}`);
-console.log(`  ── 与未推演态同口径（board/options/scan 三个页签）：触发器 ${pops.base3Total} 个 · 能抽出正文 ${pops.base3Text} 个`);
+const beforeText = beforeSweep.out.filter((p) => p.popText !== null).length;
+console.log(`  ── 同一把尺子对照：未推演态 ${beforeSweep.total} 个触发器 / ${beforeText} 个可抽正文 → 推演后 ${pops.total} / ${extractable}`);
 if (pops.total === 0) bail("量法坏了：c0828-root 里一个可见的 aria-expanded 按钮都抽不到（结构变了？）", 2);
 if (extractable === 0) {
   console.log("诊断 · 前 12 个 aria-expanded 按钮:", JSON.stringify(pops.out.slice(0, 12), null, 1));
@@ -287,6 +305,26 @@ for (const T of TARGETS) {
   if (T.tab) {
     await evalJs(`(() => { const b = document.querySelector('[data-testid="c0828-tab-${T.tab}"]'); if (b) b.click(); return true; })()`);
     await sleep(700);
+  }
+  // 右栏（推演助手）在宽页签下按设计自动收起 ⇒ 触发器整个不在 DOM 里。
+  // 这不是「被删了」：收起态第一层留着 28px 竖边 + 展开按钮（同一个 `c0828-ai-expand`，
+  // 就是给用户按的那一个）。要量它里面的 `?`，先走用户那一步把栏展开，并**记录这一步**。
+  const aiBefore = await evalJs(`document.querySelector('[data-testid="c0828-root"]')?.getAttribute('data-ai')`);
+  let expandedBy = null;
+  let collapsedStrip = null;
+  if (T.ensureAiOpen && aiBefore === "collapsed") {
+    // 「静默降层等于删除」的反面证据：收起后第一层还剩什么
+    collapsedStrip = await evalJs(`document.querySelector('[data-testid="c0828-ai-collapsed"]')?.innerText ?? null`);
+  }
+  if (T.ensureAiOpen && aiBefore === "collapsed") {
+    await evalJs(`(() => { const b = document.querySelector('[data-testid="c0828-ai-expand"]'); if (b) b.click(); return true; })()`);
+    await sleep(600);
+    expandedBy = "c0828-ai-expand";
+  }
+  const aiAfter = await evalJs(`document.querySelector('[data-testid="c0828-root"]')?.getAttribute('data-ai')`);
+  if (T.ensureAiOpen) {
+    console.log(`  右栏收起态: 探前 data-ai=${String(aiBefore)} → 探时 data-ai=${String(aiAfter)}${expandedBy ? "（点了一次 c0828-ai-expand 展开）" : ""}`);
+    if (collapsedStrip !== null) console.log(`  收起态第一层剩下的记号（c0828-ai-collapsed）: ${JSON.stringify(collapsedStrip)}`);
   }
   const r = await evalJs(`(async () => {
     const root = document.querySelector('[data-testid="c0828-root"]');
@@ -375,8 +413,12 @@ console.log("== ⑨ 判定 ==");
 const found3 = targetRes.filter((t) => t.found).length;
 const open3 = targetRes.filter((t) => t.found && t.open && t.popText !== null).length;
 const netOk = netRun.length > 0;
+const BASE3 = new Set(["board", "options", "scan"]);
+const afterBase3 = afterSweep.out.filter((p) => BASE3.has(p.tab));
 console.log(JSON.stringify({ 目标气泡: 3, 在DOM里: found3, 打开并抽出正文: open3,
-  触发器总数: pops.total, 能抽出正文: extractable, 基线3页签: { 触发器: pops.base3Total, 正文: pops.base3Text },
+  推演后_全部页签: { 触发器: pops.total, 能抽出正文: extractable },
+  推演后_基线3页签: { 触发器: afterBase3.length, 能抽出正文: afterBase3.filter((p) => p.popText !== null).length },
+  未推演态_基线3页签: { 触发器: beforeSweep.total, 能抽出正文: beforeText },
   推演段网络成功请求: netRun.length, 网络判据: netOk }, null, 1));
 // 金丝雀（判据④）：一个都抽不到已在上文 bail；这里再兜「网络自证」——不许拿「按钮变灰」当证据
 if (!netOk) { console.log("FAIL：推演段一条打向 4001/4002 的成功请求都没有 ⇒ 推演真跑过这件事没有自证"); }
