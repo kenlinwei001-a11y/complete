@@ -23,7 +23,7 @@ async function seedAgents(t: TestApp): Promise<void> {
     if (ag.key === GENERAL_AGENT_KEY) continue;
     // WO-ALL-AGENTS-DSH：出厂内核缺省自本单起 = `"EXTERNAL"`，本测试环境无 dsh harness /
     // stub provider（本文件验的是**会诊编排与 scope 隔离**，不是内核）⇒ 钉回 `"NATIVE"`。
-    if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert({ ...ag, kernel: "NATIVE" });
+    if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert({ ...ag });
   }
 }
 
@@ -167,7 +167,7 @@ describe("WO-FIVE-ROLE P1 · SEAM 跨域真拆→invoke_agent 真调 ≥2 角色
         ? { ...ag, scopeDeclaration: { ...ag.scopeDeclaration, objectTypes: ["Supplier", "PurchaseOrder"] } }
         : ag;
       // WO-ALL-AGENTS-DSH：同上（本臂量的是 scope 真约束）⇒ 出厂缺省内核翻 EXTERNAL 会绕过本臂的 native mock 路。
-      if (!(await t.repos.agents.get(copy.id))) await t.repos.agents.insert({ ...copy, kernel: "NATIVE" });
+      if (!(await t.repos.agents.get(copy.id))) await t.repos.agents.insert({ ...copy });
     }
     // WO-COORD-YIELD-AND-TERMINAL D1：同上——经「分类器域外」合法进入 Coordinator（scope 断言本体不动）。
     t.llm.queueClassification({ candidates: [], outOfCatalog: true, extractedSlots: {} });

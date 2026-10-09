@@ -133,7 +133,7 @@ describe("WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核）
     const stub = await startStubOpenAi([FINAL_ANSWER, PLAIN], { jsonWhenNotStreaming: true });
     try {
       const t = await createTestApp({ ...stubOpts(stub.url), kernelRuntime: "dsh" });
-      await seedGeneral(t, { kernel: "NATIVE" }); // ← 旧回退开关的取值：本单起必须翻不动内核
+      await seedGeneral(t, { kernel: "NATIVE" }); // ★ 本臂的受控变量：旧回退开关的取值（本单起必须翻不动内核）
       t.llm.queueClassification(OUT_OF_CATALOG);
       // 原生臂吃 mock 剧本（ScriptedLlmClient），DSH 臂吃 stub —— 两条都排上，谁被走到都不会因缺剧本而红。
       t.llm.queueAgentTurn({ content: [toolUse("final_answer", { blocks: [{ type: "text", markdown: "原生答复。" }], provenance: [] })] });
@@ -251,7 +251,7 @@ describe("WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核）
   it("③-b 对象域「目录现算」真生效：读**声明面之外**的类型不被 scope 门拒（对照臂必须 DENIED）", async () => {
     const t = await createTestApp();
     const ctx = { tenantId: TENANT, userId: "user-planner", roles: ["planner"] };
-    await seedGeneral(t, { kernel: "NATIVE" });
+    await seedGeneral(t); // WO-CLOSE-NATIVE-GAPS：字段已退役（本臂验对象域门，装配位缺省即进程内循环）
     // 金丝雀：探针读的那个类型必须真的在**目录**里（否则"没被拒"可能只是因为压根没这个类型）。
     const typeKeys = await t.dataCore.ontology.listObjectTypeKeys(ctx);
     const probeType = typeKeys.includes("Material") ? "Material" : typeKeys[0]!;
@@ -280,9 +280,9 @@ describe("WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核）
     // 臂 B（对照）：声明面窄的既有 agent 读**不在其声明面**的类型 ⇒ 必须被门拒。
     const explore = seedRegistry().agents.find((x) => x.id === "agt_seed_explore")!;
     expect(explore.scopeDeclaration.objectTypes).not.toContain(probeType);
-    // WO-ALL-AGENTS-DSH：对照臂钉 `"NATIVE"` —— 本臂量的是**对象域门**（DENY payload），
-    // 出厂缺省 EXTERNAL 会把对照臂翻到 dsh 子进程（本测试环境无 providerDirectory ⇒ 直接抛）。
-    await t.repos.agents.insert({ ...explore, kernel: "NATIVE" });
+    // WO-CLOSE-NATIVE-GAPS：对照臂量的是**对象域门**（DENY payload）—— 装配位缺省（进程内循环）
+    // 即保证不落 dsh 子进程；旧写法靠 agent 字段，该字段已退役、不再被读。
+    await t.repos.agents.insert({ ...explore });
     const b = await readOnce("agt_seed_explore", "task_scope_control");
     // 臂 C：拿一个**目录里也没有**的类型名 ⇒ 通用 agent 的门必须报出它真正放行的名单
     //（DENY payload 的 `allowed` 就是**运行期有效对象域**的原文读数 —— 判据 ③ 的"清单条数"由它给出）。
@@ -306,9 +306,9 @@ describe("WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核）
     // 角色分派门是暗发件（缺省关）—— 本臂显式点亮，测的是**角色分支本身没被本单改动**。
     t.deps.features.mock.set(TENANT, [...defaultOnKeys(), "agent.coordinator"]);
     for (const ag of seedRegistry().agents) {
-      // WO-ALL-AGENTS-DSH：本臂量的是**角色分派分支**（supply_chain 角色 agent），不是内核 ⇒
-      // 出厂缺省 EXTERNAL 会把角色 agent 翻到 dsh 子进程（本环境无 stub 目录 ⇒ 任务 FAILED）。
-      if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert({ ...ag, kernel: "NATIVE" });
+      // WO-CLOSE-NATIVE-GAPS：本臂量的是**角色分派分支**，不是内核 —— 装配位缺省（进程内循环）
+      // 即保证不落 dsh 子进程（kernel 字段已退役不再写）。
+      if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert({ ...ag });
     }
     await seedGeneral(t);
 

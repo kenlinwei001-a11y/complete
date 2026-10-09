@@ -141,7 +141,7 @@ async function seedAgents(t: TestApp): Promise<void> {
   for (const ag of seedRegistry().agents) {
     // WO-ALL-AGENTS-DSH：出厂内核缺省自本单起 = `"EXTERNAL"`，本文件验的是 **native 路的
     // provider 回落**（模型解析）⇒ 显式钉 `"NATIVE"`，否则角色 agent 会被 DSH 臂接管（另一条路）。
-    if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert({ ...ag, kernel: "NATIVE" });
+    if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert({ ...ag }); // WO-CLOSE-NATIVE-GAPS：kernel 字段已退役，本文件在测试装配下跑进程内循环
   }
 }
 

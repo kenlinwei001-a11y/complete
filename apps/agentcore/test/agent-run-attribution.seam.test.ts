@@ -169,9 +169,9 @@ describe("WO-AGENTRUN-ATTRIBUTION · 运行归属接缝", () => {
     const t = await createTestApp({ env: { QOS_AGENT_MAX_ROUND_TRIPS: "2" } });
     await t.repos.agents.insert(agentDef({ id: "agt_bystander", key: "attr_bystander" }));
     const general = seedRegistry().agents.find((a) => a.key === GENERAL_AGENT_KEY)!;
-    // 出厂记录带 `kernel: "EXTERNAL"`（WO 判据⑤）；本臂只验**归属**，故把内核钉回原生
-    //（DSH 臂的内核面由 general-agent-dsh.seam.test.ts 覆盖，那里有 stub provider + harness）。
-    await t.repos.agents.insert({ ...general, kernel: "NATIVE" });
+    // ⚑ WO-CLOSE-NATIVE-GAPS：本臂只验**归属**（内核面由 general-agent-dsh.seam.test.ts 的
+    // DSH 臂覆盖）。旧写法把内核钉回原生；本单起 kernel 字段已退役、不再被读 ⇒ 不再写入。
+    await t.repos.agents.insert({ ...general });
 
     const taskId = await runOpenQuestion(t);
     const run = await t.repos.agentRuns.getByTask(taskId);
