@@ -4238,6 +4238,29 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
           if (typeof v !== "number" || !Number.isFinite(v)) continue;
           if (Math.abs(v) > hi) hi = Math.abs(v);
         }
+        // ★ WO-EVENT-FILL-NODES（2026-10-08）：实测全距为 0 时**回落到域全距**。
+        //
+        // 🔴 为什么（实测）：本会话把 15 个量的语义归位成 `DEVIATION` ⇒ 它们的世界态
+        //   静息值全部 = `restPoint` = 0 ⇒ **全世界取值都是 0** ⇒ 上面的实测全距 = 0
+        //   ⇒ `drillStateEffectAbsolute` 返回 `null` ⇒ 事件**打不上世界态**
+        //   ⇒ `appliedStateEffects=[]` / `worldCellsMoved=0` ⇒ 结论退化成静态扫描。
+        //   实测代价：11 个事件里 **8 个**的 `stateEffect` 落点落在归位量上 ⇒ 一并失效。
+        //
+        // ⚠ 但**不能**无条件改成域全距 —— 本函数上方那条注释记着反例：`Order.costPressure`
+        //   一族曾挤在 434 万的地板上（`max−min` 只有 807），那时实测全距是对的。
+        //   ⇒ 归位后这些量的**量纲已从「水平」变成「偏离」**，静息态为 0 才是正确状态，
+        //     「抬一个全距」在偏离语义下该以**域的形状**为基准（压力族 = `[0,100]`）。
+        //   ⇒ 故只在**实测为 0** 时回落，未归位的量（如那族 434 万的）逐字节不受影响。
+        //
+        // ⛔ 域也取不到 ⇒ 仍返回 0 ⇒ 由调用方按「未能评估」记缺（保持既有诚实位，不硬打）。
+        if (hi === 0) {
+          const d = stateVarDomains()[eff.targetStateVar];
+          if (d && typeof d.max === "number" && Number.isFinite(d.max)) {
+            const lo = typeof d.min === "number" && Number.isFinite(d.min) ? d.min : 0;
+            const span = d.max - lo;
+            if (span > 0) return span;
+          }
+        }
         return hi;
       })();
       const absMagnitude = drillStateEffectAbsolute(eff.rangePct, svRange);
