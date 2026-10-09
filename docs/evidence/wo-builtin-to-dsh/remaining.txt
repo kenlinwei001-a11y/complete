@@ -1,0 +1,38 @@
+WO-BUILTIN-TO-DSH · 本单交付边界（这一族还剩哪些没迁）
+========================================================
+
+本单交付 = **试点件 `query_objects`**（「查数据」那条，11+1 个出厂 agent 每一个都在用）整族迁完并四判据钉死。
+其余 24 件仍走旧载体（`{kind:"BUILTIN"}` 授予 + `setup.hostTools` 反向通道），逐条如下。
+
+A. 内置工具 MCP server（`mcp__builtin__*`，共 25 件）上**已迁** vs **未迁**
+   已迁（三面同改 · engine 静态投影 · 真 server · 执行归一）：query_objects
+   未迁（仍只能走 hostTools 反向通道）：
+     discover · retrieve_knowledge · query_ontology · query_system_ontology · get_breakpoint
+     impact_of · aggregate_objects · get_object · invoke_solver · search_knowledge
+     query_timeseries_agg · read_skill_resource · search_experience · fill_data · run_synthetic
+     build_domain · sim_init · sim_tick · sim_world · sim_certify · create_action_draft
+     discover_growth_tickets · claim_growth_ticket · submit_growth_ticket
+   （不在本 server 上、归属各自专用 server：plan_slice / resolve_slice → 本体面；evaluate_rules → 规则面）
+
+B. 各出厂 agent 上「仍是裸名 BUILTIN 授予」的内置工具
+   agt_seed_analyst      : get_object · search_knowledge · query_timeseries_agg · search_experience
+   agt_risk_advisor      : evaluate_rules（**目标面是规则 server `mcp__rules__evaluate_rules`**，不是本 server）
+   agt_general（通用）    : 上面 A 段「未迁」全部 24 件 + evaluate_rules
+   其余 9 个 agent        : 无（它们只用了 query_objects，已迁完）
+
+C. 结构性耦合（迁其余件之前必须先处理，逐条已实测）
+   1. `navigation-slice.ts` 的 `canInvokeSolvers` 认**裸名** `"invoke_solver"`
+      ⇒ 迁 `invoke_solver` 到 `mcp__builtin__invoke_solver` 之前，必须先把它改成认身份
+      （否则通用 agent 的求解器目录段会**静默**不再取活目录 —— 不报错、少东西）。
+   2. 本体/求解器/工作流/规则四条已迁面各有先例写法可照抄（`executor.ts` 的 shim、`engine.ts`
+      的静态投影分支与 DSH 分叉 `builtinPath` 链、seed 三面同改、接缝套件 A–E 五组）。
+   3. 本单已顺手修掉的两处（迁其余件时**不用再踩**）：
+      · 截断豁免集按**身份**判（`loop.ts` `isTruncationExemptTool`，原生臂 + DSH 端点同用）
+        —— `query_timeseries_agg`/`read_skill_resource` 迁走后不修会静默从豁免掉成 8KB 截断；
+      · 对象域门（`OBJECT_SCOPED_TOOLS`）仍按**身份**匹配：归一位置在 scope 门之后、对象域门之前。
+
+D. 本单**未动**的旧载体（如实登记，不是漏做）
+   · general path-B 的探索路（`router/orchestrator.ts` `buildExploratoryTools`）：场景包白名单
+     仍产出裸 BUILTIN 名 + hostTools 反向通道（该路的授予面是**场景包数据**不是 agent 配置，
+     迁它要连 B5 场景包配置面一起改，属另一张单）。
+   · `BUILTIN_TOOLS` 注册表条目全部保留（未迁消费者仍在用；本单只加 MCP 面，不删旧面）。
