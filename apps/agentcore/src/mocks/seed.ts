@@ -1913,8 +1913,10 @@ const BUILTIN_QUERY = ["query_objects"] as const;
  *   `expandAgentTools` 的 toolFilter 匹配不上 ⇒ 该件静默零工具。
  */
 const BUILTIN_MIGRATED_B1 = ["get_object", "aggregate_objects", "search_knowledge", "query_timeseries_agg", "search_experience"] as const;
+/** 批次 2：能力发现一族（`discover` 是元工具：不确定用什么时先调它）。 */
+const BUILTIN_MIGRATED_B2 = ["discover", "retrieve_knowledge", "query_ontology", "query_system_ontology"] as const;
 /** 通用 agent 的**累计**迁移集（它的语义 = 平台全部内置工具 ⇒ 跟着台账长，不另抄一份）。 */
-const BUILTIN_MIGRATED = [...BUILTIN_QUERY, ...BUILTIN_MIGRATED_B1] as const;
+const BUILTIN_MIGRATED = [...BUILTIN_QUERY, ...BUILTIN_MIGRATED_B1, ...BUILTIN_MIGRATED_B2] as const;
 
 /**
  * 出厂 analyst 的内置工具集合（= 它**迁前真正持有**的那几件：试点件 + 批次 1 的四件）。
