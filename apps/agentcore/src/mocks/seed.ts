@@ -1503,10 +1503,10 @@ export function seedRegistry(now = new Date().toISOString()): {
         // `mcp__ontology__resolve_slice`，这里就必须是同一个串；记裸名会让这条路被自己的 scope 门拒）。
         toolNames: [
           ...builtinMcpFullNames(BUILTIN_ANALYST_MCP), builtinMcpToolName("aggregate_objects"), ...ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)), ...solverMcpFullNames(SOLVER_KEYS_ANALYST), rulesMcpToolName("evaluate_rules"),
-          // WO-BUILTIN-MIGRATE-REST · `aggregate_objects` 记**全名**：它在声明面里、不在授予面里
-          // （迁前迁后都是），而它已属内置工具 MCP 面 —— 记裸名会让「哪天真的授予它」时被 scope 门
-          // 用全名拒（声明面与模型面记法漂移）。`create_action_draft` 属**未迁**批次，照旧记裸名。
-          "create_action_draft",
+          // WO-BUILTIN-MIGRATE-REST · `aggregate_objects` 与 `create_action_draft` 都记**全名**：
+          // 它们在声明面里、不在授予面里（迁前迁后都是），而它们已属内置工具 MCP 面 —— 记裸名会让
+          // 「哪天真的授予它」时被 scope 门用全名拒（声明面与模型面记法漂移）。
+          builtinMcpToolName("create_action_draft"),
           workflowMcpToolName("capacity_check"),
         ],
       },

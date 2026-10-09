@@ -49,6 +49,9 @@ import { seedRegistry, seedMcpConfigs } from "../src/mocks/seed.js";
 import { buildSessionSetup } from "../src/dsh-runtime/setup-spec.js";
 import { BUILTIN_TOOLS } from "../src/tools/registry.js";
 import { isTruncationExemptTool } from "../src/agent/loop.js";
+import { reflectAnswer } from "../src/agent/reflect.js";
+import { scopeCanInvokeSolvers } from "../src/agent/navigation-slice.js";
+import { promoteFallbackTrace } from "../src/ops/fallback.js";
 import { renderFailedCallsBlock } from "../src/agent/failure-disclosure.js";
 import {
   BUILTIN_MCP_CONFIG_ID,
@@ -93,6 +96,12 @@ const MIGRATED: readonly string[] = [
   "retrieve_knowledge",
   "query_ontology",
   "query_system_ontology",
+  // 批次 3（本单）：写路径与求解入口（硬骨头：三处按裸名认 invoke_solver 的判据已改按身份）
+  "get_breakpoint",
+  "impact_of",
+  "read_skill_resource",
+  "create_action_draft",
+  "invoke_solver",
 ];
 
 /** 专属面（各自的内置 server 承载，不在内置工具 server 上）：本体两件 + 规则一件。 */
@@ -134,6 +143,11 @@ const MIN_INPUT: Record<string, Record<string, unknown>> = {
   retrieve_knowledge: { query: "产能瓶颈" },
   query_ontology: { rootType: "Base", select: [] },
   query_system_ontology: {},
+  get_breakpoint: { id: "G-1" },
+  impact_of: { node: "I1" },
+  read_skill_resource: { skillId: "skl_seed_capacity", resourceName: "x" },
+  create_action_draft: { actionType: "capacity_action", payload: { probe: "b2" } },
+  invoke_solver: { solverKey: "gap_attribution", args: { probe: "b2" } },
 };
 
 /** 同批：`discover` 一族走**探索配额**（`DISCOVER_TOOLS`）—— 归一后配额判据必须仍咬得住。 */
@@ -147,12 +161,14 @@ const FINAL_ANSWER_ARGS = JSON.stringify({
 /**
  * e2e 探针（入参带 probe 标记 ⇒ 数据面实参统计只认这一条）。
  * ⚠ 每进一批把它换成**本批**的一件：判据① 要的是「本批的这件」迁前迁后逐键相同。
- * 批次 2 = `query_ontology`（数据面落 `dataCore.solver.invoke(ctx, "ontology_query", args)` —— 入参可辨认）。
+ * 批次 3 = `invoke_solver`（本单的硬骨头：三处按裸名认它的判据已改按身份；数据面落
+ * `dataCore.solver.invoke(ctx, solverKey, args)` —— 入参可辨认）。
  */
-const PROBE_RAW = "query_ontology";
+const PROBE_RAW = "invoke_solver";
 /** 探针实参：`probe` 是**数据面实参统计的识别标记**（只认这一条，免得把内部调用算进来）。 */
 const PROBE_MARKER = "wo-builtin-rest-probe";
-const PROBE_ARGS = JSON.stringify({ rootType: "Base", select: [{ type: "Order", fields: ["so", "qty"] }], probe: PROBE_MARKER });
+const PROBE_SOLVER_KEY = "gap_attribution";
+const PROBE_ARGS = JSON.stringify({ solverKey: PROBE_SOLVER_KEY, args: { probe: PROBE_MARKER } });
 /**
  * 探针件的**持有者**（出厂种子里第一个授予它的 agent）。判据① 必须用它跑 ——
  * 用一个没被授予该件的 agent 跑，模型面压根没有它（那量的是别的东西）。
@@ -163,9 +179,9 @@ const PROBE_AGENT_ID: string = (() => {
   return holder.id;
 })();
 
-/** 数据面读法：`query_ontology` 落到 `dataCore.solver.invoke(ctx, "ontology_query", args)`。 */
+/** 数据面读法：`invoke_solver` 落到 `dataCore.solver.invoke(ctx, solverKey, args)`。 */
 const probeCallsOf = (spy: { mock: { calls: unknown[][] } }) =>
-  spy.mock.calls.filter((c) => c[1] === "ontology_query" && (c[2] as { probe?: string }).probe === PROBE_MARKER);
+  spy.mock.calls.filter((c) => c[1] === PROBE_SOLVER_KEY && (c[2] as { probe?: string }).probe === PROBE_MARKER);
 
 interface CapturedReq {
   runToken?: string;
@@ -629,6 +645,65 @@ describe("WO-BUILTIN-MIGRATE-REST · B 组：MCP 全名归一回同一具执行�
     }
   });
 
+  it("B7 求解能力判据按**身份**认（判据①的耦合）：全名形态照样算得出「调得动 solver」", () => {
+    // `scopeCanInvokeSolvers` 决定「要不要去打活求解器目录」——认错了是**静默少一段**（不报错）
+    expect(scopeCanInvokeSolvers([full("invoke_solver")]), "全名形态：调得动求解器").toBe(true);
+    expect(scopeCanInvokeSolvers(["invoke_solver"]), "裸名形态（旧载体）同样成立").toBe(true);
+    expect(scopeCanInvokeSolvers(["mcp__solvers__gap_attribution"]), "求解器 MCP 面成立").toBe(true);
+    // 反向：本体/工作流面**不许**算成「调得动求解器」（否则每 run 白打一次活目录）
+    expect(scopeCanInvokeSolvers([full("query_objects"), "mcp__ontology__resolve_slice", "mcp__workflow__capacity_check"])).toBe(false);
+    // 金丝雀：未声明 = 不限（恒真那一支），证明上面三条 not-false 不是「函数恒真」
+    expect(scopeCanInvokeSolvers(undefined)).toBe(true);
+  });
+
+  it("B8 复盘「求解纪律」按**身份**认（判据①的耦合）：iterations 里是全名也算「走了 solver」", () => {
+    const base = {
+      blocks: [{ type: "text" as const, markdown: "已按求解器结论作答，结论见下。" }],
+      provenanceCount: 0,
+      userContent: "帮我做排产优化",
+    };
+    const iter = (toolName: string) => [
+      { index: 0, toolCalls: [{ toolCallId: "tc_1", toolName, input: {}, outcome: "OK" as const, durationMs: 1 }] },
+    ];
+    // 全名形态 ⇒ 不减「求解纪律」那条
+    const ok = reflectAnswer({ ...base, iterations: iter(full("invoke_solver")) });
+    // 对照（有鉴别力）：同一份输入、把工具换成别的 ⇒ 那条必须报出来
+    const bad = reflectAnswer({ ...base, iterations: iter(full("query_objects")) });
+    const hit = (v: { reasons: string[] }) => v.reasons.some((r) => r.includes("求解") || r.includes("solver"));
+    expect(hit(ok), "全名 invoke_solver ⇒ 不算违规").toBe(false);
+    expect(hit(bad), "换一件工具 ⇒ 求解纪律必须报出来（否则上一条是恒真）").toBe(true);
+  });
+
+  it("B9 失败→意图提升的 sketch 查表按**身份**认（判据①的耦合）：全名 sketch 仍出得一步、标记位仍在", async () => {
+    const repos = createMemoryRepos();
+    const traceId = "fbt_probe";
+    await repos.fallbackTraces.insert({
+      id: traceId,
+      taskId: "task_promote",
+      tenantId: TENANT,
+      packageId: "pkg_seed",
+      query: "把产能对齐一下",
+      view: "dash",
+      // ⚠ sketch 记的是**模型面调用名**（载体）—— 迁后是全名
+      executedPlanSketch: [
+        { toolName: full("query_objects"), inputSummary: "{}" },
+        { toolName: full("invoke_solver"), inputSummary: "{}" },
+        { toolName: full("create_action_draft"), inputSummary: "{}" },
+      ],
+      outcome: "ANSWERED",
+      createdAt: new Date().toISOString(),
+      normalizedQuery: "把产能对齐一下",
+      embedding: [],
+    } as never);
+    const { intentId, planId } = await promoteFallbackTrace(repos, TENANT, traceId);
+    const plan = await repos.plans.get(planId);
+    const intent = await repos.intents.get(intentId);
+    // 三步查表全部命中（少一步就是**静默丢步**）+ 末尾固定补一步 render_answer
+    expect(plan!.steps.map((x) => x.type)).toEqual(["query_objects", "invoke_solver", "create_action_draft", "render_answer"]);
+    // 标记位：sketch 里有写动作 ⇒ riskLevel=ACTION_DRAFT（查表判据同源；归一失守时会退成 READ）
+    expect(intent!.riskLevel, "写动作标记位仍在（按身份判）").toBe("ACTION_DRAFT");
+  });
+
   it("B6 失败点名披露块：换个载体仍点得出名（渲染里带的是调用名，不是 unknown）", () => {
     const block = renderFailedCallsBlock([
       { toolName: full("get_object"), outcome: "DENIED", reason: "AGENT_SCOPE_VIOLATION: 该工具超出本 Agent 的能力声明" },
@@ -832,8 +907,8 @@ describe("WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁
       expect(names.length, "金丝雀：模型面没空掉").toBeGreaterThan(5);
 
       const probeCalls = probeCallsOf(solverSpy);
-      expect(probeCalls.length, "模型那一次本体遍历恰一次").toBe(1);
-      expect((probeCalls[0]![2] as { rootType?: string }).rootType, "入参逐键 = 模型给的").toBe("Base");
+      expect(probeCalls.length, "模型那一次求解恰一次").toBe(1);
+      expect((probeCalls[0]![2] as { probe?: string }).probe, "入参逐键 = 模型给的").toBe(PROBE_MARKER);
 
       const rows = await t.repos.toolCalls.listByTask("task_rest_e1");
       const row = rows.find((r) => r.toolName === PROBE_RAW);
@@ -888,7 +963,7 @@ describe("WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁
       );
       expect(stillMigrated.length, "金丝雀：单变量臂不是「整台 server 撤了」").toBeGreaterThan(0);
       const probeCalls = probeCallsOf(solverSpy);
-      expect(probeCalls.length, "迁前臂：模型那一次本体遍历恰一次").toBe(1);
+      expect(probeCalls.length, "迁前臂：模型那一次求解恰一次").toBe(1);
       const rows = await t.repos.toolCalls.listByTask("task_rest_e2");
       const preRow = rows.find((r) => r.toolName === PROBE_RAW);
       expect(preRow?.outcome, "同一只 host executor、同一行审计名").toBe("OK");

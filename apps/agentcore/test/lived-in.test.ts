@@ -53,8 +53,9 @@ describe("运营态出厂配置 §2/§3（场景入口 / analyst / 经验记忆�
     // ⚠ WO-BUILTIN-MIGRATE-REST：`search_experience` 已迁到 DSH 原生 MCP 面 ⇒ 声明面按契约惯例
     // 记**全名**（模型面/调用名校验用同一个串；在这里钉裸名会在每次迁移后假红）。
     expect(analyst!.scopeDeclaration.toolNames).toContain("mcp__builtin__search_experience");
-    // 未迁件仍以裸名在册（金丝雀：证明上面那条不是在量一张「全是大写全名」的表）
-    expect(analyst!.scopeDeclaration.toolNames).toContain("create_action_draft");
+    // ⚠ WO-BUILTIN-MIGRATE-REST 批次 3：`create_action_draft` 也迁走了 ⇒ 声明面同样记全名。
+    // 金丝雀改为「声明面里**还有**未迁件的裸名」（sim 一族），证明上面两条不是在量一张「全是大写」的表。
+    expect(analyst!.scopeDeclaration.toolNames).toContain("mcp__builtin__create_action_draft");
     expect(analyst!.budget?.maxIterations).toBeGreaterThan(0);
     expect(analyst!.budget?.maxToolCalls).toBeGreaterThan(0);
   });
