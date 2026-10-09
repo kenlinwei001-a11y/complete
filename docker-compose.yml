@@ -141,8 +141,13 @@ services:
       QOS_AGENT_LOOP_REPEAT_CAP: ${QOS_AGENT_LOOP_REPEAT_CAP:-3}
       QOS_AGENT_PER_TOOL_CALL_CAP: ${QOS_AGENT_PER_TOOL_CALL_CAP:-8}
       QOS_AGENT_RETRY_MAX_ATTEMPTS: ${QOS_AGENT_RETRY_MAX_ATTEMPTS:-1}
-      # ── dsh harness 路 B 分叉（WO-DSH-N1-PROVIDER；出货缺省 off + 真 provider 路由；同受治理门守护）
-      DSH_HARNESS: ${DSH_HARNESS:-0}
+      # ── dsh harness 路 B 分叉（WO-DSH-N1-PROVIDER；真 provider 路由）
+      # ⚑ WO-CLOSE-NATIVE-GAPS（2026-10-09 仓主「都改掉，不考虑回退」）：DSH 是**唯一** agent 执行内核，
+      # 旧内核实现在引擎侧已无入口（`DSH_HARNESS` 不再是内核开关，引擎零消费方）。此处如实声明「在跑」，
+      # 不再留 `${DSH_HARNESS:-0}` 那种「缺省关」的开关形态（该形态现在是门 `dsh-dormancy:check` 的
+      # D1′ 违规：部署面不许声明旧内核还在）。⚠ 若将来要重新引入任何形式的关断开关 —— 那就是回退，
+      # 先过仓主；门会当场红。
+      DSH_HARNESS: "1"
       DSH_HARNESS_PROVIDER: ${DSH_HARNESS_PROVIDER:-platform}
     ports:
       # 同 datacore：只绑 127.0.0.1。gateway 反代与 A→B 的 scaffold/ask 调用都走 compose

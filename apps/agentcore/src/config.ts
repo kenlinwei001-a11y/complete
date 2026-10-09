@@ -67,9 +67,14 @@ const ConfigSchema = z.object({
   /** 增量 §4.3 红线：stdio 传输默认禁用（需显式 =1） */
   MCP_STDIO_ENABLED: z.string().optional(),
   /**
-   * WO-DSH-N1-PROVIDER · 路 B（dsh harness）分叉开关：=1 时 runRegisteredAgent 走 JSON-RPC 子进程
-   * 路径（packages/dsh-harness）；缺省 0 = runAgentLoop 旧路逐字节不变。部署态建议 `DSH_HARNESS=0`
-   *（出货缺省 off，§16.1a 部署层回退）。
+   * WO-CLOSE-NATIVE-GAPS（2026-10-09 仓主「都改掉，不考虑回退」）· **本键已退役，不再是内核开关**：
+   * 路 B（dsh harness）自本单起是**唯一**的 agent 执行内核（`runRegisteredAgent` / 探索路落点恒走
+   * JSON-RPC 子进程，见 `engine.ts` 的 `agentKernelRuntimeMode()` 头注）—— 引擎侧对本键**零消费方**
+   *（旧形态 `process.env.DSH_HARNESS === "1"` 分叉已删），改它 / 翻它不改变任何行为。
+   * 保留键位只为：① 部署面如实声明「DSH 在跑」（`DSH_HARNESS=1`）；② 不给下一个人留一个
+   * 看起来能关断内核的假开关（真关断 = 回退，本单已整条移除，门 `dsh-dormancy:check` D1′ 守着
+   * 「部署面不许声明旧内核还在」）。部署态建议 `DSH_HARNESS=1`。
+   * ⚠ 门 `deploy-governance:check` 要求本行建议值与 docker-compose.yml 的出货默认值**逐字一致**。
    */
   DSH_HARNESS: z.string().default("0"),
   /**
