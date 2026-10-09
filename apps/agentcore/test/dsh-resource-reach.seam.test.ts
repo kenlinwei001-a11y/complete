@@ -29,7 +29,7 @@ import { fileURLToPath } from "node:url";
 import { join, relative, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mcpServerNameSlug, type AgentDefinition } from "@platform/contracts";
-import { PLANNER, createTestApp, submitQuery, waitForTask, TENANT, type TestApp } from "./helpers.js";
+import { PLANNER, createTestApp, setKernelRuntime, submitQuery, waitForTask, TENANT, type TestApp } from "./helpers.js";
 import {
   STUB_DCP_SPEC,
   startStubOpenAi,
@@ -613,6 +613,8 @@ describe("RESOURCE-REACH · B e2e：DSH 臂经 MCP 真调切片（真 fork + 真
     ] satisfies StubRound[]);
     const { t, close } = await startToolExecApp({ stubUrl: `${stub.url}/v1`, serviceToken: SERVICE_TOKEN });
     try {
+      // ★ WO-CLOSE-NATIVE-GAPS：B 组一律跑 DSH 臂（装配位；agent 的 kernel 字段已退役不被读）。
+      setKernelRuntime(t, "dsh");
       await seedWorld(t, seedCapacityAgent());
       const planSpy = vi.spyOn(t.dataCore.ontology, "planSlice");
       const resolveSpy = vi.spyOn(t.dataCore.ontology, "resolveSlice");
@@ -716,6 +718,8 @@ describe("RESOURCE-REACH · B e2e：DSH 臂经 MCP 真调切片（真 fork + 真
     ] satisfies StubRound[]);
     const { t, close } = await startToolExecApp({ stubUrl: `${stub.url}/v1`, serviceToken: SERVICE_TOKEN });
     try {
+      // ★ WO-CLOSE-NATIVE-GAPS：B 组一律跑 DSH 臂（装配位；agent 的 kernel 字段已退役不被读）。
+      setKernelRuntime(t, "dsh");
       await seedWorld(t, seedCapacityAgent());
       renameSync(ONTOLOGY_SERVER_ENTRY, parked);
       const planSpy = vi.spyOn(t.dataCore.ontology, "planSlice");
@@ -765,6 +769,8 @@ describe("RESOURCE-REACH · B e2e：DSH 臂经 MCP 真调切片（真 fork + 真
     ] satisfies StubRound[]);
     const { t, close } = await startToolExecApp({ stubUrl: `${stub.url}/v1`, serviceToken: SERVICE_TOKEN });
     try {
+      // ★ WO-CLOSE-NATIVE-GAPS：B 组一律跑 DSH 臂（装配位；agent 的 kernel 字段已退役不被读）。
+      setKernelRuntime(t, "dsh");
       await seedWorld(t, seedCapacityAgent());
       const qo = vi.spyOn(t.dataCore.ontology, "queryObjects");
       const emitted: Emitted[] = [];
@@ -866,6 +872,8 @@ describe("RESOURCE-REACH · B e2e：DSH 臂经 MCP 真调切片（真 fork + 真
     ] satisfies StubRound[]);
     const { t, close } = await startToolExecApp({ stubUrl: `${stub.url}/v1`, serviceToken: SERVICE_TOKEN });
     try {
+      // ★ WO-CLOSE-NATIVE-GAPS：B 组一律跑 DSH 臂（装配位；agent 的 kernel 字段已退役不被读）。
+      setKernelRuntime(t, "dsh");
       await seedWorld(t, seedCapacityAgent());
       renameSync(WORKFLOW_SERVER_ENTRY, parked);
       const wfSpy = vi.spyOn(t.deps.engine, "runWorkflowAsTool");
@@ -914,6 +922,8 @@ describe("RESOURCE-REACH · B e2e：DSH 臂经 MCP 真调切片（真 fork + 真
     ] satisfies StubRound[]);
     const { t, close } = await startToolExecApp({ stubUrl: `${stub.url}/v1`, serviceToken: SERVICE_TOKEN });
     try {
+      // ★ WO-CLOSE-NATIVE-GAPS：B 组一律跑 DSH 臂（装配位；agent 的 kernel 字段已退役不被读）。
+      setKernelRuntime(t, "dsh");
       await seedWorld(t, seedCapacityAgent());
       const emitted: Emitted[] = [];
       const result = await runAgent(t, "task_reach_b4", emitted, SEED_AGENT_ID);
@@ -944,6 +954,7 @@ describe("RESOURCE-REACH · B e2e：DSH 臂经 MCP 真调切片（真 fork + 真
     ] satisfies StubRound[]);
     const { t, close } = await startToolExecApp({ stubUrl: `${stub.url}/v1`, serviceToken: SERVICE_TOKEN });
     try {
+      setKernelRuntime(t, "dsh"); // ★ WO-CLOSE-NATIVE-GAPS：装配位（kernel 字段已退役）
       await seedWorld(t, withoutOntologyMcp(seedCapacityAgent()));
       const resolveSpy = vi.spyOn(t.dataCore.ontology, "resolveSlice");
       const emitted: Emitted[] = [];
@@ -996,6 +1007,8 @@ describe("RESOURCE-REACH · C 两内核一致：同一 query 同剧本，逐条�
     ] satisfies StubRound[]);
     const { t, close } = await startToolExecApp({ stubUrl: `${stub.url}/v1`, serviceToken: SERVICE_TOKEN });
     try {
+      // ★ WO-CLOSE-NATIVE-GAPS：臂改由**测试装配位**选（旧写法靠 agent 的 kernel 字段，该字段已退役不被读）。
+      setKernelRuntime(t, kernel === "EXTERNAL" ? "dsh" : "inprocess");
       await seedWorld(t, seedCapacityAgent({ kernel }));
       if (kernel === "NATIVE") {
         // 原生臂吃 ScriptedLlmClient（engine 只对 EXTERNAL 分叉走 dcp provider 缝）

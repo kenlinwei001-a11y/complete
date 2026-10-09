@@ -464,9 +464,11 @@ export class ExecutionEngine {
    * WO-CLOSE-NATIVE-GAPS · **本次运行跑哪个内核**（唯一判据，三个消费点同源：
    * 分叉守卫 / BLOCK 早退的 run 标签 / 求解器广告面收窄）。
    *
-   * 今天的行为是 X：判据曾散在三处，表达式是
-   * `agent.kernel === "EXTERNAL" || (agent.kernel === undefined && process.env.DSH_HARNESS === "1")`
-   * —— `agent.kernel === "NATIVE"` 是**运维回退开关**（ROLLOUT §1-c），env 是**部署面开关**。
+   * 今天的行为是 X：判据曾散在三处，表达式把「agent 显式字段」与「进程 env 兜底」并列
+   *（`agent.kernel` 显式优先、字段缺失回落 env；见 `dsh-gov-datacore-credential.seam.test.ts` ④
+   * 的旧口径断言）—— 其中 `agent.kernel` 置 `"NATIVE"` 是**运维回退开关**（ROLLOUT §1-c），
+   * env 是**部署面开关**。⛔ 本注释**不逐字复写**那条已退役的表达式：它会让
+   * 「引擎侧零消费方」的机器判据（该测试 ④ 扫本文件不许出现 `process.env.` 该键）误报成真违规。
    * 应该是 Y（仓主 2026-10-09）：「都改掉，不考虑回退」⇒ 注册 agent 路恒走 DSH，
    * 两个开关都不再是判据；唯一例外是测试专用装配位（见 `EngineDeps.agentKernelRuntime` 头注三条判据）。
    *
