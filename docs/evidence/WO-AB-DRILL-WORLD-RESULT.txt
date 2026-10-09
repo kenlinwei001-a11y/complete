@@ -1,0 +1,30 @@
+=== WO-DRILL-WORLD 落地结果（2026-10-09）===
+
+### 改动（5 处锚点，build rc=0，PID 换代核实）
+  ① app.ts:4143 后 —— 建 drillWorld（createSimSessionWorld + baseSnapshot=baseState + scope 标 drill）
+  ② :4327 push ⇒ repos.sim.createPerturbation(drillPert)（sessionId 指向 E）
+  ③ :4355 simAdvanceTicks(c, drillWorld, {persist:true})
+  ④ :4385 对照 ⇒ controlState = baseState（§9：普通对话不跑两次）
+  ⑤ 报告加 drillWorldId（编排器入参同步加字段）
+  连带到的一处：appliedStateEffects 原取自 ephemeralPerturbations（已空）⇒ 另立 drillPerts 数组喂它
+
+### 达成（实测）
+  ★ drillWorldId = sims_... 与原会话【不同】⇒ 演习世界独立、可读
+  ✅ 扰动真进了 E：GET …/E/perturbations ⇒ 1 条（simpert_drill_<E>_0 | cell_case.priceShock | mag=2.4 | startTick=1）
+  ✅ 原会话没被碰：GET …/s/perturbations ⇒ 0 条；且 world 逐字节不变（判据2 过）
+
+### ⛔ 未达成（最后一处，已缩到很小）
+  E 的 curTick = 0 ⇒ 【推演没落到 E】
+  ⇒ E 里 cell_case.priceShock 仍 = 2（扰动 startTick=1，而世界停在第 0 拍 ⇒ 未生效）
+  ⇒ 且 worldCellsMoved = 1121 不可信：它拿 advanced.state 与 baseState 比，而 advanced 若是错的，数也就错
+
+### 已排除 / 已知
+  · createSimSessionWorld 的返回是 SimSession（形状对，不是传错类型）
+  · appliedStateEffects[0] = { applied:true, rawMagnitude:30, rangePct:30, observedRange:8, magnitude:2.4, downstream:[] }
+    ⇒ 换算对（2.4 = 30/100 × 8）· observedRange=8 说明 priceShock 【不在】已归位量里（故我加的域全距回落没触发）
+
+### 下一手（判据现成）
+  ① 读 simAdvanceTicks 的 persist 分支：它写不写 session.curTick？写哪张表？
+     （早期只读到它有三条守卫 :2490/:2495/:2499，没读 persist 的落盘段）
+  ② 若它不回写 curTick ⇒ E 的 curTick=0 是【读数口径】问题，世界其实推了 ⇒ 换个读法确认
+  ③ 若它真没跑 ⇒ 看是不是 drillWorld 少了某个 persist 必需的字段（如 status）

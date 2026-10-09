@@ -4136,11 +4136,23 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
      *    表现与「链断了」一模一样。**静默照打是最坏的处置**（用户看到 0 影响，以为料价不影响毛利）。
      */
     const ephemeralPerturbations: Perturbation[] = [];
+    /** ★ WO-DRILL-WORLD：演习的冲击【正常入库】到 drillWorld，不再是 ephemeral。
+     *  保留本数组只为让下游回执（appliedStateEffects / 计数）形状不变 —— 它收集的是
+     *  **同一条对象**，只是目标会话是演习世界而不是原会话。 */
+    const drillPerts: Perturbation[] = [];
     /**
      * 施加前的世界态 —— 幅度要按「该变量在**这个**世界的实测全距」换算，故必须先读一份。
      * ⚠ 只读，不 `putTickState`（R4-sim ①：演习不改世界线）。
      */
     const baseState = await simCurrent(c, s);
+    /* ★ WO-DRILL-WORLD · §9「每次推演就是一次普通对话」
+       演习世界【就是】一个普通会话：baseSnapshot 取 s 的当前态，scope 标明它是谁的演习。
+       ⛔ 不 fork（enterpriseState.fork 只产 EnterpriseState 行、不写世界态 —— 已实测）。
+       ⛔ 全程不写 s.id：被写的从来不是真实世界线，是 drillWorld（R4-sim ① 仍成立）。 */
+    const drillWorld = await createSimSessionWorld(c, {
+      baseSnapshot: baseState,
+      scope: { kind: "drill", ofSessionId: s.id },
+    });
     /** 扰动 id → 它是哪个事件带来的（回执要按事件报，别从 id 里反解字符串）。 */
     const effectEventKind = new Map<string, DrillEvent["kind"]>();
     /** 扰动 id → 回执要的那几格（原始数 / 换算依据 / 落点中文名）。 */
@@ -4324,10 +4336,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         });
         continue;
       }
-      ephemeralPerturbations.push({
-        id: `simpert_drill_${s.id}_${i}`, // 确定性 id（R6：同输入同 id，无随机、无时钟）
+      const drillPert = {
+        id: `simpert_drill_${drillWorld.id}_${i}`, // 确定性 id（R6：同输入同 id，无随机、无时钟）
         tenantId: c.tenantId,
-        sessionId: s.id,
+        sessionId: drillWorld.id,                  // ★ 落到演习世界（正常入库 ⇒ 来源查得到）
         kind: eff.kind,
         // ⚠ 用**解析后**的对象 id，不是用户传的那个串 —— 用户可能传的是业务键（SO-3391）
         targetObjectId: landed.id,
@@ -4336,11 +4348,13 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         durationTicks: null,
         magnitude: absMagnitude,
         mode: eff.mode,
-        label: `演习临时扰动 · ${ev.kind} ${eff.rangePct > 0 ? "+" : ""}${eff.rangePct}% 全距 = ${absMagnitude > 0 ? "+" : ""}${absMagnitude}（不入库）`,
-        createdAt: s.createdAt, // 借会话的建单时刻：本对象不落盘，且 R6 禁止在此读时钟
-      });
-      effectEventKind.set(`simpert_drill_${s.id}_${i}`, ev.kind);
-      effectReceipt.set(`simpert_drill_${s.id}_${i}`, {
+        label: `演习临时扰动 · ${ev.kind} ${eff.rangePct > 0 ? "+" : ""}${eff.rangePct}% 全距 = ${absMagnitude > 0 ? "+" : ""}${absMagnitude}`,
+        createdAt: s.createdAt, // 借原会话的建单时刻（R6 禁止在此读时钟）
+      };
+      await repos.sim.createPerturbation(drillPert);
+      drillPerts.push(drillPert);
+      effectEventKind.set(`simpert_drill_${drillWorld.id}_${i}`, ev.kind);
+      effectReceipt.set(`simpert_drill_${drillWorld.id}_${i}`, {
         rawMagnitude: eff.rawMagnitude,
         magnitudeBasis: eff.basis,
         targetLabel: landed.label,
@@ -4352,7 +4366,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
 
     // ── ② 传导引擎：推 ceil(horizonDays / tickDays) 拍（**不落盘**）──────────
     const activeRules = (await sessionPropRules(c, s)).active;
-    const advanced = await simAdvanceTicks(c, s, { rules: activeRules, n: ticks, persist: false, ephemeralPerturbations });
+    const advanced = await simAdvanceTicks(c, drillWorld, { rules: activeRules, n: ticks, persist: true });
 
     /**
      * **「你加的这几件事，到底改动了世界上多少格」—— 实测，不是声明**（WO-EVENTS-WRITE-STATE）。
@@ -4373,13 +4387,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     let worldCellsTotal = 0;
     /** 对照世界（**不带**这批冲击）的终态 —— 下面第 ③ 步还要拿它算「结论变了几条」。 */
     let controlState: TickState | null = null;
-    if (ephemeralPerturbations.length > 0) {
-      const control = await simAdvanceTicks(c, s, { rules: activeRules, n: ticks, persist: false, ephemeralPerturbations: [] });
-      controlState = control.state;
-      const ids = new Set([...Object.keys(advanced.state), ...Object.keys(control.state)]);
+    if (effectReceipt.size > 0) {
+      /* ★ §9：普通对话不跑两次。「这批事件改了多少格」= 演习世界 t0 态 vs 终态。
+         ⛔ 不再用「同会话再跑一次、扰动清空」—— 那既多跑一遍，又与 drillWorld 不可比。 */
+      controlState = baseState;
+      const ids = new Set([...Object.keys(advanced.state), ...Object.keys(baseState)]);
       for (const oid of ids) {
         const a = advanced.state[oid] ?? {};
-        const b = control.state[oid] ?? {};
+        const b = baseState[oid] ?? {};
         for (const sv of new Set([...Object.keys(a), ...Object.keys(b)])) {
           worldCellsTotal++;
           if (a[sv] !== b[sv]) worldCellsMoved++;
@@ -4460,7 +4475,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       events: body.events,
       horizonDays: body.horizonDays,
       tickDays: s.tickDays ?? 1,
-      worldId: s.id,
+      worldId: s.id,                       // 保持（兼容）：这是【谁的】会话
+      drillWorldId: drillWorld.id,         // ★ 这次演习【实际推演】的那个会话
       forkedFromStateId,
       scanFindings: [...scanFindings, ...stateEffectFindings],
       /**
@@ -4468,7 +4484,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
        * 不是「路由这边构造了这条对象所以算打上了」。这两者的区别就是本单栽的那一跤：
        * 相位差一位时路由照样构造得出对象，而引擎一格都没打，屏上完全看不出来。
        */
-      appliedStateEffects: ephemeralPerturbations.map((p) => ({
+      appliedStateEffects: drillPerts.map((p) => ({
         eventKind: effectEventKind.get(p.id)!,
         targetObjectId: p.targetObjectId,
         targetStateVar: p.targetStateVar,

@@ -56,6 +56,12 @@ export interface DrillOrchestrateInput {
   tickDays: number;
   worldId: string;
   forkedFromStateId: string | null;
+  /**
+   * 这次演习**实际推演**的那个会话（WO-DRILL-WORLD · §9「每次推演就是一次普通对话」）。
+   * `worldId` 答「这是谁的会话」，本字段答「演习写进了哪个世界」—— 两者今天**不是同一个**
+   * （演习建自己的普通会话，原会话全程不被写）。⛔ 编排器只透传，不推断。
+   */
+  drillWorldId?: string;
   invokeSolver: DrillSolverInvoker;
   /** 传导引擎扫出来的那批（G-DRILL-2 的产物），与求解器那批合并成一张清单。 */
   scanFindings?: readonly DrillFinding[];
@@ -576,7 +582,7 @@ function unevaluated(
  * 传导引擎那一半（`scanFindings`）由调用方先跑好注入 —— 两半在这里合流。
  */
 export async function orchestrateDrill(input: DrillOrchestrateInput): Promise<DrillReport> {
-  const { events, horizonDays, tickDays, worldId, forkedFromStateId, invokeSolver } = input;
+  const { events, horizonDays, tickDays, worldId, forkedFromStateId, drillWorldId, invokeSolver } = input;
   const findings: DrillFinding[] = [...(input.scanFindings ?? [])];
   const solverRuns: DrillReport["solverRuns"] = [];
 
@@ -708,6 +714,7 @@ export async function orchestrateDrill(input: DrillOrchestrateInput): Promise<Dr
 
   return {
     worldId,
+    ...(drillWorldId === undefined ? {} : { drillWorldId }),
     forkedFromStateId,
     horizonDays,
     tickDays,
