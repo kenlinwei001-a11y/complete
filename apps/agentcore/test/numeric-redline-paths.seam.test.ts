@@ -278,7 +278,9 @@ describe("§4 Coordinator 路 · 交付出口的数字红线据实判定", () =>
   it("4.2 ★ 引擎级真跑：交付面上真有「指不出出处的数字」时，诚实标必须是 true（修前是 false）", async () => {
     const t: TestApp = await createTestApp();
     t.deps.features.mock.set(TENANT, [...defaultOnKeys(), "agent.coordinator"]);
-    for (const ag of seedRegistry().agents) if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert(ag);
+    // WO-ALL-AGENTS-DSH：出厂内核缺省自本单起 = `"EXTERNAL"`，本测试环境无 dsh harness /
+    // stub provider（本文件验的是**数字红线在交付出口的据实判定**，不是内核）⇒ 钉回 `"NATIVE"`。
+    for (const ag of seedRegistry().agents) if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert({ ...ag, kernel: "NATIVE" });
     // 分类器域外 ⇒ 合法进入 Coordinator（门序见 coordinator-a2a 的 D1 说明）。
     t.llm.queueClassification({ candidates: [], outOfCatalog: true, extractedSlots: {} });
     // 供应链：答里带裸数；生产：答里带一个指向**它自己**那张 provenance 的 ⟦ref:0⟧；质量：零数字。

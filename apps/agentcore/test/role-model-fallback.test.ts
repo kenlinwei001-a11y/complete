@@ -139,7 +139,9 @@ function makeRouting(): { llm: RoutingLlmClient; directory: DataCoreProviderDire
 
 async function seedAgents(t: TestApp): Promise<void> {
   for (const ag of seedRegistry().agents) {
-    if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert(ag);
+    // WO-ALL-AGENTS-DSH：出厂内核缺省自本单起 = `"EXTERNAL"`，本文件验的是 **native 路的
+    // provider 回落**（模型解析）⇒ 显式钉 `"NATIVE"`，否则角色 agent 会被 DSH 臂接管（另一条路）。
+    if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert({ ...ag, kernel: "NATIVE" });
   }
 }
 

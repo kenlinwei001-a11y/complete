@@ -225,19 +225,22 @@ describe("WO-AGENT-DSH-DEFAULT · DSH 治理带外通道 → DataCore 凭据接�
     }
   });
 
-  it("③ 出厂 seed agent 默认不带 kernel（**唯一例外**：通用 agent 显式 EXTERNAL）⇒ 出厂默认仍落 NATIVE", () => {
+  it("③ 出厂 seed agent **逐个**显式带 kernel，且全部 EXTERNAL（仓主 2026-10-09 口径）", () => {
     const { agents } = seedRegistry();
-    // 金丝雀：种子 agent 真的抽出来了（0 条时「没有 EXTERNAL」是空真理，不是结论）。
+    // 金丝雀：种子 agent 真的抽出来了（0 条时「没有漏网」是空真理，不是结论）。
     expect(agents.length).toBeGreaterThan(0);
     expect(agents.map((a) => a.key).includes("analyst")).toBe(true);
-    // 本体：除通用 agent 外零个显式 kernel ⇒ 分叉守卫必落 `agent.kernel === undefined` 那一支，
-    // 再回落 `process.env.DSH_HARNESS`（出货 compose 显式 `${DSH_HARNESS:-0}`）⇒ 全 NATIVE。
-    // ⚠ WO-GENERAL-AGENT-DSH（2026-10-08）改口径：**恰好一个** agent 显式带 kernel ——
-    //   通用 agent（`general`）带 `kernel:"EXTERNAL"`，那是**per-agent 配置面**（本仓铁律：
-    //   内核走配置，不翻部署面 flag），**不是**把出厂默认翻成 DSH。断言因此改成「名单相等」：
-    //   多的（别人也带 kernel）与少的（通用 agent 的显式位被抹掉）都会红。
-    expect(agents.filter((a) => a.kernel !== undefined).map((a) => a.key)).toEqual([GENERAL_AGENT_KEY]);
-    expect(agents.find((a) => a.key === GENERAL_AGENT_KEY)?.kernel).toBe("EXTERNAL");
+    // 本体（WO-ALL-AGENTS-DSH 改口径 · 取代 WO-GENERAL-AGENT-DSH 的「恰好一个」）：
+    // 出厂面上**每一个** agent 都显式声明内核，且全部 = `"EXTERNAL"`（外部运行时）。
+    // 判据分两句，缺一句就漏一种错：
+    //   ① 带字段的名单 == 全体名单 ⇒ 谁把字段漏了（落回 `agent.kernel === undefined` ⇒ 回落部署面
+    //      env `DSH_HARNESS`，即「内核由部署开关决定」）当场红；
+    //   ② 逐条值 == EXTERNAL ⇒ 谁把某个 agent 悄悄钉回 NATIVE 也当场红。
+    // ⚠ 仍是**配置面**决定内核：engine 的分叉守卫与 `process.env.DSH_HARNESS` 一个字节没动
+    //   （`check-dsh-dormancy.mjs` D1/D3 守着的就是它，本文件 ④ 另测）。
+    expect(agents.filter((a) => a.kernel !== undefined).map((a) => a.key).sort()).toEqual(agents.map((a) => a.key).sort());
+    for (const a of agents) expect(a.kernel, `出厂 agent「${a.key}」内核不是 EXTERNAL`).toBe("EXTERNAL");
+    expect(agents.find((a) => a.key === GENERAL_AGENT_KEY)?.kernel, "通用 agent 的显式位被抹掉").toBe("EXTERNAL");
   });
 
   it("④ `cfg.DSH_HARNESS` 在 src 侧零消费方 ⇒ 改 config.ts 的 zod 缺省**翻不动**分叉（方案 A 是空操作）", () => {

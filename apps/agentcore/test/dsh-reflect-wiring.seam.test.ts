@@ -40,7 +40,9 @@ import { DEV_JARGON, GAP_HEADER, MODEL_GAP_HEADER } from "./reflect-jargon.js";
 /** 把 seed 注册表 agents 灌入测试 repos（helpers 默认只种 package/intents/plans）。与 coordinator-a2a 同款。 */
 async function seedAgents(t: TestApp): Promise<void> {
   for (const ag of seedRegistry().agents) {
-    if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert(ag);
+    // WO-ALL-AGENTS-DSH：出厂内核缺省自本单起 = `"EXTERNAL"`，本测试环境无 dsh harness /
+    // stub provider（本文件验的是**复盘接线与上屏用语**，不是内核）⇒ 钉回 `"NATIVE"`。
+    if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert({ ...ag, kernel: "NATIVE" });
   }
 }
 

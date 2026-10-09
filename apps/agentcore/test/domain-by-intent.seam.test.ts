@@ -56,7 +56,9 @@ function classified(domainRole: string | null | undefined, reason?: string): Cla
 
 async function seedAgents(t: TestApp): Promise<void> {
   for (const ag of seedRegistry().agents) {
-    if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert(ag);
+    // WO-ALL-AGENTS-DSH：出厂内核缺省自本单起 = `"EXTERNAL"`，而本测试环境无 dsh harness /
+    // stub provider（本文件验的是**域归属路由**与围栏，不是内核）⇒ 显式钉回 `"NATIVE"`。
+    if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert({ ...ag, kernel: "NATIVE" });
   }
 }
 

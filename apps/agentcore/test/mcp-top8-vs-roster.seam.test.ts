@@ -120,7 +120,9 @@ async function runOnce(
   idSuffix: string,
 ): Promise<{ roster: string[]; granted: string[]; allToolNames: string[] }> {
   const def = { ...agent, id: `${agent.id}__${idSuffix}` };
-  await t.repos.agents.insert({ ...def, tenantId: TENANT });
+  // WO-ALL-AGENTS-DSH：出厂内核缺省自本单起 = `"EXTERNAL"`，本测试环境无 dsh harness /
+  // stub provider（本文件验的是**广告面 ⊆ 可调用面**的 top-k 收窄，不是内核）⇒ 钉回 `"NATIVE"`。
+  await t.repos.agents.insert({ ...def, tenantId: TENANT, kernel: "NATIVE" });
   for (const c of seedMcpConfigs()) if (!(await t.repos.mcpConfigs.get(c.id))) await t.repos.mcpConfigs.insert(c);
   stubRegistry(t, grantedFilterOf(agent).map((n) => n.replace(/^mcp__solvers__/, "")));
   t.llm.queueAgentTurn(() => ({

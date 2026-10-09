@@ -108,7 +108,9 @@ describe("WO-ROUTE-1 · 多角色路径旁白**带角色标识**（E9 的第二�
   it("Coordinator 扇出：每条 agent_narration 带 role/roleLabel/agentId·stepId 各角色不互撞·≥2 个不同角色发过声", async () => {
     const t: TestApp = await createTestApp();
     t.deps.features.mock.set(TENANT, DEMO_PROD_FEATURES);
-    for (const ag of seedRegistry().agents) if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert(ag);
+    // WO-ALL-AGENTS-DSH：出厂内核缺省自本单起 = `"EXTERNAL"`（外部运行时），本测试环境没有
+    // dsh harness / stub provider（本用例验的是**旁白带角色标识**，不是内核）⇒ 显式钉回 `"NATIVE"`。
+    for (const ag of seedRegistry().agents) if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert({ ...ag, kernel: "NATIVE" });
     // ★ WO-COORD-YIELD-AND-TERMINAL D1（门序变更）：Coordinator 已移到 classify **之后**（兜底）→
     //   本用例改喂一份**域外**分类结果来合法进入多角色路径。本用例咬的是「旁白带角色标识」（E9），
     //   与"Coordinator 何时被叫来"无关 —— 那些断言一字未动。
