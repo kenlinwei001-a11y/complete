@@ -59,7 +59,9 @@ async function seedAgents(t: TestApp): Promise<void> {
     // stub provider（本文件验的是**记账**，不是内核）⇒ 不播它，走旧探索路（正是本单保留的降级支）。
     // 通用 agent 的落点/内核/目录面由 `general-agent-dsh.seam.test.ts` 覆盖。
     if (ag.key === GENERAL_AGENT_KEY) continue;
-    if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert(ag);
+    // WO-ALL-AGENTS-DSH：出厂内核缺省自本单起对**所有** agent = `"EXTERNAL"` ⇒ 同理由钉回 `"NATIVE"`
+    // （本文件验的是记账出口，内核面由本单的验收覆盖）。
+    if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert({ ...ag, kernel: "NATIVE" });
   }
 }
 

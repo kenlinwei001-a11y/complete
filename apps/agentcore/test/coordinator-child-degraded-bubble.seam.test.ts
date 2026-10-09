@@ -66,7 +66,9 @@ function queueNormalTurns(t: TestApp, objectType: string, markdown: string): voi
 async function arrangeCoordinator(t: TestApp): Promise<void> {
   t.deps.features.mock.set(TENANT, [...defaultOnKeys(), "agent.coordinator"]);
   for (const ag of seedRegistry().agents) {
-    if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert(ag);
+    // WO-ALL-AGENTS-DSH：出厂内核缺省自本单起 = `"EXTERNAL"`，本测试环境无 dsh harness /
+    // stub provider（本文件验的是**子 agent 降级冒泡**，不是内核）⇒ 钉回 `"NATIVE"`。
+    if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert({ ...ag, kernel: "NATIVE" });
   }
   t.llm.queueClassification(OUT_OF_CATALOG);
 }
