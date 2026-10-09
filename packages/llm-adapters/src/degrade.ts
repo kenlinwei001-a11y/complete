@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ClassifierParseError } from "./anthropic.js";
 import { harvestClassificationSlots, reportUnconsumedSlots } from "./slot-harvest.js";
+import { DOMAIN_REASON_FIELD, DOMAIN_ROLE_FIELD, readDomainReason, readDomainRole } from "./domain-role.js";
 import { describeJsonDefect, parseLlmJson, reportJsonRepairs } from "./json-repair.js";
 import type { CompletionResp, CompletionReq, ParseReq, RawClassification } from "./types.js";
 
@@ -100,6 +101,9 @@ export async function parseWithJsonModeDegradation<T>(client: Completer, req: Pa
 const ClassificationEnvelopeSchema = z.looseObject({
   candidates: z.array(z.looseObject({ intentKey: z.string(), confidence: z.number() })).max(3),
   outOfCatalog: z.boolean(),
+  // WO-DOMAIN-BY-INTENT：意图所属域（域 key 由 system 提示的域目录给出；空串/ null = 判不出域）。
+  [DOMAIN_ROLE_FIELD]: z.string().nullable().optional(),
+  [DOMAIN_REASON_FIELD]: z.string().optional(),
 });
 
 /** 分类调用点的 JSON-mode 降级（L3）：失败语义 = ClassifierParseError → 既有路径 B。 */
@@ -122,5 +126,7 @@ export async function classifyWithJsonModeDegradation(
     candidates: out.candidates.map((c) => ({ intentKey: c.intentKey, confidence: c.confidence })),
     outOfCatalog: out.outOfCatalog,
     extractedSlots: harvest.slots,
+    domainRole: readDomainRole(out),
+    domainReason: readDomainReason(out),
   };
 }

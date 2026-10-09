@@ -18,6 +18,18 @@ export interface RawClassification {
   candidates: { intentKey: string; confidence: number }[];
   outOfCatalog: boolean;
   extractedSlots: Record<string, unknown>;
+  /**
+   * WO-DOMAIN-BY-INTENT · 意图所属**域**（域目录 key，如 `supply-chain` / `production` / `quality`）。
+   * 三态：`string`=分析判定属于该域；`null`=分析判定**判不出域**；`undefined`=**没有这份分析**（模型未吐/老结果）。
+   * ⇒ 调用侧据此选角色 agent；`undefined` 时落既有关键词兜底（关键词表降为金丝雀）。
+   * 域 key 的合法集不在此层（本包不认识业务域名）——由调用侧按既有角色目录判。
+   */
+  domainRole?: string | null;
+  /**
+   * WO-DOMAIN-BY-INTENT · 域判断的**理由**（模型给的一句）：两个域都沾边的模糊问句据此可见
+   * 「为什么选了它 / 为什么都不选」——⛔ 不许静默任选。判不出域时**也应**给（说明为何都不适用）。
+   */
+  domainReason?: string;
 }
 
 export type LlmContentBlock =
