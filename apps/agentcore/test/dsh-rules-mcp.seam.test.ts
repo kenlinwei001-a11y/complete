@@ -429,7 +429,9 @@ describe("WO-AGENT-CONFIG-TO-DSH · C 组：规则面三面同改 + 只剩一条
     expect(hostNames, "反向工具面不许有规则").not.toContain(FULL);
     expect(hostNames, "反向工具面不许有裸名规则").not.toContain(RAW);
     // 金丝雀：反向工具面**没有空掉**（否则上面两条 not.toContain 对空实现恒真）
-    expect(hostNames).toContain("query_objects");
+    // ⚠ WO-BUILTIN-TO-DSH：金丝雀原锚 `query_objects` 已改挂内置工具 MCP 面（`mcp__builtin__*`）
+    // ⇒ 改用同批**未迁**的 analyst 内置工具 `get_object`（它仍是裸 BUILTIN 授予）。
+    expect(hostNames).toContain("get_object");
     expect(hostNames.length).toBeGreaterThan(0);
     // MCP 面：真 server spec + toolAllowlist 收窄到一件；按 serverName 取，⛔ 不按下标
     const rulesServer = spec.mcpServers?.find((m) => m.serverName === RULES_MCP_SERVER);
