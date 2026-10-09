@@ -58,7 +58,9 @@ async function routeOne(c: PhrasingCase): Promise<Outcome> {
   //（本文件验的是**措辞鲁棒性**与**探索题可达性**）⇒ 不播它，落回旧探索路（本单保留的降级支）。
   for (const ag of seedRegistry().agents) {
     if (ag.key === GENERAL_AGENT_KEY) continue;
-    if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert(ag);
+    // WO-ALL-AGENTS-DSH：出厂内核缺省自本单起对**所有** agent = `"EXTERNAL"`（此前只有通用 agent），
+    //   本测试环境无 dsh harness / stub provider ⇒ 显式钉回 `"NATIVE"`（本文件验的是措辞鲁棒性，不是内核）。
+    if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert({ ...ag, kernel: "NATIVE" });
   }
   // 语义层理想态：分类器恒判对（本门不考核 LLM，只考核它前面那 10 道门有没有抢答抢错）。
   t.llm.queueClassification({
@@ -156,7 +158,9 @@ describe("场景启动器 · 过程可见接缝门（旁白须在每条 agent �
     //（本文件验的是**措辞鲁棒性**与**探索题可达性**）⇒ 不播它，落回旧探索路（本单保留的降级支）。
     for (const ag of seedRegistry().agents) {
       if (ag.key === GENERAL_AGENT_KEY) continue;
-      if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert(ag);
+      // WO-ALL-AGENTS-DSH：出厂内核缺省自本单起对**所有** agent = `"EXTERNAL"`（此前只有通用 agent），
+    //   本测试环境无 dsh harness / stub provider ⇒ 显式钉回 `"NATIVE"`（本文件验的是措辞鲁棒性，不是内核）。
+    if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert({ ...ag, kernel: "NATIVE" });
     }
     if (opts.outOfCatalog) t.llm.queueClassification({ candidates: [], outOfCatalog: true, extractedSlots: {} });
     for (let i = 0; i < 12; i++) {
@@ -225,7 +229,9 @@ describe("场景启动器 · 探索型推演接缝门（16 条真开放题）", 
       //（本文件验的是**措辞鲁棒性**与**探索题可达性**）⇒ 不播它，落回旧探索路（本单保留的降级支）。
       for (const ag of seedRegistry().agents) {
         if (ag.key === GENERAL_AGENT_KEY) continue;
-        if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert(ag);
+        // WO-ALL-AGENTS-DSH：出厂内核缺省自本单起对**所有** agent = `"EXTERNAL"`（此前只有通用 agent），
+    //   本测试环境无 dsh harness / stub provider ⇒ 显式钉回 `"NATIVE"`（本文件验的是措辞鲁棒性，不是内核）。
+    if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert({ ...ag, kernel: "NATIVE" });
       }
       // 真开放题：分类器诚实报 outOfCatalog（本体内无对口意图）。
       t.llm.queueClassification({ candidates: [], outOfCatalog: true, extractedSlots: {} });

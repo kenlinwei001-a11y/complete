@@ -58,7 +58,11 @@ async function seedAgents(t: TestApp): Promise<void> {
     // WO-GENERAL-AGENT-DSH：出厂通用 agent 带 `kernel:"EXTERNAL"`，而本测试环境没有 dsh harness/
     // stub provider（本文件验的是**升级阶梯**，不是内核）⇒ 不播它，落回旧探索路（本单保留的降级支）。
     if (ag.key === GENERAL_AGENT_KEY) continue;
-    if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert(ag);
+    // WO-ALL-AGENTS-DSH：出厂内核缺省自本单起对**所有** agent = `"EXTERNAL"`（此前只有通用 agent），
+    // 本测试环境没有 dsh harness / stub provider ⇒ 播进来时显式钉回 `"NATIVE"`（本文件验的是
+    // 升级阶梯，不是内核）。⛔ 这不是「绕过内核配置」：显式值本就优先于出厂缺省，运维回退
+    // （ROLLOUT §1-c）走的就是同一条 `agent.kernel = "NATIVE"`。
+    if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert({ ...ag, kernel: "NATIVE" });
   }
 }
 
