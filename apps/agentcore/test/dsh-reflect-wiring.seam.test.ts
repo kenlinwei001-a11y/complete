@@ -31,6 +31,9 @@
 import { describe, expect, it } from "vitest";
 import { createTestApp, submitQuery, waitForTask, lastToolCallId, ADMIN, TENANT, type TestApp } from "./helpers.js";
 import { text, toolUse } from "../src/llm/mock.js";
+// WO-BUILTIN-TO-DSH · 出厂 agent 的内置工具已改挂 DSH 原生 MCP 面 ⇒ 模型面调用名 = 全名
+// （剧本里的工具调用必须用**模型面真名**，否则会被自家 scope 门拒 —— 那是探针写错，不是产品行为）。
+import { builtinMcpToolName } from "../src/mcp/builtin-mcp.js";
 import { defaultOnKeys } from "../src/features/registry.js";
 import { seedRegistry } from "../src/mocks/seed.js";
 // 上屏标题 / 开发术语禁表 —— 与另两个 reflect 测试**共用单一来源**（各抄一份即装饰品）。
@@ -75,7 +78,7 @@ async function runRegisteredAgent(withCritic: boolean) {
   await seedAgents(t);
   t.llm.queueClassification({ candidates: [], outOfCatalog: true, extractedSlots: {} });
   t.llm.queueAgentTurn(
-    () => ({ content: [text("先查物料。"), toolUse("query_objects", { objectType: "Material", filter: {} })] }),
+    () => ({ content: [text("先查物料。"), toolUse(builtinMcpToolName("query_objects"), { objectType: "Material", filter: {} })] }),
     // 第 1 次收尾：不过关 ⇒ 原生路第一支「回注 reasons + 有界重规划一轮」
     badFinalTurn,
     // 第 2 次收尾：不过关且 replan 预算已尽 ⇒ 第二支「诚实收尾」（追加残余缺口块）
@@ -172,7 +175,7 @@ describe("WO-DSH-REFLECT-PARITY · §2 ④ 在真实注入语料下会不会误�
     await seedAgents(t);
     t.llm.queueClassification({ candidates: [], outOfCatalog: true, extractedSlots: {} });
     t.llm.queueAgentTurn(
-      () => ({ content: [text("先查物料。"), toolUse("query_objects", { objectType: "Material", filter: {} })] }),
+      () => ({ content: [text("先查物料。"), toolUse(builtinMcpToolName("query_objects"), { objectType: "Material", filter: {} })] }),
       cleanFinalTurn,
       cleanFinalTurn, // 若 ④ 咬住且重规划一轮仍不过关，第二次收尾会走「诚实收尾」支
     );

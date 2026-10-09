@@ -12,6 +12,8 @@ import {
 } from "../src/mocks/seed.js";
 import { BUILTIN_TOOLS } from "../src/tools/registry.js";
 import { ONTOLOGY_MCP_TOOL_NAMES } from "../src/tools/ontology-mcp.js";
+// WO-BUILTIN-TO-DSH · 内置工具 MCP 面全名（模型面调用名；禁手抄字面量）。
+import { builtinMcpToolName } from "../src/mcp/builtin-mcp.js";
 import { detectSingleRole } from "../src/router/coordinator.js";
 import { defaultOnKeys } from "../src/features/registry.js";
 import { BudgetTracker } from "../src/tools/budget.js";
@@ -225,9 +227,12 @@ describe("WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核）
     const probeType = typeKeys.includes("Material") ? "Material" : typeKeys[0]!;
     expect(probeType).toBeTruthy();
 
-    /** engine 级真跑一次（native 内核），读一个对象类型，返回该次工具调用的审计输出。 */
+    /** engine 级真跑一次（native 内核），读一个对象类型，返回该次工具调用的审计输出。
+     * ⚠ WO-BUILTIN-TO-DSH：模型面（= 调用名）是 **MCP 全名** `mcp__builtin__query_objects`
+     * （出厂 agent 的内置工具已改挂 DSH 原生 MCP 面）；审计行名仍是**裸名**（executor 的门后
+     * 归一）—— 下面 `c.toolName === "query_objects"` 的取法因此原样成立，顺带钉住这条归一。 */
     const readOnce = async (agentId: string, taskId: string, type = probeType): Promise<string> => {
-      t.llm.queueAgentTurn({ content: [toolUse("query_objects", { objectType: type, filter: {} })] });
+      t.llm.queueAgentTurn({ content: [toolUse(builtinMcpToolName("query_objects"), { objectType: type, filter: {} })] });
       t.llm.queueAgentTurn({ content: [toolUse("final_answer", { blocks: [{ type: "text", markdown: "读毕。" }], provenance: [] })] });
       await t.deps.engine.runRegisteredAgent({
         taskId,

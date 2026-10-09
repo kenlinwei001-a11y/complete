@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { createTestApp, submitQuery, waitForTask, ADMIN, TENANT, type TestApp } from "./helpers.js";
 import { text, toolUse } from "../src/llm/mock.js";
+// WO-BUILTIN-TO-DSH · 出厂 agent 的内置工具已改挂 DSH 原生 MCP 面 ⇒ 剧本必须用**模型面真名**
+// （全名；审计行仍是裸名 —— 用例里那些 `toolName === "query_objects"` 的取法不用改）。
+import { builtinMcpToolName } from "../src/mcp/builtin-mcp.js";
 import { defaultOnKeys } from "../src/features/registry.js";
 import { planCoordination, detectSingleRole, synthesize } from "../src/router/coordinator.js";
 import { GENERAL_AGENT_KEY, seedRegistry, roleProfile } from "../src/mocks/seed.js";
@@ -104,19 +107,19 @@ describe("WO-FIVE-ROLE P1 · SEAM 跨域真拆→invoke_agent 真调 ≥2 角色
     // routed mock：三角顺序 supply-chain → production → quality（AGENT_ROLE_ORDER 固定序）。
     // 供应链 agent：query Material（其 scope 内·OK）→ query Line（越界·被拒）→ final_answer。
     t.llm.queueAgentTurn(
-      () => ({ content: [text("查物料齐套。"), toolUse("query_objects", { objectType: "Material", filter: {} })] }),
-      () => ({ content: [text("越权探生产线。"), toolUse("query_objects", { objectType: "Line", filter: {} })] }),
+      () => ({ content: [text("查物料齐套。"), toolUse(builtinMcpToolName("query_objects"), { objectType: "Material", filter: {} })] }),
+      () => ({ content: [text("越权探生产线。"), toolUse(builtinMcpToolName("query_objects"), { objectType: "Line", filter: {} })] }),
       () => ({ content: [toolUse("final_answer", { blocks: [{ type: "text", markdown: "物料存在缺口：正极粉短缺，齐套受阻。" }], provenance: [] })] }),
     );
     // 生产 agent：query Line（其 scope 内·OK）→ query Material（越界·被拒）→ final_answer。
     t.llm.queueAgentTurn(
-      () => ({ content: [text("查产线产能。"), toolUse("query_objects", { objectType: "Line", filter: {} })] }),
-      () => ({ content: [text("越权探物料。"), toolUse("query_objects", { objectType: "Material", filter: {} })] }),
+      () => ({ content: [text("查产线产能。"), toolUse(builtinMcpToolName("query_objects"), { objectType: "Line", filter: {} })] }),
+      () => ({ content: [text("越权探物料。"), toolUse(builtinMcpToolName("query_objects"), { objectType: "Material", filter: {} })] }),
       () => ({ content: [toolUse("final_answer", { blocks: [{ type: "text", markdown: "产能可承接，化成工序有瓶颈但排程可覆盖。" }], provenance: [] })] }),
     );
     // 质量 agent：query Process（其 scope 内·OK）→ final_answer。
     t.llm.queueAgentTurn(
-      () => ({ content: [text("查工序良率。"), toolUse("query_objects", { objectType: "Process", filter: {} })] }),
+      () => ({ content: [text("查工序良率。"), toolUse(builtinMcpToolName("query_objects"), { objectType: "Process", filter: {} })] }),
       () => ({ content: [toolUse("final_answer", { blocks: [{ type: "text", markdown: "良率稳定达标，无异常波动。" }], provenance: [] })] }),
     );
 
@@ -172,11 +175,11 @@ describe("WO-FIVE-ROLE P1 · SEAM 跨域真拆→invoke_agent 真调 ≥2 角色
     // WO-COORD-YIELD-AND-TERMINAL D1：同上——经「分类器域外」合法进入 Coordinator（scope 断言本体不动）。
     t.llm.queueClassification({ candidates: [], outOfCatalog: true, extractedSlots: {} });
     t.llm.queueAgentTurn(
-      () => ({ content: [text("查物料。"), toolUse("query_objects", { objectType: "Material", filter: {} })] }),
+      () => ({ content: [text("查物料。"), toolUse(builtinMcpToolName("query_objects"), { objectType: "Material", filter: {} })] }),
       () => ({ content: [toolUse("final_answer", { blocks: [{ type: "text", markdown: "无法取物料，scope 受限。" }], provenance: [] })] }),
     );
     t.llm.queueAgentTurn(
-      () => ({ content: [text("查产线。"), toolUse("query_objects", { objectType: "Line", filter: {} })] }),
+      () => ({ content: [text("查产线。"), toolUse(builtinMcpToolName("query_objects"), { objectType: "Line", filter: {} })] }),
       () => ({ content: [toolUse("final_answer", { blocks: [{ type: "text", markdown: "产能正常。" }], provenance: [] })] }),
     );
     t.llm.queueAgentTurn(
@@ -216,7 +219,7 @@ describe("WO-FIVE-ROLE P1 · C2 path-B 按 role 选对应 agent（单域·非永
     // 无候选意图命中（触发 path-B）——物料齐套问句非既有意图，classifier 落 outOfCatalog → path-B → 角色选择。
     t.llm.queueClassification({ candidates: [], outOfCatalog: true, extractedSlots: {} });
     t.llm.queueAgentTurn(
-      () => ({ content: [text("查物料。"), toolUse("query_objects", { objectType: "Material", filter: {} })] }),
+      () => ({ content: [text("查物料。"), toolUse(builtinMcpToolName("query_objects"), { objectType: "Material", filter: {} })] }),
       () => ({ content: [toolUse("final_answer", { blocks: [{ type: "text", markdown: "物料齐套分析完成。" }], provenance: [] })] }),
     );
     const { taskId } = await submitQuery(t, ADMIN, "帮我看看物料齐套现在到底怎么样", { view: "risk" });

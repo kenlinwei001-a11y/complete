@@ -200,8 +200,16 @@ describe("WO-MCP-TOP8-VS-ROSTER · ②④ >8 个 MCP 工具的 agent：广告面
 
       expect(roster.length, "目录段一行都没抽到 ⇒ 量具没内容可量").toBeGreaterThan(0);
       expect(granted.length, "工具面一个求解器都没授予 ⇒ 前提不成立").toBeGreaterThan(0);
-      // 前提自证：收窄**真的发生了**（MCP 工具面被截到 8；求解器只剩其中的一部分）。
-      expect(allToolNames.filter((n) => n.startsWith("mcp__")).length, "MCP 工具面没被收窄到 top-8 ⇒ 本臂前提不成立").toBe(8);
+      // 前提自证：收窄**真的发生了**（求解器只剩 16 条里的一部分）。
+      // ⚠ WO-BUILTIN-TO-DSH：`allToolNames` 里现在还多一件**不参与 top-k 的内置工具**
+      // （`mcp__builtin__query_objects`，平台内置工具面按构造恒全量注入）⇒ 判据落回
+      // 「**参与收窄的那一面**恰为 top-8」＝全 MCP 面 − 内置面，而不是全 MCP 面 == 8。
+      const builtinFace = allToolNames.filter((n) => n.startsWith("mcp__builtin__"));
+      expect(builtinFace.length, "内置工具面恰一件（豁免不计入 top-k 名额）").toBe(1);
+      expect(
+        allToolNames.filter((n) => n.startsWith("mcp__") && !n.startsWith("mcp__builtin__")).length,
+        "参与收窄的 MCP 工具面没被截到 top-8 ⇒ 本臂前提不成立",
+      ).toBe(8);
       expect(granted.length, "16 条求解器全进了工具面 ⇒ 收窄没生效").toBeLessThan(filterKeys.length);
 
       const d = diff(roster, granted);

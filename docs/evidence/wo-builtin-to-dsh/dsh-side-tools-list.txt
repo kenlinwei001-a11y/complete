@@ -1,0 +1,82 @@
+── DSH 侧 tools/list 原文（真子进程 + 真 MCP 握手；名字一个字都没写死）──
+[
+  {
+    "name": "query_objects",
+    "description": "[MCP·内置] 按对象类型与过滤条件查询本体对象列表。当需要原始业务对象（基地/型号/订单等）数据时调用。limit 上限 200。",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "objectType": {
+          "type": "string"
+        },
+        "filter": {
+          "type": "object"
+        },
+        "limit": {
+          "type": "number",
+          "maximum": 200
+        }
+      },
+      "required": [
+        "objectType",
+        "filter"
+      ]
+    }
+  }
+]
+
+── 全量工具名（25 件，wire 口径 = 裸名）──
+  discover
+  retrieve_knowledge
+  query_ontology
+  query_objects
+  query_system_ontology
+  get_breakpoint
+  impact_of
+  aggregate_objects
+  get_object
+  invoke_solver
+  search_knowledge
+  query_timeseries_agg
+  read_skill_resource
+  search_experience
+  fill_data
+  run_synthetic
+  build_domain
+  sim_init
+  sim_tick
+  sim_world
+  sim_certify
+  create_action_draft
+  discover_growth_tickets
+  claim_growth_ticket
+  submit_growth_ticket
+
+── 注册后的模型面全名（harness publicToolName = mcp__{serverName}__{rawName}）──
+  mcp__builtin__discover
+  mcp__builtin__retrieve_knowledge
+  mcp__builtin__query_ontology
+  mcp__builtin__query_objects
+  mcp__builtin__query_system_ontology
+  mcp__builtin__get_breakpoint
+  mcp__builtin__impact_of
+  mcp__builtin__aggregate_objects
+  mcp__builtin__get_object
+  mcp__builtin__invoke_solver
+  mcp__builtin__search_knowledge
+  mcp__builtin__query_timeseries_agg
+  mcp__builtin__read_skill_resource
+  mcp__builtin__search_experience
+  mcp__builtin__fill_data
+  mcp__builtin__run_synthetic
+  mcp__builtin__build_domain
+  mcp__builtin__sim_init
+  mcp__builtin__sim_tick
+  mcp__builtin__sim_world
+  mcp__builtin__sim_certify
+  mcp__builtin__create_action_draft
+  mcp__builtin__discover_growth_tickets
+  mcp__builtin__claim_growth_ticket
+  mcp__builtin__submit_growth_ticket
+
+判定：query_objects 在 DSH 侧工具表；模型可见名 = mcp__builtin__query_objects

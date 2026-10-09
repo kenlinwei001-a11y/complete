@@ -44,6 +44,8 @@ import { enterNesting } from "../src/runtime.js";
 import type { ToolAuthCtx } from "../src/tools/clients.js";
 import { buildSessionSetup } from "../src/dsh-runtime/setup-spec.js";
 import { buildOntologyMcpTools, ONTOLOGY_MCP_DESC_PREFIX } from "../src/tools/ontology-mcp.js";
+// WO-BUILTIN-TO-DSH · 内置工具 MCP 面的全名拼接（本文件新增的金丝雀用它，禁手抄字面量）。
+import { builtinMcpToolName } from "../src/mcp/builtin-mcp.js";
 import { buildExploratoryTools } from "../src/router/orchestrator.js";
 import {
   WORKFLOW_MCP_CONFIG_ID,
@@ -563,8 +565,20 @@ describe("RESOURCE-REACH · A 授予面契约（seed → expandAgentTools → se
     expect(wfGrants[0]!.description.startsWith(WORKFLOW_MCP_DESC_PREFIX), "workflow 描述前缀 = MCP 广告前缀").toBe(true);
     expect(hostNames, "BUILTIN 面不串入 workflow").not.toContain(SEED_WF_TOOL);
     // ⑩ 金丝雀：整表没空掉 —— 其余出厂授予仍在（否则上面所有 not.toContain 对空实现恒真）
-    expect(hostNames).toContain("query_objects");
-    expect(allow).toContain("query_objects");
+    // ⚠ WO-BUILTIN-TO-DSH：本 agent（capacity_planner）的内置工具 `query_objects` 已改挂
+    //    内置工具 MCP 面 ⇒ 它的**反向工具面本来就空了**（结构性事实，不是数据缺失），
+    //    故金丝雀改成两半：① 本 agent 的允许表（MCP 面）没空掉；
+    //    ② 旧载体仍活 —— 同批**未迁**的 analyst 仍有裸 BUILTIN 授予（`get_object` 走反向通道）。
+    expect(hostNames, "本 agent 反向工具面：内置工具已全走 MCP 面 ⇒ 结构性为空").toEqual([]);
+    expect(allow, "允许表没空掉（MCP 面仍在）").toContain(SLICE_PLAN_MCP);
+    expect(allow).toContain(SEED_WF_TOOL);
+    const analystSeed = seedRegistry().agents.find((a) => a.id === "agt_seed_analyst");
+    if (!analystSeed) throw new Error("seed analyst not found");
+    const other = await setupFromSeedAgent({ ...analystSeed, kernel: "EXTERNAL" } as AgentDefinition);
+    expect(
+      (other.spec.hostTools ?? []).map((x) => x.name),
+      "旧载体金丝雀：未迁工具仍在反向工具面（analyst 的 get_object）",
+    ).toContain("get_object");
   });
 
   it("A2 对照（把 MCP 授予拿掉）：展开面 / 允许表 / mcpServers **三面一起**收缩——这是 D1 变异能红的前提", async () => {
@@ -582,7 +596,20 @@ describe("RESOURCE-REACH · A 授予面契约（seed → expandAgentTools → se
       "本体 server 面也撤（不许「ref 撤了 server 还在」的残缺态）",
     ).not.toContain(ONTOLOGY_SERVER_NAME);
     // 金丝雀：对照不是「整表空掉」——同批其余授予仍在
-    expect((spec.hostTools ?? []).map((x) => x.name)).toContain("query_objects");
+    // ⚠ WO-BUILTIN-TO-DSH：同 A1 ⑩ —— 本 agent 的内置工具已全走 MCP 面，反向工具面结构性为空；
+    // 金丝雀改为「允许表（MCP 面）非空 ∧ 旧载体对未迁工具仍活（analyst 的 get_object）」。
+    const allow = (spec.tools ?? []).map((x) => x.name);
+    // ⚠ 本体那一件**已被本对照拿掉**（上面刚断言过）⇒ 金丝雀落在**不受本对照影响**的两条上：
+    // 内置工具 MCP 面（WO-BUILTIN-TO-DSH）与工作流 MCP 面。
+    expect(allow, "允许表没空掉（MCP 面仍在）").toContain(builtinMcpToolName("query_objects"));
+    expect(allow).toContain(SEED_WF_TOOL);
+    const analystSeed = seedRegistry().agents.find((a) => a.id === "agt_seed_analyst");
+    if (!analystSeed) throw new Error("seed analyst not found");
+    const other = await setupFromSeedAgent({ ...analystSeed, kernel: "EXTERNAL" } as AgentDefinition);
+    expect(
+      (other.spec.hostTools ?? []).map((x) => x.name),
+      "旧载体金丝雀：未迁工具仍在反向工具面（analyst 的 get_object）",
+    ).toContain("get_object");
   });
 });
 

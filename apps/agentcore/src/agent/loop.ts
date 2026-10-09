@@ -18,6 +18,8 @@ import type { BudgetTracker } from "../tools/budget.js";
 import type { GuardedToolExecutor, ToolBinding } from "../tools/executor.js";
 import { builtinTool } from "../tools/registry.js";
 import { enrichProvenance } from "../tools/provenance.js";
+// WO-BUILTIN-TO-DSH · 内置工具 MCP 全名 → 裸名身份归一（截断豁免集按**身份**判，不按载体名）。
+import { resolveBuiltinToolIdentity } from "../mcp/builtin-mcp.js";
 import { scanBlocks } from "../util/numerics.js";
 import { checkJsonSchema } from "../util/jsonschema.js";
 import { reflectAnswer, type ReflectVerdict } from "./reflect.js";
@@ -365,8 +367,18 @@ export const DEFAULT_FINAL_ANSWER_SCHEMA: Record<string, unknown> = {
 
 /** 增量 §1.2：query_timeseries_agg（桶数 ≤120）等自带输出上限的工具不受二次截断影响；
  * read_skill_resource 自带 64KB 文本上限（§3），同样豁免。
- * W8主：导出供 server.ts tool-execute 端点镜像同一豁免集（单源，禁双写）。 */
+ * W8主：导出供 server.ts tool-execute 端点镜像同一豁免集（单源，禁双写）。
+ * ⚠ WO-BUILTIN-TO-DSH：本集是**工具身份**（裸名）集合 —— 调用点一律经
+ * `resolveBuiltinToolIdentity` 归一（内置工具迁到 `mcp__builtin__*` 面之后，模型面/审计面
+ * 都是全名；不归一会让豁免**静默失效**：`query_timeseries_agg` 的输出会被 8KB 二次截断，
+ * 而迁移前的行为是不截断）。同一个归一函数在 loop.ts（原生臂）与 server.ts（DSH 臂）
+ * 两处调用点共用，禁各写一份 `?? block.name` 兜底。 */
 export const TRUNCATION_EXEMPT_TOOLS = new Set(["query_timeseries_agg", "read_skill_resource"]);
+
+/** 截断豁免判据（身份归一后的单点判据；两个内核共用）。 */
+export function isTruncationExemptTool(name: string): boolean {
+  return TRUNCATION_EXEMPT_TOOLS.has(resolveBuiltinToolIdentity(name));
+}
 
 /**
  * WO-AGENT-RUNTIME-S01 · 停滞早停阈值（治病根：workflow_capacity_check DENIED + invoke_solver ERROR + 反复 query_objects
@@ -973,7 +985,9 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
       };
     }
     // §1.2：进入上下文前截断至 8KB（审计已全量入库）；query_timeseries_agg 等豁免二次截断
-    const exempt = TRUNCATION_EXEMPT_TOOLS.has(block.name);
+    // （判据经 `isTruncationExemptTool` 做身份归一：内置工具迁到 MCP 面后模型面名是
+    //  `mcp__builtin__*`，直接 has(block.name) 会让豁免静默失效）
+    const exempt = isTruncationExemptTool(block.name);
     const t = exempt ? { json: JSON.stringify(r.payload), truncated: false as const, note: undefined } : truncateToolResultJson(r.payload);
     return {
       call,
