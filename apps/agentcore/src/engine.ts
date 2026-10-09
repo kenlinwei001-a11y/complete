@@ -984,7 +984,12 @@ export class ExecutionEngine {
     //   `dshIsTheKernelThisRun()` 同源）。此处只用于**投影口径**：走进程内循环（测试装配）时
     //   广告面收窄到本 run 授予的求解器集合；走 DSH 时不收窄（子进程 allow-list 与宿主同源）。
     const nativeKernel = !this.dshIsTheKernelThisRun();
-    const hasBuiltinInvokeSolver = tools.some((t) => t.binding.kind === "BUILTIN" && t.name === "invoke_solver");
+    // ⚠ WO-BUILTIN-MIGRATE-REST：`invoke_solver` 迁到内置工具 MCP 面后，本判据若只看
+    // `binding.kind === "BUILTIN"` 会翻假 ⇒ 通用 agent 的求解器广告面会被**不必要地**收窄。
+    // 语义是「本 agent 手里有一件**可按 key 点名任意求解器**的入口」，与载体无关 ⇒ 按身份判。
+    const hasBuiltinInvokeSolver = tools.some(
+      (t) => parseBuiltinMcpToolName(t.name) === "invoke_solver" || (t.binding.kind === "BUILTIN" && t.name === "invoke_solver"),
+    );
     const solverGrantedToolNames =
       nativeKernel && !hasBuiltinInvokeSolver
         ? tools.filter((t) => t.binding.kind === "MCP" && parseSolverMcpToolName(t.name) !== undefined).map((t) => t.name)

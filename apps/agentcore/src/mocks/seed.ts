@@ -1915,8 +1915,14 @@ const BUILTIN_QUERY = ["query_objects"] as const;
 const BUILTIN_MIGRATED_B1 = ["get_object", "aggregate_objects", "search_knowledge", "query_timeseries_agg", "search_experience"] as const;
 /** 批次 2：能力发现一族（`discover` 是元工具：不确定用什么时先调它）。 */
 const BUILTIN_MIGRATED_B2 = ["discover", "retrieve_knowledge", "query_ontology", "query_system_ontology"] as const;
+/**
+ * 批次 3：写路径与求解入口（`invoke_solver` 是**硬骨头** —— 三处按裸名认它的判据必须先改成认身份，
+ * 见 `navigation-slice.ts` 的 `canInvokeSolvers` / `engine.ts` 的 `hasBuiltinInvokeSolver` /
+ * `agent/reflect.ts` 的 `calledSolverOk`；漏一处就是**静默少东西**而不是报错）。
+ */
+const BUILTIN_MIGRATED_B3 = ["get_breakpoint", "impact_of", "read_skill_resource", "create_action_draft", "invoke_solver"] as const;
 /** 通用 agent 的**累计**迁移集（它的语义 = 平台全部内置工具 ⇒ 跟着台账长，不另抄一份）。 */
-const BUILTIN_MIGRATED = [...BUILTIN_QUERY, ...BUILTIN_MIGRATED_B1, ...BUILTIN_MIGRATED_B2] as const;
+const BUILTIN_MIGRATED = [...BUILTIN_QUERY, ...BUILTIN_MIGRATED_B1, ...BUILTIN_MIGRATED_B2, ...BUILTIN_MIGRATED_B3] as const;
 
 /**
  * 出厂 analyst 的内置工具集合（= 它**迁前真正持有**的那几件：试点件 + 批次 1 的四件）。

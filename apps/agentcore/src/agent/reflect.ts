@@ -1,5 +1,7 @@
 import type { AgentIteration } from "@platform/contracts";
 import { scanBlocks } from "../util/numerics.js";
+// WO-BUILTIN-MIGRATE-REST · 工具**身份**归一（载体换了、身份不换）。
+import { resolveBuiltinToolIdentity } from "../mcp/builtin-mcp.js";
 
 /**
  * WO-REFLECT-LOOP · Agent 收尾前的**确定性复盘**（补齐「理解-计划-分解-执行-反思」闭环的反思步）。
@@ -61,9 +63,14 @@ const PLACEHOLDER_RE = /(未能产出回答|探索模式未能|未形成最终�
 /** ⟦ref:N⟧ 溯源指针。 */
 const REF_RE = /⟦ref:(\d+)⟧/g;
 
-/** 是否至少一次成功的 invoke_solver（求解纪律的"走了 solver"判据）。 */
+/** 是否至少一次成功的 invoke_solver（求解纪律的"走了 solver"判据）。
+ *  ⚠ WO-BUILTIN-MIGRATE-REST：`iterations[].toolCalls[].toolName` 记的是**模型面调用名**（载体），
+ *  而 `invoke_solver` 已迁到 `mcp__builtin__invoke_solver` ⇒ 判据必须**按身份**归一，
+ *  否则「走了 solver」恒判假（求解纪律误报，而它是一条治理判据）。 */
 function calledSolverOk(iterations: AgentIteration[]): boolean {
-  return iterations.some((it) => it.toolCalls.some((c) => c.toolName === "invoke_solver" && c.outcome === "OK"));
+  return iterations.some((it) =>
+    it.toolCalls.some((c) => resolveBuiltinToolIdentity(c.toolName) === "invoke_solver" && c.outcome === "OK"),
+  );
 }
 
 /** 有工具报错/被拒/超预算，但答案文本只字未提 → 静默失败（KILL-MOCK-RED·不许把失败当没发生）。 */

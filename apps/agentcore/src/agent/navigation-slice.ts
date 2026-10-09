@@ -1,4 +1,7 @@
 import { parseSolverMcpToolName, solverMcpToolName, type PageContext } from "@platform/contracts";
+// WO-BUILTIN-MIGRATE-REST · 求解入口的**身份**归一：`invoke_solver` 迁到 `mcp__builtin__invoke_solver`
+// 之后，按裸名认它的判据会**静默**失配（不报错、只是不再取活求解器目录）。判据一律经此归一。
+import { resolveBuiltinToolIdentity } from "../mcp/builtin-mcp.js";
 import { domainResolve } from "../router/domain-resolver.js";
 import { isOptWhatifSignal } from "../router/opt-whatif-route.js"; // WO-OPTWHATIF-NL-WIRING · opt_whatif 双命中信号（单一来源·leaf 模块·无环）
 
@@ -549,7 +552,14 @@ function canInvokeSolvers(toolNames: string[] | undefined): boolean {
   // 9 型 × 2 轮 = 18 次本体查询）。反解走契约单源 `parseSolverMcpToolName`，不靠字符串切片猜前缀。
   // 本条与 WO-WORKFLOW-MCP 迁移叠加后才显形：工作流工具名由 BUILTIN 裸名变成 `mcp__workflow__*`，
   // 才开始命中那条过宽的 `^mcp__[a-z0-9_]+__`。
-  return toolNames.some((n) => n === "invoke_solver" || parseSolverMcpToolName(n) !== undefined);
+  //
+  // ⚠ WO-BUILTIN-MIGRATE-REST：`invoke_solver` **自己**也换了载体（`mcp__builtin__invoke_solver`）
+  // ⇒ 判据从「裸名字面量」改成**按身份**（`resolveBuiltinToolIdentity`）。不改的后果是**静默**的：
+  // 通用 agent 的求解器目录段不再取活目录（不报错、少一段），而本函数的返回值还被调用方用来
+  // **跳过取目录**（`scopeCanInvokeSolvers`）—— 这类「不报错只少东西」正是本仓反复咬的病。
+  return toolNames.some(
+    (n) => resolveBuiltinToolIdentity(n) === "invoke_solver" || parseSolverMcpToolName(n) !== undefined,
+  );
 }
 
 /**
