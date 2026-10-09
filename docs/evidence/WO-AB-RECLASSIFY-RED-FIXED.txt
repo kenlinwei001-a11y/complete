@@ -1,0 +1,28 @@
+=== 语义归位引发的 5 条红 · LOOP 解决记录（2026-10-09）===
+
+### 结果
+  2 轮 · 4 agent · 231 tool uses · 全绿（我自己复跑确认：3 文件 28 测试 rc=0）
+
+### 根因（一处实现缺陷，非语义归位本身）
+  seed-world.ts 的 DEVIATION 分支在 continue 前**漏了 cells += 1**。
+  ⇒ 该格写进了 state（/world 读得到），**却不计进世界总格数**。
+  实测矛盾：世界态 Σrows = 6375，而 origin.cells = 4312（差 2063 = 本支铺的全部 DEVIATION 格）
+  ⇒ 屏上「实测格 2120/4312」与同一个世界的 6375 格自相矛盾。
+
+### 5 条红同根（全部由此一处引起）
+  ① deviation-read §2/§3「源跌 ⇒ 成本必须低于基线」expected 581.1 to be less than 581.1
+  ② sim-real-cells ⓒ「measuredCells 4183」expected 2120
+  ③ sim-real-cells 臂2「全扫域」expected 4312 to be 6375
+  ④ sim-real-cells §3「例外表腐坏 → Order|costPressure」
+  ⑤ sim-restpoint-shadow-baseline §2「零扰动影子线动了 14.1741117」
+
+### 修法（守住隐藏约束：改记账，不改归位裁定）
+  seed-world.ts DEVIATION 支 continue 前补 cells += 1（+9 行，含理由注释）
+  · cells（世界格数）⇒ +1：本支与「真读数」「哈希占位」两档一样写一格
+  · measured* 三个账 ⇒ **不动**：本支一格都不实测
+  ⚠ 语义归位（15 个量 = DEVIATION / 静息值取 restPoint）**未被推翻** ✓
+
+### 判据（LOOP 内立的，可复算）
+  1. diff 半径内测试全绿 —— 我自己复跑 3 文件 28 测试，CONFIRM_RC=0 ✅
+  2. 每处改动有书面理由 —— 见上（含实测矛盾 6375 vs 4312）
+  3. 归位成果仍在 —— 15 个量仍 DEVIATION ✅

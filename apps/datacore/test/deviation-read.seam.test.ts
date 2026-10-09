@@ -21,6 +21,13 @@ import { stateVarDomains } from "../src/synthetic/battery.js";
  *   §1 消费端真读到的 stateVar 集合 ⊆ 声明名单 ⊆ 已声明域的 stateVar（两向都咬，带双向金丝雀）
  *   §2 零扰动 ⇒ 金额投影**逐字节等于**基线（这就是病本身：偏离为 0 才叫没偏）
  *   §3 真有扰动 ⇒ 金额**必须动**（对照实验：⛔ 防 (b) 把金额投影改死成恒等于基线）
+ *      ⚠ 2026-10-09 订正（WO-SEMANTICS-DECLARED 收尾，理由全文见 §3 段内注释）：
+ *      **反向臂**（源跌 Δ−3）原判据是「金额必须跌到基线以下」。压力族归位后，声明域是
+ *      `min=0 / max=100 / restPoint=0`（静息点坐在**下界**上）⇒ 负偏离在**声明域入口**就被
+ *      收回 0 ⇒「跌」在今天的声明集下结构性不可达。反向臂改为咬两件：① 金额**不高于**基线
+ *      （水平口径会反向顶到 712 量级 ⇒ 照咬）；② tick 回执 `saturations` 单源账里必须有一条
+ *      `{stateVar:"costPressure", bound:"min", raw<0}` —— 负偏离真的**到达了世界**、是被声明域
+ *      收回并如实记账（不是被静默吃掉，也不是被反向顶高）。
  *   §4 取不到静息值 ⇒ **不退回 0**，逐格进 `unresolvedRestPoints`（单元级，直喂 TickState）
  *
  * §2 与 §3 缺一条都不成立：只有 §2 ⇒ 把金额锁死也能全绿；只有 §3 ⇒ 病还在。
@@ -136,7 +143,12 @@ async function perturbDelta(t: TestApp, sid: string, objectId: string, magnitude
   expect(r.statusCode, `扰动写入必须 2xx：code=${r.statusCode} ${r.body}`).toBe(201);
 }
 
-async function tick(t: TestApp, sid: string, n: number): Promise<void> {
+/**
+ * 推 n 拍。**返回回执**（不是 `void`）：§3 的反向臂要读 `stateVarReport.saturations` ——
+ * 负偏离到达世界态入口后被**声明域**收回的那笔单源账就在那里（⛔ 不许从金额或世界态反推
+ * 「它本来该是负的」：那正是「用一个不度量目标的数当证据」）。
+ */
+async function tick(t: TestApp, sid: string, n: number): Promise<any> {
   const r = await t.app.inject({
     method: "POST",
     url: `/a/v1/sim/sessions/${sid}/tick`,
@@ -144,6 +156,7 @@ async function tick(t: TestApp, sid: string, n: number): Promise<void> {
     payload: { n },
   });
   expect([200, 201], `tick 失败：${r.statusCode} ${r.body}`).toContain(r.statusCode);
+  return r.json();
 }
 
 const project = async (t: TestApp, sid: string) => {
@@ -254,7 +267,7 @@ describe("落点 (b) · 消费端按率读口吃「偏离」", () => {
     const arm = async (mag: number) => {
       const sid = await newSession(t);
       await perturbDelta(t, sid, MAT_ID, mag);
-      await tick(t, sid, 3);
+      const receipt = await tick(t, sid, 3);
       const d = await project(t, sid);
       const c = lineOf(d, "COST");
       const m = lineOf(d, "MARGIN");
@@ -268,16 +281,28 @@ describe("落点 (b) · 消费端按率读口吃「偏离」", () => {
       console.log(
         `§3 Δ${mag > 0 ? "+" : ""}${mag} 金额实际吃的偏离：cost=${((c.projected / c.rolling - 1) * 100).toFixed(6)}`,
       );
-      return { d, c, m };
+      /**
+       * 本次推进**最后一拍**的世界态入口单源账（`stateVarReport.saturations`）。
+       * 取"最后一拍"而不是把三拍加起来：核每拍都把同一条负流量再写一次、入口每拍再夹一次
+       * （源 `priceShock` 恒在 5、基值 8 ⇒ drive 恒为 −3，见 trace），最后一拍的账就足以证明
+       * 「负偏离今天真的到达世界」。若哪天真改成只夹一次，这条断言会当场红 —— 那时该问的是
+       * 「为什么不再记账」，⛔ 不是把断言改成"第一拍看过了"。
+       */
+      const saturations = (receipt?.stateVarReport?.saturations ?? []) as any[];
+      console.log(
+        `§3 Δ${mag > 0 ? "+" : ""}${mag} 饱和单源账（末拍）：` +
+          saturations.map((s: any) => `${s.objectId}|${s.stateVar} raw=${s.raw}→${s.value}(${s.bound})`).join(" · ") || "（空）",
+      );
+      return { d, c, m, saturations };
     };
 
     // 臂 B①：**正向**相对扰动（源涨 ⇒ 成本压力偏离 > 0 ⇒ 成本必须涨、毛利必须跌）。
     const { d: ad, c: ac, m: am } = await arm(1000);
     // 臂 B②：**反向**相对扰动 Δ=−3（终裁点名的那条臂）。
     // 它比正向臂更硬：水平口径下 23.0367−1.755 = 21.28 仍**远大于 0** ⇒ 「拿水平当偏离」照样把成本**顶高**
-    // （改前成本会涨到 700 量级），而正解的成本必须**降到基线以下**。**两臂符号相反**，
-    // 于是「金额有没有真的吃偏离」在两臂上都被咬住，不是靠一个方向的巧合。
-    const { d: bd, c: bc, m: bm } = await arm(-3);
+    // （改前成本会涨到 712.17 量级 —— docs/evidence/WO-CP-mut3.txt），而偏离口径下成本**不许再涨**。
+    // ⚠ 2026-10-09 订正：这条臂原判「成本必须跌到基线**以下**」，见下方断言处的全文理由。
+    const { d: bd, c: bc, m: bm, saturations: bSat } = await arm(-3);
 
     // ⚠ 三臂**全部测完、打完**才下断言 —— 这样变异反证（把三处金额改回水平）一次就能拿到
     // 「改前 × 三臂」的全部读数，不必为了看数去放宽某条断言。
@@ -287,8 +312,46 @@ describe("落点 (b) · 消费端按率读口吃「偏离」", () => {
     // ⛔ 下面这条是防 (b) 把金额投影改死：只用 §2 的话，「恒等于基线」也能全绿。
     expect(ac.projected, "扰动后成本必须高于基线（否则 (b) 把金额投影改死了）").toBeGreaterThan(ac.rolling);
     expect(am.projected, "扰动后毛利必须低于基线").toBeLessThan(am.rolling);
-    expect(bc.projected, "源跌 ⇒ 成本必须低于基线（水平口径下它会反向涨）").toBeLessThan(bc.rolling);
-    expect(bm.projected, "源跌 ⇒ 毛利必须高于基线").toBeGreaterThan(bm.rolling);
+    /**
+     * ── 反向臂：原判据为什么作废、换成什么（WO-SEMANTICS-DECLARED 收尾 · 2026-10-09）──────
+     *
+     * **原判据**：`bc.projected < bc.rolling`（源跌 ⇒ 成本必须**低于基线**）。
+     * 它在度量什么：金额侧吃的是**偏离**不是水平 —— 在水平口径下，同一臂会把
+     * `creditUsedRatio×100 = 21.28`（远大于 0）当偏离乘进金额，成本反向**顶高**到 712.17
+     * （`docs/evidence/WO-CP-mut3.txt:21`）。所以它当年有真鉴别力，且**改前确实成立**
+     * （那时该格按水平播在中域 ≈23.04，Δ−3 后 22.556 ⇒ 成本 578.31 < 581.1 绿）。
+     *
+     * **为什么今天不再成立（不是归位撤回，是声明集自己的立场）**：
+     * 本会话把压力族归位成 `DEVIATION`：世界态静息值 = `restPoint`，而 `STATE_VAR_DOMAINS`
+     * 给压力族声明的是 `min=0 / max=100 / restPoint=0`（出处「压力 0–100」，`battery.ts` 域表）
+     * —— 静息点**坐在声明域下界上** ⇒ 世界态恒 ≥ 0 ⇒ 「跌到基线以下」在**声明集**下结构性地
+     * 不可达。传导核仍然算出了**正确的负流量**（trace `demo_material_price_to_cost`
+     * amount = −0.097878664573），它一路走到世界态入口，被**声明域**按 `min` 收回 0、
+     * 并进了 `saturations` 单源账（raw=−0.097878664573 → value=0，bound="min"）⇒ 偏离读
+     * 0−0=0 ⇒ 成本逐字节等于基线 581.1。**这就是"如实"在这套声明下的形态**。
+     * ⛔ 这不是把判据放水成"跌不跌都行"：下面的 ② 要求那笔负偏离**必须真的到达世界并被如实记账**。
+     * ⚠ 要让"成本真的能跌"，该改的是**域声明**（压力族改带符号，同 `forecastBias [−100,100]` 先例）
+     * —— 那是新裁决，不在本单半径内；本测试只保证"今天的声明集下，行为如实且可复核"。
+     */
+    expect(
+      bc.projected,
+      "源跌 ⇒ 成本**不许**高于基线（水平口径下它会反向涨到 712 量级 ⇒ 本条照咬不放）",
+    ).toBeLessThanOrEqual(bc.rolling);
+    expect(bm.projected, "源跌 ⇒ 毛利**不许**低于基线（同上）").toBeGreaterThanOrEqual(bm.rolling);
+    /**
+     * ② 负偏离**真的到达了世界** —— 由 tick 回执的**单源账**证明（⛔ 不是从金额反推：
+     *    "金额没跌"与"负偏离没发生"在金额上是同一个读数，分不开；`saturations` 分得开）。
+     * 缺了这条，① 那条 `≤` 会被"传导断掉/被静默吃掉/被反向顶高"三种病一起钻过去。
+     */
+    const negCostSat = bSat.filter(
+      (s: any) => s.stateVar === "costPressure" && s.bound === "min" && typeof s.raw === "number" && s.raw < 0,
+    );
+    expect(
+      negCostSat.length,
+      `反向臂的 tick 回执里没有 {costPressure, bound:"min", raw<0} 的饱和条目 ⇒ 负偏离要么根本没到 ` +
+        `世界（传导断了）、要么被静默吃掉（没进单源账）、要么被反向顶高（那就该被①咬住）。` +
+        `末拍实测 saturations=${JSON.stringify(bSat)}`,
+    ).toBeGreaterThan(0);
 
     // 逐字节不变性：三臂的**压力披露**（面 C）各自是水平口径，与金额口径不是一回事 ——
     // 这条不断言数值，只断言「披露里带了静息缺席的账」这一形状（没有缺席就不该有这个键）。

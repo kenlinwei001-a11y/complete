@@ -1,0 +1,102 @@
+
+ RUN  v3.2.6 /private/tmp/wt-ab/apps/datacore
+
+stdout | test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 🔴 头号判据 · 对照实验：三个接线求解器 —— 同 (args,scope) 扰动前 vs 扰动+tick4 后，回包必须**真的不同**
+[contrast] solver=risk_timeline before=24279d9612e9f9e7 after=b9b6d80bad759cbc equal=false
+
+stdout | test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 🔴 头号判据 · 对照实验：三个接线求解器 —— 同 (args,scope) 扰动前 vs 扰动+tick4 后，回包必须**真的不同**
+[contrast] solver=capacity_forecast before=ac549c6e83baf085 after=e406e1fd58f956ee equal=false
+
+stdout | test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 🔴 头号判据 · 对照实验：三个接线求解器 —— 同 (args,scope) 扰动前 vs 扰动+tick4 后，回包必须**真的不同**
+[contrast] solver=affected_orders before=137a5a4057d81ece after=cbb092f0abda972f equal=false
+
+stdout | test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > R6 兼容：不传 worldId ⇒ 无 worldState 键且两跑逐字节相同；零压力世界 ⇒ 剥披露键后与真值口径逐字节相同
+[r6-truth] solver=risk_timeline truth=ce528331f0d1bd04
+
+stdout | test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > R6 兼容：不传 worldId ⇒ 无 worldState 键且两跑逐字节相同；零压力世界 ⇒ 剥披露键后与真值口径逐字节相同
+[r6-truth] solver=capacity_forecast truth=7dcd0ae3e26c6b1a
+
+stdout | test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > R6 兼容：不传 worldId ⇒ 无 worldState 键且两跑逐字节相同；零压力世界 ⇒ 剥披露键后与真值口径逐字节相同
+[r6-truth] solver=affected_orders truth=74d4c6f474667cb1
+
+ ✓ test/worldstate-surface.seam.test.ts (8 tests) 161391ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 金丝雀：种子/传导规则/求解器注册/白名单表四样都在（任一不在 ⇒ 后面读不出坏了还是真没变）  27439ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 🔴 头号判据 · 对照实验：三个接线求解器 —— 同 (args,scope) 扰动前 vs 扰动+tick4 后，回包必须**真的不同**  26162ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > R6 兼容：不传 worldId ⇒ 无 worldState 键且两跑逐字节相同；零压力世界 ⇒ 剥披露键后与真值口径逐字节相同  19238ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 闸① 白名单外：capacity_rollup 传 worldId（含幽灵 id）⇒ 机制够不着它（无 worldState 键·与真值口径逐字节相同）  12592ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 闸③ 不静默回落：幽灵 worldId ⇒ 404；跨租户 worldId ⇒ 404；空串 worldId ⇒ 400（金丝雀：同 key 真世界 200）  9877ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 空世界诚实：worldObjects=0 + note 明说「未发生世界隔离」，数值仍给且等于真值口径  20520ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 披露块可复核：sessionId/tick/source/divisor/rules/applied/unconsumed/agentInvolved 齐全，demandLoad 诚实进 unconsumed  18535ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 世界内 R6：同 (worldId, tick) 两跑逐字节相同（含 worldState 披露键）  27018ms
+stdout | test/deviation-read.seam.test.ts > 落点 (b) · 消费端按率读口吃「偏离」 > §1 名单封闭：真读点 ⊆ 声明名单 ⊆ 已声明域（双向 + 双向金丝雀）
+§1 真读点（world-read 声明表）：costPressure,demandPressure,loadIndex,utilPressure
+§1 真读点（finance-world 实参字面量）：costPressure,overduePressure,receivablePressure
+§1 声明名单：costPressure,demandPressure,loadIndex,overduePressure,receivablePressure,utilPressure
+
+stdout | test/deviation-read.seam.test.ts > 落点 (b) · 消费端按率读口吃「偏离」 > §2/§3 零扰动 ⇒ 金额逐字节等于基线；有扰动 ⇒ 金额必须动（对照实验）
+§2 世界态逐字节不变：cells=6375 sha256=0740424f7437ddc2 → 0740424f7437ddc2
+§2 零扰动：REVENUE 700→700 COST 581.1→581.1 MARGIN 118.9→118.9 静息缺席=0
+§2 水平读数（面 C）：costPressure=0 receivablePressure=0 overduePressure=0
+§2 金额实际吃的偏离：cost=0.000000
+
+stdout | test/deviation-read.seam.test.ts > 落点 (b) · 消费端按率读口吃「偏离」 > §2/§3 零扰动 ⇒ 金额逐字节等于基线；有扰动 ⇒ 金额必须动（对照实验）
+§3 Δ+1000：REVENUE 700→700 COST 581.1→618.594126 MARGIN 118.9→81.405874 静息缺席=0
+§3 Δ+1000 水平读数（面 C）：costPressure=6.452267 receivablePressure=1.197427 overduePressure=0
+§3 Δ+1000 金额实际吃的偏离：cost=6.452267
+§3 Δ+1000 饱和单源账（末拍）：obj_material_al_foil|shortageRisk raw=-2.841405133333→0(min) · obj_material_cell_case|shortageRisk raw=-2.0529524→0(min) · obj_material_cu_foil|shortageRisk raw=-2.0975818→0(min) · obj_material_elyte|shortageRisk raw=-1.7182319→0(min) · obj_material_neg_graphite|shortageRisk raw=-2.64429195→0(min) · obj_material_pos_lfp|shortageRisk raw=-3.64845345→0(min) · obj_material_pos_ncm|shortageRisk raw=-2.8562816→0(min) · obj_material_sep_film|shortageRisk raw=-2.28725675→0(min)
+
+stdout | test/deviation-read.seam.test.ts > 落点 (b) · 消费端按率读口吃「偏离」 > §2/§3 零扰动 ⇒ 金额逐字节等于基线；有扰动 ⇒ 金额必须动（对照实验）
+§3 Δ-3：REVENUE 700→700 COST 581.1→581.1 MARGIN 118.9→118.9 静息缺席=0
+§3 Δ-3 水平读数（面 C）：costPressure=0 receivablePressure=0 overduePressure=0
+§3 Δ-3 金额实际吃的偏离：cost=0.000000
+§3 Δ-3 饱和单源账（末拍）：obj_material_al_foil|shortageRisk raw=-2.841405133333→0(min) · obj_material_cell_case|shortageRisk raw=-2.0529524→0(min) · obj_material_cu_foil|shortageRisk raw=-2.0975818→0(min) · obj_material_elyte|shortageRisk raw=-1.7182319→0(min) · obj_material_neg_graphite|shortageRisk raw=-2.64429195→0(min) · obj_material_pos_lfp|shortageRisk raw=-3.64845345→0(min) · obj_material_pos_ncm|shortageRisk raw=-2.8562816→0(min) · obj_material_sep_film|shortageRisk raw=-2.28725675→0(min) · obj_model_2170-NCM|costPressure raw=-0.097878664573→0(min) · obj_model_4680-NCM|costPressure raw=-0.097878664573→0(min) · obj_model_方形-NCM|costPressure raw=-0.097878664573→0(min)
+
+ ✓ test/finance-worldstate.seam.test.ts (12 tests) 254156ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 金丝雀：链路/种子/求解器三样都在（任一不在 ⇒ 后面的『没变化』读不出是坏了还是真没变）  25362ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 头号判据 · SEAM：真扰动 → 真 tick → 金额**真的变了**，且方向与压力一致  21365ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 现金半同样真的动：应收压力 → 应收投影↑ / 逾期压力 → 逾期敞口↑（逐张发票用真 amount）  18189ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 反向判据 · R6 确定性：不施加任何扰动 ⇒ 两次调用**逐字节相同**  14955ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 R6 跨 tick 也确定：同一个 tick 上重复跑字节一致，且 tick 推进后金额单调不回头  10418ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 口径常驻：basis / chain / provenance 三样一起下发（缺一样这个金额就不可复核）  19756ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 诚实缺席：世界态为空 ⇒ available:false + 原因（**不给一个不动的 0**）  16414ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 回落分支真被驱动：tick 态行缺失 ⇒ 读 baseSnapshot 并据实标 BASE_SNAPSHOT（不是默默当空世界）  16614ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > R2 隔离 + 入参纪律：别人的世界 404；不给 worldId 显式 400（不静默回落到本体真值口径）  26736ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 本体签名实跑比对：真读到的类型/属性都在 SOLVER_ONTOLOGY_SIGNATURES 声明内（漏声明即红）  39313ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 分层不重复：`finance_pnl` 保持「本体真值口径」（施加扰动它照样不动，这是它的正确行为）  27170ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 SEAM：贵料 vs 边角料涨同样的价 —— 下游压力之比 == 两者在该型号 BOM 里的成本之比  17796ms
+stdout | test/deviation-read.seam.test.ts > 落点 (b) · 消费端按率读口吃「偏离」 > §5 现金半对照臂：有静息点 ⇒ 金额真的动；无静息点 ⇒ 金额纹丝不动但逐格点名
+§5 臂①（无静息点）：水平读数 receivablePressure=3.195333（承载 12）· 应收 160802（基线 160802）· 静息缺席 48 格
+
+stdout | test/deviation-read.seam.test.ts > 落点 (b) · 消费端按率读口吃「偏离」 > §5 现金半对照臂：有静息点 ⇒ 金额真的动；无静息点 ⇒ 金额纹丝不动但逐格点名
+§5 臂②（有静息点）：应收 161209.578106（基线 160802）· 逾期敞口 22.605055（承载发票 36）· 播过静息点的格进缺席表 0
+
+ ✓ test/deviation-read.seam.test.ts (4 tests) 90567ms
+   ✓ 落点 (b) · 消费端按率读口吃「偏离」 > §2/§3 零扰动 ⇒ 金额逐字节等于基线；有扰动 ⇒ 金额必须动（对照实验）  57972ms
+   ✓ 落点 (b) · 消费端按率读口吃「偏离」 > §5 现金半对照臂：有静息点 ⇒ 金额真的动；无静息点 ⇒ 金额纹丝不动但逐格点名  32365ms
+stdout | test/sim-real-cells.seam.test.ts > WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > ⓒ 接缝驱动：26 条规格编译入库 + 物化后 measuredCells 从 470 涨到 2120（归位前 4183，分解现算）
+ⓒ 记账分解：measuredCells=2120 · DEVIATION 格（现算）=2063 · 两者之和=4183（归位前实测 4183）· totalCells=6375
+
+stdout | test/sim-restpoint-shadow-baseline.seam.test.ts > §2 行为臂：零效果扰动 ⇒ 两条线必须逐字节相同（信噪比恒等式） > 真扰动先证探针有鉴别力（userContribution > 0），再用零效果扰动咬「两条线同源」
+§2 影子线漂移对账：nReal.worldDrift=14.1741117 · 现算期望=14.174111699999997（λ=0.37 由回执自报 · x0=30 · k=1→4） · nNoop.worldDrift=14.1741117 · nNoop.userContribution=0 · nNoop.changedCells=0 · nNoop.ratio=0
+
+ ✓ test/sim-restpoint-shadow-baseline.seam.test.ts (3 tests) 22126ms
+   ✓ §2 行为臂：零效果扰动 ⇒ 两条线必须逐字节相同（信噪比恒等式） > 真扰动先证探针有鉴别力（userContribution > 0），再用零效果扰动咬「两条线同源」  22093ms
+ ✓ test/sim-restpoint-source.seam.test.ts (7 tests) 239ms
+ ✓ test/sim-real-cells.seam.test.ts (21 tests) 58682ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > ⓑ 指认粒度：26 条规格逐条物化数 = 该类型进世界对象数（逐条点名，不一锅断言）  349ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂2 量纲：全扫 STATE_VAR_DOMAINS 已声明域的变量逐个不越域；无域族归档「刻意无上界」  1143ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > §3.1(a) 铸造可达：restPoint 严格内点的域，铸造层两侧都必须取到  513ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > ⓐ 引擎归属：derivationSpecs 清成 0 条 ⇒ 25 个 targetProp 全部消失（证明是引擎②算的）  14625ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂3 敏感性：Customer.receivables ×2 ⇒ receivablePressure 精确 ×2（线性式）  1082ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂3 敏感性：Equipment.health_score ↓10 ⇒ equipmentFailure 精确 ↑10（反向线性）  1121ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂4 反向：拿掉 Line.max_capacity_day ⇒ blockedPressure 退回（COALESCE 兜 0，非写死常数）  1526ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂5 变异反证：把 equipmentFailure 的『100 −』改成『100 +』⇒ 臂1 锚定断言当场红  9813ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > R6 确定性：同 (seed=42) 重铺世界 ⇒ measuredCells / totalCells 逐字节一致  596ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > §3 绑定判据：valueRef 指向不存在的 specKey ⇒ 播种当场抛错变红（⛔ 不静默回落哈希）  364ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > §退役 · `model_forecast_bias` 与它的 valueRef 登记必须同时不存在（残留任一处即红）  308ms
+
+ Test Files  6 passed (6)
+      Tests  55 passed (55)
+   Start at  16:23:26
+   Duration  351.51s (transform 10.81s, setup 0ms, collect 88.44s, tests 587.16s, environment 4ms, prepare 3.24s)
+

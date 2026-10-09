@@ -1,0 +1,59 @@
+
+ RUN  v3.2.6 /private/tmp/wt-ab/apps/datacore
+
+stdout | test/deviation-read.seam.test.ts > 落点 (b) · 消费端按率读口吃「偏离」 > §1 名单封闭：真读点 ⊆ 声明名单 ⊆ 已声明域（双向 + 双向金丝雀）
+§1 真读点（world-read 声明表）：costPressure,demandPressure,loadIndex,utilPressure
+§1 真读点（finance-world 实参字面量）：costPressure,overduePressure,receivablePressure
+§1 声明名单：costPressure,demandPressure,loadIndex,overduePressure,receivablePressure,utilPressure
+
+stdout | test/sim-real-cells.seam.test.ts > WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > ⓒ 接缝驱动：26 条规格编译入库 + 物化后 measuredCells 从 470 涨到 2120（归位前 4183，分解现算）
+ⓒ 记账分解：measuredCells=2120 · DEVIATION 格（现算）=2063 · 两者之和=4183（归位前实测 4183）· totalCells=6375
+
+stdout | test/deviation-read.seam.test.ts > 落点 (b) · 消费端按率读口吃「偏离」 > §2/§3 零扰动 ⇒ 金额逐字节等于基线；有扰动 ⇒ 金额必须动（对照实验）
+§2 世界态逐字节不变：cells=6375 sha256=0740424f7437ddc2 → 0740424f7437ddc2
+§2 零扰动：REVENUE 700→700 COST 581.1→581.1 MARGIN 118.9→118.9 静息缺席=0
+§2 水平读数（面 C）：costPressure=0 receivablePressure=0 overduePressure=0
+§2 金额实际吃的偏离：cost=0.000000
+
+stdout | test/deviation-read.seam.test.ts > 落点 (b) · 消费端按率读口吃「偏离」 > §2/§3 零扰动 ⇒ 金额逐字节等于基线；有扰动 ⇒ 金额必须动（对照实验）
+§3 Δ+1000：REVENUE 700→700 COST 581.1→618.594126 MARGIN 118.9→81.405874 静息缺席=0
+§3 Δ+1000 水平读数（面 C）：costPressure=6.452267 receivablePressure=1.197427 overduePressure=0
+§3 Δ+1000 金额实际吃的偏离：cost=6.452267
+§3 Δ+1000 饱和单源账（末拍）：obj_material_al_foil|shortageRisk raw=-2.841405133333→0(min) · obj_material_cell_case|shortageRisk raw=-2.0529524→0(min) · obj_material_cu_foil|shortageRisk raw=-2.0975818→0(min) · obj_material_elyte|shortageRisk raw=-1.7182319→0(min) · obj_material_neg_graphite|shortageRisk raw=-2.64429195→0(min) · obj_material_pos_lfp|shortageRisk raw=-3.64845345→0(min) · obj_material_pos_ncm|shortageRisk raw=-2.8562816→0(min) · obj_material_sep_film|shortageRisk raw=-2.28725675→0(min)
+
+stdout | test/deviation-read.seam.test.ts > 落点 (b) · 消费端按率读口吃「偏离」 > §2/§3 零扰动 ⇒ 金额逐字节等于基线；有扰动 ⇒ 金额必须动（对照实验）
+§3 Δ-3：REVENUE 700→700 COST 581.1→581.1 MARGIN 118.9→118.9 静息缺席=0
+§3 Δ-3 水平读数（面 C）：costPressure=0 receivablePressure=0 overduePressure=0
+§3 Δ-3 金额实际吃的偏离：cost=0.000000
+§3 Δ-3 饱和单源账（末拍）：obj_material_al_foil|shortageRisk raw=-2.841405133333→0(min) · obj_material_cell_case|shortageRisk raw=-2.0529524→0(min) · obj_material_cu_foil|shortageRisk raw=-2.0975818→0(min) · obj_material_elyte|shortageRisk raw=-1.7182319→0(min) · obj_material_neg_graphite|shortageRisk raw=-2.64429195→0(min) · obj_material_pos_lfp|shortageRisk raw=-3.64845345→0(min) · obj_material_pos_ncm|shortageRisk raw=-2.8562816→0(min) · obj_material_sep_film|shortageRisk raw=-2.28725675→0(min) · obj_model_2170-NCM|costPressure raw=-0.097878664573→0(min) · obj_model_4680-NCM|costPressure raw=-0.097878664573→0(min) · obj_model_方形-NCM|costPressure raw=-0.097878664573→0(min)
+
+stdout | test/deviation-read.seam.test.ts > 落点 (b) · 消费端按率读口吃「偏离」 > §5 现金半对照臂：有静息点 ⇒ 金额真的动；无静息点 ⇒ 金额纹丝不动但逐格点名
+§5 臂①（无静息点）：水平读数 receivablePressure=3.195333（承载 12）· 应收 160802（基线 160802）· 静息缺席 48 格
+
+stdout | test/deviation-read.seam.test.ts > 落点 (b) · 消费端按率读口吃「偏离」 > §5 现金半对照臂：有静息点 ⇒ 金额真的动；无静息点 ⇒ 金额纹丝不动但逐格点名
+§5 臂②（有静息点）：应收 161209.578106（基线 160802）· 逾期敞口 22.605055（承载发票 36）· 播过静息点的格进缺席表 0
+
+ ✓ test/deviation-read.seam.test.ts (4 tests) 93323ms
+   ✓ 落点 (b) · 消费端按率读口吃「偏离」 > §2/§3 零扰动 ⇒ 金额逐字节等于基线；有扰动 ⇒ 金额必须动（对照实验）  57815ms
+   ✓ 落点 (b) · 消费端按率读口吃「偏离」 > §5 现金半对照臂：有静息点 ⇒ 金额真的动；无静息点 ⇒ 金额纹丝不动但逐格点名  35483ms
+ ✓ test/sim-real-cells.seam.test.ts (21 tests) 98289ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂2 量纲：全扫 STATE_VAR_DOMAINS 已声明域的变量逐个不越域；无域族归档「刻意无上界」  1175ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > §3.1(a) 铸造可达：restPoint 严格内点的域，铸造层两侧都必须取到  785ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > ⓐ 引擎归属：derivationSpecs 清成 0 条 ⇒ 25 个 targetProp 全部消失（证明是引擎②算的）  31198ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂3 敏感性：Customer.receivables ×2 ⇒ receivablePressure 精确 ×2（线性式）  3825ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂3 敏感性：Equipment.health_score ↓10 ⇒ equipmentFailure 精确 ↑10（反向线性）  3285ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂4 反向：拿掉 Line.max_capacity_day ⇒ blockedPressure 退回（COALESCE 兜 0，非写死常数）  4011ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂5 变异反证：把 equipmentFailure 的『100 −』改成『100 +』⇒ 臂1 锚定断言当场红  20586ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > R6 确定性：同 (seed=42) 重铺世界 ⇒ measuredCells / totalCells 逐字节一致  477ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > §3 绑定判据：valueRef 指向不存在的 specKey ⇒ 播种当场抛错变红（⛔ 不静默回落哈希）  763ms
+stdout | test/sim-restpoint-shadow-baseline.seam.test.ts > §2 行为臂：零效果扰动 ⇒ 两条线必须逐字节相同（信噪比恒等式） > 真扰动先证探针有鉴别力（userContribution > 0），再用零效果扰动咬「两条线同源」
+§2 影子线漂移对账：nReal.worldDrift=14.1741117 · 现算期望=14.174111699999997（λ=0.37 由回执自报 · x0=30 · k=1→4） · nNoop.worldDrift=14.1741117 · nNoop.userContribution=0 · nNoop.changedCells=0 · nNoop.ratio=0
+
+ ✓ test/sim-restpoint-shadow-baseline.seam.test.ts (3 tests) 29134ms
+   ✓ §2 行为臂：零效果扰动 ⇒ 两条线必须逐字节相同（信噪比恒等式） > 真扰动先证探针有鉴别力（userContribution > 0），再用零效果扰动咬「两条线同源」  29111ms
+
+ Test Files  3 passed (3)
+      Tests  28 passed (28)
+   Start at  16:30:44
+   Duration  153.36s (transform 11.04s, setup 0ms, collect 46.98s, tests 220.75s, environment 1ms, prepare 1.59s)
+

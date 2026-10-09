@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { makeApp, ADMIN, seedBattery, type TestApp } from "./helpers.js";
 import { seedDemoPropagationRules } from "../src/seed.js";
+import { STATE_VAR_DOMAINS } from "../src/synthetic/battery.js";
 import type { TickState } from "@platform/contracts";
 
 /**
@@ -32,6 +33,11 @@ import type { TickState } from "@platform/contracts";
  *    `ratio === 0`（是**恒等式**，不是阈值）。配一条**反向金丝雀**先跑：真扰动（+15）时
  *    同一探针必须读出 `userContribution > 0` —— 否则那个 0 可能只是探针坏了（本仓铁律：
  *    报否定结论前先跑必然命中的对照）。
+ *    ⚠ 2026-10-09 订正（WO-SEMANTICS-DECLARED 收尾）：原「`worldDrift === 0`」判据已换 ——
+ *    它拿「零扰动 ⇒ 世界逐拍恒定」当「两条线同源」的**代理**，而归位后偏离静息的起点按
+ *    **声明衰减**回落（C2 对 `DEVIATION` 格跳过，不再锚回 base）⇒ 该代理对这类起点恒假。
+ *    新判据 = 影子线漂移与**按声明衰减率现算**的轨迹对账（λ 取回执自报）；理由与逐位复算
+ *    见 §2 内注释。
  *
  * ⚠ 为什么零效果扰动这一臂能同时咬住两处调用点：
  *    主线偷换口径（第 11 位变 `{}`）⇒ 主线按**水平**驱动、影子线仍按偏离 ⇒ 两条线分叉；
@@ -154,10 +160,33 @@ async function seededApp(): Promise<TestApp> {
 /** 常州基地 —— 与 `shadow-memo.seam.test.ts` 同一个（`line_belongs_to_base` 出边最全）。 */
 const BASE_ID = "obj_base_changzhou";
 /**
- * tick0 世界态。**必须偏离静息点**（`loadIndex` 是压力族）——
+ * tick0 世界态。**必须偏离静息点**（`loadIndex` 是压力族，`restPoint = 0`）——
  * 影子线从"世界自己在走"的状态出发，`worldDrift > 0` 才有鉴别力（否则恒等式退化成 `0 === 0`）。
+ * ⚠ WO-SEMANTICS-DECLARED 收尾（2026-10-09）：`Base|loadIndex` 归位成 `DEVIATION` 之后，
+ *   「世界自己在走」的形态**就是声明衰减**（C2 对 DEVIATION 格跳过，不再把它锚回 base）⇒
+ *   下面 `worldDrift` 的判据从「恒 0」改成「与按声明衰减率现算的轨迹对账」，理由见 §2 内注释。
  */
 const BASE_STATE: TickState = { [BASE_ID]: { loadIndex: 30 } };
+
+/** `arm()` 的拍结构：先 tick(1)（影子线的重放环只在 curTick>0 时才被真跑到），再 tick(3)。 */
+const K_AFTER_WARMUP = 1;
+const K_END = K_AFTER_WARMUP + 3;
+/**
+ * 影子线（= 零扰动世界自己走的那条线）在**本次推进窗口**里的期望漂移 —— **现算**，
+ * ⛔ 不写死 `14.1741117`（那是今天这一组声明的得数，不是判据本身）。
+ *
+ * 影子线从 `baseSnapshot` 零扰动重放 ⇒ 每一格只按**声明衰减率**回落静息点：
+ *   `x_k = rest + (x0 − rest) · (1 − λ)^k`（`propagation.ts` 衰减相逐字就是这个式子）
+ * 本世界唯一在起点就偏离静息的格 = `BASE_STATE` 的 `loadIndex`（其余格起点即在静息/占位）
+ * ⇒ `worldDrift` 的和就是这一格的 `|x_K_END − x_K_AFTER_WARMUP|`。
+ * λ 取**本拍回执自报**的 `stateVarReport.decayApplied`、rest 取声明域 —— 两样都不是测试抄的常数。
+ */
+function expectedShadowDrift(lambda: number): number {
+  const rest = STATE_VAR_DOMAINS.loadIndex!.restPoint;
+  const x0 = BASE_STATE[BASE_ID]!.loadIndex as number;
+  const at = (k: number) => rest + (x0 - rest) * (1 - lambda) ** k;
+  return Math.abs(at(K_END) - at(K_AFTER_WARMUP));
+}
 
 interface Noise {
   worldDrift: number;
@@ -194,21 +223,32 @@ async function addPert(t: TestApp, sid: string, pert: Record<string, unknown>): 
  * 若无扰动也先走一拍，再上扰动，这一跑就是**冷重放**（备忘录里那一格还没建），
  * 重放环与逐拍环**两个调用点都被真跑到**（实测：变异 M3「重放段换 `{}`」曾被漏掉，加这一拍后咬住）。
  */
-async function arm(t: TestApp, pert: Record<string, unknown>): Promise<Noise> {
+/** 一条臂的产物：信噪比回执 + 本拍自报的衰减账（后者的用途见 §2 的 `worldDrift` 新判据）。 */
+interface ArmResult {
+  noise: Noise;
+  /** `stateVarReport.decayApplied`：本拍真的按多少在散 —— 声明衰减率的**回执**（⛔ 测试不另抄常数）。 */
+  decayApplied: Record<string, number>;
+}
+
+async function arm(t: TestApp, pert: Record<string, unknown>): Promise<ArmResult> {
   const sid = await newSession(t, null);
   await tick(t, sid, 1);
   await addPert(t, sid, pert);
   const r = await tick(t, sid, 3);
   expect(r.signalToNoise, "有扰动的会话必须下发信噪比回执（影子线在跑）").toBeDefined();
-  return r.signalToNoise!;
+  return { noise: r.signalToNoise!, decayApplied: r.stateVarReport?.decayApplied ?? {} };
 }
 
-async function tick(t: TestApp, sid: string, n: number): Promise<{ state: TickState; signalToNoise?: Noise }> {
+async function tick(
+  t: TestApp,
+  sid: string,
+  n: number,
+): Promise<{ state: TickState; signalToNoise?: Noise; stateVarReport?: { decayApplied?: Record<string, number> } }> {
   const r = await t.app.inject({
     method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n },
   });
   expect(r.statusCode, `tick 失败：${JSON.stringify(r.json()).slice(0, 300)}`).toBe(200);
-  return r.json() as { state: TickState; signalToNoise?: Noise };
+  return r.json() as { state: TickState; signalToNoise?: Noise; stateVarReport?: { decayApplied?: Record<string, number> } };
 }
 
 /** 真扰动（值真的动）+ 零效果扰动（值一格不动）—— 两条臂只差"扰动有没有效果"这一个变量。 */
@@ -224,33 +264,72 @@ describe("§2 行为臂：零效果扰动 ⇒ 两条线必须逐字节相同（�
     // 真 +15：影子线（零扰动）与主线（含这笔）必须分叉 ⇒ 探针读到非 0。
     // ⇒ 下面那个 `=== 0` 才有资格被读成"两条线相同"，而不是"探针恒读 0"。
     const nReal = await arm(t, { ...PERT_COMMON, magnitude: 15, label: "真扰动 +15" });
-    expect(nReal.userContribution, "🐤 金丝雀落空：真扰动下两条线竟然读不出差 ⇒ 探针坏了").toBeGreaterThan(0);
-    expect(nReal.changedCells).toBeGreaterThan(0);
+    expect(nReal.noise.userContribution, "🐤 金丝雀落空：真扰动下两条线竟然读不出差 ⇒ 探针坏了").toBeGreaterThan(0);
+    expect(nReal.noise.changedCells).toBeGreaterThan(0);
 
-    // ⚠ **`worldDrift === 0` 是本单之后的特性，不是故障**（实测：改动前这里 > 0、也是绿的，
-    //    所以它**不能**再当"影子线在跑"的判据 —— 那条判据要的正是本单要治的病「世界自己会漂」）。
-    //    零扰动的影子线驱动量 = 源读数 − 源侧静息点 = 0 ⇒ 逐拍恒定；
-    //    `summarizeSignalNoise` 自己写着「`ratio` 在 `worldDrift === 0` 时为 `null` 而不是
-    //    Infinity/0：零漂移下这个比值无定义，给个数就是编；前端据此显示『本拍世界无自发漂移』」。
-    //    故这里**正向断言 0**：它同时咬住「影子线被喂了另一份静息点」（那样它就会动）。
+    /**
+     * ── `worldDrift` 判据：原判据为什么作废、换成什么（WO-SEMANTICS-DECLARED 收尾 · 2026-10-09）──
+     *
+     * **原判据** `nReal.worldDrift === 0` 在度量什么：它是个**代理** —— 用「零扰动的影子线逐拍恒定」
+     * 来咬「主线/影子线喂**同一份**源侧静息点」。恒定曾是 **C2 合成层**的产物：`x' = 0.63x + 0.37·base`
+     * 恰以 `base` 为不动点、把核的 `−λx` 掉头抵消；而 C2 对 `DEVIATION` 格**必须跳过**
+     * （`spec-base-synthesis.ts`：其锚本来就是 `restPoint`，C2 对它是恒等变换）。
+     * 本会话把 `Base|loadIndex` 归位成 `DEVIATION` ⇒ C2 不再把它锚回 base ⇒ 起点偏离静息的格
+     * 按**声明衰减**回落静息点：本用例快照把 loadIndex 设成 30（≠ restPoint 0）⇒ 影子线逐拍
+     * `30→18.9→…→4.7258883`（λ=0.37 由回执自报）⇒ `worldDrift = |30·0.63¹ − 30·0.63⁴| = 14.1741117`。
+     * **这不是"某处偷换了静息点"**：那一跑引擎零流量（扰动为空），动的就是声明衰减 ——
+     * 原判据对**偏离静息的起点**恒假了，与"同源"这件事无关（起点恰在静息上时它才与同源等价）。
+     * ⚠ 附带记录（不在本单半径内，交仓主）：自定义快照下「**驱动静息点** = baseSnapshot(30)」与
+     *   「**衰减静息点** = restPoint(0)」**不一致**；种子世界两者同值故无感。要不要统一是语义裁决。
+     *
+     * **新判据**：把影子线的漂移与**按声明衰减率现算**的期望轨迹对账（λ 取本拍回执自报、rest 取
+     * 域声明，见 `expectedShadowDrift`）。它仍咬「两条线同源」：影子线若被偷喂另一份静息点
+     * （或主线被换口径，见下 noop 臂），两条线就会多出/丢掉一层流量 ⇒ 漂移偏离纯衰减轨迹 ⇒ 当场红。
+     * ⛔ 不写死 14.1741117，也不降级成"不设断言"。
+     */
+    const lambdaReal = nReal.decayApplied.loadIndex;
+    expect(lambdaReal, "🐤 回执没自报 loadIndex 的声明衰减率 ⇒ 期望漂移无从现算（别退回写死常数）").toBeGreaterThan(0);
     expect(
-      nReal.worldDrift,
-      `零扰动的影子线动了（${nReal.worldDrift}）⇒ 偏离驱动没生效，或某处偷换了静息点`,
-    ).toBe(0);
+      nReal.noise.worldDrift,
+      `影子线漂移 ${nReal.noise.worldDrift} ≠ 按声明衰减率现算的期望 ${expectedShadowDrift(lambdaReal)}` +
+        `（λ=${lambdaReal}，x0=${BASE_STATE[BASE_ID]!.loadIndex}，k=${K_AFTER_WARMUP}→${K_END}）` +
+        ` ⇒ 影子线不是"只按声明衰减在走"（多出来的差异只可能来自被偷换的静息点/多走的流量）。`,
+    ).toBeCloseTo(expectedShadowDrift(lambdaReal), 6);
 
     // ── 头号判据 ────────────────────────────────────────────────────────────────
     // delta 0：**值一个字节都不动**（扰动确实建了、影子线确实在跑），
     // 于是"两条线只许差有没有扰动"这句话的可判据形态就是：两条线逐字节相同。
     const nNoop = await arm(t, { ...PERT_COMMON, magnitude: 0, label: "零效果扰动" });
     expect(
-      nNoop.userContribution,
-      `主线与影子线分叉了：userContribution=${nNoop.userContribution}（两条线喂了不同的静息点）`,
+      nNoop.noise.userContribution,
+      `主线与影子线分叉了：userContribution=${nNoop.noise.userContribution}（两条线喂了不同的静息点）`,
     ).toBe(0);
-    expect(nNoop.changedCells, "有格子被「两条线口径不同」改动了").toBe(0);
-    // 世界不漂 + 用户贡献 0 ⇒ ratio 按口径为 null（见上引的 `summarizeSignalNoise` 原注释）。
-    expect(nNoop.worldDrift, "零效果扰动臂里世界自己漂了 ⇒ 零扰动恒定这条判据被破坏").toBe(0);
-    expect(nNoop.ratio, "worldDrift === 0 ⇒ ratio 必须是 null（给 0 就是编）").toBe(null);
+    expect(nNoop.noise.changedCells, "有格子被「两条线口径不同」改动了").toBe(0);
+    /**
+     * 同一个盘子、两个臂都要对得上（影子线对两臂是**同一条**线 —— 它压根不收扰动）。
+     * ⛔ 原判据 `nNoop.worldDrift === 0` / `ratio === null` 同根作废（理由见上，不重复）。
+     */
+    expect(
+      nNoop.noise.worldDrift,
+      `零效果扰动臂：影子线漂移 ${nNoop.noise.worldDrift} ≠ 现算衰减轨迹 ${expectedShadowDrift(lambdaReal)}`,
+    ).toBeCloseTo(expectedShadowDrift(lambdaReal), 6);
+    /**
+     * 世界自己在漂（≠0）而用户贡献为 0 ⇒ `ratio` 必须**精确 = 0**（"这次的漂移里没有一分来自用户"）。
+     * ⛔ 不再是 `null` —— `null` 专属于 `worldDrift === 0` 的无定义态（`summarizeSignalNoise` 原文：
+     * 零漂移下这个比值无定义）；今天世界确实在漂，给 `null` 就是把"比值无定义"当成"漂移为零"。
+     */
+    expect(
+      nNoop.noise.ratio,
+      "用户贡献 0 ÷ 世界漂移 ⇒ ratio 必须精确 0（⛔ 不是 null：null 是 worldDrift===0 的专属）",
+    ).toBe(0);
     // 两条臂确实不同（否则"零效果"与"真扰动"没被区分开）。
-    expect(nNoop.userContribution).not.toBe(nReal.userContribution);
+    expect(nNoop.noise.userContribution).not.toBe(nReal.noise.userContribution);
+    // 值级证据（数量绿不等于值对：这条把两侧的**数**都打在证据里，供复算）。
+    console.log(
+      `§2 影子线漂移对账：nReal.worldDrift=${nReal.noise.worldDrift} · 现算期望=${expectedShadowDrift(lambdaReal)}` +
+        `（λ=${lambdaReal} 由回执自报 · x0=${BASE_STATE[BASE_ID]!.loadIndex} · k=${K_AFTER_WARMUP}→${K_END}）` +
+        ` · nNoop.worldDrift=${nNoop.noise.worldDrift} · nNoop.userContribution=${nNoop.noise.userContribution}` +
+        ` · nNoop.changedCells=${nNoop.noise.changedCells} · nNoop.ratio=${nNoop.noise.ratio}`,
+    );
   });
 });

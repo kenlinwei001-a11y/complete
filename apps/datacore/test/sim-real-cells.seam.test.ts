@@ -7,7 +7,7 @@ import {
 } from "../src/seed-derivation-specs.js";
 import { seedDemoPropagationRules } from "../src/seed.js";
 import { deriveSeedBaseSnapshot, seedHash01 } from "../src/sim/seed-world.js";
-import { STATE_VAR_DISPLAY_NAMES, STATE_VAR_DOMAINS } from "../src/synthetic/battery.js";
+import { STATE_VAR_DISPLAY_NAMES, STATE_VAR_DOMAINS, STATE_VAR_SEMANTICS } from "../src/synthetic/battery.js";
 import type { ObjectInstance } from "../src/domain.js";
 
 /**
@@ -47,6 +47,8 @@ describe("WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合）", () 
   let t: TestApp;
   let measuredCells = 0;
   let totalCells = 0;
+  /** 归位成 `DEVIATION` 的格数（现算：`STATE_VAR_SEMANTICS` × 进世界对象数）—— ⓒ 用它分解 4183。 */
+  let deviationCells = 0;
   /** 各类型对象缓存（臂 1 手算输入 + 臂 2 对照真值都从对象层独立取）。 */
   const objsByType = new Map<string, ObjectInstance[]>();
   const objectsOf = async (type: string): Promise<ObjectInstance[]> => {
@@ -62,13 +64,30 @@ describe("WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合）", () 
     await seedDemoDerivationSpecs(t.repos, t.services.ontologyCore, t.services.governance, t.adminCtx);
     await recomputeDemoDerivationsAtSeed(t.repos, t.services.ontologyCore, t.adminCtx);
     // 铺世界读 measuredCells（与 GET /a/v1/sim/sessions 的 baseSnapshotOrigin 同源）。
-    const { origin } = await deriveSeedBaseSnapshot(t.repos, "demo");
+    const { origin, state } = await deriveSeedBaseSnapshot(t.repos, "demo");
     measuredCells = origin.measuredCells;
     totalCells = origin.cells;
+    /**
+     * ★ WO-SEMANTICS-DECLARED 收尾：**现算**「归位成 `DEVIATION` 的格数」——
+     * 即那批从「实测」账里退出、改记 `restPoint` 的格子。两个来源都不许写死数：
+     *   · 键集 = `STATE_VAR_SEMANTICS` 里真的登记为 `DEVIATION` 的条目（唯一声明处）；
+     *   · 「进世界对象数」按**世界态现数**（该行里真的有这一格），⛔ 不从 measuredCells 反推。
+     * 今天的得数 = 2063（17 键逐型计数，探针 /tmp/probe-semantics-r1.txt P2 给出逐键表）。
+     */
+    const typeById = new Map((await t.repos.objects.list("demo")).map((o) => [o.id, o.type] as const));
+    deviationCells = 0;
+    for (const [typeVar, sem] of Object.entries(STATE_VAR_SEMANTICS)) {
+      if (sem !== "DEVIATION") continue;
+      const [typeKey, stateVar] = typeVar.split("|");
+      for (const [objId, row] of Object.entries(state)) {
+        if (typeById.get(objId) !== typeKey) continue;
+        if (typeof row[stateVar] === "number") deviationCells += 1;
+      }
+    }
   }, 180_000);
 
   // ── ⓒ 接缝驱动（验收判据 7）：编译→recompute→播种→读数 整条通 ─────────────────
-  it("ⓒ 接缝驱动：26 条规格编译入库 + 物化后 measuredCells 从 470 涨到 4183（主判据 3,896 过线）", () => {
+  it("ⓒ 接缝驱动：26 条规格编译入库 + 物化后 measuredCells 从 470 涨到 2120（归位前 4183，分解现算）", () => {
     // 前态锚点：§1 只带 3 条旧规格时 measuredCells=470（WO 实测基线，含 Customer 那条 20 格）。
     // 20 条 A 档物化 +3,221 ⇒ 3691；A⚠ 5 条（仓主 2026-09-16 ③批）再 +480（Order 150×3 +
     // MaterialBatch 24 + Model 6）⇒ 4171 ≥ 主判据 3,896（+275）。orderChurn 停笔不减格（它从未物化）。
@@ -88,7 +107,36 @@ describe("WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合）", () 
     //   `demo_order_leaddays_to_model_horizon` 靶格改到 `Model.costPressure` ⇒ 6 个 Model 各少 1 格。
     //   ⚠ 判据落在「6」这个数与 Model 对象数一致上，不是「反正红了就改小」。
     expect(totalCells).toBe(6375);
-    expect(measuredCells).toBe(4183);
+    /**
+     * ⚠ WO-SEMANTICS-DECLARED 收尾（2026-10-09）**4183 → 2120（−2063）**，理由必须写清：
+     *
+     * **原判据在度量什么**：26 条规格物化的真业务数**真的进了世界态**（不是留在 props 上自娱），
+     *   底线上界 = 主判据 3,896（WO-SIM-REAL-DATA 验收判据 7；改前 measuredCells=470，只带 3 条旧规格）。
+     *
+     * **为什么今天不再成立**：本会话把 17 个状态量归位成 `DEVIATION` —— 它们的世界态值由
+     *   **语义声明 + `restPoint`** 管（压力族 rest=0），**不再从对象属性上实测** ⇒ 其中 2063 格
+     *   退出 measuredCells。**这不是"丢了 2063 格真读数"**：这些值本来就该是静息值，而那些规格
+     *   的物化仍然发生（props 上仍在，由上面 ⓑ 逐条守着），只是不再冒充**世界态**的实测。
+     *   ⛔ 也不许反过来把测试改成 4312 或删断言 —— 诚实口径就是 2120。
+     *
+     * **新判据**：① 诚实实测数 = 2120；② 「−2063」**现算**（`STATE_VAR_SEMANTICS` × 进世界对象数，
+     *   见 beforeAll），并断言 `2120 + 2063 = 4183` 这条**分解恒等** —— 主判据 3,896 借它保持可比
+     *   （4183 ≥ 3896 那份"规格真的物化了"的证据没有蒸发，只是分了两档记账）。下次世界再变，
+     *   这两条会一起红并打印两侧的数，不必再手工追数字。
+     */
+    expect(measuredCells).toBe(2120);
+    // 🐤 金丝雀：现算分解必须真的扫到 DEVIATION 格（0 ⇒ 下面那条恒成立、等于没测）。
+    expect(deviationCells, "🐤 现算没扫到任何 DEVIATION 格 ⇒ 这条分解成了空转").toBeGreaterThan(0);
+    console.log(
+      `ⓒ 记账分解：measuredCells=${measuredCells} · DEVIATION 格（现算）=${deviationCells} · ` +
+        `两者之和=${measuredCells + deviationCells}（归位前实测 4183）· totalCells=${totalCells}`,
+    );
+    expect(
+      measuredCells + deviationCells,
+      `归位前实测格 4183 = 今日诚实实测 ${measuredCells} + 归位成 DEVIATION、改记 restPoint 的 ` +
+        `${deviationCells} 格（现算：STATE_VAR_SEMANTICS × 进世界对象数，⛔ 不写死 2063）` +
+        `—— 这就是主判据 3,896 的可比口径`,
+    ).toBe(4183);
   });
 
   // ── ⓑ 指认粒度（验收判据 ⓑ）：逐条点名物化数，红了能指出是哪一条 ─────────────────
@@ -178,8 +226,18 @@ describe("WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合）", () 
     const EXCEPTIONS: Record<string, readonly [number, number, string]> = {
       // 应收超授信 25.6%（1 户）：应收 > 授信 = 超压如实。注意 22.67 是臂1锚点那户的值，不是分布上界。
       "Customer|receivablePressure": [0, 126, "实测 6.40–125.59（n=20，越域 1 户）"],
-      // 16 单 creditUsedRatio>1（i%7 单 1.15×100=115）：超授信即超压（仓主 ③批「如实」）。
-      "Order|costPressure": [0, 116, "实测 40–115（n=500，越域 16 单）"],
+      // ⛔ `Order|costPressure` 条目 **2026-10-09 移除**（WO-SEMANTICS-DECLARED 收尾，理由如下三条）：
+      //   ① 原条目守的事实：`Order` 上有 `costPressure` prop、实测 40–115、16 单 >100（超授信如实）；
+      //   ② 本会话的**名实归位**把该规格落到 `Order.creditUtilization`（seed-derivation-specs.ts），
+      //      该格又裁定 `DEVIATION` ⇒ 不再由规格物化（`stateVarValueRef` 对 DEVIATION 恒 undefined，
+      //      battery.ts）⇒ `Order` 上 `costPressure` prop 实测 **0/500**；同一个数**原样搬到**
+      //      `creditUtilization`（实测 500/500，range [40,115]，>100 仍 16 单）——「如实」没丢，换了名字；
+      //   ③ 而 `creditUtilization` **不是状态量**（全仓 0 条传导规则读写它、不在 `STATE_VAR_DOMAINS`
+      //      也不在 `STATE_VAR_DISPLAY_NAMES`）⇒ 按本臂自述范围（下方「其余 prop 不是状态量，不在
+      //      本臂守卫范围」）它本就不该被这条臂扫。
+      //   ⇒ 判据（例外表零腐坏：扫不到的例外 = 死档案）没出错，**过期的是这条条目**：删它。
+      //   ⚠ 要把该业务数重新纳入守卫 = **扩面决定**：必须先把该键拉进可扫范围（登记），
+      //     单把条目改名成 `Order|creditUtilization` 照样红（扫描看不到的键永远删不掉 excLeft）。
       // 负=未到船期、>100=已超窗（A 档交付记录）。
       "PurchaseOrder|expeditePressure": [-33, 213, "实测 −32.43–212.5（n=30，越域 13）"],
       // >100=基地承诺量超两产能之和，超载如实（A 档交付记录）。
@@ -415,8 +473,10 @@ describe("WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合）", () 
     // 复原后必须能正常播种（证明变异真的被复原，不留残毒）。
     const ok = await deriveSeedBaseSnapshot(t.repos, "demo");
     // WO-PROP-REVIEW-V2：4171→4189（+18 库存环 coverDays 格）；
-    // WO-FORECASTBIAS-RETIRE：4189→4183（−6 Model.forecastBias 格退役回哈希）。理由见 ⓒ 段注释。
-    expect(ok.origin.measuredCells).toBe(4183);
+    // WO-FORECASTBIAS-RETIRE：4189→4183（−6 Model.forecastBias 格退役回哈希）。
+    // WO-SEMANTICS-DECLARED 收尾：4183→2120（−2063 = 17 个 DEVIATION 格不再从对象属性实测；
+    //   分解恒等式 2120+2063=4183 与理由全文见 ⓒ 段注释）。本用例的结构（变异→抛错→复原→重铺）一字未动。
+    expect(ok.origin.measuredCells).toBe(2120);
   });
 
   // ── WO-FORECASTBIAS-RETIRE（2026-09-20）：退役必须**两处同时**干净 ──────────────────

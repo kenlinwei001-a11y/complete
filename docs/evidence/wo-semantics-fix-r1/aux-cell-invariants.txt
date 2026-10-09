@@ -1,0 +1,103 @@
+
+ RUN  v3.2.6 /private/tmp/wt-ab/apps/datacore
+
+stdout | test/sim-seed-world.seam.test.ts > WO-SIM-SEED-WORLD · 种子世界接缝 > ⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身
+[SIM-SEED-WORLD ⑤b] 白名单对象=177 每对象最多7格 ⇒ 批大小=71 批数=3（上限=500）
+
+stdout | test/sim-seed-world.seam.test.ts > WO-SIM-SEED-WORLD · 种子世界接缝 > ⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身
+[SIM-SEED-WORLD ⑤b] 合并后 1125 格（一次发完会是 1125>500 ⇒ truncated:true，这就是本条曾经的红）
+
+ ✓ test/sim-seed-world.seam.test.ts (4 tests) 189294ms
+   ✓ WO-SIM-SEED-WORLD · 种子世界接缝 > ① 播种 → GET /a/v1/sim/sessions 里有一条 RUNNING(curTick≥1)、baseSnapshot 非空；② tick 态落盘且真动过；③ 幂等  44477ms
+   ✓ WO-SIM-SEED-WORLD · 种子世界接缝 > ⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身  56821ms
+   ✓ WO-SIM-SEED-WORLD · 种子世界接缝 > ⑥ 确定性（R6）：同一份世界重播一遍，选出来的落点与幅度**逐字节一致**  86444ms
+   ✓ WO-SIM-SEED-WORLD · 种子世界接缝 > ④ 诚实缺席：零传导规则/零物化对象的租户**不建空世界**（空 baseSnapshot 的 RUNNING = 另一种占位）  1548ms
+ ❯ test/sim-root-procurement.seam.test.ts (6 tests | 1 failed) 210351ms
+   ✓ WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SEAM） > ① 入度臂：procurementDelay 入度=0（根源）· 出度>0（真能推动东西）· shortageRisk 入度>0（是果不是源）  30235ms
+   ✓ WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SEAM） > ② 落点臂：三类采购台账在 world.state 里真带 procurementDelay 且值非空（不是只在对象属性上有）  24750ms
+   ✓ WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SEAM） > ③ 传导臂：给采购单打一条扰动 → propagateTick → 该物料 shortageRisk 按系数真的抬起来（方向+量级）  28547ms
+   ✓ WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SEAM） > ③b 传导臂 · 另两类台账（批次 / 供应商）延一拍到达，同样把 shortageRisk 抬起来  24128ms
+   × WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SEAM） > ④ 全链臂（真 HTTP · 从真种子世界态出发）：采购到货延迟 → 物料短缺 → 型号缺料 → 订单缺口，四跳全程真的分叉 37036ms
+     → 第 1 跳：物料短缺没跟着变大: expected 0 to be greater than 0
+   ✓ WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SEAM） > ⑤ 确定性 R6：同 seed 重种，procurementDelay 的落点与一拍传导结果字节级一致  65647ms
+ ❯ test/sim-order-real-fields.seam.test.ts (6 tests | 3 failed) 218316ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ①正向 measuredCells = 在手订单数 × 3，且两边**各自独立**算一遍再比  32196ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ①反向 把某张单的 qty 删掉 ⇒ 该格退回哈希、measuredCells 减 1（只测正向不算）  25628ms
+   × WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ② 改真值 ⇒ 下游读数必须跟着变：把一张单的价格 ×1.5，重跑同一套推演 31690ms
+     → expected 47 to be 22638 // Object.is equality
+   × WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ③ 两张金额差一个量级的真订单，同一个扰动 ⇒ 下游读数必须拉开 30599ms
+     → 大单 16131 套得 100000，小单 1454 套得 100000 —— 两者相同 ⇒ 真值没进传导式，只是存下来了: expected 100000 not to be 100000 // Object.is equality
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ④ R6：同 (industry, scale, seed) 重跑，世界态逐字节一致  72510ms
+   × WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ⑤ 接缝：真值必须**出现在传导结果里**，且 max 语义不随拍数漂（不是纯积分器） 25650ms
+     → obj_model_4680-NCM.backlogHorizonDays @tick1: expected undefined to be 110 // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/sim-order-real-fields.seam.test.ts > WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ② 改真值 ⇒ 下游读数必须跟着变：把一张单的价格 ×1.5，重跑同一套推演
+AssertionError: expected 47 to be 22638 // Object.is equality
+
+- Expected
++ Received
+
+- 22638
++ 47
+
+ ❯ test/sim-order-real-fields.seam.test.ts:172:24
+    170|     expect(typeof readBefore, "下游落点必须真的有读数").toBe("number");
+    171|     // 系数 1.0 原样透传 + max ⇒ 下游读数就是那张 top 单的真实单价（可预言，不是"大概相关"）
+    172|     expect(readBefore).toBe(top.props.unitPrice);
+       |                        ^
+    173| 
+    174|     await setProp(t, top, { unitPrice: (top.props.unitPrice as number)…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  test/sim-order-real-fields.seam.test.ts > WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ③ 两张金额差一个量级的真订单，同一个扰动 ⇒ 下游读数必须拉开
+AssertionError: 大单 16131 套得 100000，小单 1454 套得 100000 —— 两者相同 ⇒ 真值没进传导式，只是存下来了: expected 100000 not to be 100000 // Object.is equality
+ ❯ test/sim-order-real-fields.seam.test.ts:231:11
+    229|       `大单 ${big.props.qty} 套得 ${readBig}，小单 ${small.props.qty} 套得 ${re…
+    230|         `两者相同 ⇒ 真值没进传导式，只是存下来了`,
+    231|     ).not.toBe(readSmall);
+       |           ^
+    232|     // 可预言：差额恰等于两张单真实台数之差（系数 1.0 + delta 同幅 + max）
+    233|     expect((readBig as number) - (readSmall as number))
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  test/sim-order-real-fields.seam.test.ts > WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ⑤ 接缝：真值必须**出现在传导结果里**，且 max 语义不随拍数漂（不是纯积分器）
+AssertionError: obj_model_4680-NCM.backlogHorizonDays @tick1: expected undefined to be 110 // Object.is equality
+
+- Expected: 
+110
+
++ Received: 
+undefined
+
+ ❯ test/sim-order-real-fields.seam.test.ts:268:70
+    266|         const target = TOPS[v];
+    267|         // 落点读数 === 该型号在手订单里那个字段的真实最大值（系数 1.0 原样透传）
+    268|         expect(w1[modelId]?.[target], `${modelId}.${target} @tick1`).t…
+       |                                                                      ^
+    269|         /**
+    270|          * ⚠ 这一条是本门最要紧的一格：`combine:"max"` 每拍重算、不吃上一拍的值。
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  test/sim-root-procurement.seam.test.ts > WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SEAM） > ④ 全链臂（真 HTTP · 从真种子世界态出发）：采购到货延迟 → 物料短缺 → 型号缺料 → 订单缺口，四跳全程真的分叉
+AssertionError: 第 1 跳：物料短缺没跟着变大: expected 0 to be greater than 0
+ ❯ test/sim-root-procurement.seam.test.ts:315:64
+    313|     // 真世界里每个根源量纲本来就非 0（`deliveryDelay`/`demandPressure`/`priceShock` …
+    314|     // 基线自己就在长 —— 「变大了」才是这条扰动的可归因效果，「非 0」不是。
+    315|     expect(read(actual, matId, RESULT_VAR), "第 1 跳：物料短缺没跟着变大").toBeGre…
+       |                                                                ^
+    316|     expect(read(actual, modelId, "supplyRisk"), "第 2 跳：型号供应风险没跟着变大").t…
+    317|     expect(read(actual, orderId, RESULT_VAR), "第 3 跳：订单缺口没跟着变大").toBeG…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  2 failed | 1 passed (3)
+      Tests  4 failed | 12 passed (16)
+   Start at  16:12:20
+   Duration  250.96s (transform 15.46s, setup 0ms, collect 87.68s, tests 617.96s, environment 1ms, prepare 3.30s)
+

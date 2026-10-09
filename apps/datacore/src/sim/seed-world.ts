@@ -518,6 +518,15 @@ export async function deriveSeedBaseSnapshot(
           } else {
             row[v] = d.restPoint;
             originRow[v] = "derived";
+            // ★ 记账：这一格**真的写进了 `state`**（上面两行）⇒ 必须计入 `cells`（世界格数）。
+            //   ⛔ `continue` 越过下面的 `cells += 1` 会让「格子在 `/world` 里读得到、却不计进
+            //   总格数」—— 实测（WO-SEMANTICS-DECLARED 收尾）：世界态 Σrows = 6375，而
+            //   `origin.cells` = 4312（差 2063 = 本支铺的全部 DEVIATION 格），屏上「实测格
+            //   2120/4312」于是与同一个世界的 6375 格自相矛盾。本支与上面两档（真读数 / 哈希
+            //   占位）一样写一格，`cells` 就该一样 +1。
+            //   `measured*` 三个账不动（本支一格都不实测，理由见上注）—— 动的只有世界格数这一个账。
+            //   ⚠ 语义归位本身**不在此列**：改的是记账，不是「静息值取 `restPoint`」这条裁定。
+            cells += 1;
             continue;
           }
         }

@@ -1,0 +1,10 @@
+
+ RUN  v3.2.6 /private/tmp/wt-ab/packages/contracts
+
+ ✓ test/finance-world-charge-basis.test.ts (4 tests) 77ms
+
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+   Start at  15:57:00
+   Duration  4.00s (transform 303ms, setup 0ms, collect 992ms, tests 77ms, environment 0ms, prepare 618ms)
+

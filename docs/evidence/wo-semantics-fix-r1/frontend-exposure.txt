@@ -1,0 +1,11 @@
+
+ RUN  v3.2.6 /private/tmp/wt-ab/apps/frontend-shell
+
+ ✓ test/exposure-responds-to-perturbation.seam.test.ts (9 tests) 768ms
+   ✓ SEAM · 扰动影响面随扰动变化 > ⑧ 摘牌结构判据：受阻环节不许再回到「本次推演结果」语境  391ms
+
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+   Start at  15:56:18
+   Duration  30.90s (transform 8.33s, setup 18.97s, collect 665ms, tests 768ms, environment 6.45s, prepare 1.28s)
+
