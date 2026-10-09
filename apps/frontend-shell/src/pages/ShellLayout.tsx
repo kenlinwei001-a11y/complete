@@ -194,28 +194,12 @@ export const CONSOLIDATED_INTO_SANDBOX: Record<
   //   （刻意不写死行号 —— 行号会漂，写死行号的引用天生带保质期。）
   //
   // `where` 写的是**用户点哪里能到**，逐条与 `unifiedModes.ts` 的 `UNIFIED_MODE_SPEC` 对得上：
-  "sim-conduction": {
-    via: "view-defs", host: "sim-unified",
-    where: "统一推演控制台顶部页签 →「传导识别」（`UNIFIED_MODE_SPEC.conduction.renderer = \"sim-conduction\"`，经 getRenderer 挂的就是本页组件）",
-  },
-  "sim-attribution": {
-    via: "view-defs", host: "sim-unified",
-    where: "统一推演控制台顶部页签 →「损失归因」（`UNIFIED_MODE_SPEC.attribution.renderer = \"sim-attribution\"`，经 getRenderer 挂的就是本页组件）",
-  },
-  "sim-optimize": {
-    via: "view-defs", host: "sim-unified",
-    where: "统一推演控制台顶部页签 →「方案寻优」（`UNIFIED_MODE_SPEC.optimize.renderer = \"sim-optimize\"`，经 getRenderer 挂的就是本页组件）",
-  },
   // ⚠ `sim-console` 与上面三条**收编方式不同，必须分开说**（合成一句就是本仓最恨的
   //   「拿一个笼统说法盖住两个不同事实」）：上面三条是**同组件原样挂进页签**（点开还是那一页）；
   //   本条是**版面替代** —— 合并壳首档 `now` 用自带的 37 张指标卡墙（`MetricWall`）取代了本页首屏，
   //   `UNIFIED_MODE_SPEC.now.renderer === null`，即壳里**并没有挂 `sim-console` 这个组件**。
   //   这正是仓主那句「base 页面是一个大量的指标卡片」所裁决的合并方向，不是漏接线。
   //   旧版面本身一个字没动、`/v/sim-console` 深链照旧可达（判据⑧b 逐条验它还在 VIEW_DEFS 里）。
-  "sim-console": {
-    via: "view-defs", host: "sim-unified",
-    where: "统一推演控制台首档「指标态势」（= 本页首屏的合并去向：37 张指标卡墙取代旧首屏；旧版面 /v/sim-console 深链仍可直达）",
-  },
 };
 
 /**
