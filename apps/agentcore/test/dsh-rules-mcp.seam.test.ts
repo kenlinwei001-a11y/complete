@@ -443,7 +443,7 @@ describe("WO-AGENT-CONFIG-TO-DSH · C 组：规则面三面同改 + 只剩一条
     const generalHostNames = (general.spec.hostTools ?? []).map((x) => x.name);
     const generalMcp = (general.spec.tools ?? []).map((x) => x.name).filter((n) => n.startsWith("mcp__builtin__"));
     expect(generalHostNames.length + generalMcp.length, "旧载体金丝雀：反向面 + MCP 面 = 花名册全量").toBe(
-      BUILTIN_MCP_TOOL_NAMES.length,
+      BUILTIN_MCP_TOOL_NAMES.length + 1, // +1 = evaluate_rules（在**规则面**上，不在本 server 花名册里）
     );
     expect(generalHostNames.length, "金丝雀有牙：反向面本批仍非空（未迁件还在）").toBeGreaterThan(0);
     expect(hostNames, "analyst 已无未迁件 ⇒ 反向工具面结构性为空").toEqual([]);

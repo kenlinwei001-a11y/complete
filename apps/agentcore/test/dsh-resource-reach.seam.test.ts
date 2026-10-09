@@ -589,7 +589,7 @@ describe("RESOURCE-REACH · A 授予面契约（seed → expandAgentTools → se
     const generalHost = (general.spec.hostTools ?? []).map((x) => x.name);
     const generalMcp = (general.spec.tools ?? []).map((x) => x.name).filter((n) => n.startsWith("mcp__builtin__"));
     expect(generalHost.length + generalMcp.length, "旧载体金丝雀②：反向面 + MCP 面 = 花名册全量").toBe(
-      BUILTIN_MCP_TOOL_NAMES.length,
+      BUILTIN_MCP_TOOL_NAMES.length + 1, // +1 = evaluate_rules（在**规则面**上，不在本 server 花名册里）
     );
     expect(generalHost.length, "金丝雀有牙：反向面本批仍非空（未迁件还在）").toBeGreaterThan(0);
   });
@@ -623,7 +623,7 @@ describe("RESOURCE-REACH · A 授予面契约（seed → expandAgentTools → se
     const generalHost = (general.spec.hostTools ?? []).map((x) => x.name);
     const generalMcp = (general.spec.tools ?? []).map((x) => x.name).filter((n) => n.startsWith("mcp__builtin__"));
     expect(generalHost.length + generalMcp.length, "旧载体金丝雀：反向面 + MCP 面 = 花名册全量").toBe(
-      BUILTIN_MCP_TOOL_NAMES.length,
+      BUILTIN_MCP_TOOL_NAMES.length + 1, // +1 = evaluate_rules（在**规则面**上，不在本 server 花名册里）
     );
     expect(generalHost.length, "金丝雀有牙：反向面本批仍非空（未迁件还在）").toBeGreaterThan(0);
   });
