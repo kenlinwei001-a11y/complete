@@ -99,6 +99,34 @@ afterEach(async () => {
   for (const c of openClients.splice(0)) await c.close().catch(() => {});
 });
 
+/**
+ * 判据①（迁前/迁后**同一条 query、同一个 agent** 的 run 记录对照）用的两个槽位：
+ * E1（迁后臂）写入，E2（迁前臂）写入后**当场逐键比**并把两臂原文打到屏上（证据档取该输出）。
+ * 四键 = 同一只 executor / 同一行审计名 / 同一份实参 / 同一份回执，**只有载体变**。
+ */
+interface ArmRecord {
+  /** 载体：模型面/wire 上的调用名（唯一该变的那一格） */
+  carrier: string;
+  /** 审计行名（executor 归一之后的工具身份） */
+  auditName: string;
+  outcome: string;
+  inputJson: string;
+  outputJson: string;
+  /** 模型面回执内层 JSON（剥 <tool_data …> 包络；包络里的 tool_call_id 逐次不同属预期） */
+  receiptInner: string;
+}
+const arms: { post?: ArmRecord; pre?: ArmRecord } = {};
+
+function recordArm(slot: "post" | "pre", r: ArmRecord): void {
+  arms[slot] = r;
+}
+
+/** 从模型面回执原文里剥出 <tool_data …> 的**内层 JSON**（外层属性含 per-call id，不参与逐字比）。 */
+function receiptInnerOf(text: string): string {
+  const m = /^<tool_data[^>]*>([\s\S]*)<\/tool_data>$/.exec(text.trim());
+  return m ? m[1]! : text;
+}
+
 /** 真 HTTP 回环：逐字节记录宿主收到的请求体，按剧本回执。 */
 async function startHostLoopback(reply: Record<string, unknown>) {
   const seen: CapturedReq[] = [];
@@ -674,6 +702,16 @@ describe("WO-BUILTIN-TO-DSH · E 组：真跑的 run 记录（迁前 / 迁后同
       // ④ 回执真回模型面：下一轮请求体里逐字可见 <tool_data tool_call_id="tc_…">
       const second = JSON.stringify(stub.requests[1]!.body);
       expect(second, "回执上模型面").toContain(`<tool_data tool_call_id=\\"${row!.id}\\">`);
+      // 判据①·迁后臂那一格（E2 收齐后逐键比）
+      const receiptPost = toolResultText(stub.requests[1]!.body, "call_1");
+      recordArm("post", {
+        carrier: FULL,
+        auditName: row!.toolName,
+        outcome: row!.outcome,
+        inputJson: JSON.stringify(row!.input),
+        outputJson: JSON.stringify(row!.output),
+        receiptInner: receiptInnerOf(receiptPost),
+      });
       // eslint-disable-next-line no-console
       console.log(
         `\n  ── E1 迁后臂 · DSH 模型面（首轮）──\n` +
@@ -712,7 +750,42 @@ describe("WO-BUILTIN-TO-DSH · E 组：真跑的 run 记录（迁前 / 迁后同
       );
       expect(modelCalls.length, "迁前臂：模型那一次查询恰一次").toBe(1);
       const rows = await t.repos.toolCalls.listByTask("task_builtin_e2");
-      expect(rows.find((r) => r.toolName === RAW)?.outcome, "同一只 host executor、同一行审计名").toBe("OK");
+      const preRow = rows.find((r) => r.toolName === RAW);
+      expect(preRow?.outcome, "同一只 host executor、同一行审计名").toBe("OK");
+      // ── 判据①：迁前 / 迁后**同一条 query、同一个 agent** 的 run 记录逐键对照 ──────────
+      const receiptPre = toolResultText(stub.requests[1]!.body, "call_1");
+      recordArm("pre", {
+        carrier: RAW,
+        auditName: preRow!.toolName,
+        outcome: preRow!.outcome,
+        inputJson: JSON.stringify(preRow!.input),
+        outputJson: JSON.stringify(preRow!.output),
+        receiptInner: receiptInnerOf(receiptPre),
+      });
+      const post = arms.post;
+      expect(post, "迁后臂必须先跑过（同一条 query 的对照）").toBeDefined();
+      // 唯一该变的一格：载体（模型面/wire 名）
+      expect(post!.carrier, "载体变了（这是本单的目的）").not.toBe(RAW);
+      expect(post!.carrier).toBe(FULL);
+      // 其余四格逐键相同
+      expect(post!.auditName, "审计名相同（同一行）").toBe(RAW);
+      expect(post!.outcome, "结局相同").toBe("OK");
+      expect(post!.inputJson, "实参逐字节相同").toBe(JSON.stringify(preRow!.input));
+      expect(post!.outputJson, "审计回执逐字节相同").toBe(JSON.stringify(preRow!.output));
+      expect(post!.receiptInner, "模型面回执内层逐字节相同").toBe(receiptInnerOf(receiptPre));
+      // eslint-disable-next-line no-console
+      console.log(
+        `\n  ── 判据① 迁前/迁后 run 记录对照（同一条 query · 同一个 agent agt_seed_analyst）──\n` +
+          `  载体（模型面名）  迁前=${RAW}  迁后=${FULL}   ← 唯一变的一格\n` +
+          `  审计行名          迁前=${RAW}  迁后=${post!.auditName}\n` +
+          `  outcome           迁前=OK  迁后=${post!.outcome}\n` +
+          `  实参              ${post!.inputJson}\n` +
+          `                    byteEqual=${post!.inputJson === JSON.stringify(preRow!.input)}\n` +
+          `  审计回执(前 200)  ${post!.outputJson.slice(0, 200)}\n` +
+          `                    迁前迁后 byteEqual=${post!.outputJson === JSON.stringify(preRow!.output)}（len=${post!.outputJson.length}）\n` +
+          `  模型面回执(内层)  迁前迁后 byteEqual=${post!.receiptInner === receiptInnerOf(receiptPre)}\n` +
+          `                    原文(前 200)=${post!.receiptInner.slice(0, 200)}\n`,
+      );
       // 金丝雀：模型面没空掉（否则上面 not.toContain 恒真）
       expect(names.length).toBeGreaterThan(5);
       // eslint-disable-next-line no-console
