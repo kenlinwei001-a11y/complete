@@ -88,6 +88,11 @@ const MIGRATED: readonly string[] = [
   "search_knowledge",
   "query_timeseries_agg",
   "search_experience",
+  // 批次 2（本单）
+  "discover",
+  "retrieve_knowledge",
+  "query_ontology",
+  "query_system_ontology",
 ];
 
 /** 专属面（各自的内置 server 承载，不在内置工具 server 上）：本体两件 + 规则一件。 */
@@ -125,16 +130,42 @@ const MIN_INPUT: Record<string, Record<string, unknown>> = {
   search_knowledge: { query: "订单" },
   query_timeseries_agg: { seriesKey: "output", entityIds: ["line-1"], window: { from: "2026-01-01", to: "2026-01-07", grain: "day" }, agg: "avg" },
   search_experience: { query: "产能" },
+  discover: { kind: "object_types" },
+  retrieve_knowledge: { query: "产能瓶颈" },
+  query_ontology: { rootType: "Base", select: [] },
+  query_system_ontology: {},
 };
+
+/** 同批：`discover` 一族走**探索配额**（`DISCOVER_TOOLS`）—— 归一后配额判据必须仍咬得住。 */
+const DISCOVER_FAMILY: readonly string[] = ["discover", "search_experience", "query_system_ontology", "retrieve_knowledge"];
 
 const PLAIN_USAGE = { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 };
 const FINAL_ANSWER_ARGS = JSON.stringify({
   blocks: [{ type: "text", markdown: "已读到所需数据，结论见下。" }],
   provenance: [],
 });
-/** 批次 1 的 e2e 探针（入参带 probe 标记 ⇒ 数据面实参统计只认这一条）。 */
-const PROBE_RAW = "search_knowledge";
-const PROBE_ARGS = JSON.stringify({ query: "探针:常州基地产能", topK: 3 });
+/**
+ * e2e 探针（入参带 probe 标记 ⇒ 数据面实参统计只认这一条）。
+ * ⚠ 每进一批把它换成**本批**的一件：判据① 要的是「本批的这件」迁前迁后逐键相同。
+ * 批次 2 = `query_ontology`（数据面落 `dataCore.solver.invoke(ctx, "ontology_query", args)` —— 入参可辨认）。
+ */
+const PROBE_RAW = "query_ontology";
+/** 探针实参：`probe` 是**数据面实参统计的识别标记**（只认这一条，免得把内部调用算进来）。 */
+const PROBE_MARKER = "wo-builtin-rest-probe";
+const PROBE_ARGS = JSON.stringify({ rootType: "Base", select: [{ type: "Order", fields: ["so", "qty"] }], probe: PROBE_MARKER });
+/**
+ * 探针件的**持有者**（出厂种子里第一个授予它的 agent）。判据① 必须用它跑 ——
+ * 用一个没被授予该件的 agent 跑，模型面压根没有它（那量的是别的东西）。
+ */
+const PROBE_AGENT_ID: string = (() => {
+  const holder = seedRegistry().agents.find((a) => rawOfFilter(builtinRef(a)).includes(PROBE_RAW));
+  if (!holder) throw new Error(`出厂种子里没有 agent 持有 ${PROBE_RAW}`);
+  return holder.id;
+})();
+
+/** 数据面读法：`query_ontology` 落到 `dataCore.solver.invoke(ctx, "ontology_query", args)`。 */
+const probeCallsOf = (spy: { mock: { calls: unknown[][] } }) =>
+  spy.mock.calls.filter((c) => c[1] === "ontology_query" && (c[2] as { probe?: string }).probe === PROBE_MARKER);
 
 interface CapturedReq {
   runToken?: string;
@@ -230,6 +261,11 @@ function rawOfFilter(ref: { toolFilter?: string[] } | undefined): string[] {
   return (ref?.toolFilter ?? []).map((n) => n.slice(`mcp__${BUILTIN_MCP_SERVER}__`.length));
 }
 
+/** agent 的内置工具 MCP 授予面**全名**集（无 ref ⇒ 空数组）。 */
+function expandedBuiltinNamesOf(agent: AgentDefinition): string[] {
+  return builtinRef(agent)?.toolFilter ?? [];
+}
+
 /**
  * **迁前形态**（对照臂）：把**已迁**的这批从 MCP 授予撤掉，换回改造前的裸 BUILTIN 授予。
  * 单变量对照 —— 除「这批工具走哪个载体」之外，授予/声明/挂载三面逐字同（其余工具一律不动）。
@@ -255,6 +291,46 @@ function preMigrationAgent(agent: AgentDefinition): AgentDefinition {
         const raw = parseBuiltinMcpToolName(n);
         return raw && MIGRATED.includes(raw) ? raw : n;
       }),
+    },
+  } as AgentDefinition;
+}
+
+/**
+ * **单变量前臂（判一件）**：只把 `raw` 这一件从 MCP 面回退成裸 BUILTIN 授予，其余一律不动。
+ * e2e 的判据① 要的正是「同一条 query、同一个 agent、只有**这一件**换了载体」。
+ */
+function preMigrationOne(agent: AgentDefinition, raw: string): AgentDefinition {
+  const before = expandedBuiltinNamesOf(agent);
+  const after = before.filter((n) => n !== builtinMcpToolName(raw));
+  return {
+    ...agent,
+    tools: [
+      ...agent.tools.filter((t) => !(t.kind === "MCP" && t.mcpConfigId === BUILTIN_MCP_CONFIG_ID)),
+      ...(after.length ? [{ kind: "MCP", mcpConfigId: BUILTIN_MCP_CONFIG_ID, toolFilter: after } as AgentDefinition["tools"][number]] : []),
+      { kind: "BUILTIN", name: raw },
+    ] as AgentDefinition["tools"],
+    scopeDeclaration: {
+      ...agent.scopeDeclaration,
+      toolNames: agent.scopeDeclaration.toolNames.map((n) => (n === builtinMcpToolName(raw) ? raw : n)),
+    },
+  } as AgentDefinition;
+}
+
+/** **单变量反向对照（判一件）**：只把 `raw` 从授予面拿掉，并换授同 server 的另一件（在金丝雀用）。 */
+function ungrantedOne(agent: AgentDefinition, raw: string): AgentDefinition {
+  const swapped = builtinMcpToolName(UNGRANTED_SWAP);
+  const kept = expandedBuiltinNamesOf(agent).filter((n) => n !== builtinMcpToolName(raw) && n !== swapped);
+  return {
+    ...agent,
+    tools: agent.tools.map((t) =>
+      t.kind === "MCP" && t.mcpConfigId === BUILTIN_MCP_CONFIG_ID ? { ...t, toolFilter: [...kept, swapped] } : t,
+    ) as AgentDefinition["tools"],
+    scopeDeclaration: {
+      ...agent.scopeDeclaration,
+      toolNames: [
+        ...agent.scopeDeclaration.toolNames.filter((n) => n !== builtinMcpToolName(raw)),
+        ...(agent.scopeDeclaration.toolNames.includes(builtinMcpToolName(raw)) ? [swapped] : []),
+      ],
     },
   } as AgentDefinition;
 }
@@ -531,7 +607,29 @@ describe("WO-BUILTIN-MIGRATE-REST · B 组：MCP 全名归一回同一具执行�
     expect(isTruncationExemptTool("get_object")).toBe(false);
   });
 
-  it("B5 失败点名披露块：换个载体仍点得出名（渲染里带的是调用名，不是 unknown）", () => {
+  it("B5 探索配额（`DISCOVER_TOOLS`）按**身份**咬：全名形态照样消耗同一份配额 ∧ 超额即 BUDGET_EXCEEDED", async () => {
+    // 本批里 discover / query_system_ontology / retrieve_knowledge / search_experience 都在配额集里
+    // ⇒ 归一失守时这条配额会**静默失效**（读到的名字对不上集合 ⇒ 不扣名额 ⇒ 白扫）。
+    const t = await createTestApp();
+    try {
+      const repos = createMemoryRepos();
+      const budget = new BudgetTracker({ maxDiscoverCalls: 1 });
+      const ex = new GuardedToolExecutor(
+        { repos, dataCore: createMockDataCore(), metrics: new Metrics() } as never,
+        { taskId: "task_quota", ctx: CTX, budget } as never,
+      );
+      const first = await ex.run(full("discover"), { kind: "object_types" });
+      expect(first.outcome, "第 1 次（全名）：还在配额内").not.toBe("BUDGET_EXCEEDED");
+      const second = await ex.run(full("discover"), { kind: "object_types" });
+      expect(second.outcome, "第 2 次（全名）：配额只用 1 ⇒ 必须超额").toBe("BUDGET_EXCEEDED");
+      const row = await repos.toolCalls.get(second.toolCallId);
+      expect(row!.toolName, "超额那行也记裸名").toBe("discover");
+    } finally {
+      await t.app.close();
+    }
+  });
+
+  it("B6 失败点名披露块：换个载体仍点得出名（渲染里带的是调用名，不是 unknown）", () => {
     const block = renderFailedCallsBlock([
       { toolName: full("get_object"), outcome: "DENIED", reason: "AGENT_SCOPE_VIOLATION: 该工具超出本 Agent 的能力声明" },
     ]);
@@ -619,7 +717,7 @@ describe("WO-BUILTIN-MIGRATE-REST · C 组：三面同改 + 只剩一条授予�
       expect(specTool.description, `${raw} 静态投影 = MCP 广告`).toBe(advertised.find((x) => x.rawName === raw)!.description);
       expect(specTool.description.startsWith(BUILTIN_MCP_DESC_PREFIX)).toBe(true);
     }
-    expect((spec.tools ?? []).map((x) => x.name), "harness 白名单含全名").toContain(full(PROBE_RAW));
+    expect((spec.tools ?? []).map((x) => x.name), "harness 白名单含全名").toContain(full(EXPECT_ANALYST_RAW[0]));
   });
 
   it("C4 engine 真装配（通用 agent）：裸名面 = 未迁件 ∧ Phase6C 不砍内置工具面（原生臂真跑）", async () => {
@@ -720,9 +818,9 @@ describe("WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁
     ] satisfies StubRound[]);
     const { t, close } = await startToolExecApp({ stubUrl: `${stub.url}/v1`, serviceToken: SERVICE_TOKEN });
     try {
-      await seedWorld(t, seedAnalyst());
-      const kbSpy = vi.spyOn(t.dataCore.kb, "search");
-      const result = await runAgent(t, "task_rest_e1", SEED_AGENT_ID);
+      await seedWorld(t, seedAgent(PROBE_AGENT_ID));
+      const solverSpy = vi.spyOn(t.dataCore.solver, "invoke");
+      const result = await runAgent(t, "task_rest_e1", PROBE_AGENT_ID);
       expect(result.run.kernel, "真走 DSH 分叉").toBe("EXTERNAL");
 
       const visible = stubVisibleTools(stub);
@@ -733,9 +831,9 @@ describe("WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁
       expect(visible.find((x) => x.name === full(PROBE_RAW))?.description, "描述逐字 = MCP 广告文本").toBe(advertised.description);
       expect(names.length, "金丝雀：模型面没空掉").toBeGreaterThan(5);
 
-      const probeCalls = kbSpy.mock.calls.filter((c) => (c[1] as { query?: string }).query === JSON.parse(PROBE_ARGS).query);
-      expect(probeCalls.length, "模型那一次检索恰一次").toBe(1);
-      expect((probeCalls[0]![1] as { topK?: number }).topK, "入参逐键 = 模型给的").toBe(3);
+      const probeCalls = probeCallsOf(solverSpy);
+      expect(probeCalls.length, "模型那一次本体遍历恰一次").toBe(1);
+      expect((probeCalls[0]![2] as { rootType?: string }).rootType, "入参逐键 = 模型给的").toBe("Base");
 
       const rows = await t.repos.toolCalls.listByTask("task_rest_e1");
       const row = rows.find((r) => r.toolName === PROBE_RAW);
@@ -765,7 +863,7 @@ describe("WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁
     }
   });
 
-  it("E2 迁前（对照臂·同一 query）：能力在反向工具面（裸名）∧ DSH 侧零内置工具 server ∧ 同一执行体同一行审计名", { timeout: SEAM_TIMEOUT }, async () => {
+  it("E2 迁前（对照臂·同一 query · 同一 agent · 单变量）：能力在反向工具面（裸名）∧ 同一执行体同一行审计名", { timeout: SEAM_TIMEOUT }, async () => {
     const stub = await startStubOpenAi([
       { toolCall: { name: PROBE_RAW, arguments: PROBE_ARGS }, usage: PLAIN_USAGE },
       { toolCall: { name: "final_answer", arguments: FINAL_ANSWER_ARGS }, usage: PLAIN_USAGE },
@@ -773,17 +871,24 @@ describe("WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁
     ] satisfies StubRound[]);
     const { t, close } = await startToolExecApp({ stubUrl: `${stub.url}/v1`, serviceToken: SERVICE_TOKEN });
     try {
-      await seedWorld(t, preMigrationAgent(seedAnalyst()));
-      const kbSpy = vi.spyOn(t.dataCore.kb, "search");
-      const result = await runAgent(t, "task_rest_e2", SEED_AGENT_ID);
+      await seedWorld(t, preMigrationOne(seedAgent(PROBE_AGENT_ID), PROBE_RAW));
+      const solverSpy = vi.spyOn(t.dataCore.solver, "invoke");
+      const result = await runAgent(t, "task_rest_e2", PROBE_AGENT_ID);
       expect(result.run.kernel, "真走 DSH 分叉").toBe("EXTERNAL");
 
       const names = stubVisibleTools(stub).map((x) => x.name);
       expect(names, "迁前：能力以裸名到达模型面").toContain(PROBE_RAW);
       expect(names, "迁前：DSH 侧没有这批工具的 MCP 身份").not.toContain(full(PROBE_RAW));
-      expect(names.filter((n) => n.startsWith(`mcp__${BUILTIN_MCP_SERVER}__`)), "迁前：零条内置工具 MCP 工具").toEqual([]);
-      const probeCalls = kbSpy.mock.calls.filter((c) => (c[1] as { query?: string }).query === JSON.parse(PROBE_ARGS).query);
-      expect(probeCalls.length, "迁前臂：模型那一次检索恰一次").toBe(1);
+      // 单变量：**只这一件**回到裸名，同 server 的其余已迁件照旧在 MCP 面上（否则对照不是单变量）
+      const stillMigrated = names.filter((n) => n.startsWith(`mcp__${BUILTIN_MCP_SERVER}__`));
+      expect(stillMigrated, "迁前臂：其余已迁件一件不少").toEqual(
+        expandedBuiltinNamesOf(seedAgent(PROBE_AGENT_ID))
+          .filter((n) => n !== full(PROBE_RAW))
+          .sort(),
+      );
+      expect(stillMigrated.length, "金丝雀：单变量臂不是「整台 server 撤了」").toBeGreaterThan(0);
+      const probeCalls = probeCallsOf(solverSpy);
+      expect(probeCalls.length, "迁前臂：模型那一次本体遍历恰一次").toBe(1);
       const rows = await t.repos.toolCalls.listByTask("task_rest_e2");
       const preRow = rows.find((r) => r.toolName === PROBE_RAW);
       expect(preRow?.outcome, "同一只 host executor、同一行审计名").toBe("OK");
@@ -800,7 +905,7 @@ describe("WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁
       expect(post!.receiptInner, "模型面回执内层逐字节相同").toBe(receiptInnerOf(receiptPre));
       // eslint-disable-next-line no-console
       console.log(
-        `\n  ── 判据① 迁前/迁后 run 记录对照（同一条 query · 同一个 agent agt_seed_analyst）──\n` +
+        `\n  ── 判据① 迁前/迁后 run 记录对照（同一条 query · 同一个 agent ${PROBE_AGENT_ID} · 只有载体变）──\n` +
           `  载体（模型面名）  迁前=${PROBE_RAW}  迁后=${post!.carrier}   ← 唯一变的一格\n` +
           `  审计行名          迁前=${PROBE_RAW}  迁后=${post!.auditName}\n` +
           `  outcome           迁前=OK  迁后=${post!.outcome}\n` +
@@ -819,24 +924,21 @@ describe("WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁
   it("E3 反向对照（判据③·e2e）：授予面拿掉 ⇒ DSH 侧读不到它 ∧ 宿主零数据面调用（那条读数是活的）", { timeout: SEAM_TIMEOUT }, async () => {
     const stub = await startStubOpenAi([
       // 模型**照旧**点名它（幻觉/陈旧剧本）—— 授予面已拿掉，DSH 侧不该让它到达数据面
-      { toolCall: { name: full(PROBE_RAW), arguments: JSON.stringify({ query: "探针:e3", topK: 3 }) }, usage: PLAIN_USAGE },
+      { toolCall: { name: full(PROBE_RAW), arguments: PROBE_ARGS }, usage: PLAIN_USAGE },
       { toolCall: { name: "final_answer", arguments: FINAL_ANSWER_ARGS }, usage: PLAIN_USAGE },
       { text: "stub final answer", usage: PLAIN_USAGE },
     ] satisfies StubRound[]);
     const { t, close } = await startToolExecApp({ stubUrl: `${stub.url}/v1`, serviceToken: SERVICE_TOKEN });
     try {
-      await seedWorld(t, ungrantedAgent(seedAnalyst()));
-      const kbSpy = vi.spyOn(t.dataCore.kb, "search");
-      const result = await runAgent(t, "task_rest_e3", SEED_AGENT_ID);
+      await seedWorld(t, ungrantedOne(seedAgent(PROBE_AGENT_ID), PROBE_RAW));
+      const solverSpy = vi.spyOn(t.dataCore.solver, "invoke");
+      const result = await runAgent(t, "task_rest_e3", PROBE_AGENT_ID);
       expect(result.run.kernel, "真走 DSH 分叉").toBe("EXTERNAL");
       const names = stubVisibleTools(stub).map((x) => x.name);
-      for (const raw of MIGRATED) {
-        expect(names, `授予面拿掉 ⇒ DSH 侧看不到 ${raw}`).not.toContain(full(raw));
-        expect(names, `裸名形态也不在`).not.toContain(raw);
-      }
+      expect(names, `授予面拿掉 ⇒ DSH 侧看不到 ${PROBE_RAW}`).not.toContain(full(PROBE_RAW));
+      expect(names, `裸名形态也不在`).not.toContain(PROBE_RAW);
       expect(names, "金丝雀：同 server 换授的那件在模型面").toContain(builtinMcpToolName(UNGRANTED_SWAP));
-      const probeCalls = kbSpy.mock.calls.filter((c) => (c[1] as { query?: string }).query === "探针:e3");
-      expect(probeCalls.length, "宿主零数据面调用（fail-closed）").toBe(0);
+      expect(probeCallsOf(solverSpy).length, "宿主零数据面调用（fail-closed）").toBe(0);
       const rows = await t.repos.toolCalls.listByTask("task_rest_e3");
       expect(rows.some((r) => r.toolName === PROBE_RAW && r.outcome === "OK"), "不许有 OK 审计行").toBe(false);
       expect(names.length, "金丝雀：模型面没空掉").toBeGreaterThan(5);

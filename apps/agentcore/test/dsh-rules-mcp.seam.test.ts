@@ -54,6 +54,8 @@ import {
   rulesMcpToolName,
 } from "../src/mcp/rules-mcp.js";
 import { WORKFLOW_MCP_SERVER } from "../src/mcp/workflow-mcp.js";
+// WO-BUILTIN-MIGRATE-REST · 旧载体金丝雀的独立读数锚（花名册全量 = 反向面 + 内置工具 MCP 面）。
+import { BUILTIN_MCP_TOOL_NAMES } from "../src/mcp/builtin-mcp.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const HARNESS_DIR = `${REPO_ROOT}packages/dsh-harness`;
@@ -439,8 +441,11 @@ describe("WO-AGENT-CONFIG-TO-DSH · C 组：规则面三面同改 + 只剩一条
     if (!generalSeed) throw new Error("seed general agent not found");
     const general = await setupFromSeedAgent({ ...generalSeed, kernel: "EXTERNAL" } as AgentDefinition);
     const generalHostNames = (general.spec.hostTools ?? []).map((x) => x.name);
-    expect(generalHostNames, "旧载体金丝雀：未迁工具仍在反向工具面（通用 agent 的 discover）").toContain("discover");
-    expect(generalHostNames.length).toBeGreaterThan(0);
+    const generalMcp = (general.spec.tools ?? []).map((x) => x.name).filter((n) => n.startsWith("mcp__builtin__"));
+    expect(generalHostNames.length + generalMcp.length, "旧载体金丝雀：反向面 + MCP 面 = 花名册全量").toBe(
+      BUILTIN_MCP_TOOL_NAMES.length,
+    );
+    expect(generalHostNames.length, "金丝雀有牙：反向面本批仍非空（未迁件还在）").toBeGreaterThan(0);
     expect(hostNames, "analyst 已无未迁件 ⇒ 反向工具面结构性为空").toEqual([]);
     // MCP 面：真 server spec + toolAllowlist 收窄到一件；按 serverName 取，⛔ 不按下标
     const rulesServer = spec.mcpServers?.find((m) => m.serverName === RULES_MCP_SERVER);
