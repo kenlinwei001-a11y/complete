@@ -812,6 +812,48 @@ export default function DecisionConsoleView() {
                 </div>
 
                 {/*
+                 * ★ WO-DRILL-FINANCE（2026-10-09）：**财务指标变化** —— 工单目标的另一半。
+                 *
+                 * 数据来源：`report.finance`，由后端在【演习世界】上跑 `finance_world_projection` 得出
+                 * （必须排在推演之后，`worldId` 用 `drillWorldId`）。
+                 *
+                 * ⛔ 三条纪律：
+                 *  · **前端不折算**：三个数一律取回包（`delta` 已是亿口径；这里只做「亿→万元」的**显示**换算）
+                 *  · **失败不装作 0**：`available:false` 时如实显示「本次无法计算」+ 原因
+                 *    （一个不动的 0 会被读成「扰动不影响钱」—— 那是静默错答）
+                 *  · **口径降到第二层**（`<details>`，原生折叠，非 hover）：divisor / 摊销集合 / 基线
+                 */}
+                {result.report.finance ? (
+                  <div className={styles.bigCaption} data-testid="dc-finance">
+                    {result.report.finance.available ? (
+                      <>
+                        <div>
+                          {(result.report.finance.lines ?? []).map((l) => (
+                            <span key={l.role} data-testid={`dc-finance-${l.role}`} style={{ marginRight: 14 }}>
+                              {l.role === "COST" ? "新增成本" : l.role === "MARGIN" ? "毛利差额" : l.role === "REVENUE" ? "收入变化" : l.role}
+                              {"："}
+                              <b>{(l.delta * 1e4).toFixed(2)}</b> 万元
+                            </span>
+                          ))}
+                        </div>
+                        <details>
+                          <summary>口径</summary>
+                          <div data-testid="dc-finance-basis">
+                            财务投影（非实测）· 求解器 {result.report.finance.solverKey}
+                            {result.report.finance.basis ? ` · ${JSON.stringify(result.report.finance.basis)}` : ""}
+                          </div>
+                        </details>
+                      </>
+                    ) : (
+                      <div data-testid="dc-finance-unavailable">
+                        财务指标：本次无法计算 ——{" "}
+                        {result.report.finance.unavailableReason ?? "（未给原因）"}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+
+                {/*
                  * 🔴 **本单最后一处「装作会算」的正面回答**（COO 病灶的落点）。
                  *
                  * 上面那行抬头写的是「这 N 件事凑一块，往后 30 天」，而这个大数 **2026-08-29 实测不随事件变**：

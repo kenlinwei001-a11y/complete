@@ -1,0 +1,22 @@
+=== WO-DRILL-FINANCE 上屏（2026-10-09）===
+
+### 改了什么
+  DecisionConsoleView.tsx（「事件影响与对策」结论区，dc-money/dc-bigCaption 之后）插入：
+    · dc-finance 段：三行（新增成本 / 毛利差额 / 收入变化），取 report.finance.lines[].delta
+      显示换算：delta（亿）× 1e4 ⇒ 万元（前端只做【显示】换算，不做业务折算）
+    · 口径降到第二层：<details><summary>口径</summary>（原生折叠，⛔ 不用 hover/title）
+      内容 = solverKey + basis（divisor/摊销集合/基线来源，原样）
+    · available:false ⇒ 如实显示「本次无法计算 —— 原因」，⛔ 不显示 0
+  FE_BUILD_RC=0 ✅
+
+### ⛔ 屏上未验（NOT-MEASURED，如实标）
+  判据现成（同事件三幅度 ⇒ dc-finance-COST 按 1:10:100 变），但**没跑**。
+  原因：真机验证需要走 UI「加一件事 + 算一下」，而那条交互我在本会话试过多轮未走通
+  （canAdd 需选主体+填齐必填；已定位到真实控件结构但未打通完整流程）。
+  ⇒ 不得把这句读成「上屏成功」—— 目前的证据只到「代码编译过」。
+
+### 验收判据（留给下一轮）
+  ① 起真前端（5294，带 VITE_DATACORE_URL=4052 + VITE_AGENTCORE_URL=4055）
+  ② /v/decision-console ⇒ 加「物料价格变动 · 电芯壳体」⇒ 填 pctChange ⇒ 加进去 ⇒ 算一下
+  ③ dump [data-testid^="dc-finance"] 的真实文本
+  ④ 三幅度（3/30/300）⇒ 三行数按 1:10:100 变
