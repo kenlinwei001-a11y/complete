@@ -228,6 +228,10 @@ async function startToolExecApp(opts: { stubUrl: string; serviceToken?: string }
   const t = await createTestApp({
     providerDirectory: stubDirectory(stubProvider(opts.stubUrl), FAKE_LLM_KEY) as never,
     env: { PORT: String(port), ...(opts.serviceToken ? { SERVICE_TOKEN: opts.serviceToken } : {}) },
+    // ⚠ WO-CLOSE-NATIVE-GAPS（2026-10-09）之后内核**不由 agent 数据决定**：`agent.kernel` 与
+    // env `DSH_HARNESS` 都退役，唯一的测试装配位是这个 `kernelRuntime`。本套件的 E 组要的是
+    // **真 DSH 臂**（真 spawn + 真 provider），故显式取 "dsh"（不传 = 测试缺省 inprocess）。
+    kernelRuntime: "dsh",
   });
   await t.app.listen({ port, host: "127.0.0.1" });
   return { t, close: () => t.app.close() };
@@ -487,7 +491,11 @@ describe("WO-BUILTIN-TO-DSH · C 组：内置工具面三面同改 + 只剩一�
     const filter = (ref as { toolFilter?: string[] }).toolFilter ?? [];
     // 独立重算：每个 filter 名必须等于本文件模板串拼出来的全名
     for (const n of filter) expect(n).toBe(`mcp__${BUILTIN_MCP_SERVER}__${n.replace(`mcp__${BUILTIN_MCP_SERVER}__`, "")}`);
-    expect(filter).toEqual([FULL]);
+    // ⚠ WO-BUILTIN-MIGRATE-REST：analyst 的内置工具面**已不止试点件**（批次 1 又迁了四件）。
+    // 本行不钉死清单（钉了就是第二份台账），只钉「试点件在这 + 集合 ⊆ 服务器花名册」；
+    // 逐件三面同改由 `dsh-builtin-rest-mcp.seam.test.ts` 的 C 组量（那边台账更长）。
+    expect(filter, "试点件仍在授予面").toContain(FULL);
+    for (const n of filter) expect(n.startsWith(`mcp__${BUILTIN_MCP_SERVER}__`), `${n} 必须在本 server 命名空间`).toBe(true);
     // ② 声明面按契约惯例记**全名**且不再记裸名
     expect(agent.scopeDeclaration.toolNames, "声明面全名").toContain(FULL);
     expect(agent.scopeDeclaration.toolNames, "声明面不再记裸名").not.toContain(RAW);
@@ -532,13 +540,17 @@ describe("WO-BUILTIN-TO-DSH · C 组：内置工具面三面同改 + 只剩一�
     const hostNames = (spec.hostTools ?? []).map((x) => x.name);
     expect(hostNames, "反向工具面不许有全名形态").not.toContain(FULL);
     expect(hostNames, "反向工具面不许有裸名").not.toContain(RAW);
-    // 金丝雀：反向工具面**没有空掉**（否则上面两条 not.toContain 对空实现恒真）——
-    // analyst 仍有同批**未迁**的内置工具走反向通道
-    expect(hostNames).toContain("get_object");
-    // MCP 面：真 server spec + toolAllowlist 收窄到一件；按 serverName 取，⛔ 不按下标
+    // ⚠ WO-BUILTIN-MIGRATE-REST：analyst 手里的**未迁件已归零**（批次 1 把最后四件也迁走了）
+    // ⇒ 反向工具面**恒为空**。这不是「读不到」，是这条路对它关掉了 —— 断言直接从「有别的件」
+    // 翻成「必须是空表」，判别力更强（空表不可能同时 toContain 任何东西）。
+    expect(hostNames, "analyst 已无未迁件 ⇒ 反向工具面必须为空").toEqual([]);
+    // MCP 面：真 server spec + toolAllowlist 收窄到本 agent 的那几件；按 serverName 取，⛔ 不按下标
     const builtinServer = spec.mcpServers?.find((m) => m.serverName === BUILTIN_MCP_SERVER);
     expect(builtinServer, "DSH 侧 MCP server 面（内置工具 server 必须在挂载表里）").toBeDefined();
-    expect(builtinServer!.toolAllowlist, "MCP wire 侧允许表（逐字钉死）").toEqual([FULL]);
+    expect(builtinServer!.toolAllowlist, "MCP wire 侧允许表恒含试点件且逐条 = 授予面").toEqual(
+      expanded.filter((x) => x.binding.kind === "MCP" && x.binding.mcpConfigId === BUILTIN_MCP_CONFIG_ID).map((x) => x.name),
+    );
+    expect(builtinServer!.toolAllowlist, "允许表里有试点件").toContain(FULL);
     // 描述文本与 MCP server 广告逐字同源（两内核模型面不许各写一份前缀）
     const advertised = buildBuiltinMcpTools();
     const specTool = expanded.find((x) => x.name === FULL)!;
@@ -640,8 +652,10 @@ describe("WO-BUILTIN-TO-DSH · D 组：迁前/迁后单变量对照（setup 层�
     expect(allow).toContain(swapped);
     const builtinServer = un.spec.mcpServers?.find((m) => m.serverName === BUILTIN_MCP_SERVER);
     expect(builtinServer?.toolAllowlist, "wire 侧允许表 = 换授后的那一件").toEqual([swapped]);
-    // 其余面不受影响
-    expect((un.spec.hostTools ?? []).map((x) => x.name)).toContain("get_object");
+    // 其余面不受影响 —— ⚠ WO-BUILTIN-MIGRATE-REST：analyst 的**未迁件已归零**（批次 1 把最后
+    // 四件也迁走了），故这里的金丝雀从「反向工具面还有别的件」翻成「反向工具面必须是空 + 求解器
+    // MCP 面仍在」（下一行）——两条合起来才证得出「不是整体塌了」。
+    expect((un.spec.hostTools ?? []).map((x) => x.name), "analyst 已无未迁件 ⇒ 反向工具面空").toEqual([]);
     expect(allow.some((n) => n.startsWith("mcp__solvers__"))).toBe(true);
   });
 });
