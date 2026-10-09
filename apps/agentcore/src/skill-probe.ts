@@ -23,7 +23,17 @@ export interface SkillProbeRunResult {
 
 const DEFAULT_TIMEOUT_MS = 8000;
 
-/** 探针 agent 通用评测工具集（读写类技能再追加 create_action_draft）。 */
+/**
+ * 探针 agent 通用评测工具集（读写类技能再追加 create_action_draft）。
+ *
+ * ⚑ WO-CLOSE-NATIVE-GAPS（2026-10-09「都改掉，不考虑回退」）：本表**不再声明技能加载器** ——
+ * 两个加载器真名不同（`engine.ts` 的 `SKILL_LOADER_TOOL = { native: "load_skill", dsh: "skill" }`），
+ * 而自本单起探针**恒跑 DSH**（旧内核入口整体退役，探针不再钉 `kernel`），DSH 臂的加载器
+ * `skill` 由 harness 循环自加（调用方 tools 不得含元工具），故这里声明 `load_skill` 只会得到
+ * 一个子进程里不存在的工具。历史用例（租户数据 `EvalCase.expect.toolSequence`）按旧名
+ * `load_skill` 书写 —— 由下方 `LEGACY_TOOL_NAME_ALIAS` 在**断言层**归一，不静默吃掉差异
+ *（`answerMust` 那种「模型真答了什么」的判据一律不归一）。
+ */
 const PROBE_TOOL_NAMES = [
   "query_objects",
   "get_object",
@@ -31,9 +41,15 @@ const PROBE_TOOL_NAMES = [
   "evaluate_rules",
   "retrieve_knowledge",
   "read_skill_resource",
-  "load_skill",
   "final_answer",
 ];
+
+/**
+ * 断言层工具名别名：观测名 → 用例书写名。**只此一条**（DSH 加载器 `skill` ↔ 历史用例名
+ * `load_skill`，同一能力两个内核各一个真名）。⛔ 不许在这里补第二条：别名是给**已有租户数据**
+ * 的兼容垫片，不是给新差异开的后门（新工具名一律按真名写进用例）。
+ */
+const LEGACY_TOOL_NAME_ALIAS: Record<string, string> = { skill: "load_skill" };
 
 function sanitizeIdPart(s: string): string {
   return s.replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -186,18 +202,12 @@ export class SkillProbeRunner {
       // 「写死具体模型会盖过用户在 LLM Provider 里配的绑定」）。归因链：`engine.ts` 的
       // `agent.model || undefined` → `roleModel(tenant, "agent", …)` → 租户绑定 → env `QOS_AGENT_MODEL`。
       model: "",
-      // WO-SKILL-PROBE-KERNEL · 运行内核**显式钉死**，不吃 `process.env.DSH_HARNESS` 兜底。
-      // ① 探针量的是 native 路：本文件 `PROBE_TOOL_NAMES` 声明的是 native 加载器名 `load_skill`
-      //    （`tools/registry.ts` 的 `LOAD_SKILL_TOOL`），而两臂加载器真名不同 ——
-      //    `engine.ts` 的 `SKILL_LOADER_TOOL = { native: "load_skill", dsh: "skill" }`。
-      // ② 不钉的后果是**静默换路**：字段缺失时 `engine.ts` 分叉兜底
-      //    （`agent.kernel === undefined && process.env.DSH_HARNESS === "1"`）会把探针翻到 dsh 臂，
-      //    于是它带着 native 工具面去量另一条路，而读数照样是绿的（量到的不是要量的）。
-      // ③ 也消掉 probe/twin 差分里的第二个变量：差分的唯一变量必须是「挂没挂 skill」，
-      //    内核若由 env 决定，差出来的是「两条内核差多少」而不是 skill 增益。
-      // 值取 "NATIVE"：调用方 `EvalCase.expect.toolSequence` 与 `skill-lint.ts` 的触发判据
-      // 都按 native 名 `load_skill` 写，钉死它才使「声明的工具面 ≡ 真跑的工具面」。
-      kernel: "NATIVE",
+      // ⚑ WO-CLOSE-NATIVE-GAPS：**不再钉 `kernel`**。旧值 `"NATIVE"` 是 WO-SKILL-PROBE-KERNEL
+      // 立下它时唯一能钉住的路（当年两臂真名不同、env 会把它翻到 dsh 臂而读数照样绿）；
+      // 自 2026-10-09 起旧内核入口整体退役（`agent.kernel` 不再是内核选择器、写侧拒 "NATIVE"），
+      // 探针与平台同路 = **DSH**（`PROBE_TOOL_NAMES` 已随之摘除 native 加载器名，见其头注）。
+      // ② 的「静默换路」病根由此消除的更彻底：**只有一条路可换**。
+      // ③ probe/twin 差分仍只差「挂没挂 skill」：两者都不写 kernel 字段，差分无第二变量。
       systemPrompt,
       tools: this.buildProbeTools(skill),
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "PRE_CHECK" },
@@ -242,11 +252,7 @@ export class SkillProbeRunner {
       // 同 probe：空串 = 继承系统 LLM 配置（配对对照的 twin 必须与 probe 同一解析口径，
       // 否则 behaviorGain 量的就不是「有没有 skill」而是「两个模型差多少」）。
       model: "",
-      // WO-SKILL-PROBE-KERNEL · 内核同理显式钉死，且**必须与 probe 同值**——理由同上面 model：
-      // twin 是 probe 的对照组，两者除了「挂没挂 skill」不许再有第二个差异。
-      // 若只钉 probe 不钉 twin，env 为 "1" 时 probe 落 native、twin 落 dsh，
-      // 差分度量的就变成「两条内核的差」而非 skill 增益（对照组失格）。
-      kernel: "NATIVE",
+      // ⚑ 同 probe：不钉 `kernel`（内核恒 DSH，probe/twin 同路 ⇒ 对照组无第二变量）。
       systemPrompt,
       tools: this.buildProbeTools(skill),
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "PRE_CHECK" },
@@ -307,7 +313,9 @@ export class SkillProbeRunner {
     try {
       const probeResult = await this.runAgent(auth, probeAgent, c, timeoutMs, budgetOverride);
       probeAnswerText = extractAnswerText(probeResult.answer);
-      probeToolNames = await this.getToolNamesForTask(probeResult.run.taskId);
+      probeToolNames = (await this.getToolNamesForTask(probeResult.run.taskId)).map(
+        (n) => LEGACY_TOOL_NAME_ALIAS[n] ?? n, // 见别名表头注（只归一加载器真名回历史用例名）
+      );
       probeTokenCost = probeResult.run.totalInputTokens + probeResult.run.totalOutputTokens;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
