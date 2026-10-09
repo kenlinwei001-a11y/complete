@@ -66,6 +66,8 @@ describe("WO-CLOSE-NATIVE-GAPS · agent 内核字段退役（写侧 + 执行面�
     const res = await postAgent(t, "retire_native", { kernel: "NATIVE" });
     expect(res.statusCode, "旧回退开关的取值自本单起不许再被接受").toBe(400);
     const body = res.json() as { error?: { code?: string; message?: string } };
+    // eslint-disable-next-line no-console
+    console.log(`[WO-CLOSE-NATIVE-GAPS ②] POST /b/v1/agents {kernel:"NATIVE"} ⇒ HTTP ${res.statusCode} ${JSON.stringify(body)}`);
     expect(body.error?.code).toBe("VALIDATION_ERROR");
     expect(body.error?.message ?? "").toContain('kernel:"NATIVE" 已被拒');
     expect(body.error?.message ?? "").toContain("回退方式已不提供");
