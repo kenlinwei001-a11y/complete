@@ -4507,6 +4507,30 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
        * 不是「路由这边构造了这条对象所以算打上了」。这两者的区别就是本单栽的那一跤：
        * 相位差一位时路由照样构造得出对象，而引擎一格都没打，屏上完全看不出来。
        */
+      /* ★ WO-DRILL-FINANCE：在【演习世界】上算财务指标 —— 工单目标的另一半。
+         · 必须排在这里：`tickSimSessionWorld(drillWorld, …)` 已在上面跑完 ⇒ 世界有态可读。
+         · `worldId` 用 **drillWorld.id**（不是 s.id —— s 全程未被写，读它等于读没推演的世界）。
+         · 单独 try/catch：财务这一跳失败**不拖垮演习**，如实回 available:false + 原因（沿用该求解器的诚实位，
+           ⛔ 绝不回一个不动的 0 —— 那会被读成「扰动不影响钱」）。 */
+      finance: await (async () => {
+        try {
+          const r = await ontology.invokeSolver(c, "finance_world_projection", { worldId: drillWorld.id });
+          const d = (r as { data?: { available?: boolean; lines?: unknown[]; unavailableReason?: string | null; basis?: unknown } }).data ?? {};
+          return {
+            solverKey: "finance_world_projection",
+            available: d.available === true,
+            ...(Array.isArray(d.lines) ? { lines: d.lines as { role: string; rolling: number; projected: number; delta: number }[] } : {}),
+            ...(d.unavailableReason === undefined ? {} : { unavailableReason: d.unavailableReason }),
+            ...(d.basis === undefined ? {} : { basis: d.basis }),
+          };
+        } catch (e) {
+          return {
+            solverKey: "finance_world_projection",
+            available: false,
+            unavailableReason: `财务投影这一跳没走通：${e instanceof Error ? e.message : String(e)} —— 不是「钱没有变化」。`,
+          };
+        }
+      })(),
       appliedStateEffects: drillPerts.map((p) => ({
         eventKind: effectEventKind.get(p.id)!,
         targetObjectId: p.targetObjectId,
@@ -4550,7 +4574,17 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       // 不许偷偷调了再把结果丢掉（那会让「求解器真被调用」这条判据失去意义）。
       invokeSolver: async (solverKey, args) => {
         if (body.scanOnly) throw new Error(`scanOnly=true：本次演习只跑卡点扫描，未调用 ${solverKey}`);
-        return ontology.invokeSolver(c, solverKey, args);
+        /* ★ WO-DRILL-FINANCE：财务投影只认 `args.worldId` ⇒ 在这里注入【演习世界】。
+           · 为何在调用侧注入、而不是写进 `routes[].args`：那张表的来源枚举
+             （eventTarget/payloadKey/horizonDays/effectiveDay）四种都不吃 worldId；
+             而 `drillWorld` 是本次路由新建的、名字在规格表里无从表达。
+           · 为何能这么写：本函数在 `tickSimSessionWorld(drillWorld, …)` **之后**被调
+             ⇒ 世界已推完 ⇒ 这与该求解器「读推演【之后】的世界态」的语义一致。
+           · ⛔ 它读的必须是 drillWorld —— 不是原会话 s（s 全程未被写，读它等于读没推演的世界）。 */
+        const injected = solverKey === "finance_world_projection"
+          ? { ...args, worldId: drillWorld.id }
+          : args;
+        return ontology.invokeSolver(c, solverKey, injected);
       },
     });
 

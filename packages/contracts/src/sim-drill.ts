@@ -355,6 +355,11 @@ export const DRILL_EVENT_SPECS: readonly DrillEventSpec[] = [
       magnitudeBasis: "「天」类幅度统一口径：本平台推演窗口 = 30 天 ⇒ 30 天 = 一个全距（100 点）⇒ 每天 3.33 点",
     },
     routes: [
+      /* ★ WO-DRILL-FINANCE：把【财务指标变化】接进演习报告。args:[] 是故意的 ——
+         本求解器只认 args.worldId，而它的取法不在这张表里（来源枚举四种都不吃 worldId）；
+         演习世界在【推演之后】才存在，故由调用方在 invoke 那一刻注入（app.ts 的 invokeSolver）。
+         ⚠ 时序是语义：它读推演【之后】的世界态，挪到之前调就是 WO-DRILL-WORLD 那个坑的翻版。 */
+      { solverKey: "finance_world_projection", role: "AUXILIARY", args: [] },
       {
         solverKey: "sop_reschedule",
         role: "PRIMARY",
@@ -423,6 +428,11 @@ export const DRILL_EVENT_SPECS: readonly DrillEventSpec[] = [
       magnitudeBasis: "实测 13 个基地 Base.formationCapDaily 中位数 = 70,389 套/日 ⇒ 插满一个基地一天 = 一个全距（100 点）",
     },
     routes: [
+      /* ★ WO-DRILL-FINANCE：把【财务指标变化】接进演习报告。args:[] 是故意的 ——
+         本求解器只认 args.worldId，而它的取法不在这张表里（来源枚举四种都不吃 worldId）；
+         演习世界在【推演之后】才存在，故由调用方在 invoke 那一刻注入（app.ts 的 invokeSolver）。
+         ⚠ 时序是语义：它读推演【之后】的世界态，挪到之前调就是 WO-DRILL-WORLD 那个坑的翻版。 */
+      { solverKey: "finance_world_projection", role: "AUXILIARY", args: [] },
       { solverKey: "portfolio", role: "PRIMARY", args: [] },
       {
         solverKey: "capacity_forecast",
@@ -489,6 +499,11 @@ export const DRILL_EVENT_SPECS: readonly DrillEventSpec[] = [
       magnitudeBasis: "幅度键本身即百分点，1:1 不换算",
     },
     routes: [
+      /* ★ WO-DRILL-FINANCE：把【财务指标变化】接进演习报告。args:[] 是故意的 ——
+         本求解器只认 args.worldId，而它的取法不在这张表里（来源枚举四种都不吃 worldId）；
+         演习世界在【推演之后】才存在，故由调用方在 invoke 那一刻注入（app.ts 的 invokeSolver）。
+         ⚠ 时序是语义：它读推演【之后】的世界态，挪到之前调就是 WO-DRILL-WORLD 那个坑的翻版。 */
+      { solverKey: "finance_world_projection", role: "AUXILIARY", args: [] },
       {
         solverKey: "order_fullchain",
         role: "PRIMARY",
@@ -588,6 +603,11 @@ export const DRILL_EVENT_SPECS: readonly DrillEventSpec[] = [
       magnitudeBasis: "幅度键本身即百分点，1:1 不换算",
     },
     routes: [
+      /* ★ WO-DRILL-FINANCE：把【财务指标变化】接进演习报告。args:[] 是故意的 ——
+         本求解器只认 args.worldId，而它的取法不在这张表里（来源枚举四种都不吃 worldId）；
+         演习世界在【推演之后】才存在，故由调用方在 invoke 那一刻注入（app.ts 的 invokeSolver）。
+         ⚠ 时序是语义：它读推演【之后】的世界态，挪到之前调就是 WO-DRILL-WORLD 那个坑的翻版。 */
+      { solverKey: "finance_world_projection", role: "AUXILIARY", args: [] },
       { solverKey: "quote_margin", role: "PRIMARY", args: [] },
       { solverKey: "supply_demand_gap_attribution", role: "AUXILIARY", args: [] },
     ],
@@ -667,6 +687,11 @@ export const DRILL_EVENT_SPECS: readonly DrillEventSpec[] = [
       magnitudeBasis: "幅度键本身即百分点，1:1 不换算（方向由传导边 ×−0.6 决定，这里不再翻符号）",
     },
     routes: [
+      /* ★ WO-DRILL-FINANCE：把【财务指标变化】接进演习报告。args:[] 是故意的 ——
+         本求解器只认 args.worldId，而它的取法不在这张表里（来源枚举四种都不吃 worldId）；
+         演习世界在【推演之后】才存在，故由调用方在 invoke 那一刻注入（app.ts 的 invokeSolver）。
+         ⚠ 时序是语义：它读推演【之后】的世界态，挪到之前调就是 WO-DRILL-WORLD 那个坑的翻版。 */
+      { solverKey: "finance_world_projection", role: "AUXILIARY", args: [] },
       {
         solverKey: "capacity_forecast",
         role: "PRIMARY",
@@ -999,6 +1024,28 @@ export const DrillReportSchema = z.object({
    *
    * `applied: false` 的行**留在清单里**（同「未能评估」的纪律）：从清单消失 = 把「没打上」读成「没影响」。
    */
+  /**
+   * ★ WO-DRILL-FINANCE（2026-10-09）：**财务指标变化** —— 在【演习世界】上算出来的。
+   *
+   * 它回答工单目标的另一半「正确的财务指标变化」。与 `appliedStateEffects` 同纪律：
+   * **由调用方在演习世界上调完求解器后原样透传**，编排器只搬运、不推断。
+   *
+   * ⚠ 时序是语义：必须在 `tickSimSessionWorld(drillWorld, …)` **之后**取，
+   *   否则拿到的是没推演过的世界。`worldId` 用 **`drillWorldId`**（不是原会话）。
+   */
+  finance: z
+    .object({
+      solverKey: z.string(),
+      /** 求解器自报可用性；`false` 时 `lines` 缺省、`unavailableReason` 必给（沿用该求解器的诚实位）。 */
+      available: z.boolean(),
+      lines: z
+        .array(z.object({ role: z.string(), rolling: z.number(), projected: z.number(), delta: z.number() }))
+        .optional(),
+      unavailableReason: z.string().nullable().optional(),
+      /** 换算口径（divisor / 摊销集合 / 基线来源），原样带出供屏上自证。 */
+      basis: z.unknown().optional(),
+    })
+    .optional(),
   appliedStateEffects: z
     .array(
       z.object({

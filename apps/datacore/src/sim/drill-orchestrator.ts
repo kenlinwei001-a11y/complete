@@ -74,6 +74,12 @@ export interface DrillOrchestrateInput {
    */
   appliedStateEffects?: DrillReport["appliedStateEffects"];
   /**
+   * ★ WO-DRILL-FINANCE：财务指标变化（在**演习世界**上算）。
+   * 同 `appliedStateEffects` 的纪律：**只有调用方拿得到**（它得先推完 drillWorld 才调那个求解器），
+   * 编排器只原样透传，绝不自己算、也不根据事件推断。
+   */
+  finance?: DrillReport["finance"];
+  /**
    * 「这一批事件实测改动了世界态多少格 / 一共多少格」（WO-EVENTS-WRITE-STATE）——
    * 同 `appliedStateEffects` 的纪律：**只有调用方跑得出对照推进**，编排器只原样透传，
    * 绝不自己"根据事件推断动了多少格"（那就是第二套真相源）。
@@ -726,6 +732,7 @@ export async function orchestrateDrill(input: DrillOrchestrateInput): Promise<Dr
     appliedLimitPerKind: limitPerKind,
     degraded,
     appliedStateEffects: [...(input.appliedStateEffects ?? [])],
+    ...(input.finance === undefined ? {} : { finance: input.finance }),
     worldCellsMoved: input.worldCellsMoved ?? 0,
     worldCellsTotal: input.worldCellsTotal ?? 0,
     findingsChanged: input.findingsChanged ?? 0,
