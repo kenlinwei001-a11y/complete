@@ -246,3 +246,79 @@ drill 路由 =
 - §3.1 / §7 的 `fork` 那条（`enterpriseState.fork` 不再需要）
 - §7 的 ⑤（对照世界）—— 降为"t0 态 diff"
 - §7 的 ③（为绕 `:2490` 守卫而建扰动）—— **不再需要绕**：E 上的扰动本就是正常入库
+
+---
+
+## §10 精确改动代码（4 处锚点已实测定位 · 可直接粘）
+
+⛔ **4 处必须同批改** —— 只改 1/4 或 2/4，中间态是坏的（扰动建到 E 但推演还在 s 上 ⇒ 结论全是错的）。
+
+### 改点 1 · 建 E —— 插在 `app.ts:4143` 之后
+
+```ts
+const baseState = await simCurrent(c, s);          // ← 现有行（:4143），不动
+
+// ★ 演习世界（WO-DRILL-WORLD · §9「每次推演就是一次普通对话」）
+//   它【就是】一个普通会话：baseSnapshot 取 s 的当前态，scope 标明它是谁的演习。
+//   ⛔ 不 fork（enterpriseState.fork 只产 EnterpriseState 行、不写世界态 —— §7 已实测）。
+const drillWorld = await createSimSessionWorld(c, {
+  baseSnapshot: baseState,
+  scope: { kind: "drill", ofSessionId: s.id },
+});
+```
+
+### 改点 2 · 冲击建到 E —— `app.ts:4327` 那个 `ephemeralPerturbations.push({…})`
+
+**改成**（关键差别：`sessionId` 指向 E，于是它**正常入库**、来源查得到）：
+
+```ts
+await repos.sim.createPerturbation({
+  id: `simpert_drill_${drillWorld.id}_${i}`,       // ⚠ 原用 s.id，改 E
+  tenantId: c.tenantId,
+  sessionId: drillWorld.id,                        // ★ 改成 E（原为 s.id）
+  kind: "demand_shift",
+  targetObjectId: landed.id,
+  targetStateVar: eff.targetStateVar,
+  startTick,
+  durationTicks: null,
+  magnitude: absMagnitude,
+  mode: eff.mode,
+  label: `演习扰动 · ${ev.kind} …`,
+  createdAt: s.createdAt,                          // ⚠ 仍借会话时刻（R6 禁读时钟）；E 已建，也可用 drillWorld.createdAt
+});
+```
+
+**⇒ 连带**：`effectEventKind` / `effectReceipt` 的 key 里的 `s.id` 一律改成 `drillWorld.id`。
+
+### 改点 3 · 推演改成在 E 上、正常落盘 —— `app.ts:4355` 与 `:4378`
+
+```ts
+// 原：simAdvanceTicks(c, s, { rules: activeRules, n: ticks, persist: false, ephemeralPerturbations })
+const advanced = await simAdvanceTicks(c, drillWorld, { rules: activeRules, n: ticks, persist: true });
+//                                                                                          ↑ true · 不带 ephemeral
+
+// 对照：原为「同会话再跑一次、扰动清空」。§9 后改为【E 的 t0 态 vs 终态】——
+// 即对照就是 baseState（E 刚建时的态），不需要第二次推进。
+const controlState: TickState = baseState;
+```
+
+**⇒ 连带**：`worldCellsMoved` 由 `advanced.next` 与 `baseState` 逐格比得出（今天的算法不变，只是对照换了来源）。
+
+### 改点 4 · 报告 —— `app.ts:~4463` 的 `worldId: s.id`
+
+```ts
+worldId: s.id,                     // 保持（兼容：它答「这是谁的会话」）
+drillWorldId: drillWorld.id,       // ★ 新增：这次演习实际推演的那个会话
+```
+
+**并改写 `app.ts:4338` 那段注释**：删掉「⛔ **不入库**…落盘就是「跑一次演习把世界推歪了」」，
+改为「本批冲击落进**演习世界** `drillWorldId`；原会话 `s.id` 与真实世界线**全程未被写**（R4-sim ①）」。
+
+### 改完的验证顺序
+
+1. `pnpm --filter datacore... build` ⇒ rc 必落盘
+2. 重起 4052（⚠ 用 `lsof -nP -iTCP:4052 -sTCP:LISTEN` 核 PID 换代，**别只看 HTTP 200**）
+3. 跑一次 drill ⇒ 取 `drillWorldId`
+4. **§4 判据 1**：`GET /sim/sessions/<drillWorldId>/world` ⇒ `cell_case.priceShock` ≠ 原值（演习世界真的被写了）
+5. **§4 判据 6**：`GET /sim/sessions/<s.id>/world` 前后逐字节一致（原会话没被碰）
+6. **§4 判据 5**：同事件 `pctChange` 3/30/300 ⇒ 三份报告的 `findings` **三者互不相同**
