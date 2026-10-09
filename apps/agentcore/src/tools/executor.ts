@@ -1,5 +1,6 @@
 import { AggregateRequestSchema, ErrorCodes, parseMcpToolFullName, parseSolverMcpToolName, QueryTimeseriesAggInputSchema, type SkillDefinition } from "@platform/contracts";
 import { parseOntologyMcpToolName } from "./ontology-mcp.js";
+import { parseRulesMcpToolName } from "../mcp/rules-mcp.js";
 import { newId } from "../ids.js";
 import { SKILL_RESOURCE_TEXT_LIMIT } from "../agent/context.js";
 import type { Metrics } from "../metrics.js";
@@ -212,6 +213,18 @@ export class GuardedToolExecutor {
     const ontologyRaw = parseOntologyMcpToolName(toolName);
     if (ontologyRaw) {
       toolName = ontologyRaw;
+      binding = { kind: "BUILTIN" as const };
+    }
+
+    // WO-AGENT-CONFIG-TO-DSH · 规则 MCP 工具：mcp__rules__evaluate_rules → 归一回既有
+    // `case "evaluate_rules"` 执行路径（同形于上方 solvers / ontology 两条 shim·零重写）。
+    // 原生臂与 DSH 臂**同**走这里：DSH 臂的 MCP server 也把调用转回本执行体
+    // （dsh-runtime/rules-mcp-server.ts → 宿主 /b/v1/dsh/tool-execute → 本 run 的同一只 executor）。
+    // 入参**不做形状改名**——`evaluate_rules` 的 MCP 入参与 BUILTIN 入参逐键同名（同源于 registry.ts）。
+    // binding 必须跟着归一：不归 ⇒ 被派进 McpRuntime（平台内置 stdio server 默认禁用）⇒ 一次都执行不到。
+    const rulesRaw = parseRulesMcpToolName(toolName);
+    if (rulesRaw) {
+      toolName = rulesRaw;
       binding = { kind: "BUILTIN" as const };
     }
 
