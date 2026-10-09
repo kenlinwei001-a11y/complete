@@ -4,6 +4,7 @@ import {
   // 通用 agent 的技能绑定按它过滤，不另写一份「哪些技能是写回型」的名单。
   isWriteModeSkill,
   type AgentDefinition,
+  type AgentRunKernel,
   type CeoAgentProfile,
   type ExecutionPlan,
   type IntentDefinition,
@@ -131,6 +132,30 @@ export const SEED_PACKAGE_ID = "pkg_battery_manufacturing";
  * 与 `providers.ts roleModel`（explicit provider 无 key → 回落租户绑定/诚实报错）双保险：种子不硬编 + 运行时兜底。
  */
 export const SEED_AGENT_MODEL = process.env.DEFAULT_AGENT_MODEL ?? "";
+
+/**
+ * WO-ALL-AGENTS-DSH · **出厂缺省内核**（仓主 2026-10-09：「把所有 agent 的内核都调整为 DSH，
+ * 替代原生内核」）。
+ *
+ * 今天的行为是 X：`AgentDefinition.kernel` 是**可选项**，出厂 12 个 agent 里只有通用 agent
+ * （`agt_general`）显式写了 `"EXTERNAL"`，其余 11 个缺省 ⇒ 运行期回落进程 env `DSH_HARNESS`
+ * （= 0，休眠）⇒ **全落原生内核**。于是「走不走外部运行时」这件事在出厂面上**没有任何声明**，
+ * 它的实际取值由一个部署面开关决定 —— 而那个开关恰恰是本单**不许碰**的（`check-dsh-dormancy.mjs`
+ * D1/D3 守着；见 `docs/DECISION-dsh-fusion.md` §10「per-agent 激活路径」）。
+ *
+ * 应该是 Y：内核选择以 **per-agent 配置**（本单不是部署面 flag）声明为缺省，**在本函数出口统一落**，
+ * 于是：① 出厂每一个 agent 都显式带 kernel，**不存在漏网的**（结构上不可能漏：不是在 12 处字面量
+ * 里各补一行，而是出口处一个收口点）；② 将来往上面这张表里**新增** agent 也自动跟随，
+ * 不需要记得补字段；③ 显式值仍优先（`??` 而非覆盖）⇒ 运维把某个 agent 钉回 `"NATIVE"`
+ * （`PUT /b/v1/agents/:id`）不被出厂缺省翻走，这也正是回退开关
+ * （`docs/ROLLOUT-dsh-external-kernel.md` §1-c「per-agent kernel 置回 NATIVE，下一 run 生效」）。
+ *
+ * ⛔ 边界（照 §10 的诚实登记读，不许读超）：本常量是**出厂数据**（种子），不是运行期硬编码 ——
+ * engine 的分叉守卫与 `DSH_HARNESS` 一个字节都不动。且 §10 写明「在真实租户把某 agent 置
+ * EXTERNAL 等同于对该 agent 翻 flag」，故本单的可交付面**只到「出厂定义」这一层**；
+ * 灰度档位（`ROLLOUT` §2 G0→G3 的驻留期、账差观察）仍是各自环境的判据，不由本改动代判。
+ */
+export const SEED_DEFAULT_AGENT_KERNEL: AgentRunKernel = "EXTERNAL";
 
 export interface SeedBase {
   objectId: string;
@@ -1770,7 +1795,12 @@ export function seedRegistry(now = new Date().toISOString()): {
       kernel: "EXTERNAL",
     },
   ];
-  return { agents, workflows, skills };
+  // WO-ALL-AGENTS-DSH · **出厂缺省内核在出口处统一落**（不收口在 12 处字面量里逐条补字段：
+  // 那是「今天补全了」而不是「以后不会再漏」，见 `SEED_DEFAULT_AGENT_KERNEL` 的头注）。
+  // `??` 而非覆盖：agent 上写了显式值（含 `"NATIVE"` 钉回）的一律照它走 —— 判据在
+  // `agent.kernel === "EXTERNAL" || (agent.kernel === undefined && process.env.DSH_HARNESS === "1")`
+  // 这条既有守卫上，本处只负责**不留 undefined**。
+  return { agents: agents.map((a) => ({ ...a, kernel: a.kernel ?? SEED_DEFAULT_AGENT_KERNEL })), workflows, skills };
 }
 
 /**
