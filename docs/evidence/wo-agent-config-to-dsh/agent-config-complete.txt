@@ -1,16 +1,22 @@
+  · dist 新鲜度已核：apps/datacore  产物 2026-10-09 04:03:39 ≥ 源码 2026-10-09 03:44:26（领先 19.2 分钟）   [agent-config-complete:check]
+  · dist 新鲜度已核：apps/agentcore  产物 2026-10-09 03:53:59 ≥ 源码 2026-10-09 03:51:48（领先 2.2 分钟）   [agent-config-complete:check]
+✅ 金丝雀 11 项全中（必中 4 · 必不中 5 · 规模下界 2；与主逻辑共用 judgeAgent）
+· agent-config-complete：AgentCore 注册表 12 个 agent · DataCore AGENT_SEEDS 3 条 · 两侧 key 交集 0 · 违规 12 条（已豁免 11）
+  ✗ [agentcore] code_assistant → C2_EMPTY_SCOPE【基线豁免】
+  ✗ [agentcore] code_assistant → C3_EMPTY_RULE_BINDINGS【基线豁免】
+  ✗ [agentcore] general → C2_EMPTY_SCOPE
+  ✗ [datacore] learning-agent → C1_NO_TOOLS【基线豁免】
+  ✗ [datacore] learning-agent → C2_NO_SCOPE_FIELD【基线豁免】
+  ✗ [datacore] learning-agent → C4_ORPHAN_KEY【基线豁免】
+  ✗ [datacore] risk-agent → C1_NO_TOOLS【基线豁免】
+  ✗ [datacore] risk-agent → C2_NO_SCOPE_FIELD【基线豁免】
+  ✗ [datacore] risk-agent → C4_ORPHAN_KEY【基线豁免】
+  ✗ [datacore] report-agent → C1_NO_TOOLS【基线豁免】
+  ✗ [datacore] report-agent → C2_NO_SCOPE_FIELD【基线豁免】
+  ✗ [datacore] report-agent → C4_ORPHAN_KEY【基线豁免】
+· ⓘ 反向（不进红）：AgentCore 有而映射表未展示的 agent 12 个 —— analyst / explore_agent / risk_advisor / capacity_planner / quality_inspector / supply_chain / finance_analyst / carbon_auditor / external_market / code_assistant / coordinator / general
+· ⚠ 诚实边界：只看出厂种子两处注册表；只证「配置字段非空」，不证「配置对不对」（工具名/对象类型是否真实存在不在射程）。
 
-⚠ agent-config-complete:check：**门自己没准备好，本次未度量任何代码，结论作废**（RC=2）。
-  原因：dist 未构建或落后于 src（**环境**状态，与被扫代码无关）。
-  - apps/datacore 的 dist 未构建（缺 /Users/apple/deploy/complete/.claude/worktrees/agent-a626159b5dc675e7d/apps/datacore/dist）
-
-  为什么直接退出而不是照跑：本门读的是 dist、下的却是**源码**结论。dist 落后于 src 时，
-  它会说出与源码恰好相反的话，而且是绿的（欠账 #161）。
-  「dist 在不在」度量的是构建过没有，不是构建得够不够新——没准备好时本门必须闭嘴。
-
-  请先构建再重跑：  pnpm --filter datacore build
-  （或直接 pnpm -r build）
-
-  这一条读作「**我没查**」，不读作「我查了，你有问题」——两者处置相反：
-  前者去把环境补齐再重跑，后者去改代码。把前者当后者，就会去修一个根本不存在的缺陷
-  （欠账 #155 即此：dist 过期被错报成源码缺陷）。
-
+✗ agent-config-complete:check 未通过（1 条）：
+  - C2 agentcore 侧 agent `general`：`scopeDeclaration.objectTypes` 是空数组 —— 声明了「我不碰任何业务对象」
+      修法：补齐该 agent 的能力配置；确属「展示节点而非可执行 agent」的，别混在同一张注册表里 —— 那正是本门要分辨的两件事。

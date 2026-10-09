@@ -35,7 +35,7 @@ stdout | apps/agentcore/test/dsh-rules-mcp.seam.test.ts > WO-AGENT-CONFIG-TO-DSH
   ── 审计行 ──
   ["evaluate_rules/OK"]
   ── 回执原文 ──
-  <tool_data tool_call_id="tc_01M4FD38M355CMFWDP2GA3EF19">[{"ruleId":"C03","passed":true,"severity":"BLOCK","explanation":"需求增量在产能上限之内","ruleVersion":1}]</tool_data>
+  <tool_data tool_call_id="tc_01M4FEA6556ERXG4G38A97074J">[{"ruleId":"C03","passed":true,"severity":"BLOCK","explanation":"需求增量在产能上限之内","ruleVersion":1}]</tool_data>
 
 
 stdout | apps/agentcore/test/dsh-rules-mcp.seam.test.ts > WO-AGENT-CONFIG-TO-DSH · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E2 迁前（对照臂·同一 query）：能力在反向工具面（裸名）∧ DSH 侧零规则 server ∧ 同一执行体
@@ -46,18 +46,18 @@ stdout | apps/agentcore/test/dsh-rules-mcp.seam.test.ts > WO-AGENT-CONFIG-TO-DSH
   ["evaluate_rules/OK"]
 
 
- ✓ apps/agentcore/test/dsh-rules-mcp.seam.test.ts (14 tests) 55921ms
-   ✓ WO-AGENT-CONFIG-TO-DSH · A 组：DSH 侧真看到的规则资源（MCP wire 面） > A1 tools/list：DSH 侧真拿到 evaluate_rules，且描述逐字 = 宿主静态投影（两内核同源锚点）  1758ms
-   ✓ WO-AGENT-CONFIG-TO-DSH · A 组：DSH 侧真看到的规则资源（MCP wire 面） > A2 tools/call：宿主收到的是**全名** + 入参逐键原文；模型面回执是逐字 <tool_data> 包络  2211ms
-   ✓ WO-AGENT-CONFIG-TO-DSH · A 组：DSH 侧真看到的规则资源（MCP wire 面） > A3 对照（减输入）：无宿主桥 ⇒ fail-closed 明确失败 ∧ 宿主零转发（不静默放行）  2036ms
-   ✓ WO-AGENT-CONFIG-TO-DSH · C 组：规则面三面同改 + 只剩一条授予路 > C2 engine 真装配：expanded 面出全名 ∧ hostTools 面**没有**它（单路证明）  1028ms
-   ✓ WO-AGENT-CONFIG-TO-DSH · D 组：迁前/迁后单变量对照（setup 层） > D1 迁前臂：裸 BUILTIN 授予 ⇒ 能力在 hostTools（平台组装的反向工具），DSH 侧零 server  361ms
-   ✓ WO-AGENT-CONFIG-TO-DSH · D 组：迁前/迁后单变量对照（setup 层） > D2 迁后臂：同一条能力改走 MCP ⇒ DSH 侧有 server 且允许表恰为一件；能力数不变  327ms
-   ✓ WO-AGENT-CONFIG-TO-DSH · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E1 迁后（DSH 原生 MCP）：模型面有 mcp__rules__evaluate_rules ∧ 真调 ∧ 规则引擎真执行 ∧ 审计行  22804ms
-   ✓ WO-AGENT-CONFIG-TO-DSH · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E2 迁前（对照臂·同一 query）：能力在反向工具面（裸名）∧ DSH 侧零规则 server ∧ 同一执行体  25360ms
+ ✓ apps/agentcore/test/dsh-rules-mcp.seam.test.ts (14 tests) 119518ms
+   ✓ WO-AGENT-CONFIG-TO-DSH · A 组：DSH 侧真看到的规则资源（MCP wire 面） > A1 tools/list：DSH 侧真拿到 evaluate_rules，且描述逐字 = 宿主静态投影（两内核同源锚点）  4137ms
+   ✓ WO-AGENT-CONFIG-TO-DSH · A 组：DSH 侧真看到的规则资源（MCP wire 面） > A2 tools/call：宿主收到的是**全名** + 入参逐键原文；模型面回执是逐字 <tool_data> 包络  4345ms
+   ✓ WO-AGENT-CONFIG-TO-DSH · A 组：DSH 侧真看到的规则资源（MCP wire 面） > A3 对照（减输入）：无宿主桥 ⇒ fail-closed 明确失败 ∧ 宿主零转发（不静默放行）  4621ms
+   ✓ WO-AGENT-CONFIG-TO-DSH · C 组：规则面三面同改 + 只剩一条授予路 > C2 engine 真装配：expanded 面出全名 ∧ hostTools 面**没有**它（单路证明）  2211ms
+   ✓ WO-AGENT-CONFIG-TO-DSH · D 组：迁前/迁后单变量对照（setup 层） > D1 迁前臂：裸 BUILTIN 授予 ⇒ 能力在 hostTools（平台组装的反向工具），DSH 侧零 server  643ms
+   ✓ WO-AGENT-CONFIG-TO-DSH · D 组：迁前/迁后单变量对照（setup 层） > D2 迁后臂：同一条能力改走 MCP ⇒ DSH 侧有 server 且允许表恰为一件；能力数不变  523ms
+   ✓ WO-AGENT-CONFIG-TO-DSH · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E1 迁后（DSH 原生 MCP）：模型面有 mcp__rules__evaluate_rules ∧ 真调 ∧ 规则引擎真执行 ∧ 审计行  51674ms
+   ✓ WO-AGENT-CONFIG-TO-DSH · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E2 迁前（对照臂·同一 query）：能力在反向工具面（裸名）∧ DSH 侧零规则 server ∧ 同一执行体  51107ms
 
  Test Files  1 passed (1)
       Tests  14 passed (14)
-   Start at  11:59:30
-   Duration  73.24s (transform 6.97s, setup 0ms, collect 14.70s, tests 55.92s, environment 0ms, prepare 781ms)
+   Start at  12:19:50
+   Duration  154.48s (transform 13.62s, setup 0ms, collect 30.29s, tests 119.52s, environment 0ms, prepare 925ms)
 

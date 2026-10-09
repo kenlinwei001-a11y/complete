@@ -280,11 +280,13 @@ describe("WO-AGENT-CONFIG-TO-DSH · A 组：DSH 侧真看到的规则资源（MC
     // 宿主静态投影（原生臂模型面）与 MCP 广告（DSH 臂模型面）**同一段文字**
     const advertised = buildRulesMcpTools();
     expect(advertised.map((t) => t.name)).toEqual([FULL]);
-    expect(tools[0]!.description).toBe(advertised[0]!.description);
-    expect(tools[0]!.description.startsWith(RULES_MCP_DESC_PREFIX)).toBe(true);
+    const desc: string = tools[0]!.description ?? "";
+    expect(desc).toBe(advertised[0]!.description);
+    expect(desc.startsWith(RULES_MCP_DESC_PREFIX)).toBe(true);
     // 入参声明透传（模型据此传参；与 BUILTIN 定义同源，不许在 server 侧另抄一份）
-    expect(tools[0]!.inputSchema.properties).toHaveProperty("ruleIds");
-    expect(tools[0]!.inputSchema.properties).toHaveProperty("payload");
+    const props = (tools[0]!.inputSchema as { properties?: Record<string, unknown> }).properties ?? {};
+    expect(props).toHaveProperty("ruleIds");
+    expect(props).toHaveProperty("payload");
   });
 
   it("A2 tools/call：宿主收到的是**全名** + 入参逐键原文；模型面回执是逐字 <tool_data> 包络", async () => {
