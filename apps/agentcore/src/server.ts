@@ -78,7 +78,8 @@ import { runGrowthLoop } from "./growth/loop.js";
 import { buildGrowthLoopWiring } from "./growth/scenario-grow.js";
 import { builtinTool } from "./tools/registry.js";
 import { truncateToolResultJson } from "./agent/context.js";
-import { TRUNCATION_EXEMPT_TOOLS } from "./agent/loop.js";
+// WO-BUILTIN-TO-DSH · 截断豁免判据（身份归一后的单源判据；原生臂 loop.ts 与本端点共用同一函数）。
+import { isTruncationExemptTool } from "./agent/loop.js";
 import { lintSkill, classifySkillEvalCases, type SkillLintTarget } from "./skill-lint.js";
 import { compileSkill } from "./skill-compiler.js";
 // WO-REFGATE-ENT · F14：发布门判据的单一实现（本路由与 main.ts 启动期种子审计共用）。
@@ -2356,7 +2357,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     // 宿主实测 durationMs 事实源。409 重放拒绝在上方先行 ⇒ 同 callId 不会二次落表。
     entry.hostToolCalls.set(body.callId, { outcome: r.outcome, toolCallId: r.toolCallId, durationMs: r.durationMs });
     if (r.outcome === "OK") {
-      const t = TRUNCATION_EXEMPT_TOOLS.has(body.toolName)
+      const t = isTruncationExemptTool(body.toolName)
         ? { json: JSON.stringify(r.payload), truncated: false as const, note: undefined }
         : truncateToolResultJson(r.payload);
       return {

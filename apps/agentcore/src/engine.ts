@@ -32,6 +32,7 @@ import { BUILTIN_TOOLS } from "./tools/registry.js";
 import { buildOntologyMcpTools, ONTOLOGY_MCP_SERVER } from "./tools/ontology-mcp.js";
 import { buildSolverMcpWireTools, type SolverCatalogItem } from "./mcp/solvers-catalog.js";
 import { buildRulesMcpTools, RULES_MCP_SERVER } from "./mcp/rules-mcp.js";
+import { BUILTIN_MCP_SERVER, buildBuiltinMcpTools, parseBuiltinMcpToolName } from "./mcp/builtin-mcp.js";
 import { parseSolverMcpToolName, SOLVERS_MCP_SERVER } from "@platform/contracts";
 import {
   WORKFLOW_MCP_CONFIG_ID,
@@ -88,6 +89,16 @@ function resolveWorkflowMcpServerPath(): string {
  */
 function resolveRulesMcpServerPath(): string {
   return resolveDshServerPath("rules-mcp-server.js");
+}
+
+/**
+ * WO-BUILTIN-TO-DSH · 内置工具（BUILTIN）MCP server 的入口文件定位 —— 与上方四个
+ * `resolve*McpServerPath` **同一实现、同一条论证**（两种载体：生产 dist / 接缝测试 src；
+ * 判据落文件存在性；两条候选都缺 ⇒ 返回 dist 形态路径，子进程起不来时 mcp-client 侧
+ * fail-closed 得 ERROR，不编一个能跑的空壳）。
+ */
+function resolveBuiltinMcpServerPath(): string {
+  return resolveDshServerPath("builtin-mcp-server.js");
 }
 import type { FeatureGate } from "./features/gate.js";
 import { ResourceRegistryService } from "./dril/resource-registry.js";
@@ -671,6 +682,25 @@ export class ExecutionEngine {
           }
           continue;
         }
+        // WO-BUILTIN-TO-DSH · 平台内置工具 MCP server：工具集**平台固定**（注册表现算的一族，
+        // 见 mcp/builtin-mcp.ts）⇒ 与本体/规则同走**静态投影**，不连 server（理由两条同上：
+        // 宿主侧连接会踩 MCP_STDIO_ENABLED 白名单策略；每次 run 多付一次子进程冷启动）。
+        // 描述逐字取 `buildBuiltinMcpTools`（内含 BUILTIN_MCP_DESC_PREFIX）——DSH 臂同一段文字
+        // 经 MCP wire 到达模型面，两内核文本逐字同（前缀禁在本处再拼一次）。
+        // ⛔ 收窄这里只是**授予面**的一半（另一半是 DSH 侧 spawn 时的 toolAllowlist，同源同滤）；
+        //    没被授予的工具在本函数里就不产出 ⇒ 原生臂模型面与宿主 scope 门同判据。
+        if (serverName === BUILTIN_MCP_SERVER) {
+          for (const t of buildBuiltinMcpTools()) {
+            if (ref.toolFilter && !ref.toolFilter.includes(t.rawName) && !ref.toolFilter.includes(t.name)) continue;
+            specs.push({
+              name: t.name,
+              description: t.description,
+              inputSchema: t.inputSchema,
+              binding: { kind: "MCP", mcpConfigId: ref.mcpConfigId },
+            });
+          }
+          continue;
+        }
         if (serverName === WORKFLOW_MCP_SERVER) {
           const wfs = await this.deps.repos.workflows.listByTenant(agent.tenantId);
           for (const wf of wfs) {
@@ -807,24 +837,35 @@ export class ExecutionEngine {
       }
     }
 
+    // Phase6C MCP router：MCP 工具按 query 相关性收窄到 top-k（非 MCP 工具全保留；deferred 经 discover 发现）。
+    //
+    // ⚠ WO-BUILTIN-TO-DSH · **平台内置工具面（`mcp__builtin__*`）不参与这次收窄** —— 它们是
+    // 本次迁移才换上 MCP 载体的，迁移前是 `{kind:"BUILTIN"}` 授予（结构上**从不**被 top-k 收窄，
+    // 见上面那行注释「非 MCP 工具全保留」）。迁移只许换载体、不许换可见面：若把它们算进
+    // `mcpSpecs`，一个 agent 的内置工具面会被按 query 相关性砍到 8 条以内（通用 agent 26 件
+    // ⇒ 大多数 run 里模型**根本看不到** `query_objects`），那是比「DSH 侧没身份」更坏的回归。
+    // 故排除法派生 `routerSpecs`（参与收窄的那一份，= 迁移前的 MCP 面，**逐条相同**）；
+    // 内置工具面留在 `expanded` 里恒全量注入，embedder 的候选文本也只用 routerSpecs ——
+    // 迁移前后的相关性排序输入**逐字节相同**。
+    const routerSpecs = mcpSpecs.filter((t) => parseBuiltinMcpToolName(t.name) === undefined);
     // Phase8：路由用真 embedding provider（配置时一次性批量预算 query+候选文本向量，
     // 包成同步 Embedder 喂给 skill/MCP router；未配置或失败 → 上层回退 pseudoEmbed）。
     const cfg = this.deps.config;
     let embedder: Embedder | undefined;
     if (cfg.QOS_EMBEDDING_BASE_URL && cfg.QOS_EMBEDDING_MODEL) {
-      const texts = [opts.prompt, ...skills.map((s) => `${s.name ?? ""} ${s.summary ?? ""}`), ...mcpSpecs.map((t) => t.name)];
+      const texts = [opts.prompt, ...skills.map((s) => `${s.name ?? ""} ${s.summary ?? ""}`), ...routerSpecs.map((t) => t.name)];
       embedder = await buildProviderEmbedder(
         { baseUrl: cfg.QOS_EMBEDDING_BASE_URL, model: cfg.QOS_EMBEDDING_MODEL, apiKey: cfg.QOS_EMBEDDING_API_KEY },
         texts,
       );
     }
-
-    // Phase6C MCP router：MCP 工具按 query 相关性收窄到 top-k（非 MCP 工具全保留；deferred 经 discover 发现）。
     let tools = expanded;
-    if (mcpSpecs.length > 0) {
-      const { full } = selectMcpTools(opts.prompt, mcpSpecs, 8, embedder);
+    if (routerSpecs.length > 0) {
+      const { full } = selectMcpTools(opts.prompt, routerSpecs, 8, embedder);
       const keep = new Set(full.map((t) => t.name));
-      tools = expanded.filter((t) => t.binding.kind !== "MCP" || keep.has(t.name));
+      // 收窄只作用于**参与收窄的** MCP 面；内置工具面（builtinSpecs）+ 非 MCP 面全保留。
+      const narrowed = new Set(routerSpecs.filter((t) => !keep.has(t.name)).map((t) => t.name));
+      tools = expanded.filter((t) => !narrowed.has(t.name));
     }
 
     // WO-MCP-TOP8-VS-ROSTER · **模型面终态的求解器授予集**（供导航图广告面收窄：广告面 ⊆ 可调用面）。
@@ -1073,6 +1114,8 @@ export class ExecutionEngine {
             serverName === ONTOLOGY_MCP_SERVER ? resolveOntologyMcpServerPath()
             : serverName === SOLVERS_MCP_SERVER ? resolveSolversMcpServerPath()
             : serverName === RULES_MCP_SERVER ? resolveRulesMcpServerPath()
+            // WO-BUILTIN-TO-DSH · 内置工具面（同一形态：真 server + 运行期形态注入）
+            : serverName === BUILTIN_MCP_SERVER ? resolveBuiltinMcpServerPath()
             : undefined;
           if (builtinPath) {
 
