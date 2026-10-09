@@ -431,10 +431,17 @@ describe("WO-AGENT-CONFIG-TO-DSH · C 组：规则面三面同改 + 只剩一条
     expect(hostNames, "反向工具面不许有规则").not.toContain(FULL);
     expect(hostNames, "反向工具面不许有裸名规则").not.toContain(RAW);
     // 金丝雀：反向工具面**没有空掉**（否则上面两条 not.toContain 对空实现恒真）
-    // ⚠ WO-BUILTIN-TO-DSH：金丝雀原锚 `query_objects` 已改挂内置工具 MCP 面（`mcp__builtin__*`）
-    // ⇒ 改用同批**未迁**的 analyst 内置工具 `get_object`（它仍是裸 BUILTIN 授予）。
-    expect(hostNames).toContain("get_object");
-    expect(hostNames.length).toBeGreaterThan(0);
+    // ⚠ WO-BUILTIN-TO-DSH：金丝雀原锚 `query_objects` 已改挂内置工具 MCP 面（`mcp__builtin__*`）。
+    // ⚠ WO-BUILTIN-MIGRATE-REST：次级锚 `get_object` **也**迁走了，且 analyst 手上已无未迁件
+    // ⇒ 金丝雀改锚**通用 agent**（它还有 discover 一族未迁，仍走反向通道）——
+    // 本 agent 的反向面则从「有别的件」翻成「必须为空」，见下。
+    const generalSeed = seedRegistry().agents.find((a) => a.id === "agt_general");
+    if (!generalSeed) throw new Error("seed general agent not found");
+    const general = await setupFromSeedAgent({ ...generalSeed, kernel: "EXTERNAL" } as AgentDefinition);
+    const generalHostNames = (general.spec.hostTools ?? []).map((x) => x.name);
+    expect(generalHostNames, "旧载体金丝雀：未迁工具仍在反向工具面（通用 agent 的 discover）").toContain("discover");
+    expect(generalHostNames.length).toBeGreaterThan(0);
+    expect(hostNames, "analyst 已无未迁件 ⇒ 反向工具面结构性为空").toEqual([]);
     // MCP 面：真 server spec + toolAllowlist 收窄到一件；按 serverName 取，⛔ 不按下标
     const rulesServer = spec.mcpServers?.find((m) => m.serverName === RULES_MCP_SERVER);
     expect(rulesServer, "DSH 侧 MCP server 面（规则 server 必须在挂载表里）").toBeDefined();

@@ -1,0 +1,50 @@
+WO-BUILTIN-MIGRATE-REST · 批次 1 · 第 3 节四条结构性耦合逐条交代
+============================================================
+批次 1 = get_object · aggregate_objects · search_knowledge · query_timeseries_agg · search_experience
+（出厂 analyst 手里那四件 + 通用 agent 那五件；试点件 query_objects 属上一单）
+
+① `invoke_solver` / `canInvokeSolvers` 认裸名
+   本批**未遇到** —— `invoke_solver` 排在后续批次（本单还没动它）。
+   处置计划（已读源码定位，动手前会再复读一次）：`navigation-slice.ts` 的 `canInvokeSolvers`
+   判据 = `n === "invoke_solver" || parseSolverMcpToolName(n) !== undefined`；迁到
+   `mcp__builtin__invoke_solver` 后两条都不中 ⇒ 通用 agent 静默不再取活求解器目录。
+   修法 = 判据改成**按身份**（`resolveBuiltinToolIdentity(n) === "invoke_solver"` 与求解器命名空间并列），
+   并在接缝套件里补一条「全名形态照样算得出可调 solver」的对照。
+
+② 截断豁免集 / 对象域门按身份判
+   本批**遇到了本批的形态**：`query_timeseries_agg`（截断豁免集成员）、
+   `get_object` / `aggregate_objects`（对象域门成员）都在本批里。
+   - 截断豁免：判据已是身份归一（`isTruncationExemptTool` → `resolveBuiltinToolIdentity`），
+     本批直接受益、无需再改；接缝套件 B4 逐条咬「全名形态仍豁免 / 非豁免件不被误豁免」。
+   - 对象域门：归一位置在 scope 门之后、对象域门之前（上一单定的），本批直接受益；
+     接缝套件 B3 用全名真调域外类型 ⇒ DENIED 且**拒绝行记的是裸名**（证明门按身份判、且在归一之后）。
+   - 新遇到的一处（本批新增点名）：analyst 的 `scopeDeclaration.toolNames` 里有一条
+     `aggregate_objects` —— 它在**声明面**里、却从来不在**授予面**里。它已属内置工具 MCP 面，
+     声明面按契约惯例必须记**全名**（记裸名会让「哪天真的授予它」时被 scope 门用全名拒，
+     又是一次「声明面与模型面记法漂移」）。已改；接缝套件 C1 咬「声明面不再记裸名」。
+
+③ 工具 scope 门用全名校验
+   三道门（scope 门 / 对象域门 / 授予面）都保持全名校验，未削弱：
+   - 授予面：本批每一件都以**全名**进 `toolFilter`，`scopeDeclaration` 同步记全名（C1/C2 逐 agent 扫）。
+   - scope 门：接缝套件 B3/E4 用真调用咬 —— 域外/未授予一律 DENIED，且**拒绝行的审计名是裸名**
+     （引用原文）而**拒绝时点用的是调用原名（全名）**。
+   - DSH 允许表：`mcpServers[].toolAllowlist` 与授予面同源同滤（C3/D3 咬「换授后允许表恰为那一件」）。
+
+④ 失败点名披露块
+   本批**遇到并验证**：B5 单测 + E4 端到端（真 DSH 分叉）—— 迁移后失败的调用在答案尾部
+   仍逐条点名（工具名 + outcome + 门/原因原文），点名用的是**调用名**（= 全名载体），
+   两条臂同源（原生臂记 `block.name`、DSH 臂记帧里的 call.name ⇒ 两臂点的是同一个串，不会一臂裸名一臂全名）。
+   - 新遇到并点名的**同族第二处**（不在本批处置范围内，已定位、留给迁 `create_action_draft`/`invoke_solver` 的批次）：
+     `ops/fallback.ts` 的 `SKETCH_TO_STEP` 与 `hasActionDraft` / `hasSolver` 三处判据按**裸名**匹配
+     `executedPlanSketch[].toolName`，而 sketch 记的是**载体名**（模型面名）。
+     该处在上一单（试点件）与更早的本体/规则迁移中**已经**对 `query_objects` / `resolve_slice` /
+     `evaluate_rules` 失效（静默少一步 / 少一个标记），本单迁 `create_action_draft` 与 `invoke_solver`
+     会让它再多两处 —— 届时按**身份归一**（`resolveBuiltinToolIdentity`）修，并在接缝套件里补对照。
+
+另外两处**观测到但不动**（不在本单半径内，登记备查）：
+   · `skill-probe.ts` 的探针/孪生 agent 仍以**裸 BUILTIN** 授予 query_objects / get_object /
+     invoke_solver / evaluate_rules / retrieve_knowledge / read_skill_resource（`mcpServers: []`）。
+     它是**运行期合成的探针 agent**（skill 评测用），授予面来自代码而不是 agent 配置；
+     本单不碰它 = 行为逐字节不变，但它是「这一族仍未迁」的残余面之一（见 remaining.txt）。
+   · seed 的 `ROLE_PROFILES` 里**其余四个角色**的展示字段 `toolWhitelist` 仍写着裸名 `query_objects`
+     （上一单只改了 analyst 那两行）—— 展示面与真实约束记法漂移，纯展示、零行为影响。

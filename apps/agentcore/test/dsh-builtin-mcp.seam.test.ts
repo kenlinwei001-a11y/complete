@@ -178,18 +178,31 @@ function seedAgent(id: string, overrides: Partial<AgentDefinition> = {}): AgentD
 }
 const seedAnalyst = (overrides: Partial<AgentDefinition> = {}) => seedAgent(SEED_AGENT_ID, overrides);
 
+/** 出厂 agent 的内置工具 MCP 授予面（= 那条 ref 的 `toolFilter` 原文；无 ref ⇒ 空数组）。 */
+function expandedBuiltinNames(agent: AgentDefinition): string[] {
+  const ref = agent.tools.find((t) => t.kind === "MCP" && t.mcpConfigId === BUILTIN_MCP_CONFIG_ID) as
+    | { toolFilter?: string[] }
+    | undefined;
+  return ref?.toolFilter ?? [];
+}
+
 /**
- * **迁前形态**（对照臂）：把 `query_objects` 这条 MCP 路整条撤掉，换回改造前的裸 BUILTIN 授予。
- * 单变量对照 —— 除「这一件工具走哪个载体」之外，授予/声明/挂载三面逐字同（其余工具一律不动）。
+ * **迁前形态**（对照臂）：把 `query_objects` **这一件**从 MCP 路撤掉，换回改造前的裸 BUILTIN 授予。
+ * 单变量对照 —— 除「这一件工具走哪个载体」之外，其余授予一律不动（⚠ WO-BUILTIN-MIGRATE-REST 之后
+ * 同一张 ref 上还挂着别的已迁件，故这里是**逐件替换**而不是整条 ref 撤换）。
  */
 function preMigrationAgent(agent: AgentDefinition): AgentDefinition {
+  const rest = expandedBuiltinNames(agent).filter((n) => n !== FULL);
   return {
     ...agent,
     tools: [
       ...agent.tools.filter((t) => !(t.kind === "MCP" && t.mcpConfigId === BUILTIN_MCP_CONFIG_ID)),
+      ...(rest.length
+        ? [{ kind: "MCP", mcpConfigId: BUILTIN_MCP_CONFIG_ID, toolFilter: rest } as AgentDefinition["tools"][number]]
+        : []),
       { kind: "BUILTIN", name: RAW },
     ] as AgentDefinition["tools"],
-    mcpServers: agent.mcpServers.filter((m) => m.mcpConfigId !== BUILTIN_MCP_CONFIG_ID),
+    ...(rest.length ? {} : { mcpServers: agent.mcpServers.filter((m) => m.mcpConfigId !== BUILTIN_MCP_CONFIG_ID) }),
     scopeDeclaration: {
       ...agent.scopeDeclaration,
       toolNames: agent.scopeDeclaration.toolNames.map((n) => (n === FULL ? RAW : n)),
@@ -586,9 +599,14 @@ describe("WO-BUILTIN-TO-DSH · C 组：内置工具面三面同改 + 只剩一�
       expect(grantedSolvers.length).toBeGreaterThan(8);
       expect(visibleSolvers.length, "top-k 收窄生效（可见 < 授予）").toBeLessThan(grantedSolvers.length);
       expect(visibleSolvers.length).toBeGreaterThan(0);
-      // 主判据①：内置工具面在模型面上
+      // 主判据①：内置工具面在模型面上（⚠ WO-BUILTIN-MIGRATE-REST 之后它不止试点件 ——
+      // 件数由**授予面现算**，不写死 1：写死就会在每次迁移后假红）
       expect(names, "内置工具面在模型面（豁免生效）").toContain(FULL);
-      expect(names.filter((n) => n.startsWith(`mcp__${BUILTIN_MCP_SERVER}__`)).length, "恰一件，不许重复").toBe(1);
+      const grantedBuiltin = expandedBuiltinNames(agent);
+      expect(
+        names.filter((n) => n.startsWith(`mcp__${BUILTIN_MCP_SERVER}__`)).sort(),
+        "内置工具面逐件在模型面（全量、不重复、不被 top-k 砍）",
+      ).toEqual([...grantedBuiltin].sort());
       // 主判据②（与①合起来才是完全判别式）：**参与收窄的那一面恰为 top-k=8**。
       // 收窄面 = `mcpSpecs` 里的非内置项（本体/求解器/规则）；工作流面 binding 是 WORKFLOW，
       // 从来不进 `mcpSpecs` ⇒ 两边都从集合里排掉后再数。
@@ -617,10 +635,14 @@ describe("WO-BUILTIN-TO-DSH · D 组：迁前/迁后单变量对照（setup 层�
     const { spec, expanded } = await setupFromSeedAgent(preMigrationAgent(seedAnalyst()));
     expect(expanded.map((x) => x.name)).toContain(RAW);
     expect((spec.hostTools ?? []).map((x) => x.name), "迁前：能力在反向工具面").toContain(RAW);
+    expect(expanded.map((x) => x.name), "迁前：这一件没有 MCP 身份").not.toContain(FULL);
+    // ⚠ WO-BUILTIN-MIGRATE-REST：本臂只回退 query_objects 一件，同 ref 上还挂着别的已迁件
+    // ⇒ 「DSH 侧零内置工具 server」这条**不再成立**（也不该成立）。判定「迁前形态」的判据
+    // 改落在**这一件**上（上面两条 + 声明面回退到裸名），不再落在整台 server 的有无上。
     expect(
-      (spec.mcpServers ?? []).map((m) => m.serverName),
-      "迁前：DSH 侧没有内置工具 server（这就是「DSH 不知道它存在」的判据）",
-    ).not.toContain(BUILTIN_MCP_SERVER);
+      (((spec.mcpServers ?? []).find((m) => m.serverName === BUILTIN_MCP_SERVER) as { toolAllowlist?: string[] } | undefined)?.toolAllowlist ?? []),
+      "迁前：该 server 的允许表里没有这一件",
+    ).not.toContain(FULL);
   });
 
   it("D2 迁后臂：同一条能力改走 MCP ⇒ DSH 侧有 server 且允许表恰为一件；除该条外两臂逐字同", async () => {
@@ -629,14 +651,19 @@ describe("WO-BUILTIN-TO-DSH · D 组：迁前/迁后单变量对照（setup 层�
     // 迁后
     expect((post.spec.mcpServers ?? []).map((m) => m.serverName)).toContain(BUILTIN_MCP_SERVER);
     expect((post.spec.hostTools ?? []).map((x) => x.name)).not.toContain(RAW);
-    // 单变量：除这一条外，两臂的其余授予逐字同（证明对照不是「整表被换掉」）
+    // 单变量：除这一族外，两臂的其余授予逐字同（证明对照不是「整表被换掉」）。
+    // ⚠ WO-BUILTIN-MIGRATE-REST：本臂的 pre 形态仍只回退**试点件**（`preMigrationAgent` 只看
+    // `query_objects`），故另加一条「恒定面」断言 —— 已迁的其它件在两条臂上都是 MCP 全名（不参与本次剥离）。
     const strip = (names: string[], drop: string[]) => names.filter((n) => !drop.includes(n)).sort();
     const postNames = strip(post.expanded.map((x) => x.name), [FULL]);
     const preNames = strip(pre.expanded.map((x) => x.name), [RAW]);
     expect(postNames).toEqual(preNames);
-    // 能力在两条臂上都是**恰一件**（不许多/不许少）
-    expect(post.expanded.filter((x) => x.name.startsWith(`mcp__${BUILTIN_MCP_SERVER}__`)).length).toBe(1);
+    // 能力在两条臂上都是**恰一件**（不许多/不许少）—— 件数由授予面现算，不写死
+    const analystBuiltinFull = expandedBuiltinNames(seedAnalyst());
+    expect(post.expanded.filter((x) => analystBuiltinFull.includes(x.name)).length).toBe(analystBuiltinFull.length);
     expect(pre.expanded.filter((x) => x.name === RAW).length).toBe(1);
+    // 金丝雀：剥离的确实是**同一条能力**（全名/裸名互逆），不是两个恰巧不同的串
+    expect(analystBuiltinFull, "试点件在本 agent 的内置工具面上").toContain(FULL);
   });
 
   it("D3 反向对照臂（判据③·setup 层）：挂载在但授予面不含它 ⇒ 展开面/允许表一起没有它（同 server 另一件仍在）", async () => {
@@ -756,8 +783,10 @@ describe("WO-BUILTIN-TO-DSH · E 组：真跑的 run 记录（迁前 / 迁后同
       const names = visible.map((x) => x.name);
       // 迁前判据：模型面**只有裸名**，全名一个都没有 —— 这就是「DSH 不知道这族工具有身份」
       expect(names, "迁前：能力以裸名到达模型面").toContain(RAW);
-      expect(names, "迁前：DSH 侧没有任何 mcp__builtin__* 身份").not.toContain(FULL);
-      expect(names.filter((n) => n.startsWith(`mcp__${BUILTIN_MCP_SERVER}__`)), "迁前：零条内置工具 MCP 工具").toEqual([]);
+      expect(names, "迁前：这件工具没有 MCP 身份").not.toContain(FULL);
+      // ⚠ WO-BUILTIN-MIGRATE-REST：本臂只回退**这一件**，同 ref 上还挂着别的已迁件 ⇒
+      // 「零条内置工具 MCP 工具」这条不再成立（判据改落在**这一件**上：上面那条 not.toContain(FULL)）。
+      expect(names.filter((n) => n.startsWith(`mcp__${BUILTIN_MCP_SERVER}__`)), "迁前：本件不在内置工具 MCP 面上").not.toContain(FULL);
       // 能力仍在（对照不是「把能力删了」）：数据面同样真执行、实参逐字同
       const modelCalls = querySpy.mock.calls.filter(
         (c) => c[1] === "Order" && JSON.stringify(c[2]) === JSON.stringify({ baseId: "base-cz" }) && c[3] === 5,

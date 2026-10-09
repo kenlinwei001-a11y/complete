@@ -575,10 +575,19 @@ describe("RESOURCE-REACH · A 授予面契约（seed → expandAgentTools → se
     const analystSeed = seedRegistry().agents.find((a) => a.id === "agt_seed_analyst");
     if (!analystSeed) throw new Error("seed analyst not found");
     const other = await setupFromSeedAgent({ ...analystSeed, kernel: "EXTERNAL" } as AgentDefinition);
+    // ⚠ WO-BUILTIN-MIGRATE-REST：analyst 的**未迁件已归零**（本批把它手里最后四件也迁走了）
+    // ⇒ 旧载体金丝雀换成**通用 agent**（它还有未迁件：discover 一族走反向通道）。
+    const generalSeed = seedRegistry().agents.find((a) => a.id === "agt_general");
+    if (!generalSeed) throw new Error("seed general agent not found");
     expect(
       (other.spec.hostTools ?? []).map((x) => x.name),
-      "旧载体金丝雀：未迁工具仍在反向工具面（analyst 的 get_object）",
-    ).toContain("get_object");
+      "旧载体金丝雀①：analyst 已无未迁件 ⇒ 其余反向工具面结构性为空",
+    ).toEqual([]);
+    const general = await setupFromSeedAgent({ ...generalSeed, kernel: "EXTERNAL" } as AgentDefinition);
+    expect(
+      (general.spec.hostTools ?? []).map((x) => x.name),
+      "旧载体金丝雀②：未迁工具仍在反向工具面（通用 agent 的 discover）",
+    ).toContain("discover");
   });
 
   it("A2 对照（把 MCP 授予拿掉）：展开面 / 允许表 / mcpServers **三面一起**收缩——这是 D1 变异能红的前提", async () => {
@@ -603,13 +612,14 @@ describe("RESOURCE-REACH · A 授予面契约（seed → expandAgentTools → se
     // 内置工具 MCP 面（WO-BUILTIN-TO-DSH）与工作流 MCP 面。
     expect(allow, "允许表没空掉（MCP 面仍在）").toContain(builtinMcpToolName("query_objects"));
     expect(allow).toContain(SEED_WF_TOOL);
-    const analystSeed = seedRegistry().agents.find((a) => a.id === "agt_seed_analyst");
-    if (!analystSeed) throw new Error("seed analyst not found");
-    const other = await setupFromSeedAgent({ ...analystSeed, kernel: "EXTERNAL" } as AgentDefinition);
+    // ⚠ WO-BUILTIN-MIGRATE-REST：同 A1 —— analyst 已无未迁件，旧载体金丝雀换成通用 agent。
+    const generalSeed = seedRegistry().agents.find((a) => a.id === "agt_general");
+    if (!generalSeed) throw new Error("seed general agent not found");
+    const general = await setupFromSeedAgent({ ...generalSeed, kernel: "EXTERNAL" } as AgentDefinition);
     expect(
-      (other.spec.hostTools ?? []).map((x) => x.name),
-      "旧载体金丝雀：未迁工具仍在反向工具面（analyst 的 get_object）",
-    ).toContain("get_object");
+      (general.spec.hostTools ?? []).map((x) => x.name),
+      "旧载体金丝雀：未迁工具仍在反向工具面（通用 agent 的 discover）",
+    ).toContain("discover");
   });
 });
 

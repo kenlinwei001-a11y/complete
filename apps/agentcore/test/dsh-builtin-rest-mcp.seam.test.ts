@@ -31,7 +31,7 @@ import { createServer as createNetServer } from "node:net";
 import type { AddressInfo } from "node:net";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { mcpServerNameSlug, type AgentDefinition } from "@platform/contracts";
@@ -101,6 +101,15 @@ const SERVER_ROSTER: readonly string[] = BUILTIN_TOOLS.map((t) => t.name).filter
 
 /** 本批**仍未迁**的件（= 花名册 − 已迁）：它们**必须仍在反向通道上** —— 反向金丝雀。 */
 const NOT_YET_MIGRATED: readonly string[] = SERVER_ROSTER.filter((n) => !MIGRATED.includes(n));
+
+/**
+ * 通用 agent 的裸名面 = **注册表 − 本体专属 − 已迁**（与 seed 侧那条 filter 同一条判据，
+ * 但在这里独立再算一遍）。比 `NOT_YET_MIGRATED` 多一件 `evaluate_rules` —— 它在**规则面**上，
+ * 不在本 server 的花名册里，本单最后一批才迁它。
+ */
+const EXPECT_GENERAL_BARE: readonly string[] = BUILTIN_TOOLS.map((t) => t.name).filter(
+  (n) => !(ONTOLOGY_MCP_TOOL_NAMES as readonly string[]).includes(n) && !MIGRATED.includes(n),
+);
 
 const SEED_AGENT_ID = "agt_seed_analyst";
 const GENERAL_AGENT_ID = "agt_general";
@@ -226,17 +235,20 @@ function rawOfFilter(ref: { toolFilter?: string[] } | undefined): string[] {
  * 单变量对照 —— 除「这批工具走哪个载体」之外，授予/声明/挂载三面逐字同（其余工具一律不动）。
  */
 function preMigrationAgent(agent: AgentDefinition): AgentDefinition {
-  const rest = rawOfFilter(builtinRef(agent)).filter((n) => !MIGRATED.includes(n));
+  // ⚠ 只回退**它真正持有的那些件**（= 它的 MCP 授予表），⛔ 不是把整张 `MIGRATED` 一律塞成裸名 ——
+  // 后者会给一个从未持有某件的 agent「凭空加能力」，单变量对照当场失真。
+  const reverted = rawOfFilter(builtinRef(agent)).filter((n) => MIGRATED.includes(n));
+  const kept = rawOfFilter(builtinRef(agent)).filter((n) => !MIGRATED.includes(n));
   return {
     ...agent,
     tools: [
       ...agent.tools.filter((t) => !(t.kind === "MCP" && t.mcpConfigId === BUILTIN_MCP_CONFIG_ID)),
-      ...MIGRATED.map((n): AgentDefinition["tools"][number] => ({ kind: "BUILTIN", name: n })),
-      ...(rest.length
-        ? [{ kind: "MCP", mcpConfigId: BUILTIN_MCP_CONFIG_ID, toolFilter: rest.map((n) => builtinMcpToolName(n)) } as AgentDefinition["tools"][number]]
+      ...reverted.map((n): AgentDefinition["tools"][number] => ({ kind: "BUILTIN", name: n })),
+      ...(kept.length
+        ? [{ kind: "MCP", mcpConfigId: BUILTIN_MCP_CONFIG_ID, toolFilter: kept.map((n) => builtinMcpToolName(n)) } as AgentDefinition["tools"][number]]
         : []),
     ] as AgentDefinition["tools"],
-    ...(rest.length ? {} : { mcpServers: agent.mcpServers.filter((m) => m.mcpConfigId !== BUILTIN_MCP_CONFIG_ID) }),
+    ...(kept.length ? {} : { mcpServers: agent.mcpServers.filter((m) => m.mcpConfigId !== BUILTIN_MCP_CONFIG_ID) }),
     scopeDeclaration: {
       ...agent.scopeDeclaration,
       toolNames: agent.scopeDeclaration.toolNames.map((n) => {
@@ -251,7 +263,8 @@ function preMigrationAgent(agent: AgentDefinition): AgentDefinition {
  * **反向对照形态**（判据③）：MCP 挂载在、但授予面（toolFilter）**不含**已迁的这批。
  * 换授同 server 的**另一件**（还没迁的一件）—— 证明「读不到」不是「整台 server 塌了」。
  */
-const UNGRANTED_SWAP = "discover";
+/** 反向对照的「换授件」= **同 server 尚未迁**的一件（全迁完之后退到花名册首件，仍同 server）。 */
+const UNGRANTED_SWAP: string = NOT_YET_MIGRATED[0] ?? SERVER_ROSTER[0]!;
 function ungrantedAgent(agent: AgentDefinition): AgentDefinition {
   const swapped = builtinMcpToolName(UNGRANTED_SWAP);
   const kept = rawOfFilter(builtinRef(agent)).filter((n) => !MIGRATED.includes(n));
@@ -414,18 +427,17 @@ describe("WO-BUILTIN-MIGRATE-REST · A 组：DSH 侧真看到的这批工具（M
     // eslint-disable-next-line no-console
     console.log(
       `\n  ── A1 DSH 侧真 tools/list（${names.length} 件 · 真 spawn 子进程）──\n` +
-        `  本批（模型面名）：${MIGRATED.map((r) => `${rawName(r)}=${full(r)}`).join(" · ")}\n` +
+        `  本批（模型面名）：${MIGRATED.map((r) => `${r}=${full(r)}`).join(" · ")}\n` +
         `  仍未迁（同 server 也广告，但出厂 agent 未授予 ⇒ 反向通道）：${NOT_YET_MIGRATED.join(" · ")}\n`,
     );
   });
 
   it("A2 tools/call：宿主收到的是**全名** + 入参逐键原文；模型面回执是逐字 <tool_data> 包络", { timeout: SEAM_TIMEOUT }, async () => {
+    // 回执信封形态取自宿主端点契约（`mcp-host-bridge.ts` 认 `outcome` + `payloadJson` 两键）
     const loop = await startHostLoopback({
-      ok: true,
-      toolCallId: "tc_loopback",
       outcome: "OK",
-      durationMs: 3,
-      payload: { data: { hits: [{ docId: "doc-9", text: "回环回执" }] }, snapshotVersion: "sv-1" },
+      payloadJson: '{"data":{"hits":[{"docId":"doc-9","text":"回环回执"}]},"snapshotVersion":"sv-1"}',
+      toolCallId: "tc_loopback",
     });
     try {
       const client = await connectServer({
@@ -438,9 +450,10 @@ describe("WO-BUILTIN-MIGRATE-REST · A 组：DSH 侧真看到的这批工具（M
       expect(loop.seen[0]!.toolName, "回宿主的是**全名**（scope 门按全名校验）").toBe(full(PROBE_RAW));
       expect(loop.seen[0]!.input, "入参逐键原文").toEqual(JSON.parse(PROBE_ARGS));
       const text = (r.content as { type: string; text: string }[])[0]!.text;
-      expect(text.startsWith(`<tool_data tool_call_id="tc_loopback"`)).toBe(true);
-      expect(text.endsWith("</tool_data>")).toBe(true);
-      expect(receiptInnerOf(text)).toBe(JSON.stringify({ data: { hits: [{ docId: "doc-9", text: "回环回执" }] }, snapshotVersion: "sv-1" }));
+      expect(text, "回执逐字 = 宿主给的 payloadJson（不 parse/不 stringify）").toBe(
+        '<tool_data tool_call_id="tc_loopback">{"data":{"hits":[{"docId":"doc-9","text":"回环回执"}]},"snapshotVersion":"sv-1"}</tool_data>',
+      );
+      expect(r.isError).toBeFalsy();
       // eslint-disable-next-line no-console
       console.log(`\n  ── A2 tools/call 回环 ──\n  宿主收到 toolName=${loop.seen[0]!.toolName} input=${JSON.stringify(loop.seen[0]!.input)}\n  模型面回执=${text.replace(/\s+/g, " ").slice(0, 220)}\n`);
     } finally {
@@ -576,11 +589,11 @@ describe("WO-BUILTIN-MIGRATE-REST · C 组：三面同改 + 只剩一条授予�
         }
       }
     }
-    // 反向金丝雀：**未迁**的件在所有 agent 上仍是裸名 BUILTIN 授予（有 ⇒ 上面的「退净」不是整体塌了）
+    // 反向金丝雀：**未迁**的件在通用 agent 上仍是裸名 BUILTIN 授予（⇒ 上面的「退净」不是整体塌了）
     const general = agents.find((a) => a.id === GENERAL_AGENT_ID)!;
     const generalBare = general.tools.filter((t) => t.kind === "BUILTIN").map((t) => t.name).sort();
-    expect(generalBare, "通用 agent 的裸名面 = 花名册 − 已迁（逐条推导，不手抄）").toEqual(
-      [...NOT_YET_MIGRATED].sort(),
+    expect(generalBare, "通用 agent 的裸名面 = 注册表 − 本体专属 − 已迁（逐条推导，不手抄）").toEqual(
+      [...EXPECT_GENERAL_BARE].sort(),
     );
     expect(rawOfFilter(builtinRef(general)).sort(), "通用 agent 的 MCP 面 = 已迁全量").toEqual([...MIGRATED].sort());
   });
@@ -614,9 +627,9 @@ describe("WO-BUILTIN-MIGRATE-REST · C 组：三面同改 + 只剩一条授予�
     const names = expanded.map((x) => x.name);
     // 通用 agent：已迁全量在模型面（全名），未迁全量在反向面（裸名）
     for (const raw of MIGRATED) expect(names).toContain(full(raw));
-    const hostNames = (spec.hostTools ?? []).map((x) => x.name);
+    const hostNames = (spec.hostTools ?? []).map((x) => x.name).sort();
     for (const raw of MIGRATED) expect(hostNames).not.toContain(raw);
-    for (const raw of NOT_YET_MIGRATED) expect(hostNames, `未迁件 ${raw} 仍在反向工具面`).toContain(raw);
+    expect(hostNames, "反向工具面 = 裸名面逐条相同（两处同源）").toEqual([...EXPECT_GENERAL_BARE].sort());
 
     // Phase6C 收窄豁免：内置工具面**不参与** top-k（否则通用 agent 的 26 件会被砍到 8 以内）
     const t = await createTestApp();
@@ -646,7 +659,7 @@ describe("WO-BUILTIN-MIGRATE-REST · D 组：迁前/迁后单变量对照（setu
   it("D1 迁前臂：同一批件在反向工具面（裸名）∧ DSH 侧零内置工具 server 认知", async () => {
     const { spec, expanded } = await setupFromSeedAgent(preMigrationAgent(seedAnalyst()));
     const names = expanded.map((x) => x.name);
-    for (const raw of MIGRATED) {
+    for (const raw of EXPECT_ANALYST_RAW) {
       expect(names, `迁前：${raw} 以裸名到达模型面`).toContain(raw);
       expect(names, `迁前：没有 ${raw} 的 MCP 身份`).not.toContain(full(raw));
       expect((spec.hostTools ?? []).map((x) => x.name), `迁前：${raw} 在反向工具面`).toContain(raw);
@@ -659,12 +672,12 @@ describe("WO-BUILTIN-MIGRATE-REST · D 组：迁前/迁后单变量对照（setu
     const pre = await setupFromSeedAgent(preMigrationAgent(seedAnalyst()));
     expect((post.spec.mcpServers ?? []).map((m) => m.serverName)).toContain(BUILTIN_MCP_SERVER);
     const strip = (names: string[], drop: string[]) => names.filter((n) => !drop.includes(n)).sort();
-    const postNames = strip(post.expanded.map((x) => x.name), MIGRATED.map((r) => full(r)));
-    const preNames = strip(pre.expanded.map((x) => x.name), [...MIGRATED]);
+    const postNames = strip(post.expanded.map((x) => x.name), EXPECT_ANALYST_RAW.map((r) => full(r)));
+    const preNames = strip(pre.expanded.map((x) => x.name), [...EXPECT_ANALYST_RAW]);
     expect(postNames, "单变量：除这一批外其余授予逐字同（对照不是整表换掉）").toEqual(preNames);
     // 件数守恒（两个方向都不许多/少）
     expect(post.expanded.filter((x) => x.name.startsWith(`mcp__${BUILTIN_MCP_SERVER}__`)).length).toBe(EXPECT_ANALYST_RAW.length);
-    expect(pre.expanded.filter((x) => MIGRATED.includes(x.name)).length).toBe(MIGRATED.length);
+    expect(pre.expanded.filter((x) => EXPECT_ANALYST_RAW.includes(x.name)).length).toBe(EXPECT_ANALYST_RAW.length);
   });
 
   it("D3 反向对照（判据③·setup 层）：授予面换授 ⇒ 展开面/允许表一起没有它（同 server 另一件仍在）", async () => {
@@ -688,6 +701,17 @@ describe("WO-BUILTIN-MIGRATE-REST · D 组：迁前/迁后单变量对照（setu
 // E 组 · e2e 真跑（真 DSH 分叉 + stub LLM）：迁后臂 vs 迁前臂 + 反向对照 + 失败点名
 // ═══════════════════════════════════════════════════════════════════════════
 describe("WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query）", () => {
+  // 真 DSH 分叉要能定位到 harness 目录（真子进程）：`resolveHarnessDir` 的判据是
+  // 「该目录下有 cordis.yml」—— 缺它整组报 `cordis.yml not found`（那是**环境**红，不是产品红）。
+  const savedEnv: Record<string, string | undefined> = {};
+  beforeEach(() => {
+    savedEnv.DSH_HARNESS_DIR = process.env.DSH_HARNESS_DIR;
+    process.env.DSH_HARNESS_DIR = HARNESS_DIR;
+  });
+  afterEach(() => {
+    if (savedEnv.DSH_HARNESS_DIR === undefined) delete process.env.DSH_HARNESS_DIR;
+    else process.env.DSH_HARNESS_DIR = savedEnv.DSH_HARNESS_DIR;
+  });
   it("E1 迁后（DSH 原生 MCP）：模型面有全名 ∧ 真调 ∧ 数据面真查 ∧ 审计行（裸名）", { timeout: SEAM_TIMEOUT }, async () => {
     const stub = await startStubOpenAi([
       { toolCall: { name: full(PROBE_RAW), arguments: PROBE_ARGS }, usage: PLAIN_USAGE },
