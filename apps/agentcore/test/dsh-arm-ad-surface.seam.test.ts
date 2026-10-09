@@ -39,7 +39,7 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AgentDefinition } from "@platform/contracts";
-import { TENANT, createTestApp, type TestApp } from "./helpers.js";
+import { TENANT, createTestApp, setKernelRuntime, type TestApp } from "./helpers.js";
 import { STUB_DCP_SPEC, startStubOpenAi, stubDirectory, stubProvider, type StubRound } from "./helpers-dsh-stub.js";
 import { seedMcpConfigs, seedRegistry } from "../src/mocks/seed.js";
 import { BudgetTracker } from "../src/tools/budget.js";
@@ -112,6 +112,8 @@ async function seedWorld(t: TestApp, agent: AgentDefinition): Promise<void> {
 async function startDshApp(stubUrl: string): Promise<{ t: TestApp; close: () => Promise<void> }> {
   const port = await freePort();
   const t = await createTestApp({
+    // WO-CLOSE-NATIVE-GAPS：内核臂改由测试装配位给（agent.kernel 字段已退役）
+    kernelRuntime: "dsh",
     providerDirectory: stubDirectory(stubProvider(stubUrl), FAKE_LLM_KEY) as never,
     // 反向通道（/b/v1/dsh/tool-execute）要求 SERVICE_TOKEN；PORT 必须是子进程连得上的真端口。
     env: { PORT: String(port), SERVICE_TOKEN },

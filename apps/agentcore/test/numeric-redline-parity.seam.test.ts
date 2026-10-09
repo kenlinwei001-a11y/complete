@@ -23,7 +23,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AgentDefinition } from "@platform/contracts";
-import { createTestApp, TENANT, type TestApp } from "./helpers.js";
+import { createTestApp, setKernelRuntime, TENANT, type TestApp } from "./helpers.js";
 import { toolUse } from "../src/llm/mock.js";
 import { loadConfig } from "../src/config.js";
 import { computeResidualBudget } from "../src/router/orchestrator.js";
@@ -184,8 +184,10 @@ describe("§1 对齐不变量 · 同一条答案两路同处置", () => {
     markdown: string,
     provenance: { toolCallId: string; outputPath: string }[] = [],
   ) {
+    // ★ WO-CLOSE-NATIVE-GAPS：内核臂改由测试装配位给（agent.kernel 字段已退役，不再被读）。
+    setKernelRuntime(t, "inprocess");
     await t.repos.agents.insert(
-      agentDef({ id: `agt_${taskId}`, key: `k_${taskId}`, kernel: "NATIVE" }),
+      agentDef({ id: `agt_${taskId}`, key: `k_${taskId}` }),
     );
     t.llm.queueAgentTurn({
       content: [toolUse("final_answer", { blocks: [{ type: "text", markdown }], provenance })],
@@ -203,8 +205,9 @@ describe("§1 对齐不变量 · 同一条答案两路同处置", () => {
 
   /** dsh 路：stub OpenAI 回同一份 final_answer 正文（形态照 dsh-postcheck.seam.test.ts）。 */
   async function runDsh(t: TestApp, taskId: string, markdown: string) {
+    setKernelRuntime(t, "dsh"); // ★ WO-CLOSE-NATIVE-GAPS：装配位给内核臂（同一条 agent 记录）
     await t.repos.agents.insert(
-      agentDef({ id: `agt_${taskId}`, key: `k_${taskId}`, kernel: "EXTERNAL" }),
+      agentDef({ id: `agt_${taskId}`, key: `k_${taskId}` }),
     );
     return t.deps.engine.runRegisteredAgent({
       taskId,

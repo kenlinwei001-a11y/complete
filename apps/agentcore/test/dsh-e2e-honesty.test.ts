@@ -44,7 +44,7 @@ import {
   type SseEmission,
 } from "../src/dsh-runtime/index.js";
 import { BudgetTracker } from "../src/tools/budget.js";
-import { createTestApp, TENANT } from "./helpers.js";
+import { createTestApp, setKernelRuntime, TENANT } from "./helpers.js";
 import {
   STUB_DCP_SPEC,
   STUB_FAKE_KEY,
@@ -235,7 +235,8 @@ describe("WO-DSH-E2E · L5 诚实层穿透", () => {
     await t.repos.agents.insert(
       agentDef({ id: "agt_l5_req", model: STUB_DCP_SPEC, skills: [{ skillId: "skl_l5", version: 1 }] }),
     );
-    process.env.DSH_HARNESS = "1";
+    // ★ WO-CLOSE-NATIVE-GAPS：内核臂改由测试装配位给（env DSH_HARNESS 不再被引擎读）。
+    setKernelRuntime(t, "dsh");
     process.env.DSH_HARNESS_DIR = HARNESS_DIR;
     try {
       const result = await t.deps.engine.runRegisteredAgent({
@@ -280,7 +281,8 @@ describe("WO-DSH-E2E · L5 诚实层穿透", () => {
     await t.repos.agents.insert(
       agentDef({ id: "agt_l5_wr", model: STUB_DCP_SPEC, skills: [{ skillId: "skl_l5w", version: 1 }] }),
     );
-    process.env.DSH_HARNESS = "1";
+    // ★ WO-CLOSE-NATIVE-GAPS：内核臂改由测试装配位给（env DSH_HARNESS 不再被引擎读）。
+    setKernelRuntime(t, "dsh");
     process.env.DSH_HARNESS_DIR = HARNESS_DIR;
     try {
       const result = await t.deps.engine.runRegisteredAgent({

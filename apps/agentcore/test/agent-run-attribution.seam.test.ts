@@ -349,7 +349,14 @@ describe("WO-DSH-P2-UX · 内核标识写入对拍（A7）", () => {
     });
   }
 
-  it("DSH_HARNESS=1 ⇒ dsh 分叉产出的 run.kernel === \"EXTERNAL\"", { timeout: 60_000 }, async () => {
+  // ══ WO-CLOSE-NATIVE-GAPS · 内核判据退役（仓主 2026-10-09「都改掉，不考虑回退」）══════════
+  // 本组自本单起量的是**新判据**：注册 agent 的执行内核不再由 `agent.kernel` / `process.env.DSH_HARNESS`
+  // 决定（两者都已退役），而是 `engine.agentKernelRuntimeMode()` —— 产品恒 "dsh"，唯一例外是
+  // 测试专用装配位 `createTestApp({ kernelRuntime })`。故本组：
+  //   · env 驱动臂保留（测试装配按 env 推断，既有剧本不改）；
+  //   · per-agent 臂**改写**为退役证明（设 NATIVE 也仍走 DSH / 标 EXTERNAL）；
+  //   · 反向金丝雀：把 kernel 字段删掉，读数不许变（证明它真不再是判据）。
+  it("DSH_HARNESS=1（测试装配 ⇒ DSH）⇒ run.kernel === \"EXTERNAL\"", { timeout: 60_000 }, async () => {
     process.env.DSH_HARNESS = "1";
     process.env.DSH_HARNESS_DIR = HARNESS_DIR; // vitest cwd=apps/agentcore，缺省解析不到 packages/dsh-harness
     delete process.env.MOCK_SCENARIO; // 缺省剧本：echo_tool 一轮 + 文本收尾
@@ -397,12 +404,13 @@ describe("WO-DSH-P2-UX · 内核标识写入对拍（A7）", () => {
     expect(result.run.kernel).toBe("NATIVE");
   });
 
-  // ── WO-AGENT-KERNEL-SELECT · per-agent 内核选择（AgentDefinition.kernel）─────────
-  // 语义钉：agent 显式配置优先于进程 env；字段缺失才回落 env 分叉（上面两臂 = 缺省对拍，
-  // 本组三臂逐字复用其剧本，只改 kernel 字段与 env 组合——红的只能是 per-agent 判据本身）。
+  // ── WO-CLOSE-NATIVE-GAPS · per-agent 内核选择**已退役**（原 WO-AGENT-KERNEL-SELECT 组）──────
+  // 原语义「agent 显式配置优先于进程 env」自本单起**不再成立**：`agent.kernel` 一个字节都不被读。
+  // 本组三臂改写为：① 装配位=DSH + agent 写 EXTERNAL ⇒ EXTERNAL（旧写法仍绿，但绿在装配位上）；
+  // ② agent 写 NATIVE ⇒ **仍 EXTERNAL**（退役证明·反向金丝雀）；③ agent 无 kernel 字段 ⇒ 同①。
 
-  it("agent.kernel=\"EXTERNAL\" + env 关 ⇒ 走 dsh 分叉 run.kernel === \"EXTERNAL\"", { timeout: 60_000 }, async () => {
-    delete process.env.DSH_HARNESS; // 进程级开关关着——分叉若发生，只能来自 agent 配置
+  it("装配位=DSH + agent.kernel=\"EXTERNAL\" + env 关 ⇒ run.kernel === \"EXTERNAL\"", { timeout: 60_000 }, async () => {
+    delete process.env.DSH_HARNESS; // env 关着——本臂的 EXTERNAL 只能来自装配位（这正是新判据）
     process.env.DSH_HARNESS_DIR = HARNESS_DIR;
     delete process.env.MOCK_SCENARIO;
     const stub = await startStubOpenAi([
@@ -413,6 +421,7 @@ describe("WO-DSH-P2-UX · 内核标识写入对拍（A7）", () => {
       providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never,
       // F-1：生产档治理切 http 后，dsh 臂钉 poc 档（mock 治理放行）保持既有语义。
       env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" },
+      kernelRuntime: "dsh", // ★ WO-CLOSE-NATIVE-GAPS：本臂的 EXTERNAL 由**装配位**给，不由 agent 字段
     });
     try {
       await t.repos.agents.insert(
@@ -433,17 +442,69 @@ describe("WO-DSH-P2-UX · 内核标识写入对拍（A7）", () => {
     }
   });
 
-  it("agent.kernel=\"NATIVE\" 显式 + DSH_HARNESS=1 ⇒ 显式配置压过 env，落 native run.kernel === \"NATIVE\"", async () => {
-    process.env.DSH_HARNESS = "1"; // env 开着——agent 显式 NATIVE 若被 env 翻走，本臂当场红
-    const t = await createTestApp();
-    await t.repos.agents.insert(agentDef({ id: "agt_kernel_pin_native", key: "kernel_pin_native", kernel: "NATIVE" }));
-    t.llm.queueAgentTurn({ content: [toolUse("query_objects", { objectType: "Base", filter: {} })] });
-    t.llm.queueAgentTurn({
-      content: [toolUse("final_answer", { blocks: [{ type: "text", markdown: "内核测试回答。" }], provenance: [] })],
+  it("★ 退役证明 · agent.kernel=\"NATIVE\" 不再是回退开关：装配位=DSH 时它仍落 EXTERNAL", { timeout: 60_000 }, async () => {
+    // 本臂 = WO-CLOSE-NATIVE-GAPS 的核心反向金丝雀：旧写法下这一臂会落 native（显式钉回），
+    // 新口径下 `agent.kernel` 一个字节都不被读 ⇒ 仍走 DSH。红 = 退役没退干净。
+    delete process.env.DSH_HARNESS;
+    process.env.DSH_HARNESS_DIR = HARNESS_DIR;
+    delete process.env.MOCK_SCENARIO;
+    const stub = await startStubOpenAi([
+      { toolCall: { name: "echo_tool", arguments: JSON.stringify({ text: "pin" }) }, usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 } },
+      { toolCall: { name: "final_answer", arguments: JSON.stringify({ blocks: [{ type: "text", markdown: "内核测试回答。" }], provenance: [] }) }, usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 } },
+      { text: "stub final answer", usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 } },
+    ]);
+    const t = await createTestApp({
+      providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never,
+      env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" },
+      kernelRuntime: "dsh",
     });
+    try {
+      await t.repos.agents.insert(
+        agentDef({
+          id: "agt_kernel_pin_native",
+          key: "kernel_pin_native",
+          kernel: "NATIVE", // ← 旧回退开关的取值：现在必须**翻不动**内核
+          model: STUB_DCP_SPEC,
+          tools: [{ kind: "BUILTIN", name: "echo_tool" }],
+          scopeDeclaration: { objectTypes: [], toolNames: ["echo_tool"] },
+        }),
+      );
+      const result = await runEngineOnce(t, "agt_kernel_pin_native", "task_kernel_pin_native");
+      expect(result.run.kernel).toBe("EXTERNAL");
+    } finally {
+      await stub.close();
+    }
+  });
 
-    const result = await runEngineOnce(t, "agt_kernel_pin_native", "task_kernel_pin_native");
-    expect(result.run.kernel).toBe("NATIVE");
+  it("★ 退役证明 · kernel 字段**整个删掉**：读数不变（EXTERNAL）——字段不再是判据", { timeout: 60_000 }, async () => {
+    delete process.env.DSH_HARNESS;
+    process.env.DSH_HARNESS_DIR = HARNESS_DIR;
+    delete process.env.MOCK_SCENARIO;
+    const stub = await startStubOpenAi([
+      { toolCall: { name: "echo_tool", arguments: JSON.stringify({ text: "nofield" }) }, usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 } },
+      { toolCall: { name: "final_answer", arguments: JSON.stringify({ blocks: [{ type: "text", markdown: "内核测试回答。" }], provenance: [] }) }, usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 } },
+      { text: "stub final answer", usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 } },
+    ]);
+    const t = await createTestApp({
+      providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never,
+      env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" },
+      kernelRuntime: "dsh",
+    });
+    try {
+      const def = agentDef({
+        id: "agt_kernel_no_field",
+        key: "kernel_no_field",
+        model: STUB_DCP_SPEC,
+        tools: [{ kind: "BUILTIN", name: "echo_tool" }],
+        scopeDeclaration: { objectTypes: [], toolNames: ["echo_tool"] },
+      });
+      delete (def as { kernel?: unknown }).kernel; // 反向金丝雀：删字段
+      await t.repos.agents.insert(def);
+      const result = await runEngineOnce(t, "agt_kernel_no_field", "task_kernel_no_field");
+      expect(result.run.kernel).toBe("EXTERNAL");
+    } finally {
+      await stub.close();
+    }
   });
 
   /**
@@ -469,8 +530,8 @@ describe("WO-DSH-P2-UX · 内核标识写入对拍（A7）", () => {
   }
 
   /** 真走 skill 规则预检 BLOCK 早退（engine 级），返回 run。kernel 实参 = WO-AGENT-KERNEL-SELECT per-agent 臂。 */
-  async function runBlockedOnce(suffix: string, kernel?: "NATIVE" | "EXTERNAL") {
-    const t = await createTestApp();
+  async function runBlockedOnce(suffix: string, kernel?: "NATIVE" | "EXTERNAL", kernelRuntime?: "dsh" | "inprocess") {
+    const t = await createTestApp(kernelRuntime ? { kernelRuntime } : undefined);
     await t.repos.skills.insert(blockSkill());
     await t.repos.agents.insert(
       agentDef({ id: `agt_kernel_block_${suffix}`, key: `kernel_block_${suffix}`, skills: [{ skillId: "skl_kernel_block", version: 1 }], ...(kernel ? { kernel } : {}) }),
@@ -485,21 +546,21 @@ describe("WO-DSH-P2-UX · 内核标识写入对拍（A7）", () => {
     return result;
   }
 
-  it("A10 BLOCK 早退 · DSH_HARNESS=1 ⇒ kernel === \"EXTERNAL\"（本会走外部运行时，未真执行）", async () => {
+  it("A10 BLOCK 早退 · 装配位=DSH ⇒ kernel === \"EXTERNAL\"（本会走外部运行时，未真执行）", async () => {
     process.env.DSH_HARNESS = "1"; // 注意：BLOCK 早退在分叉**之前**，不会真起 dsh 子进程
     const result = await runBlockedOnce("on");
     expect(result.run.kernel).toBe("EXTERNAL");
   });
 
-  it("A10 对拍 · 同剧本 flag off ⇒ kernel === \"NATIVE\"", async () => {
+  it("A10 对拍 · 同剧本装配位=inprocess ⇒ kernel === \"NATIVE\"", async () => {
     delete process.env.DSH_HARNESS;
     const result = await runBlockedOnce("off");
     expect(result.run.kernel).toBe("NATIVE");
   });
 
-  it("A10 BLOCK 早退 · agent.kernel=\"EXTERNAL\" + env 关 ⇒ kernel === \"EXTERNAL\"（WO-AGENT-KERNEL-SELECT per-agent 臂）", async () => {
-    delete process.env.DSH_HARNESS; // BLOCK 早退在分叉之前；env 关着，kernel 值只能来自 agent 配置
-    const result = await runBlockedOnce("peragent", "EXTERNAL");
+  it("A10 BLOCK 早退 · agent.kernel=\"NATIVE\" 也翻不动标值：装配位=DSH ⇒ 仍 \"EXTERNAL\"", async () => {
+    delete process.env.DSH_HARNESS; // BLOCK 早退在分叉之前；标值自本单起只跟装配位走
+    const result = await runBlockedOnce("peragent", "NATIVE", "dsh");
     expect(result.run.kernel).toBe("EXTERNAL");
   });
 });

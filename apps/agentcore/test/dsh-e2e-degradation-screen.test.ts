@@ -31,7 +31,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { createTestApp, TENANT, type TestApp } from "./helpers.js";
+import { createTestApp, setKernelRuntime, TENANT, type TestApp } from "./helpers.js";
 import { startStubOpenAi, stubProvider, stubDirectory, type StubRound } from "./helpers-dsh-stub.js";
 import { MockMcpClient } from "../src/mcp/mock.js";
 import { encryptSecret } from "../src/crypto.js";
@@ -249,12 +249,15 @@ describe("WO-DSH-E2E · L3 降级路径穿透（后端半）", () => {
       const nativeEmitted: Emitted[] = [];
       const nativeResult = await runAgent(t, agentId, "task_l3_deny_native", nativeEmitted);
 
-      const restore = withEnv({ DSH_HARNESS: "1", DSH_HARNESS_DIR: HARNESS_DIR });
+      // ★ WO-CLOSE-NATIVE-GAPS：臂间翻内核改走**测试装配位**（env DSH_HARNESS 不再被引擎读）。
+      const restoreEnv = withEnv({ DSH_HARNESS_DIR: HARNESS_DIR });
+      setKernelRuntime(t, "dsh");
       let dshResult: Awaited<ReturnType<typeof runAgent>>;
       try {
         dshResult = await runAgent(t, agentId, "task_l3_deny_dsh", []);
       } finally {
-        restore();
+        setKernelRuntime(t, "inprocess");
+        restoreEnv();
       }
 
       // 拒绝文案逐字一致（逐字节等）——预检在分叉之前，两臂同一码路径同一 verdict 双

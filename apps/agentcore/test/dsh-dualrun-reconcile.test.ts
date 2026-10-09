@@ -17,7 +17,7 @@
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { AgentDefinition } from "@platform/contracts";
-import { createTestApp, TENANT, type TestApp } from "./helpers.js";
+import { createTestApp, setKernelRuntime, TENANT, type TestApp } from "./helpers.js";
 import { toolUse } from "../src/llm/mock.js";
 import { BudgetTracker } from "../src/tools/budget.js";
 import { createSseMapper, type DshSessionEvent } from "../src/dsh-runtime/index.js";
@@ -120,7 +120,8 @@ async function runArm(flag: "off" | "on"): Promise<{ t: TestApp; events: Capture
     events.push({ event, payload: payload as Record<string, unknown> });
   };
   if (flag === "on") {
-    process.env.DSH_HARNESS = "1";
+    // ★ WO-CLOSE-NATIVE-GAPS：内核臂改由测试装配位给（env DSH_HARNESS 不再被引擎读）。
+    setKernelRuntime(t, "dsh");
     process.env.DSH_HARNESS_DIR = HARNESS_DIR;
   }
   try {

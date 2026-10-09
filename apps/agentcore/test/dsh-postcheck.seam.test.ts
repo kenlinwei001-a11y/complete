@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AgentDefinition, SkillDefinition } from "@platform/contracts";
-import { createTestApp, TENANT, type TestApp } from "./helpers.js";
+import { createTestApp, setKernelRuntime, TENANT, type TestApp } from "./helpers.js";
 import { loadConfig } from "../src/config.js";
 import { computeResidualBudget } from "../src/router/orchestrator.js";
 import { BudgetTracker } from "../src/tools/budget.js";
@@ -102,6 +102,8 @@ describe("WO-DSH-PROD-READY W1 · DSH 路径 postcheck 后验对拍", () => {
       { text: "stub final answer", usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 } },
     ]);
     const t = await createTestApp({
+      // WO-CLOSE-NATIVE-GAPS：内核臂改由测试装配位给（agent.kernel 字段已退役）
+      kernelRuntime: "dsh",
       providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never,
       // F-1：生产档 cordis.yml 治理已切 http 模式；本缝验 postcheck 不验 pre-execute 裁决，
       // 钉 poc 档（mock 治理放行）保持既有语义。
