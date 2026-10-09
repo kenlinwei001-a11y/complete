@@ -85,7 +85,7 @@ import { compileSkill } from "./skill-compiler.js";
 import { getFreshSeedSkillGateReport, runSkillPublishGate } from "./skill-publish-gate.js";
 import { runSkillSummaryReview } from "./skill-summary-review.js";
 import { seedScenarios } from "./scenarios-catalog.js";
-import { ensureScenarioPackageSeed } from "./mocks/seed.js";
+import { ensureScenarioPackageSeed, SEED_DEFAULT_AGENT_KERNEL } from "./mocks/seed.js";
 import { EVENT_SUBSCRIPTIONS } from "./event-subscriptions.js";
 import { ResourceRegistryService } from "./dril/resource-registry.js";
 import { ResourceQualityService } from "./dril/quality.js";
@@ -742,6 +742,26 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   // ---------------------------------------------------------------------
   const CreateAgentBody = AgentDefinitionSchema.omit({ id: true, tenantId: true, version: true, status: true });
 
+  /**
+   * WO-CLOSE-NATIVE-GAPS · **旧内核退役（agent 配置面）**——仓主 2026-10-09「都改掉，不考虑回退」。
+   *
+   * 今天的行为是 X：`kernel` 是 per-agent 可写字段，显式 `"NATIVE"` 是运维回退开关
+   * （`docs/ROLLOUT-dsh-external-kernel.md` §1-c「置回 NATIVE，下一 run 生效」）。
+   * 应该是 Y：内核不再是 agent 配置面的可选项 —— 注册 agent 执行**恒走 DSH**（外部运行时）。
+   * 于是写侧对 `"NATIVE"` **显式拒绝**（400·错误原文见下），缺省（字段不传）补 `SEED_DEFAULT_AGENT_KERNEL`
+   * （= `"EXTERNAL"`，与出厂面**同一个常量**，不另立一份会漂的缺省）。
+   *
+   * ⛔ 边界：拒绝的是**新写入**；存量记录里已有的 `"NATIVE"` 不改不删（改历史数据是另一件事），
+   * 但它**不再被执行层读取** —— 引擎的内核判据已不含 agent 数据（见 `ExecutionEngine` 的分叉头注）。
+   */
+  const KERNEL_NATIVE_RETIRED_MESSAGE =
+    'kernel:"NATIVE" 已被拒：原生内核自 2026-10-09 起退役（仓主「都改掉，不考虑回退」），' +
+    "注册 agent 的执行恒走 DSH 外部运行时；kernel 字段只接受 \"EXTERNAL\"，或留空（缺省即为 EXTERNAL）。" +
+    "回退方式已不提供（旧内核入口整体移除）。";
+  const rejectRetiredKernel = (body: { kernel?: "NATIVE" | "EXTERNAL" }): void => {
+    if (body.kernel === "NATIVE") throw new HttpError(400, ErrorCodes.VALIDATION_ERROR, KERNEL_NATIVE_RETIRED_MESSAGE);
+  };
+
   app.get("/b/v1/agents", async (req, reply) => {
     const a = await auth(req);
     // 管理平台增量 §4：?status=&q= 过滤 + 分页 50（响应保持数组形态，total 经 x-total-count）。
@@ -807,9 +827,13 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const a = await auth(req);
     requireCatalogAdmin(a);
     const body = CreateAgentBody.parse(req.body);
+    rejectRetiredKernel(body);
     const existing = await deps.repos.agents.latestByKey(a.tenantId, body.key);
     const agent: AgentDefinition = {
       ...body,
+      // WO-CLOSE-NATIVE-GAPS · 租户自建 agent 的**缺省内核**在写侧收口（与出厂面同源常量）：
+      // 此前不写 = 缺省回落进程 env（今天 env=0 ⇒ 旧内核），现在缺省 = DSH。
+      kernel: body.kernel ?? SEED_DEFAULT_AGENT_KERNEL,
       id: newId("agt"),
       tenantId: a.tenantId,
       version: (existing?.version ?? 0) + 1,
@@ -828,6 +852,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     // 管理平台增量 §4：PUBLISHED 版本不可变 → 409 IMMUTABLE_VERSION（new-version 派生新 DRAFT 再改）
     if (agent.status !== "DRAFT") throw new HttpError(409, ErrorCodes.IMMUTABLE_VERSION, "仅 DRAFT 状态的 agent 可修改（请用 new-version 派生）");
     const body = CreateAgentBody.partial().parse(req.body);
+    rejectRetiredKernel(body); // WO-CLOSE-NATIVE-GAPS：写侧拒 "NATIVE"（错误原文见上方常量）
     const updated = { ...agent, ...body, id: agent.id, tenantId: agent.tenantId, version: agent.version } as AgentDefinition;
     await deps.repos.agents.update(updated);
     return updated;
@@ -3012,6 +3037,9 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
         systemPrompt: an.systemPrompt || `针对 ${an.agentKey} 的推演 agent`,
         tools: [], ruleBindings: { ruleKeys: [], mode: "POST_CHECK" }, skills: [], mcpServers: [],
         scopeDeclaration: { objectTypes: an.scopeObjectTypes ?? [], toolNames: an.tools ?? [] },
+        // WO-CLOSE-NATIVE-GAPS · 脚手架产出的 agent 与租户自建同一缺省口径（同源常量）：
+        // 此前不写 = 缺省回落进程 env（env=0 ⇒ 旧内核）；现在缺省 = DSH。
+        kernel: SEED_DEFAULT_AGENT_KERNEL,
         status: "DRAFT",
       });
       items.push({ kind: "agent", key: an.agentKey, status: "SCAFFOLDED" });
