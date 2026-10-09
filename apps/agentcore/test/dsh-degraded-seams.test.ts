@@ -292,8 +292,10 @@ describe("WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧�
     const t = await createTestApp();
     t.deps.features.mock.set(TENANT, [...defaultOnKeys(), "agent.coordinator"]);
     // seed 原样角色 agent（native mock 路·复刻 coordinator-a2a C2 :204-220 驱动形态）。
+    // WO-ALL-AGENTS-DSH：出厂内核缺省自本单起 = `"EXTERNAL"`，而本臂是**native 对位臂**
+    // （DSH_HARNESS 不设）⇒ 显式钉 `"NATIVE"` 才保得住这条臂测的东西（正常剧本零降级帧）。
     const seed = seedRegistry().agents.find((a) => a.id === "agt_supply_chain")!;
-    await t.repos.agents.insert(seed);
+    await t.repos.agents.insert({ ...seed, kernel: "NATIVE" });
     t.llm.queueClassification(OUT_OF_CATALOG);
     t.llm.queueAgentTurn(
       () => ({ content: [toolUse("query_objects", { objectType: "Material", filter: {} })] }),
