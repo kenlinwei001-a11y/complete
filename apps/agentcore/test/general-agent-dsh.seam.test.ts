@@ -94,7 +94,8 @@ describe("WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核）
   it("① 无角色关键词 ⇒ agentKey=通用 agent · kernel=EXTERNAL · 归属 REGISTERED", { timeout: SEAM_TIMEOUT }, async () => {
     const stub = await startStubOpenAi([FINAL_ANSWER, PLAIN]);
     try {
-      const t = await createTestApp(stubOpts(stub.url));
+      // ★ WO-CLOSE-NATIVE-GAPS：本臂量的是 DSH 内核 ⇒ 显式走测试装配位（不再靠 agent.kernel 字段）。
+      const t = await createTestApp({ ...stubOpts(stub.url), kernelRuntime: "dsh" });
       const g = await seedGeneral(t);
       // 出厂态：模型留空（继承绑定矩阵，⛔ 不写死）——本测试把它换成 stub dcp spec 才跑得动。
       expect(generalFromSeed().model).toBe("");
@@ -128,11 +129,11 @@ describe("WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核）
     }
   });
 
-  it("②-a 对照：把该 agent 的 kernel 设回 NATIVE ⇒ 同问句落原生内核（证明是配置起的作用）", { timeout: SEAM_TIMEOUT }, async () => {
+  it("②-a 退役证明：把该 agent 的 kernel 设回 NATIVE ⇒ **仍落 EXTERNAL**（旧回退开关已失效）", { timeout: SEAM_TIMEOUT }, async () => {
     const stub = await startStubOpenAi([FINAL_ANSWER, PLAIN], { jsonWhenNotStreaming: true });
     try {
-      const t = await createTestApp(stubOpts(stub.url));
-      await seedGeneral(t, { kernel: "NATIVE" });
+      const t = await createTestApp({ ...stubOpts(stub.url), kernelRuntime: "dsh" });
+      await seedGeneral(t, { kernel: "NATIVE" }); // ← 旧回退开关的取值：本单起必须翻不动内核
       t.llm.queueClassification(OUT_OF_CATALOG);
       // 原生臂吃 mock 剧本（ScriptedLlmClient），DSH 臂吃 stub —— 两条都排上，谁被走到都不会因缺剧本而红。
       t.llm.queueAgentTurn({ content: [toolUse("final_answer", { blocks: [{ type: "text", markdown: "原生答复。" }], provenance: [] })] });
@@ -141,8 +142,8 @@ describe("WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核）
       const { taskId } = await submitQuery(t, PLANNER, OPEN_QUERY, { view: "dash" });
       await waitForTask(t, taskId, (x) => x.status === "COMPLETED", 30_000);
       const run = await t.repos.agentRuns.getByTask(taskId);
-      expect(run!.kernel).toBe("NATIVE");
-      expect(run!.agentKey).toBe(GENERAL_AGENT_KEY); // 落点不变，只有内核跟着配置变
+      expect(run!.kernel).toBe("EXTERNAL"); // ★ 新口径：kernel 字段不再被读（旧口径此处是 NATIVE）
+      expect(run!.agentKey).toBe(GENERAL_AGENT_KEY); // 落点不变
       // eslint-disable-next-line no-console
       console.log(`[WO-GENERAL-AGENT-DSH ②-a] run=${JSON.stringify({ agentKey: run!.agentKey, kernel: run!.kernel, attribution: run!.attribution })}`);
     } finally {
@@ -150,7 +151,7 @@ describe("WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核）
     }
   });
 
-  it("②-b 对照：通用 agent 不在场 ⇒ 逐字节落回旧探索路（EXPLORATORY + NATIVE）", async () => {
+  it("②-b 对照：通用 agent 不在场 + **测试装配（进程内循环）** ⇒ EXPLORATORY + NATIVE（产品态读数见 ②-c）", async () => {
     const t = await createTestApp();
     // ⛔ 不播通用 agent、不播 MCP 配置 —— 与改造前的测试环境完全一致。
     t.llm.queueClassification(OUT_OF_CATALOG);
@@ -162,12 +163,43 @@ describe("WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核）
     await waitForTask(t, taskId, (x) => x.status === "COMPLETED", 15_000);
 
     const run = await t.repos.agentRuns.getByTask(taskId);
-    expect(run!.attribution).toBe("EXPLORATORY"); // 旧诚实位：确知没有 Agent 定义
+    expect(run!.attribution).toBe("EXPLORATORY"); // 诚实位：确知没有**持久化** Agent 定义
     expect(run!.agentId).toBeUndefined();
     expect(run!.agentKey).toBeUndefined();
     expect(run!.kernel).toBe("NATIVE");
     // eslint-disable-next-line no-console
     console.log(`[WO-GENERAL-AGENT-DSH ②-b] run=${JSON.stringify({ attribution: run!.attribution, kernel: run!.kernel, agentId: run!.agentId ?? null })}`);
+  });
+
+  /**
+   * WO-CLOSE-NATIVE-GAPS · **②-c 产品态读数**：同一条问句、同一个「通用 agent 不在场」前提，
+   * 装配位 = DSH ⇒ 探索路**结构上拿到一个 AgentDefinition**（运行期合成·不落库）并落外部运行时。
+   *
+   * 改前 X：`generalAgent === undefined` ⇒ `orchestrator` 直调 `runAgentLoop` ⇒ 永远 NATIVE（②-b 即该形态）。
+   * 改后 Y：同前提 ⇒ 合成探索 agent 走 `engine.runRegisteredAgent` ⇒ `run.kernel === "EXTERNAL"`，
+   * 而归属**仍是 EXPLORATORY**（合成体不是任何一版持久化定义 ⇒ 不冒充 REGISTERED）。
+   */
+  it("②-c ★ 通用 agent 不在场 + 装配位=DSH ⇒ 合成探索 agent · kernel=EXTERNAL · 归属仍 EXPLORATORY", { timeout: SEAM_TIMEOUT }, async () => {
+    const stub = await startStubOpenAi([FINAL_ANSWER, PLAIN], { jsonWhenNotStreaming: true });
+    try {
+      // ⛔ 不播通用 agent —— 与 ②-b 完全同一个前提，差的只有内核装配位。
+      const t = await createTestApp({ ...stubOpts(stub.url), kernelRuntime: "dsh" });
+      await seedMcp(t);
+      expect(process.env.DSH_HARNESS).toBeUndefined(); // env 全程休眠：本臂的 EXTERNAL 只来自装配位
+      t.llm.queueClassification(OUT_OF_CATALOG);
+      const { taskId } = await submitQuery(t, PLANNER, OPEN_QUERY, { view: "dash" });
+      await waitForTask(t, taskId, (x) => x.status === "COMPLETED", 40_000);
+
+      const run = await t.repos.agentRuns.getByTask(taskId);
+      expect(run, "探索路落点必须留下 run 记录").toBeDefined();
+      expect(run!.kernel, "★ 本格判据：NATIVE → EXTERNAL").toBe("EXTERNAL");
+      expect(run!.attribution, "合成体不冒充持久化 agent：归属仍是 EXPLORATORY").toBe("EXPLORATORY");
+      expect(run!.agentId, "不写合成体的 id 当归属").toBeUndefined();
+      // eslint-disable-next-line no-console
+      console.log(`[WO-CLOSE-NATIVE-GAPS ②-c] run=${JSON.stringify({ attribution: run!.attribution, kernel: run!.kernel, agentId: run!.agentId ?? null, outcome: run!.iterations.length })}`);
+    } finally {
+      await stub.close();
+    }
   });
 
   it("③ 目录驱动自证：工具清单 / 对象类型清单都是目录现算（贴三个数 + 差集解释）", async () => {
