@@ -62,7 +62,7 @@ async function seedAgents(t: TestApp): Promise<void> {
     // 本测试环境没有 dsh harness / stub provider ⇒ 播进来时显式钉回 `"NATIVE"`（本文件验的是
     // 升级阶梯，不是内核）。⛔ 这不是「绕过内核配置」：显式值本就优先于出厂缺省，运维回退
     // （ROLLOUT §1-c）走的就是同一条 `agent.kernel = "NATIVE"`。
-    if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert({ ...ag, kernel: "NATIVE" });
+    if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert({ ...ag });
   }
 }
 
@@ -71,7 +71,7 @@ function spyInvokedAgents(t: TestApp): { ids: string[] } {
   const rec = { ids: [] as string[] };
   const orig = t.deps.engine.runRegisteredAgent.bind(t.deps.engine);
   t.deps.engine.runRegisteredAgent = async (opts) => {
-    rec.ids.push(opts.agentId);
+    rec.ids.push(opts.agentId ?? "(ephemeral)"); // WO-CLOSE-NATIVE-GAPS：agentId 现为可选（合成探索 agent 无 id）
     return orig(opts);
   };
   return rec;

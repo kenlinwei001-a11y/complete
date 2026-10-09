@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { SkillDefinitionSchema, type AgentDefinition, type EvalCase, type SkillDefinition } from "@platform/contracts";
-import { createTestApp, TENANT, PKG, type TestApp } from "./helpers.js";
+import { createTestApp, setKernelRuntime, TENANT, PKG, type TestApp } from "./helpers.js";
 import { SkillProbeRunner } from "../src/skill-probe.js";
 import { SKILL_LOADER_TOOL } from "../src/engine.js";
 import { toolUse } from "../src/llm/mock.js";
@@ -8,22 +8,26 @@ import { BudgetTracker } from "../src/tools/budget.js";
 import type { RequestAuth } from "../src/auth.js";
 
 /**
- * WO-SKILL-PROBE-KERNEL · SEAM：探针 / twin 的**运行内核不得由进程 env 决定**。
+ * WO-SKILL-PROBE-KERNEL → WO-CLOSE-NATIVE-GAPS · SEAM：探针 / twin 的**运行内核**全链。
+ *
+ * ⚑ 口径变更（2026-10-09「都改掉，不考虑回退」）：原口径守「探针内核不得由**进程 env** 决定」
+ *（钉 `kernel: "NATIVE"` 压过 env 兜底）。本单起旧内核入口**整体退役**——`agent.kernel` 不再是
+ * 内核选择器（写侧拒 "NATIVE"、存量值不被读）、`DSH_HARNESS` 引擎侧零消费方 ⇒ 探针不再钉字段，
+ * 与平台同路。故本文件改守新命题：**探针跑哪条路只跟装配位走，agent 字段（含旧回退取值）翻不动它**。
  *
  * **接缝在哪（三段，任一段漏都必须红）**
- *   探针构造（`skill-probe.ts` 的两个 `desired: AgentDefinition` 字面量，含不含 `kernel`）
- *   × 引擎分叉守卫（`engine.ts` `agent.kernel === "EXTERNAL" || (agent.kernel === undefined
- *     && process.env.DSH_HARNESS === "1")`）
- *   × 臂专属工具名（`engine.ts` `SKILL_LOADER_TOOL = { native: "load_skill", dsh: "skill" }`）。
+ *   探针构造（`skill-probe.ts` 的两个 `desired: AgentDefinition` 字面量，**不写** `kernel`）
+ *   × 引擎内核判据（`engine.agentKernelRuntimeMode()`：产品恒 "dsh"；测试装配可 "inprocess"）
+ *   × 载荷层工具名（`engine.ts` `SKILL_LOADER_TOOL`，探针侧别名表见 `skill-probe.ts`）。
  *
  * **为什么必须真引擎**：既有 `skill-probe.test.ts` 全程用 `makeFakeEngine`
  * （`runRegisteredAgent` 被替身顶掉）——那种测试咬的是**函数**不是**链路**，
  * 分叉守卫一行都不会被走到，本单的病在它眼皮底下恒绿。故本文件一律 `createTestApp()` 真引擎。
  *
  * **本文件的两个读数（对照实验）**
- *   · 钉住后（今日代码）：env 开/关两态，`run.kernel` **都**是 `NATIVE`（逐字节同）。
- *   · 钉住前（字段缺失的原形）：env=1 ⇒ 分叉守卫判真 ⇒ `run.kernel === "EXTERNAL"`。
- *   两读数只差「探针 agent 的 `kernel` 字段有没有」，其余 env / 剧本 / 工具面全同。
+ *   · 装配位 = "dsh"（产品态）：`run.kernel === "EXTERNAL"`。
+ *   · 装配位 = "inprocess"（测试装配）：`run.kernel === "NATIVE"`。
+ *   两读数只差装配位一个变量；`agent.kernel` 字段在两条上都塞着旧回退取值 `"NATIVE"` 且**不改变读数**。
  */
 
 const SKILL_KEY = "kernel_probe_skill";
@@ -191,8 +195,8 @@ function probeShapedAgent(suffix: string, kernel?: "NATIVE" | "EXTERNAL"): Parti
 }
 
 /** 真走 skill 规则预检 BLOCK 早退，返回 run；先钉死「真的走了早退」，否则 kernel 断言测的不是那个构造点。 */
-async function runBlockedOnce(suffix: string, kernel?: "NATIVE" | "EXTERNAL") {
-  const t = await createTestApp();
+async function runBlockedOnce(suffix: string, kernel?: "NATIVE" | "EXTERNAL", kernelRuntime?: "dsh" | "inprocess") {
+  const t = await createTestApp(kernelRuntime ? { kernelRuntime } : undefined);
   await t.repos.skills.insert(blockSkill());
   await t.repos.agents.insert(probeShapedAgent(suffix, kernel) as AgentDefinition);
   vi.spyOn(t.dataCore.rules, "evaluate").mockResolvedValue([
@@ -208,59 +212,54 @@ afterEach(() => {
   delete process.env.DSH_HARNESS;
 });
 
-describe("WO-SKILL-PROBE-KERNEL · 探针内核不得吃 env 兜底", () => {
-  it("① DSH_HARNESS=1 下真跑探针：kernel 是具体值 NATIVE，且真走的那条路也是 NATIVE", { timeout: 60_000 }, async () => {
-    process.env.DSH_HARNESS = "1"; // 评测进程若开着 POC 全局开关——本用例就是那个环境
+describe("WO-CLOSE-NATIVE-GAPS · 探针内核随平台（旧内核入口退役：agent 字段不再决定内核）", () => {
+  it("① 探针/twin 都不带 kernel 字段，真跑一次探针仍成立（装配位=inprocess ⇒ NATIVE）", { timeout: 60_000 }, async () => {
+    delete process.env.DSH_HARNESS;
     const t = await createTestApp();
     const { result, probeAgent, twinAgent } = await runProbeOnce(t);
 
-    // —— 值校验：字段是**具体值**，不是 undefined（undefined 才会掉进 env 兜底）——
+    // —— 旧口径（WO-SKILL-PROBE-KERNEL）要求这两个字段**显式钉 "NATIVE"**；本单起不写 ——
     expect(probeAgent).toBeTruthy();
-    expect(probeAgent!.kernel).toBe("NATIVE");
+    expect(probeAgent!.kernel, "探针不再钉内核字段（旧内核入口已整体退役）").toBeUndefined();
     expect(twinAgent).toBeTruthy();
-    expect(twinAgent!.kernel).toBe("NATIVE");
+    expect(twinAgent!.kernel).toBeUndefined();
 
     // —— 探针真的跑到了用例（1 个用例 ⇒ total 1）——
     expect(result.total).toBe(1);
 
-    // —— 判据落在「真的走了哪条路」上：把**落库读回的那份**探针 agent 原样喂回真引擎，
-    //    读引擎跑完之后标的 `run.kernel`（出处：`agent/loop.ts` finishRun 回填 "NATIVE"；
-    //    dsh 臂由 engine 填 "EXTERNAL"）。env=1 而这里仍是 NATIVE ⇒ 显式钉压过 env 兜底。
+    // —— 判据落在「真的走了哪条路」上：把落库读回的那份原样喂回真引擎，读 run.kernel ——
     queueProbeTurns(t);
-    const { loopResult, toolNames } = await runPersistedAgentOnce(t, probeAgent!, "env1");
-    expect(loopResult.run.kernel).toBe("NATIVE");
-
-    // —— 且探针声明的 native 加载器面在那条路上**真的被执行并记账** ——
-    // （若被翻到 dsh 臂，真名是 `skill`，这个 native 名不会出现在工具记账里。）
+    const { loopResult, toolNames } = await runPersistedAgentOnce(t, probeAgent!, "nofield");
+    expect(loopResult.run.kernel, "测试装配（进程内循环）⇒ NATIVE").toBe("NATIVE");
+    // 探针声明的加载器面在那条路上真的被执行并记账（进程内装配下真名仍是 native 那个）
     expect(toolNames).toContain(SKILL_LOADER_TOOL.native);
   });
 
-  it("② 同探针 env 关（缺省休眠）⇒ 逐字节相同（钉住不改变缺省行为）", { timeout: 60_000 }, async () => {
-    delete process.env.DSH_HARNESS; // 出货缺省：docker-compose `DSH_HARNESS: ${DSH_HARNESS:-0}`
+  it("② 反向金丝雀：塞回旧回退开关取值 kernel:\"NATIVE\" ⇒ 读数与前臂**逐字节相同**（字段不改变任何东西）", { timeout: 60_000 }, async () => {
+    delete process.env.DSH_HARNESS;
     const t = await createTestApp();
-    const { result, probeAgent, twinAgent } = await runProbeOnce(t);
+    const { probeAgent } = await runProbeOnce(t);
 
-    expect(probeAgent!.kernel).toBe("NATIVE");
-    expect(twinAgent!.kernel).toBe("NATIVE");
-    expect(result.total).toBe(1);
-
+    // 模拟「存量记录里还留着旧回退开关的值」——旧口径下这一行会让本 run 落 native，
+    // 新口径下它**一个字节都不被读**（写侧已拒新写入；存量值不再被引擎读）。
+    const pinned = { ...probeAgent!, kernel: "NATIVE" as const };
     queueProbeTurns(t);
-    const { loopResult, toolNames } = await runPersistedAgentOnce(t, probeAgent!, "env0");
-    expect(loopResult.run.kernel).toBe("NATIVE");
+    const { loopResult, toolNames } = await runPersistedAgentOnce(t, pinned, "pinned");
+    expect(loopResult.run.kernel).toBe("NATIVE"); // 与 ① 同读数 ⇒ 字段是惰性的（无第二变量）
     expect(toolNames).toContain(SKILL_LOADER_TOOL.native);
   });
 
-  it("③ 对照实验：同 env=1、同工具面，「kernel 字段有无」决定走哪条路（可预言的两读数）", { timeout: 60_000 }, async () => {
-    process.env.DSH_HARNESS = "1";
-    // 读数 A（钉住前的原形 = 探针今天缺字段时的行为）：字段缺失 ⇒ 分叉守卫判真 ⇒ EXTERNAL。
-    const withoutField = await runBlockedOnce("bare");
-    expect(withoutField.run.kernel).toBe("EXTERNAL");
+  it("③ 对照实验：字段恒塞 NATIVE（试图钉回），只翻**装配位** ⇒ 两读数按可预言方式变化", { timeout: 60_000 }, async () => {
+    // 读数 A：装配位 = DSH（产品态）—— BLOCK 早退在分叉之前，标值不起子进程即可读。
+    const dsh = await runBlockedOnce("dsh", "NATIVE", "dsh");
+    expect(dsh.run.kernel).toBe("EXTERNAL");
 
-    // 读数 B（钉住后 = 本单落地形态）：同 env、同剧本，只多一个 kernel 字段 ⇒ NATIVE。
-    const withField = await runBlockedOnce("pinned", "NATIVE");
-    expect(withField.run.kernel).toBe("NATIVE");
+    // 读数 B：装配位 = 进程内循环（测试装配）—— 同字段、同剧本，只差装配位。
+    const inproc = await runBlockedOnce("inproc", "NATIVE", "inprocess");
+    expect(inproc.run.kernel).toBe("NATIVE");
 
-    // 两读数只差一个字段——这就是「把 X 改成 X'，Y 按可预言方式变化」的那一对。
-    expect(withoutField.run.kernel).not.toBe(withField.run.kernel);
+    // 两读数只差装配位一个变量 —— 旧口径下这一对差的是「kernel 字段」，
+    // 本单把它翻成「装配位」，而字段恒为 NATIVE 不动（受控变量只有一个）。
+    expect(dsh.run.kernel).not.toBe(inproc.run.kernel);
   });
 });

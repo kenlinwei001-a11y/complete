@@ -2,7 +2,32 @@
 /**
  * 门 `dsh-dormancy:check` · **外部 agent 运行时（dsh）休眠护栏门**（WO-DSH-FUSE-GUARDS）
  *
- * ══ 治什么 ═══════════════════════════════════════════════════════════════════════
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * ⚑ 口径变更留痕（2026-10-09 · WO-CLOSE-NATIVE-GAPS）—— **本门的命题整体翻转了**
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * **何时**：2026-10-09。
+ * **因何**：原判据守的是**审核方**裁决「代码可以并，flag 不能翻」（`docs/DECISION-dsh-fusion.md`）。
+ *   仓主 2026-10-09 明确推翻该裁决，原话 **「把旧内核今天还剩四个入口都调整为 DSH，替代旧内核」**
+ *   + **「都改掉，不考虑回退」** ⇒ DSH 自本日起是**唯一**的 agent 执行内核：
+ *     · `agent.kernel` 不再是内核选择器（写侧拒 `"NATIVE"`；存量值不再被引擎读取）；
+ *     · `DSH_HARNESS` 不再是内核开关（引擎侧零消费方，见 `apps/agentcore/src/engine.ts` 的
+ *       `agentKernelRuntimeMode()` 头注）；部署面从此**如实声明 DSH 在跑**，不再是「休眠开关」。
+ * **新命题**：不再是「不许把它打开」，而是 **「不许悄悄回落旧内核」**。
+ *   旧内核要回来只有两条路，本门各守一条：
+ *     · **D1′ 部署面**：`DSH_HARNESS` 被设成**假值**（`0`/`false`/空，含 `${DSH_HARNESS:-0}`
+ *       缺省即关）⇒ 红。那是在部署面上**声明「旧内核还在」**（而且一旦将来有人重新读它，
+ *       它就是一个静默关闭 DSH 的开关）。设成真值或整键不出现皆可 —— **不再红**（与旧口径相反）。
+ *     · **D3′ 源码面**：dsh-runtime 的动态入口**不许**被任何**部署面可翻**的条件包住
+ *       （条件里提到 `process.env.` / `cfg.` / `config.` ⇒ 红）—— 那等于「部署面能把它关掉」。
+ *       无条件、或被**测试专用装配位**包住（如 `this.deps.agentKernelRuntime !== "inprocess"`）
+ *       皆可：后者只有测试 composition root 能设，任何配置面都到不了（判据见 engine.ts 头注三条）。
+ *       ⚠ 旧口径要求「必须被 `process.env.DSH_HARNESS` 判断包住」——**逐字反过来**。
+ *     · 不变的两条：**至多 1 处**动态入口、**静态 import 不许扩散**（D2 原样保留：
+ *       静态 import 在链接期加载，绕过任何判据）。
+ *
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * 原口径（2026-08-16 建门时 · 已失效，留档防误读）—— 外部 agent 运行时（dsh）休眠护栏门
+ * ═══════════════════════════════════════════════════════════════════════════════
  * POC 分支 `claude/handoff-wo-dsh-poc-s1` @ `6b9a7558` 把外部 agent 运行时
  * **dsh（deepseek-harness）** 接进来当 agent 执行层（替掉 `runAgentLoop` 那一层，
  * **不替代 AgentCore 本体** —— 租户/鉴权/entitlement/审计/SSE 外壳、三件套治理面、
@@ -23,19 +48,22 @@
  * ⚠ 本门**不评价** dsh 该不该用、也不阻止把 POC 代码并进 canonical。
  *   它只守一件事：**并进来之后必须保持休眠**，直到三条前置条件（决策文档 §3）被逐条销账。
  *
- * ══ 三条判据（任一破即 RC=1）═════════════════════════════════════════════════════
- *   **D1 · 部署面不许开 flag**
+ * ══ 三条判据（新口径 · 任一破即 RC=1）══════════════════════════════════════════════
+ *   **D1′ · 部署面不许声明「旧内核还在」**
  *        `docker-compose*.yml` / `deploy/**` / `Dockerfile*` / `*.env*` / CI 配置里
- *        出现 `DSH_HARNESS` 被设成真值（含 `${DSH_HARNESS:-1}` 这种**缺省即开**的写法）即红。
- *        显式设 `0`/`false` 不红 —— 那是在**加固**休眠，不是在破坏它。
- *   **D2 · 静态 import 不许扩散**
+ *        出现 `DSH_HARNESS` 被设成**假值**（`0`/`false`/`no`/`off`/空串，含
+ *        `${DSH_HARNESS:-0}` 这种**缺省即关**的写法）即红。
+ *        真值（`1`/`true`）或整键不出现**不红** —— DSH 是唯一内核，声明它在跑是**如实**。
+ *        （旧口径逐字相反，变更留痕见文首。）
+ *   **D2 · 静态 import 不许扩散**（口径未变）
  *        `apps/<pkg>/src` 与 `packages/<pkg>/src` 全树里对 `@deepseek-ai/…` 的**静态** import
  *        只许出现在 `apps/agentcore/src/dsh-runtime/` 目录内。出现在别处即红 ——
- *        静态 import 在**链接期**加载，flag 关着也照跑，休眠当场失效。
- *   **D3 · 入口只许有一个**
- *        `import("./dsh-runtime/…")` 这种动态入口全仓**至多 1 处**，且**必须**被
- *        `process.env.DSH_HARNESS` 的判断包住。多于 1 处、或有裸入口（不带判断的动态入口 /
- *        从 dsh-runtime 目录外静态 import 它）即红。
+ *        静态 import 在**链接期**加载，绕过任何判据。
+ *   **D3′ · 入口只许有一个，且不许被部署面可翻的条件包住**
+ *        `import("./dsh-runtime/…")` 这种动态入口全仓**至多 1 处**；且它**不许**落在一个
+ *        条件里提到 `process.env.` / `cfg.` / `config.` 的块内（那 = 部署面能把它关掉 =
+ *        悄悄回落旧内核）。无条件、或被测试专用装配位包住 = 通过。
+ *        从 dsh-runtime 目录外**静态** import 它（= 绕过判据的入口）仍即红。
  *
  * ══ 金丝雀（保命判据 · 每次运行都先跑）════════════════════════════════════════════
  * 开扫之前先拿内嵌样例过一遍**与主逻辑同一份实现**的 `scanDeployText` / `scanSourceText`
@@ -48,7 +76,8 @@
  *     **不许**被读成 import —— 这是 POC `runner.ts:60` 的**真实形状**，朴素
  *     `grep '@deepseek-ai'` 会把它算成第 2 处静态 import，于是「1 处」变「2 处」，
  *     「休眠属实」当场被读成「已经扩散」，结论正好相反。
- *   · D3 组：裸入口要咬、带判断的单一入口不许咬、两处入口要咬。
+ *   · D3 组（新口径）：**被部署面可翻条件包住的入口**要咬（env 与 cfg 各一）、
+ *     无条件的入口不许咬、被**测试专用装配位**包住的不许咬、两处入口要咬。
  * 任一不中 ⇒ 打印「⛔ 门自己瞎了」并 **RC=2**，**不许**报「仓库很干净」。
  *
  * ══ 扫描面下界（否定结论的前提）═══════════════════════════════════════════════════
@@ -60,18 +89,20 @@
  * ══ 诚实边界（本门做不到什么 · 不许当成「dsh 已被彻底关住」）══════════════════════
  *  · **本门不解析 TypeScript**（worktree 常常没有 `node_modules`，装个解析器就等于把门的
  *    可用性绑在依赖上）。D2/D3 走**剥注释 + 掩字符串**的词法近似，不是 AST。
- *    因此 D3 的「被判断包住」只证明**结构上**外层 `if` 的条件里提到了
- *    `process.env.DSH_HARNESS`，**不证明语义上真的关得住**（`if (true || process.env.DSH_HARNESS)`
- *    照样算过）。要更强的保证，只能等门能稳定拿到解析器。
- *  · **只守静态面，不守运行时**。有人在容器里 `docker exec -e DSH_HARNESS=1` 手动开，
+ *    因此 D3′ 的「被部署面条件包住」只证明**结构上**外层 `if` 的条件里提到了
+ *    `process.env.` / `cfg.` / `config.` 之一，**不证明语义上真的关得住**（条件恒假也行 ——
+ *    但恒假的条件对**产品**无意义，属另一类问题）。要更强的保证，只能等门能稳定拿到解析器。
+ *    ⚠ 反向同理：把入口写成**无条件**即本门认为合规，而「无条件」正是新政策要的形状
+ *    （DSH 恒开）—— 本门不检查入口块内部是否真的被走到。
+ *  · **只守静态面，不守运行时**。有人在容器里 `docker exec -e DSH_HARNESS=0` 手动「关」，
  *    或用编排层（k8s / systemd unit / CI secret）注入，本门一律看不见 —— 它守的是
  *    **仓里的部署面文件**，不是**真实运行的进程**。
  *  · **`packages/dsh-harness/` 不在 D2 扫描面内**：该包今天没有 `src/`，外部闭包以
  *    `plugins/*.mjs` + `cordis.yml` 形式存在，由 dsh 自己的 loader 按**名字**加载、
  *    不经我方 import。若将来它加了 `src/`，需同批决定是加进白名单还是加进扫描面。
- *  · **D1 忽略注释行**。注释里的 `DSH_HARNESS=1` 是**惰性**的（说明文档常这么写），
+ *  · **D1 忽略注释行**。注释里的 `DSH_HARNESS=0` 是**惰性**的（说明文档常这么写），
  *    但代价是：靠注释伪装的开关本门看不见。剥注释这一步本身被金丝雀双向咬住
- *    （注释里的不咬 ∧ 行尾带注释的真 flag 仍咬）。
+ *    （注释里的不咬 ∧ 行尾带注释的假值仍咬）。
  *
  * ══ 退出码三分（1 和 2 撞码 = 读的人分不出「仓库真有问题」和「门没跑起来」）═════════
  *   0 干净 · 1 真违规（D1/D2/D3 明确判负）· 2 门自己坏了（金丝雀不中 / 读不到文件 /
@@ -180,8 +211,13 @@ const lineOf = (text, idx) => text.slice(0, idx).split("\n").length;
  *   必须跟**非标识符字符**，否则 `DSH_HARNESS_PROVIDER=deepseek` 会被读成「部署面开了 flag」。
  * ═══════════════════════════════════════════════════════════════════════════════ */
 const FLAG = "DSH_HARNESS";
-/** 真值集合：这些值一律视为「开了」。`${VAR:-1}` 这种**缺省即开**同样算开。 */
-const TRUTHY = /^(1|true|yes|on|enabled)$/i;
+/**
+ * ⚑ 新口径（2026-10-09）：咬的是**假值**。这些值一律视为「声明旧内核/关掉 DSH」。
+ * `${VAR:-0}` 这种**缺省即关**同样算。空串（`- DSH_HARNESS` / `DSH_HARNESS:` 空值）也算
+ * —— 它在下游任何 `=== "1"` 判定里都等价于关。
+ * （旧口径咬的是真值集合 `^(1|true|yes|on|enabled)$`，见文首变更留痕。）
+ */
+const FALSY = /^(0|false|no|off|disabled|none)$/i;
 
 /**
  * @returns {Array<{line:number, raw:string, value:string, why:string}>} 命中（= 违规）
@@ -198,20 +234,24 @@ export function scanDeployText(src) {
     const rest = text.slice(at + FLAG.length, nl < 0 ? text.length : nl);
     const rawLine = src.split("\n")[lineOf(text, at) - 1] ?? "";
 
-    // `${DSH_HARNESS:-1}` / `${DSH_HARNESS:-true}` —— **缺省即开**，最阴的一种
+    // `${DSH_HARNESS:-0}` / `${DSH_HARNESS:-false}` —— **缺省即关**
     const def = /^\s*:-\s*([A-Za-z0-9_.]+)\s*\}/.exec(rest);
     if (def) {
-      if (TRUTHY.test(def[1])) {
-        hits.push({ line: lineOf(text, at), raw: rawLine.trim(), value: def[1], why: `\${${FLAG}:-${def[1]}} 缺省即开` });
+      if (FALSY.test(def[1])) {
+        hits.push({ line: lineOf(text, at), raw: rawLine.trim(), value: def[1], why: `\${${FLAG}:-${def[1]}} 缺省即关（声明旧内核仍可选）` });
       }
       continue;
     }
     // `=V` / `: V` / `  V`（Dockerfile 的 `ENV K V` 形态）
     const asg = /^\s*(?:=|:)?\s*["']?([A-Za-z0-9_.$-]+)["']?/.exec(rest);
-    if (!asg) continue;
-    let v = asg[1];
+    if (!asg) {
+      // 无值形态（`- DSH_HARNESS` / `DSH_HARNESS:` 行尾即空）⇒ 空串 ⇒ 等价于关
+      hits.push({ line: lineOf(text, at), raw: rawLine.trim(), value: "", why: `${FLAG} 被设为空值（等价于关）` });
+      continue;
+    }
+    const v = asg[1];
     if (v.startsWith("$")) continue;              // `DSH_HARNESS=$SOMETHING` —— 值来自外部，静态判不了
-    if (TRUTHY.test(v)) hits.push({ line: lineOf(text, at), raw: rawLine.trim(), value: v, why: `${FLAG} 被设为真值 ${v}` });
+    if (FALSY.test(v)) hits.push({ line: lineOf(text, at), raw: rawLine.trim(), value: v, why: `${FLAG} 被设为假值 ${v}（声明旧内核仍在）` });
   }
   return hits;
 }
@@ -258,19 +298,27 @@ export function scanSourceText(src) {
     const spec = m[1];
     const line = lineOf(noComments, m.index);
     if (RE_EXTERNAL.test(spec)) out.dynamicExternal.push({ line, spec });
-    else if (RE_DSH_ENTRY.test(spec)) out.dynamicEntry.push({ line, spec, guarded: guardedAt(masked, m.index) });
+    else if (RE_DSH_ENTRY.test(spec)) out.dynamicEntry.push({ line, spec, deploySwitchGuarded: deploySwitchGuardedAt(masked, m.index) });
   }
   return out;
 }
 
 /**
- * 该位置是否落在一个「条件里提到 `process.env.DSH_HARNESS`」的块内。
+ * 该位置是否落在一个「**部署面可翻**的条件」的块内 —— 新口径要咬的就是它。
  *
- * 无 AST 的近似：从命中处向前做花括号配平，找到最内层未闭合的 `{`，
- * 取它**前面**那段块头（到上一个 `;`/`{`/`}`/行首为止），看条件里有没有那个 env。
- * 逐层向外找，任一层命中即算被包住。诚实边界见文件头：这只证明**结构上**有判断。
+ * 判据：从命中处向前做花括号配平，找每一层未闭合的 `{`，取它**前面**那段块头
+ * （到上一个 `;`/`{`/`}`/行首为止），看条件里有没有 `process.env.` / `cfg.` / `config.`。
+ * 任一层命中 ⇒ 该入口可被部署面（env / 配置文件）关掉 ⇒ 违规。
+ *
+ * 允过的形状：无条件块、或被**测试专用装配位**包住（如
+ * `if (this.deps.agentKernelRuntime !== "inprocess")`）—— 后者只有测试 composition root
+ * 能设，任何配置面都到不了（判据见 `apps/agentcore/src/engine.ts` 的 EngineDeps 头注）。
+ *
+ * 无 AST 的近似；诚实边界见文件头：这只证明**结构上**条件提到过那三类词。
+ * ⚠ 金丝雀必须双向：env 判断必咬 ∧ cfg 判断必咬 ∧ 测试装配位必不咬 ∧ 无条件必不咬。
  */
-function guardedAt(masked, at) {
+const DEPLOY_SWITCH_HEADER = /(?:process\.env\.|\bcfg\.|\bconfig\.)/;
+function deploySwitchGuardedAt(masked, at) {
   let depth = 0;
   for (let i = at; i >= 0; i--) {
     const c = masked[i];
@@ -281,7 +329,7 @@ function guardedAt(masked, at) {
       let s = i - 1;
       while (s >= 0 && !";{}".includes(masked[s])) s--;
       const header = masked.slice(s + 1, i);
-      if (new RegExp(String.raw`process\.env\.${FLAG}(?![A-Za-z0-9_])`).test(header)) return true;
+      if (DEPLOY_SWITCH_HEADER.test(header)) return true;
       // 继续向外层找
     }
   }
@@ -387,30 +435,36 @@ const POC_ENTRY_SHAPE = [
 ].join("\n");
 
 const CANARIES = [
-  // ── D1 组 ──────────────────────────────────────────────────────────────────
-  { name: "D1·必咬·compose 列表形态 `- DSH_HARNESS=1`", kind: "deploy",
-    src: "services:\n  agentcore:\n    environment:\n      - DSH_HARNESS=1\n",
-    expect: (h) => h.length === 1 && h[0].value === "1" },
-  { name: "D1·必咬·compose 映射形态 `DSH_HARNESS: \"1\"`", kind: "deploy",
-    src: "services:\n  agentcore:\n    environment:\n      DSH_HARNESS: \"1\"\n",
+  // ── D1 组（新口径：咬**假值**；真值现在如实，不许咬）────────────────────────
+  { name: "D1·必咬·compose 列表形态 `- DSH_HARNESS=0`（声明旧内核仍在）", kind: "deploy",
+    src: "services:\n  agentcore:\n    environment:\n      - DSH_HARNESS=0\n",
+    expect: (h) => h.length === 1 && h[0].value === "0" },
+  { name: "D1·必咬·compose 映射形态 `DSH_HARNESS: \"false\"`", kind: "deploy",
+    src: "services:\n  agentcore:\n    environment:\n      DSH_HARNESS: \"false\"\n",
     expect: (h) => h.length === 1 },
-  { name: "D1·必咬·**缺省即开** `${DSH_HARNESS:-1}`（最阴的一种）", kind: "deploy",
-    src: "      - DSH_HARNESS=${DSH_HARNESS:-1}\n",
-    expect: (h) => h.length === 1 && /缺省即开/.test(h[0].why) },
-  { name: "D1·必咬·Dockerfile `ENV DSH_HARNESS true`", kind: "deploy",
-    src: "FROM node:22\nENV DSH_HARNESS true\n",
-    expect: (h) => h.length === 1 && h[0].value === "true" },
-  { name: "D1·必咬·行尾带注释的真 flag 仍要咬（剥注释不许把整行吃掉）", kind: "deploy",
-    src: "      - DSH_HARNESS=1   # 临时打开试一下\n",
+  { name: "D1·必咬·**缺省即关** `${DSH_HARNESS:-0}`（最阴的一种）", kind: "deploy",
+    src: "      - DSH_HARNESS=${DSH_HARNESS:-0}\n",
+    expect: (h) => h.length === 1 && /缺省即关/.test(h[0].why) },
+  { name: "D1·必咬·Dockerfile `ENV DSH_HARNESS false`", kind: "deploy",
+    src: "FROM node:22\nENV DSH_HARNESS false\n",
+    expect: (h) => h.length === 1 && h[0].value === "false" },
+  { name: "D1·必咬·空值形态 `- DSH_HARNESS`（空串在下游任何 `=== \"1\"` 判定里等价于关）", kind: "deploy",
+    src: "      - DSH_HARNESS\n",
+    expect: (h) => h.length === 1 && h[0].value === "" },
+  { name: "D1·必咬·行尾带注释的假值仍要咬（剥注释不许把整行吃掉）", kind: "deploy",
+    src: "      - DSH_HARNESS=0   # 先关掉试试\n",
     expect: (h) => h.length === 1 },
   { name: "D1·必不咬·`DSH_HARNESS_PROVIDER` 前缀陷阱（POC engine.ts:509 真有这个变量）", kind: "deploy",
     src: "      - DSH_HARNESS_PROVIDER=deepseek\n      - DSH_HARNESS_DIR=/opt/harness\n",
     expect: (h) => h.length === 0 },
-  { name: "D1·必不咬·显式关 `DSH_HARNESS=0` / `${DSH_HARNESS:-0}`（那是加固休眠）", kind: "deploy",
-    src: "      - DSH_HARNESS=0\n      - OTHER=${DSH_HARNESS:-0}\n",
+  { name: "D1·必不咬·真值 `DSH_HARNESS=1` / `${DSH_HARNESS:-1}`（新口径：如实声明 DSH 在跑）", kind: "deploy",
+    src: "      - DSH_HARNESS=1\n      - OTHER=${DSH_HARNESS:-1}\n",
+    expect: (h) => h.length === 0 },
+  { name: "D1·必不咬·值来自外部 `DSH_HARNESS=$SOMETHING`（静态判不了，不冤咬）", kind: "deploy",
+    src: "      - DSH_HARNESS=${SOMETHING_ELSE}\n",
     expect: (h) => h.length === 0 },
   { name: "D1·必不咬·注释掉的 flag 是惰性的", kind: "deploy",
-    src: "      # - DSH_HARNESS=1\n      # 说明：要打开就把上面这行放开\n",
+    src: "      # - DSH_HARNESS=0\n      # 说明：DSH 已退役旧内核，这里不再需要开关\n",
     expect: (h) => h.length === 0 },
 
   // ── D2 组 ──────────────────────────────────────────────────────────────────
@@ -439,28 +493,34 @@ const CANARIES = [
     src: 'const m = await import("@deepseek-ai/dsh-agent");\n',
     expect: (r) => r.staticExternal.length === 0 && r.dynamicExternal.length === 1 },
 
-  // ── D3 组 ──────────────────────────────────────────────────────────────────
-  { name: "D3·必不咬·带判断的单一动态入口（POC engine.ts:497-498 真实形状）", kind: "source",
+  // ── D3 组（新口径：咬「部署面可翻的条件包住入口」；无条件/测试装配位 = 通过）──────────
+  { name: "D3·必咬·旧 POC 形状：`process.env.DSH_HARNESS` 判断包住的入口（部署面能关 ⇒ 新口径下违规）", kind: "source",
     src: POC_ENTRY_SHAPE,
-    expect: (r) => r.dynamicEntry.length === 1 && r.dynamicEntry[0].guarded === true },
-  { name: "D3·必咬·裸动态入口（无 flag 判断）", kind: "source",
-    src: 'const m = await import("./dsh-runtime/index.js");\n',
-    expect: (r) => r.dynamicEntry.length === 1 && r.dynamicEntry[0].guarded === false },
-  { name: "D3·必咬·换个 env 名的判断不算数（判据咬的是 DSH_HARNESS 本身）", kind: "source",
+    expect: (r) => r.dynamicEntry.length === 1 && r.dynamicEntry[0].deploySwitchGuarded === true },
+  { name: "D3·必咬·`cfg.` 配置文件判断包住的入口（同样部署面可翻）", kind: "source",
+    src: 'if (cfg.DSH_SOMETHING === "1") {\n  const m = await import("./dsh-runtime/index.js");\n  void m;\n}\n',
+    expect: (r) => r.dynamicEntry.length === 1 && r.dynamicEntry[0].deploySwitchGuarded === true },
+  { name: "D3·必咬·换个 env 名的判断**也算**（新口径咬的是「部署面能翻」，不是某个变量名）", kind: "source",
     src: 'if (process.env.SOMETHING_ELSE === "1") {\n  const m = await import("./dsh-runtime/index.js");\n}\n',
-    expect: (r) => r.dynamicEntry.length === 1 && r.dynamicEntry[0].guarded === false },
-  { name: "D3·必咬·两处入口（哪怕都带判断）", kind: "source",
-    src: POC_ENTRY_SHAPE + "\n" + POC_ENTRY_SHAPE,
+    expect: (r) => r.dynamicEntry.length === 1 && r.dynamicEntry[0].deploySwitchGuarded === true },
+  { name: "D3·必不咬·无条件的裸动态入口（新口径：恒跑 DSH 是**目标态**）", kind: "source",
+    src: 'const m = await import("./dsh-runtime/index.js");\n',
+    expect: (r) => r.dynamicEntry.length === 1 && r.dynamicEntry[0].deploySwitchGuarded === false },
+  { name: "D3·必不咬·测试专用装配位包住（本仓新真实形状：`this.deps.agentKernelRuntime !== \"inprocess\"`）", kind: "source",
+    src: 'if (this.deps.agentKernelRuntime !== "inprocess") {\n  const m = await import("./dsh-runtime/index.js");\n  void m;\n}\n',
+    expect: (r) => r.dynamicEntry.length === 1 && r.dynamicEntry[0].deploySwitchGuarded === false },
+  { name: "D3·必咬·两处入口（哪怕都无条件）", kind: "source",
+    src: 'const a = await import("./dsh-runtime/index.js");\nconst b = await import("./dsh-runtime/runner.js");\n',
     expect: (r) => r.dynamicEntry.length === 2 },
-  { name: "D3·必咬·**静态**入口 = 裸入口（flag 关着也照加载）", kind: "source",
+  { name: "D3·必咬·**静态**入口（绕过判据在链接期加载）", kind: "source",
     src: 'import { runDshAgent } from "./dsh-runtime/index.js";\n',
     expect: (r) => r.staticEntry.length === 1 },
-  { name: "D3·必不咬·嵌套一层花括号仍认得出外层判断（花括号配平）", kind: "source",
-    src: 'if (process.env.DSH_HARNESS === "1") {\n  const cfg = { a: 1 };\n  const m = await import("./dsh-runtime/index.js");\n  void cfg;\n}\n',
-    expect: (r) => r.dynamicEntry.length === 1 && r.dynamicEntry[0].guarded === true },
+  { name: "D3·必咬·嵌套一层花括号仍认得出外层**部署面**条件（花括号配平）", kind: "source",
+    src: 'if (process.env.DSH_HARNESS === "1") {\n  const cfg0 = { a: 1 };\n  const m = await import("./dsh-runtime/index.js");\n  void cfg0;\n}\n',
+    expect: (r) => r.dynamicEntry.length === 1 && r.dynamicEntry[0].deploySwitchGuarded === true },
   { name: "D3·必不咬·字符串里的花括号不许把配平带偏（掩字符串这一步真的生效）", kind: "source",
-    src: 'if (process.env.DSH_HARNESS === "1") {\n  const s = "} fake close {";\n  const m = await import("./dsh-runtime/index.js");\n  void s;\n}\n',
-    expect: (r) => r.dynamicEntry.length === 1 && r.dynamicEntry[0].guarded === true },
+    src: 'if (this.deps.agentKernelRuntime !== "inprocess") {\n  const s = "} fake close {";\n  const m = await import("./dsh-runtime/index.js");\n  void s;\n}\n',
+    expect: (r) => r.dynamicEntry.length === 1 && r.dynamicEntry[0].deploySwitchGuarded === false },
 
   // ── 部署面归类器组（第一版把 `src/env.ts` 算进部署面，是范畴错误，见 isDeployPath 顶注）──
   { name: "归类·必咬·docker-compose.yml / docker-compose.seed.yml", kind: "path",
@@ -506,9 +566,9 @@ const INJECT_D2 = process.env.DSH_DORMANCY_INJECT_D2 === "1";
 const INJECT_D3 = process.env.DSH_DORMANCY_INJECT_D3 === "1";
 
 const VIRTUAL = new Map();
-if (INJECT_D1) VIRTUAL.set("docker-compose.INJECTED.yml", "services:\n  agentcore:\n    environment:\n      - DSH_HARNESS=1\n");
+if (INJECT_D1) VIRTUAL.set("docker-compose.INJECTED.yml", "services:\n  agentcore:\n    environment:\n      - DSH_HARNESS=0\n");
 if (INJECT_D2) VIRTUAL.set("apps/agentcore/src/INJECTED-spread.ts", 'import { HarnessClient } from "@deepseek-ai/dsh-sdk-client";\nexport const c = HarnessClient;\n');
-if (INJECT_D3) VIRTUAL.set("apps/agentcore/src/INJECTED-bare-entry.ts", 'export const m = await import("./dsh-runtime/index.js");\n');
+if (INJECT_D3) VIRTUAL.set("apps/agentcore/src/INJECTED-deploy-switch-entry.ts", 'export async function m(x: boolean) {\n  if (process.env.SOME_DEPLOY_FLAG === "1") {\n    return await import("./dsh-runtime/index.js");\n  }\n  return x;\n}\n');
 
 function readSrc(rel) {
   if (VIRTUAL.has(rel)) return VIRTUAL.get(rel);
@@ -565,13 +625,13 @@ function analyze() {
 function report(a) {
   const fail = [];
 
-  // ── D1 ──────────────────────────────────────────────────────────────────────
+  // ── D1′ ─────────────────────────────────────────────────────────────────────
   for (const h of a.d1) {
     fail.push(
-      `[D1] 部署面开了 flag：${h.file}:${h.line}  ${h.why}\n` +
+      `[D1] 部署面声明「旧内核仍在」（${FLAG} 被设成假值）：${h.file}:${h.line}  ${h.why}\n` +
       `        原文：${h.raw}\n` +
-      `        「休眠分叉」的安全性论证**只在它真休眠时成立**。翻 flag 需先销三条前置条件，` +
-      `见 docs/DECISION-dsh-fusion.md §3。`,
+      `        新口径（2026-10-09 · 仓主「都改掉，不考虑回退」）：DSH 是唯一内核，部署面要么如实声明它\n` +
+      `        在跑（真值），要么整键不出现。设假值既是**假话**，也把「静默关掉 DSH」这个开关留在了仓里。`,
     );
   }
 
@@ -584,26 +644,27 @@ function report(a) {
     );
   }
 
-  // ── D3 ──────────────────────────────────────────────────────────────────────
+  // ── D3′ ─────────────────────────────────────────────────────────────────────
   for (const h of a.entriesStatic) {
     fail.push(
-      `[D3] 裸入口（**静态** import dsh-runtime）：${h.file}:${h.line}  ← "${h.spec}"\n` +
-      `        静态入口绕过 flag：模块在链接期就被加载。入口必须是 flag 判断内的动态 import。`,
+      `[D3] 入口（**静态** import dsh-runtime，白名单外）：${h.file}:${h.line}  ← "${h.spec}"\n` +
+      `        静态入口在链接期加载、绕过本门的全部判据。入口必须是 dsh-runtime 目录内的动态 import。`,
     );
   }
   for (const h of a.entriesDyn) {
-    if (!h.guarded) {
+    if (h.deploySwitchGuarded) {
       fail.push(
-        `[D3] 裸入口（动态 import 没有被 process.env.${FLAG} 的判断包住）：${h.file}:${h.line}  ← "${h.spec}"\n` +
-        `        改法：外面包 \`if (process.env.${FLAG} === "1") { … }\`。`,
+        `[D3] 入口被**部署面可翻**的条件包住（= 部署面能把它关掉 ⇒ 悄悄回落旧内核）：${h.file}:${h.line}  ← "${h.spec}"\n` +
+        `        条件里提到了 process.env. / cfg. / config. 之一。改法：去掉这个条件（DSH 恒开），\n` +
+        `        或改为**测试专用装配位**（如 \`this.deps.agentKernelRuntime !== "inprocess"\`，任何配置面到不了）。`,
       );
     }
   }
   if (a.entriesDyn.length > 1) {
     fail.push(
       `[D3] dsh-runtime 入口 ${a.entriesDyn.length} 处，只许 1 处：\n` +
-      a.entriesDyn.map((h) => `          · ${h.file}:${h.line}（${h.guarded ? "有判断" : "**裸入口**"}）`).join("\n") + "\n" +
-      `        多入口 = 多个必须各自守住的开关，早晚漏一个。收敛成单一入口。`,
+      a.entriesDyn.map((h) => `          · ${h.file}:${h.line}（${h.deploySwitchGuarded ? "**被部署面条件包住**" : "无部署面条件"}）`).join("\n") + "\n" +
+      `        多入口 = 多个必须各自守住的判据，早晚漏一个。收敛成单一入口。`,
     );
   }
 
@@ -613,12 +674,12 @@ function report(a) {
 function printCensus(a) {
   console.log(`扫描面：部署面 ${a.deployFiles.length} 个文件 · 源码面 ${a.sourceFiles.length} 个文件`);
   console.log(`  部署面：${a.deployFiles.join(" · ")}`);
-  console.log(`D1 部署面开 flag：${a.d1.length} 处`);
+  console.log(`D1 部署面声明旧内核（DSH_HARNESS 假值）：${a.d1.length} 处`);
   for (const h of a.d1) console.log(`  ✗ ${h.file}:${h.line} ${h.why} —— ${h.raw}`);
   console.log(`D2 静态 import @deepseek-ai/*：白名单外 ${a.d2.length} 处（白名单 ${ALLOWED_STATIC_DIR}）`);
   for (const h of a.d2) console.log(`  ✗ ${h.file}:${h.line} ← ${h.spec}`);
-  console.log(`D3 dsh-runtime 入口：动态 ${a.entriesDyn.length} 处 · 静态(裸) ${a.entriesStatic.length} 处`);
-  for (const h of a.entriesDyn) console.log(`  ${h.guarded ? "·" : "✗"} ${h.file}:${h.line} ← ${h.spec}（${h.guarded ? "有 flag 判断" : "裸入口"}）`);
+  console.log(`D3 dsh-runtime 入口：动态 ${a.entriesDyn.length} 处 · 静态(白名单外) ${a.entriesStatic.length} 处`);
+  for (const h of a.entriesDyn) console.log(`  ${h.deploySwitchGuarded ? "✗" : "·"} ${h.file}:${h.line} ← ${h.spec}（${h.deploySwitchGuarded ? "被部署面条件包住" : "无部署面条件"}）`);
   for (const h of a.entriesStatic) console.log(`  ✗ ${h.file}:${h.line} ← ${h.spec}（静态入口）`);
   console.log(`（参考）动态 import @deepseek-ai/*：${a.dynExternal.length} 处`);
 }
@@ -669,7 +730,7 @@ async function main() {
       console.log(`白名单内（${ALLOWED_STATIC_DIR}）：${allowed}`);
       console.log(`静态 import @deepseek-ai/…  ${r.staticExternal.length} 处：` + (r.staticExternal.map((x) => `L${x.line} ${x.spec}`).join(" · ") || "无"));
       console.log(`动态 import @deepseek-ai/…  ${r.dynamicExternal.length} 处：` + (r.dynamicExternal.map((x) => `L${x.line} ${x.spec}`).join(" · ") || "无"));
-      console.log(`dsh-runtime 动态入口        ${r.dynamicEntry.length} 处：` + (r.dynamicEntry.map((x) => `L${x.line} ${x.spec}（${x.guarded ? "有 flag 判断" : "裸入口"}）`).join(" · ") || "无"));
+      console.log(`dsh-runtime 动态入口        ${r.dynamicEntry.length} 处：` + (r.dynamicEntry.map((x) => `L${x.line} ${x.spec}（${x.deploySwitchGuarded ? "被部署面条件包住" : "无部署面条件"}）`).join(" · ") || "无"));
       console.log(`dsh-runtime 静态入口        ${r.staticEntry.length} 处：` + (r.staticEntry.map((x) => `L${x.line} ${x.spec}`).join(" · ") || "无"));
     }
     process.exit(0);
@@ -697,9 +758,9 @@ async function main() {
 
     const probes = [
       { want: 0, label: "无注入 ⇒ RC=0（干净）", env: {}, tag: null, notTags: ["[D1]", "[D2]", "[D3]"] },
-      { want: 1, label: "变异①：部署面塞 `DSH_HARNESS=1` ⇒ RC=1 且**只**红在 [D1]", env: { DSH_DORMANCY_INJECT_D1: "1" }, tag: "[D1]", notTags: ["[D2]", "[D3]"] },
+      { want: 1, label: "变异①：部署面塞 `DSH_HARNESS=0`（新口径的违规形态）⇒ RC=1 且**只**红在 [D1]", env: { DSH_DORMANCY_INJECT_D1: "1" }, tag: "[D1]", notTags: ["[D2]", "[D3]"] },
       { want: 1, label: "变异②：白名单外静态 import @deepseek-ai ⇒ RC=1 且**只**红在 [D2]", env: { DSH_DORMANCY_INJECT_D2: "1" }, tag: "[D2]", notTags: ["[D1]", "[D3]"] },
-      { want: 1, label: "变异③：裸动态入口 ⇒ RC=1 且**只**红在 [D3]", env: { DSH_DORMANCY_INJECT_D3: "1" }, tag: "[D3]", notTags: ["[D1]", "[D2]"] },
+      { want: 1, label: "变异③：入口被 `process.env` 判断包住（部署面可关）⇒ RC=1 且**只**红在 [D3]", env: { DSH_DORMANCY_INJECT_D3: "1" }, tag: "[D3]", notTags: ["[D1]", "[D2]"] },
       { want: 2, label: "注入「读不到文件」⇒ RC=2（工具坏了，不是代码坏了）", env: { DSH_DORMANCY_FORCE_UNREADABLE: "1" }, tag: null, notTags: [] },
       { want: 2, label: "注入「金丝雀不中」⇒ RC=2（门自己瞎了，拒绝产出结论）", env: { DSH_DORMANCY_FORCE_CANARY_BREAK: "1" }, tag: null, notTags: [] },
     ];
@@ -731,7 +792,7 @@ async function main() {
   );
   console.log(
     `· D1 部署面开 flag ${a.d1.length} 处 · D2 白名单外静态 import ${a.d2.length} 处 · ` +
-    `D3 入口 动态 ${a.entriesDyn.length}（其中裸 ${a.entriesDyn.filter((h) => !h.guarded).length}）/ 静态 ${a.entriesStatic.length}`,
+    `D3 入口 动态 ${a.entriesDyn.length}（其中被部署面条件包住 ${a.entriesDyn.filter((h) => h.deploySwitchGuarded).length}）/ 静态(白名单外) ${a.entriesStatic.length}`,
   );
   if (a.entriesDyn.length === 0 && a.entriesStatic.length === 0 && a.d2.length === 0) {
     console.log("· 诚实位：本树上 **dsh 融合代码尚未并入**（零入口 / 零外部 import）⇒ D2·D3 本次是**空过**，只有 D1 咬到了真东西。");
@@ -745,7 +806,7 @@ async function main() {
     console.error("  tenant_id everywhere 直接冲突）逐条写在 docs/DECISION-dsh-fusion.md §3，未销账不许翻。");
     process.exit(1); // 1 = 真有违规（与所有 toolBroken 的 2 严格分开）
   }
-  console.log("\n✓ dsh-dormancy:check 通过（部署面零 flag · 静态 import 未扩散 · 入口至多 1 处且有判断）");
+  console.log("\n✓ dsh-dormancy:check 通过（部署面未声明旧内核 · 静态 import 未扩散 · 入口至多 1 处且无部署面条件）");
   process.exit(0);
 }
 

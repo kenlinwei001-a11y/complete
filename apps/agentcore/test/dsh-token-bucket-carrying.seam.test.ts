@@ -41,7 +41,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AgentDefinition } from "@platform/contracts";
-import { createTestApp, TENANT, type TestApp } from "./helpers.js";
+import { createTestApp, setKernelRuntime, TENANT, type TestApp } from "./helpers.js";
 import {
   STUB_DCP_SPEC,
   STUB_FAKE_KEY,
@@ -118,6 +118,8 @@ describe("WO-LEDGER-SINGLE-TAP · 载体 A 输入桶口径（EXTERNAL 臂）", (
         { text: "stub final answer", usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 } },
       ]);
       const t: TestApp = await createTestApp({
+        // WO-CLOSE-NATIVE-GAPS：内核臂改由测试装配位给（agent.kernel 字段已退役）
+        kernelRuntime: "dsh",
         providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never,
         env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" },
       });

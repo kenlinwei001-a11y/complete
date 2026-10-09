@@ -33,9 +33,30 @@ export interface TestApp {
   config: AppConfig;
 }
 
+/**
+ * WO-CLOSE-NATIVE-GAPS · **内核运行时的测试装配**（产品侧恒为 DSH，见 `EngineDeps.agentKernelRuntime`）。
+ *
+ * 为什么测试默认不是 DSH：本测试环境的 agent LLM 是进程内剧本桩（`ScriptedLlmClient`），
+ * 而 DSH 臂是真子进程 + 真 provider —— 只有 DSH 专项测试（自带 stub 端点/harness）才跑得动它。
+ * 故缺省 = `"inprocess"`（进程内循环 + 剧本桩），DSH 专项测试经 env `DSH_HARNESS=1`
+ *（在 `createTestApp` **之前**设置，既有写法不变）或 `opts.kernelRuntime` 显式取 DSH。
+ * 双跑/对拍测试用 `setKernelRuntime(t, …)` 在同一进程里翻臂。
+ */
+export function resolveTestKernelRuntime(override?: "dsh" | "inprocess"): "dsh" | "inprocess" {
+  if (override) return override;
+  return process.env.DSH_HARNESS === "1" ? "dsh" : "inprocess";
+}
+
+/** 双跑/对拍用：在同一 `TestApp` 上翻内核臂（引擎每次运行现读，见引擎侧头注）。 */
+export function setKernelRuntime(t: TestApp, mode: "dsh" | "inprocess"): void {
+  t.deps.engine.deps.agentKernelRuntime = mode;
+}
+
 export async function createTestApp(opts?: {
   /** 额外环境变量（如增量 §4.3 的 MCP_STDIO_ENABLED / MCP_STDIO_COMMAND_ALLOWLIST） */
   env?: Record<string, string>;
+  /** WO-CLOSE-NATIVE-GAPS：内核运行时（缺省按 env DSH_HARNESS 推断，见 `resolveTestKernelRuntime`）。 */
+  kernelRuntime?: "dsh" | "inprocess";
   /** 自定义 MCP mock（如 R8 重名工具的双 server 形态） */
   mcp?: MockMcpClient;
   /** LLM Provider 增量测试：替换 scripted mock（如 RoutingLlmClient + 本地 stub 端点） */
@@ -66,6 +87,8 @@ export async function createTestApp(opts?: {
     dataCore,
     mcp,
     metrics,
+    // WO-CLOSE-NATIVE-GAPS：测试装配（产品 composition root 不传此位）——见 resolveTestKernelRuntime。
+    agentKernelRuntime: resolveTestKernelRuntime(opts?.kernelRuntime),
     providerDirectory: opts?.providerDirectory,
     ...(opts?.features ? { features: opts.features } : {}),
     ...(opts?.llmBudget ? { llmBudget: opts.llmBudget } : {}),

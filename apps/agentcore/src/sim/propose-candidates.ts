@@ -82,8 +82,10 @@ export const PROPOSAL_DRAFT_JSON_SCHEMA = {
 export interface ProposeEngineLike {
   runRegisteredAgent(opts: {
     taskId: string;
-    agentId: string;
-    version: number | "latest";
+    /** WO-CLOSE-NATIVE-GAPS：引擎侧已放宽为可选（运行期合成 agent 走 `ephemeralAgent`）——
+     *  本口只透传持久化 agent，故仍恒传；类型跟随放宽（结构兼容，不引入第二条路）。 */
+    agentId?: string;
+    version?: number | "latest";
     prompt: string;
     ctx: unknown;
     nesting: unknown;

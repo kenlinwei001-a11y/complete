@@ -61,7 +61,7 @@ async function seedAgents(t: TestApp): Promise<void> {
   for (const ag of seedRegistry().agents) {
     // WO-ALL-AGENTS-DSH：出厂内核缺省自本单起 = `"EXTERNAL"`，而本测试环境无 dsh harness /
     // stub provider（本文件验的是**域归属路由**与围栏，不是内核）⇒ 显式钉回 `"NATIVE"`。
-    if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert({ ...ag, kernel: "NATIVE" });
+    if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert({ ...ag });
   }
 }
 
@@ -69,7 +69,7 @@ async function seedAgents(t: TestApp): Promise<void> {
 async function seedGeneralNative(t: TestApp): Promise<void> {
   const g = seedRegistry().agents.find((a) => a.id === GENERAL_AGENT_ID);
   if (!g) throw new Error("seedRegistry 里没有通用 agent —— 种子没接上，本文件其余断言全部无意义");
-  await t.repos.agents.insert({ ...g, kernel: "NATIVE" });
+  await t.repos.agents.insert({ ...g });
 }
 
 /** 提交一问 + 等终态 + 取「落在哪个 agent 身上」的原始读数。 */

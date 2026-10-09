@@ -302,12 +302,51 @@ export interface EngineDeps {
   skillResources?: SkillResourceReader;
   /** WO-DRIL-P2 · entitlement 门（DRIL 检索 registry 依赖；缺省则 retrieve_knowledge 降级空结果）。 */
   features?: FeatureGate;
+  /**
+   * WO-CLOSE-NATIVE-GAPS · **测试专用装配位（test-only assembly）** —— 内核运行时选择。
+   *
+   * 今天的行为是 X：`runRegisteredAgent` 的分叉由 `agent.kernel` 与进程 env `DSH_HARNESS`
+   * 共同决定（显式 `"NATIVE"` 钉回原生、缺省回落 env），于是「跑哪个内核」是一个**产品面**取值。
+   * 应该是 Y（仓主 2026-10-09：「把旧内核今天还剩四个入口都调整为 DSH，替代旧内核」「都改掉，
+   * 不考虑回退」）：**注册 agent 路恒走 DSH**（外部运行时）—— 内核不再是产品面可选项。
+   *
+   * ⛔ 本字段**不是**回退开关，判据三条（缺一即不许读成「留了后门」）：
+   *   ① 生产 composition root（`main.ts` → `wireDeps`）**永不设置**它，缺省 = `"dsh"`；
+   *   ② 没有任何配置面能到它 —— 不读 env、不读 config、不进 API body（`grep '"inprocess"'`
+   *      的扫描面只看得到 engine.ts / deps.ts / test/**，`scripts/check-dsh-dormancy.mjs` 的新口径守着这一条）；
+   *   ③ 它只表达「测试环境没有 dsh harness 与真 provider，本次执行改用进程内循环」——
+   *      是**测试替身**（与 `createTestApp` 注入 `ScriptedLlmClient` 同一性质），
+   *      不是「把某个 agent 钉回旧内核」（那个能力本单已整条退役，见 `AgentDefinition.kernel`）。
+   *
+   * ⚠ 为什么必须是运行时读取（不是构造期定死）：双跑/对拍类接缝测试要在**同一进程**里
+   * 分别跑两条臂（如 `dsh-e2e-degradation-screen` 的 flag off/on 对拍）。
+   */
+  agentKernelRuntime?: "dsh" | "inprocess";
 }
 
 export interface RunRegisteredAgentOpts {
   taskId: string;
-  agentId: string;
-  version: number | "latest";
+  /**
+   * WO-CLOSE-NATIVE-GAPS（additive）· 与 `version` 一起可省 —— 省 = 本次运行的是
+   * `ephemeralAgent` 传入的**运行期合成** agent（不落库、不查仓储）。二者互斥：
+   * 传了 `ephemeralAgent` 时 `agentId`/`version` 被忽略。
+   */
+  agentId?: string;
+  version?: number | "latest";
+  /**
+   * WO-CLOSE-NATIVE-GAPS · **运行期合成的探索 agent**（见 orchestrator `runPathB` 的
+   * 「通用 agent 不在场」落点）：不是持久化定义 ⇒ 归属必须显式覆盖（见 `attributionOverride`），
+   * 且**不进** `onResolvedRef`（没有版本可留痕）。它的 `tools`/`skills`/`scopeDeclaration`
+   * 与出厂 agent 同构，故引擎侧装配（scope 门 / 技能面 / 两内核分叉）一次到位。
+   */
+  ephemeralAgent?: AgentDefinition;
+  /**
+   * WO-CLOSE-NATIVE-GAPS · 归属覆盖：合成 agent 不是**任何一版**持久化定义 ⇒ 正面记
+   * `EXPLORATORY`（传 `{ tenantId }`，无 agentId）而不是把合成体的 id 记成归属
+   * （那会让「我这个 agent 跑过几次」这个读投影凭空多出一个从不存在的 agent）。
+   * 缺省（不传）= 按解析出的 agent 三件套记 REGISTERED（既有行为）。
+   */
+  attributionOverride?: AgentRunAttributionInput;
   prompt: string;
   ctx: ToolAuthCtx;
   nesting: NestingCtx;
@@ -358,6 +397,15 @@ export interface RunRegisteredAgentOpts {
    * 缺省（不传）= 退回拼接材料 = 修复前行为（字节兼容）。
    */
   reflectUserContent?: string;
+  /**
+   * WO-CLOSE-NATIVE-GAPS · **整段 system 覆盖**（仅探索路用；CEO/块级深问走这条）。
+   *
+   * 口径与 orchestrator 旧探索路 `baseSystem = opts.systemOverride ?? AGENT_SYSTEM_CORE` **同源**：
+   * 覆盖值是**完整 system**（`CEO_DEEP_QUESTION_SYSTEM` 本身就含 `AGENT_SYSTEM_CORE`），
+   * 故它**整体替换**「人设段 + AGENT_SYSTEM_CORE」，技能段仍照常 append。
+   * ⛔ 不传 = 既有装配（`agent.systemPrompt + CORE + 技能段`），其它调用方逐字节不变。
+   */
+  systemOverride?: string;
 }
 
 /**
@@ -422,6 +470,39 @@ export class ExecutionEngine {
    * 仅 dsh fork 期间有活条目：fork 铸、try/finally 注销。
    */
   readonly dshToolExecuteRuns = new Map<string, DshToolExecuteRun>();
+
+  /**
+   * WO-CLOSE-NATIVE-GAPS · **本次运行跑哪个内核**（唯一判据，三个消费点同源：
+   * 分叉守卫 / BLOCK 早退的 run 标签 / 求解器广告面收窄）。
+   *
+   * 今天的行为是 X：判据曾散在三处，表达式把「agent 显式字段」与「进程 env 兜底」并列
+   *（`agent.kernel` 显式优先、字段缺失回落 env；见 `dsh-gov-datacore-credential.seam.test.ts` ④
+   * 的旧口径断言）—— 其中 `agent.kernel` 置 `"NATIVE"` 是**运维回退开关**（ROLLOUT §1-c），
+   * env 是**部署面开关**。⛔ 本注释**不逐字复写**那条已退役的表达式：它会让
+   * 「引擎侧零消费方」的机器判据（该测试 ④ 扫本文件不许出现 `process.env.` 该键）误报成真违规。
+   * 应该是 Y（仓主 2026-10-09）：「都改掉，不考虑回退」⇒ 注册 agent 路恒走 DSH，
+   * 两个开关都不再是判据；唯一例外是测试专用装配位（见 `EngineDeps.agentKernelRuntime` 头注三条判据）。
+   *
+   * ⛔ 不许把它改回读 env / config / agent 数据 —— 那三者任一回到表达式里，旧内核就重新有了入口，
+   * 而 `scripts/check-dsh-dormancy.mjs` 的新口径（守「不许悄悄回落旧内核」）会随之失效。
+   */
+  private dshIsTheKernelThisRun(): boolean {
+    return this.deps.agentKernelRuntime !== "inprocess";
+  }
+
+  /**
+   * 同上判据的**公开只读面** —— 供 orchestrator 的探索路落点分叉用（那条路的执行体选择必须与
+   * 引擎同一判据，不许各写一份：两处判据漂移 = 「记录说 DSH、实际跑进程内循环」这类假绿）。
+   * 产品恒 `"dsh"`；`"inprocess"` 只可能来自测试装配（见 `EngineDeps.agentKernelRuntime` 三条判据）。
+   */
+  agentKernelRuntimeMode(): "dsh" | "inprocess" {
+    return this.deps.agentKernelRuntime ?? "dsh";
+  }
+
+  /** 与 `dshIsTheKernelThisRun()` **同一个判据**的 run 记录标签（`AgentRunKernel` 词表见 contracts）。 */
+  private kernelLabelThisRun(): AgentRunKernel {
+    return this.dshIsTheKernelThisRun() ? "EXTERNAL" : "NATIVE";
+  }
 
   constructor(readonly deps: EngineDeps) {
     if (deps.features) {
@@ -762,7 +843,10 @@ export class ExecutionEngine {
 
   /** Run a registered agent (B1 executor = §6.3 loop + scope gate + skills + rule POST_CHECK). */
   async runRegisteredAgent(opts: RunRegisteredAgentOpts): Promise<AgentLoopResult> {
-    const resolved = await this.resolveAgent(opts.agentId, opts.version);
+    // WO-CLOSE-NATIVE-GAPS：两条来源 —— 持久化 agent（查仓储，既有）或运行期合成的探索 agent
+    // （`ephemeralAgent`，不落库）。后者走**同一条**装配链（scope 门/技能/后验/两内核分叉），
+    // 所以「合成体」不是第二条执行路：它只是没有版本、没有归属的一个 AgentDefinition。
+    const resolved = opts.ephemeralAgent ?? (await this.resolveAgent(opts.agentId!, opts.version ?? "latest"));
     const model = await this.deps.llmSettings.roleModel(resolved.tenantId, "agent", resolved.model || undefined);
     // WO-GENERAL-AGENT-DSH · **对象域「全量」= 目录现算**：`scopeDeclaration.allObjectTypes` 的 agent
     // （通用 agent）在**本 run** 把有效对象域解析成对象类型目录的现全集（`GET /a/v1/ontology/object-types`，
@@ -782,13 +866,16 @@ export class ExecutionEngine {
     // 的 OBO 身份去问 DataCore（`catalog.solverRegistry(ctx)`，与治理端点同源）。
     const expanded = await this.expandAgentTools(agent, opts.ctx);
     const mcpSpecs = expanded.filter((t) => t.binding.kind === "MCP");
-    // §2.2 留痕：实际执行的 agent 版本
-    opts.onResolvedRef?.({ kind: "agent", key: agent.key, version: agent.version });
+    // §2.2 留痕：实际执行的 agent 版本。⛔ 合成探索 agent **没有**版本可留痕 —— 报一个
+    // 假版本会让「执行留痕」这个面从「可核」退化成「编的」，故整条跳过（归属见下）。
+    if (!opts.ephemeralAgent) opts.onResolvedRef?.({ kind: "agent", key: agent.key, version: agent.version });
 
     // WO-AGENTRUN-ATTRIBUTION · 归属取自**刚刚真解析出来的这一版** agent（`resolveAgent` 已按 latest/固定版落定），
     // 不是调用方传进来的 `opts.agentId`——后者可能是 key/latest 之类的间接说法，拿它当归属就会把
     // 「跑的是 v3」记成「跑的是 latest」，换版之后再也对不上。同一份 agent 也用于 tenantId（越租户绝不混）。
-    const attribution: AgentRunAttributionInput = {
+    // WO-CLOSE-NATIVE-GAPS：合成探索 agent 例外 —— 它不是任何一版持久化定义，调用方显式给
+    // `{ tenantId }`（无 agentId）⇒ 正面记 EXPLORATORY，不把合成体冒充成一个真 agent。
+    const attribution: AgentRunAttributionInput = opts.attributionOverride ?? {
       tenantId: agent.tenantId,
       agentId: agent.id,
       agentKey: agent.key,
@@ -827,8 +914,9 @@ export class ExecutionEngine {
             answer: ruleViolationAnswer(verdicts),
             // WO-DSH-P2-UX（N5）：此早退点在 dsh 分叉**之前**——标「本会走哪个内核」，
             // 该 run 未真执行任何循环，不许读成「真在 dsh 上跑过」。
-            // WO-AGENT-KERNEL-SELECT：与下方分叉守卫**同一表达式**（agent 显式优先，缺省回落 env）。
-            run: emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget, attribution, opts.placement, agent.kernel === "EXTERNAL" || (agent.kernel === undefined && process.env.DSH_HARNESS === "1") ? "EXTERNAL" : "NATIVE"),
+            // WO-CLOSE-NATIVE-GAPS：标值与下方分叉**同一个判据**（`kernelLabelThisRun()`），
+            // 不再读 agent.kernel / env DSH_HARNESS（两者都退役，见该函数头注）。
+            run: emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget, attribution, opts.placement, this.kernelLabelThisRun()),
             sketch: [],
           };
         }
@@ -892,9 +980,10 @@ export class ExecutionEngine {
     //   · 非空数组 —— 收窄到这批全名；
     //   · 空数组 —— 求解器 MCP 工具被 top-k 全截掉 ⇒ 一条求解器都不广告（诚实缺席）。
     //
-    // ⚠ 分叉判据与下方 DSH 守卫**同一表达式**（照本文件既有先例：守卫本身不抽公共变量，
-    //   `check-dsh-dormancy` D3 判据要求它原地直读 `process.env.DSH_HARNESS`）。此处只用于**投影口径**。
-    const nativeKernel = !(agent.kernel === "EXTERNAL" || (agent.kernel === undefined && process.env.DSH_HARNESS === "1"));
+    // ⚠ WO-CLOSE-NATIVE-GAPS：分叉判据与下方 DSH 守卫**同一个方法**（`kernelLabelThisRun()` /
+    //   `dshIsTheKernelThisRun()` 同源）。此处只用于**投影口径**：走进程内循环（测试装配）时
+    //   广告面收窄到本 run 授予的求解器集合；走 DSH 时不收窄（子进程 allow-list 与宿主同源）。
+    const nativeKernel = !this.dshIsTheKernelThisRun();
     const hasBuiltinInvokeSolver = tools.some((t) => t.binding.kind === "BUILTIN" && t.name === "invoke_solver");
     const solverGrantedToolNames =
       nativeKernel && !hasBuiltinInvokeSolver
@@ -922,7 +1011,15 @@ export class ExecutionEngine {
         ? agent.scopeDeclaration.objectTypes
         : undefined;
     // Phase5C skill 语义路由：按 query 相关性仅注入 top-k 全文 summary（其余 load_skill 按需取）。
-    const system = `${agent.systemPrompt}\n\n${AGENT_SYSTEM_CORE}${buildSkillSection(skills, { query: opts.prompt, embedder })}`;
+    // WO-CLOSE-NATIVE-GAPS：人设段为空（运行期合成的探索 agent 没有第二套人设）时**不产出**那对空行 ——
+    // 否则合成路的 system 会以 `"\n\n"` 开头，与它逐字节对齐的旧探索路产生无意义漂移
+    //（`system = AGENT_SYSTEM_CORE + skillSection`，见 orchestrator 旧路）。
+    const persona = agent.systemPrompt ? `${agent.systemPrompt}\n\n` : "";
+    const skillSection = buildSkillSection(skills, { query: opts.prompt, embedder });
+    const system =
+      opts.systemOverride !== undefined
+        ? `${opts.systemOverride}${skillSection}` // 整段覆盖（探索路 CEO/块级深问·口径同旧探索路 baseSystem）
+        : `${persona}${AGENT_SYSTEM_CORE}${skillSection}`;
 
     // WO-QOS-2 · 导航切片注入（闭 G-AGENT-BLIND-REACT agent 侧半）：据本 agent 的 scopeDeclaration（objectTypes/toolNames）
     // 确定性投影本题导航图（对口 solver + 输出形状 + 相关对象/规则）注入首轮 user——agent 有对口 solver 就一步到位。
@@ -1032,17 +1129,16 @@ export class ExecutionEngine {
     };
 
     // -----------------------------------------------------------------------
-    // WO-DSH-POC-S4 · 路 B（dsh harness）**休眠分叉**：走 JSON-RPC 子进程路径
-    // （packages/dsh-harness），缺省关闭 = 下方 runAgentLoop 逐字节旧行为。
-    // 动态 import：条件不成立时 dsh 模块根本不加载。postcheck 规则后验经上方
-    // applyPostChecks 共享闭包在成功出口挂载（WO-DSH-PROD-READY W1 起双路同验）。
-    // WO-AGENT-KERNEL-SELECT · 分叉条件升级（env 单源 → per-agent 优先）：
-    //   agent.kernel 显式值优先（"EXTERNAL" 选 DSH；"NATIVE" 显式钉原生，env 翻不走）；
-    //   字段缺失才回落进程 env DSH_HARNESS=1（POC 验收全局开关，既有通路零 delta）。
-    //   归因点（上方 BLOCK 早退 :432 与分叉内两点）用**同一表达式**，禁抽公共变量——
-    // 守卫必须直读 process.env.DSH_HARNESS：check-dsh-dormancy.mjs D3 判据只认
-    // 「条件里提到 process.env.DSH_HARNESS」的包裹块（cfg 转发/间接变量会被判裸入口，门红·mut14 血账）。
-    if (agent.kernel === "EXTERNAL" || (agent.kernel === undefined && process.env.DSH_HARNESS === "1")) {
+    // WO-CLOSE-NATIVE-GAPS（2026-10-09 仓主「都改掉，不考虑回退」）·
+    // **旧内核退役**：本分叉曾由 `agent.kernel`（显式 `"NATIVE"` 钉回）与进程 env
+    // `DSH_HARNESS`（部署面全局开关）共同决定 —— 两者都**不再是内核选择器**：
+    //   · `agent.kernel`：写侧拒 `"NATIVE"`（`POST/PUT /b/v1/agents`），存量记录里的值
+    //     一律**不再被读**（跑哪个内核不再由 agent 数据决定）；
+    //   · `DSH_HARNESS`：本文件一个字节都不再读（部署面见 docker-compose；休眠门口径已随之改写）。
+    // 现在唯一的判据是 `dshIsTheKernelThisRun()`：产品恒真（DSH 是唯一内核），
+    // 唯一能让它变假的是**测试专用装配位** `deps.agentKernelRuntime === "inprocess"`（见其头注）。
+    // 归因/投影点（上方 BLOCK 早退与 `nativeKernel`）都走同源方法，不再各写一份表达式。
+    if (this.dshIsTheKernelThisRun()) {
       const { buildSessionSetup, mapMcpConfig, mapSkill, runDshAgent } = await import("./dsh-runtime/index.js");
       // W8主：反向通道登记——runToken = per-run 一次性随机 token（newId 加密随机源），
       // wire 上唯一凭证；登记 executor 用上方 :491 同一实例（scope/预算/readCache 同账本）。

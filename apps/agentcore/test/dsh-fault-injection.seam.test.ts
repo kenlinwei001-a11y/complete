@@ -29,7 +29,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AgentDefinition } from "@platform/contracts";
-import { createTestApp, PLANNER, submitQuery, TENANT, waitForTask, type TestApp } from "./helpers.js";
+import { createTestApp, PLANNER, setKernelRuntime, submitQuery, TENANT, waitForTask, type TestApp } from "./helpers.js";
 import { loadConfig } from "../src/config.js";
 import { computeResidualBudget } from "../src/router/orchestrator.js";
 import { BudgetTracker } from "../src/tools/budget.js";
@@ -127,7 +127,7 @@ describe("WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态", () 
   it("F1 启动即死·缺 cordis 档（engine 级）⇒ 诚实抛错指名缺档，不挂起不静默", { timeout: 30_000 }, async () => {
     const emptyDir = materializeEmptyHarnessDir();
     setFaultEnv(emptyDir, "healthy");
-    const t = await createTestApp({ providerDirectory: DIRECTORY });
+    const t = await createTestApp({ providerDirectory: DIRECTORY, kernelRuntime: "dsh" }); // WO-CLOSE-NATIVE-GAPS：内核臂走装配位
     try {
       await t.repos.agents.insert(externalAgent("agt_w4_f1", TENANT));
       const started = Date.now();
@@ -146,7 +146,7 @@ describe("WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态", () 
 
   it("F2 启动即崩·bin 即死（engine 级）⇒ TransportClosedError 带 exit code + stderr tail，零残留", { timeout: 30_000 }, async () => {
     setFaultEnv(harness.dir, "startup-crash");
-    const t = await createTestApp({ providerDirectory: DIRECTORY });
+    const t = await createTestApp({ providerDirectory: DIRECTORY, kernelRuntime: "dsh" }); // WO-CLOSE-NATIVE-GAPS：内核臂走装配位
     try {
       await t.repos.agents.insert(externalAgent("agt_w4_f2", TENANT));
       const started = Date.now();
@@ -257,7 +257,7 @@ describe("WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态", () 
   it("F6 多租户并发（engine 级）⇒ 独立子进程 × setup 帧 tenantId 各自正确 × 互不串话", { timeout: 60_000 }, async () => {
     const recordFile = join(mkdtempSync(join(tmpdir(), "dsh-w4-record-")), "records.jsonl");
     setFaultEnv(harness.dir, "healthy", recordFile);
-    const t = await createTestApp({ providerDirectory: DIRECTORY });
+    const t = await createTestApp({ providerDirectory: DIRECTORY, kernelRuntime: "dsh" }); // WO-CLOSE-NATIVE-GAPS：内核臂走装配位
     try {
       await t.repos.agents.insert(externalAgent("agt_w4_alpha", "t_alpha"));
       await t.repos.agents.insert(externalAgent("agt_w4_beta", "t_beta"));
@@ -316,7 +316,7 @@ describe("WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态", () 
 
   it("F8 编排级失败面（HTTP 级）⇒ 启动即崩 ⇒ task FAILED + 错误含子进程诊断（非挂起非空答案）", { timeout: 60_000 }, async () => {
     setFaultEnv(harness.dir, "startup-crash");
-    const t = await createTestApp({ providerDirectory: DIRECTORY });
+    const t = await createTestApp({ providerDirectory: DIRECTORY, kernelRuntime: "dsh" }); // WO-CLOSE-NATIVE-GAPS：内核臂走装配位
     try {
       await t.repos.agents.insert(externalAgent("agt_w4_f8", TENANT));
       await t.repos.sceneEntries.upsert({

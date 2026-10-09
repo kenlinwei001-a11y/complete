@@ -42,7 +42,7 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentDefinition, WorkflowDefinition } from "@platform/contracts";
-import { createTestApp, TENANT, type TestApp } from "./helpers.js";
+import { createTestApp, setKernelRuntime, TENANT, type TestApp } from "./helpers.js";
 import {
   STUB_DCP_SPEC,
   startStubOpenAi,
@@ -207,6 +207,8 @@ async function startToolExecApp(opts: {
 }): Promise<{ t: TestApp; close: () => Promise<void> }> {
   const port = await freePort();
   const t = await createTestApp({
+    // WO-CLOSE-NATIVE-GAPS：内核臂改由测试装配位给（agent.kernel 字段已退役）
+    kernelRuntime: "dsh",
     providerDirectory: stubDirectory(stubProvider(opts.stubUrl), FAKE_LLM_KEY) as never,
     env: {
       PORT: String(port),

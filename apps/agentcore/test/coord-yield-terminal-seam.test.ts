@@ -49,7 +49,7 @@ async function seedAgents(t: TestApp): Promise<void> {
     // 环境**没有** dsh harness / stub provider（本文件验的是 **Coordinator 兜底路由与终态**，
     // 不是内核）⇒ 播进来时显式钉回 `"NATIVE"`，保住本文件的判据面（内核面由本单的验收覆盖）。
     // 与 `domain-by-intent.seam.test.ts` 的既有手法同形（那里也是 `{...g, kernel:"NATIVE"}`）。
-    if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert({ ...ag, kernel: "NATIVE" });
+    if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert({ ...ag });
   }
 }
 

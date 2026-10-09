@@ -206,10 +206,13 @@ describe("A1 · 生产 provider 单源常量与 mock 回退根除", () => {
 
     const cfg = loadConfig({} as NodeJS.ProcessEnv);
     expect(cfg.DSH_HARNESS_PROVIDER).toBe(PRODUCTION_DSH_HARNESS_PROVIDER); // 缺省与建议同值
-    expect(cfg.DSH_HARNESS).toBe("0"); // 出货缺省 off（§16.1a 部署层回退）
+    // ⚑ WO-CLOSE-NATIVE-GAPS：`DSH_HARNESS` 引擎侧零消费方（zod 缺省仍是 "0"，但翻它不改变行为）；
+    // 出货 compose 已于本单改为如实声明 1（部署面「不许声明旧内核还在」由 dsh-dormancy D1′ 守）。
+    expect(cfg.DSH_HARNESS).toBe("0"); // zod 缺省（仅存档；非开关）
 
     const src = readFileSync(ENGINE_SRC, "utf8");
-    const forkStart = src.indexOf('DSH_HARNESS === "1"');
+    // 新锚点：内核判据 = 测试装配位（旧锚 'DSH_HARNESS === "1"' 已随旧内核退役消失）
+    const forkStart = src.indexOf("agentKernelRuntimeMode");
     expect(forkStart).toBeGreaterThanOrEqual(0);
     const fork = src.slice(forkStart, src.indexOf("runAgentLoop({", forkStart));
     expect(fork).not.toContain('?? "mock"');

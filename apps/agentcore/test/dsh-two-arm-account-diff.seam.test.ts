@@ -77,7 +77,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AgentDefinition, LlmProvider } from "@platform/contracts";
-import { createTestApp, TENANT, type TestApp } from "./helpers.js";
+import { createTestApp, setKernelRuntime, TENANT, type TestApp } from "./helpers.js";
 import {
   STUB_DCP_SPEC,
   STUB_FAKE_KEY,
@@ -270,7 +270,10 @@ describe("WO-TWO-ARM-ACCOUNT-DIFF · §1-a③ 同 task 双臂 token 账对照（
         });
         const agentId = `agt_two_arm_${s.id}`;
         try {
-          await t.repos.agents.insert(agentDef({ id: agentId, key: agentId, kernel: "NATIVE" }));
+          // ★ WO-CLOSE-NATIVE-GAPS：内核不再由 `agent.kernel` 字段翻（该字段已退役、不写即不读），
+          // 两臂改由**测试装配位**翻 —— agent 记录两臂逐字节同一条（更强：连字段都不动）。
+          setKernelRuntime(t, "inprocess");
+          await t.repos.agents.insert(agentDef({ id: agentId, key: agentId }));
 
           // ── 臂 1 · NATIVE ────────────────────────────────────────────────
           const nativeRun = await runArm(t, agentId, `${s.id}_native`);
@@ -282,8 +285,8 @@ describe("WO-TWO-ARM-ACCOUNT-DIFF · §1-a③ 同 task 双臂 token 账对照（
           expect(nativeRun.run.totalInputTokens, "native 输入桶 = Σ prompt_tokens（含命中）").toBe(e.nativeInput);
           expect(nativeRun.run.totalOutputTokens, "native 输出桶 = Σ completion_tokens").toBe(e.nativeOutput);
 
-          // ── 同 task、同 app，只翻 kernel 一个字段（「kernel 来回切」）────────
-          await t.repos.agents.update(agentDef({ id: agentId, key: agentId, kernel: "EXTERNAL" }));
+          // ── 同 task、同 app、**同一条 agent 记录**，只翻装配位（旧写法翻的是 kernel 字段）──
+          setKernelRuntime(t, "dsh");
 
           // ── 臂 2 · EXTERNAL ──────────────────────────────────────────────
           const dshRun = await runArm(t, agentId, `${s.id}_dsh`);
@@ -402,13 +405,14 @@ describe("WO-TWO-ARM-ACCOUNT-DIFF · §1-a③ 同 task 双臂 token 账对照（
       });
       const agentId = "agt_two_arm_real";
       try {
-        // 模型 spec 换成真供应商的绑定（同一个 agent，两臂只翻 kernel）
+        // 模型 spec 换成真供应商的绑定（同一个 agent，两臂只翻**装配位**）
         const spec = `dcp:${provider.id}:${REAL.model}`;
-        await t.repos.agents.insert(agentDef({ id: agentId, key: agentId, kernel: "NATIVE", model: spec }));
+        setKernelRuntime(t, "inprocess");
+        await t.repos.agents.insert(agentDef({ id: agentId, key: agentId, model: spec }));
         const nativeRun = await runArm(t, agentId, "real_native");
         expect(nativeRun.run.kernel, "本臂没走 NATIVE ⇒ native 账不成立").toBe("NATIVE");
 
-        await t.repos.agents.update(agentDef({ id: agentId, key: agentId, kernel: "EXTERNAL", model: spec }));
+        setKernelRuntime(t, "dsh");
         const dshRun = await runArm(t, agentId, "real_dsh");
         expect(dshRun.run.kernel, "本臂没走 EXTERNAL ⇒ 结论不指向 dsh 出口").toBe("EXTERNAL");
 

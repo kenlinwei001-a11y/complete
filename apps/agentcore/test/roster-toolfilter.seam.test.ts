@@ -230,7 +230,7 @@ describe("WO-ROSTER-RESPECT-TOOLFILTER · ⑤ 真链路：目录段与授予面�
   async function promptOf(agent: AgentDefinition, t: TestApp): Promise<string> {
     // WO-ALL-AGENTS-DSH：出厂内核缺省自本单起 = `"EXTERNAL"`，本测试环境无 dsh harness /
     // stub provider（本文件验的是**提示词目录段受 toolFilter 约束**，不是内核）⇒ 钉回 `"NATIVE"`。
-    await t.repos.agents.insert({ ...agent, tenantId: TENANT, kernel: "NATIVE" });
+    await t.repos.agents.insert({ ...agent, tenantId: TENANT });
     for (const c of seedMcpConfigs()) if (!(await t.repos.mcpConfigs.get(c.id))) await t.repos.mcpConfigs.insert(c);
     stubSolverRegistry(t);
     t.llm.queueAgentTurn(() => ({

@@ -243,12 +243,14 @@ describe("WO-AGENT-DSH-DEFAULT · DSH 治理带外通道 → DataCore 凭据接�
     expect(agents.find((a) => a.key === GENERAL_AGENT_KEY)?.kernel, "通用 agent 的显式位被抹掉").toBe("EXTERNAL");
   });
 
-  it("④ `cfg.DSH_HARNESS` 在 src 侧零消费方 ⇒ 改 config.ts 的 zod 缺省**翻不动**分叉（方案 A 是空操作）", () => {
+  it("④ WO-CLOSE-NATIVE-GAPS 新口径：`DSH_HARNESS`（cfg 与进程 env）在引擎侧**零消费方** ⇒ 部署面翻不动内核", () => {
     const engineSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../src/engine.ts"), "utf8");
-    // 金丝雀：确实读到了 engine.ts 且抓得到分叉守卫本身（读空文件时下面的否定断言会是空真理）。
-    expect(engineSrc).toContain('agent.kernel === "EXTERNAL"');
-    // 本体：守卫直读 process.env，从不经 cfg —— 故 config.ts 的 default("0")→("1") 不改变任何分叉行为。
-    expect(engineSrc).toContain('process.env.DSH_HARNESS === "1"');
+    // 金丝雀：确实读到了 engine.ts 且抓得到内核判据本身（读空文件时下面的否定断言会是空真理）。
+    expect(engineSrc).toContain("agentKernelRuntimeMode");
+    // 本体（本单收口）：旧口径是「守卫直读 process.env、不经 cfg」；新口径更强 ——
+    // 引擎**一个都不读**：内核判据只剩测试装配位（产品恒 DSH）。改 config.ts 缺省、
+    // 或部署面塞 `DSH_HARNESS=1/0`，都不改变任何分叉行为（旧内核入口整体退役）。
+    expect(/\bprocess\.env\.DSH_HARNESS(?![_A-Za-z0-9])/.test(engineSrc)).toBe(false);
     expect(/\bcfg\.DSH_HARNESS(?![_A-Za-z0-9])/.test(engineSrc)).toBe(false);
   });
 });

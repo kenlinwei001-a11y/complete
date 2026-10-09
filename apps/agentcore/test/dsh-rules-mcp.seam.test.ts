@@ -171,6 +171,8 @@ async function seedWorld(t: TestApp, agent: AgentDefinition): Promise<void> {
 async function startToolExecApp(opts: { stubUrl: string; serviceToken?: string }): Promise<{ t: TestApp; close: () => Promise<void> }> {
   const port = await freePort();
   const t = await createTestApp({
+    // WO-CLOSE-NATIVE-GAPS：内核臂改由测试装配位给（agent.kernel 字段已退役）
+    kernelRuntime: "dsh",
     providerDirectory: stubDirectory(stubProvider(opts.stubUrl), FAKE_LLM_KEY) as never,
     env: { PORT: String(port), ...(opts.serviceToken ? { SERVICE_TOKEN: opts.serviceToken } : {}) },
   });

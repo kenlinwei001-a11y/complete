@@ -24,7 +24,7 @@ import { createServer as createNetServer } from "node:net";
 import type { AddressInfo } from "node:net";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentDefinition, AgentRunRecord, RuleVerdict, SkillDefinition, WorkflowDefinition } from "@platform/contracts";
-import { createTestApp, TENANT, type TestApp } from "./helpers.js";
+import { createTestApp, setKernelRuntime, TENANT, type TestApp } from "./helpers.js";
 import { BudgetTracker } from "../src/tools/budget.js";
 import { scanBlocks } from "../src/util/numerics.js";
 import { MockMcpClient } from "../src/mcp/mock.js";
@@ -284,7 +284,8 @@ async function runArm(task: DualRunTask, flag: "off" | "on"): Promise<ArmProduct
     events.push({ event, payload: payload as Record<string, unknown> });
   };
   if (flag === "on") {
-    process.env.DSH_HARNESS = "1";
+    // ★ WO-CLOSE-NATIVE-GAPS：内核臂改由测试装配位给（env DSH_HARNESS 不再被引擎读）。
+    setKernelRuntime(t, "dsh");
     process.env.DSH_HARNESS_DIR = HARNESS_DIR;
     if (task.dsh.govDeny) process.env.PLATFORM_GOV_DENY = task.dsh.govDeny.join(",");
   }

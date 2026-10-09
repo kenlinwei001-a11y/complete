@@ -64,7 +64,7 @@ async function seedAgents(t: TestApp): Promise<void> {
     if (ag.key === GENERAL_AGENT_KEY) continue;
     // WO-ALL-AGENTS-DSH：出厂内核缺省自本单起对**所有** agent = `"EXTERNAL"` ⇒ 同理由钉回 `"NATIVE"`
     // （本文件验的是记账出口，内核面由本单的验收覆盖）。
-    if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert({ ...ag, kernel: "NATIVE" });
+    if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert({ ...ag });
   }
 }
 

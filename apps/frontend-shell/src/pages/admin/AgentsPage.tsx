@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { AgentDefinition, AgentRunRecord, AgentToolRef, QueryTaskStatus } from "@platform/contracts";
+import { AgentRunKernelSchema } from "@platform/contracts";
+import type { AgentDefinition, AgentRunKernel, AgentRunRecord, AgentToolRef, QueryTaskStatus } from "@platform/contracts";
 import {
   fetchAgentRun,
   fetchAgentRuns,
@@ -36,6 +37,21 @@ function RefEmptyLink({ to, label, testid }: { to: string; label: string; testid
 }
 
 const t = zh.admin.agents;
+
+/**
+ * WO-NATIVE-RETIRE-FIX · 编辑器「运行内核」下拉的**可选项**（旧内核退役后的口径）。
+ *
+ * 值域取自**契约枚举** `AgentRunKernelSchema`（页面里不写任何内核字面量），可写性取
+ * locale 标签表的键：**写侧仍接受的取值才有标签**，已退役的没有 ⇒ 自然不进下拉。
+ * 后端（`POST/PUT /b/v1/agents`）对已退役取值一律 400，两侧漂了的表现就是「下拉给出一个
+ * 存不下的选项」—— 故标签表在这里同时是**可写名单**，别再往它里面添退役取值。
+ */
+const WRITABLE_KERNELS = AgentRunKernelSchema.options.filter(
+  (k): k is keyof typeof t.kernelOptionLabel => k in t.kernelOptionLabel,
+);
+/** 下拉第一项（记录上没有落盘取值）的哨兵值 —— 空串不是内核取值。 */
+const KERNEL_UNSET = "";
+const isWritableKernel = (k: AgentRunKernel): boolean => WRITABLE_KERNELS.some((w) => w === k);
 
 /**
  * WO-DSH-P2-UX（N5）· 内核徽标（契约 `AgentRunRecord.kernel`，additive optional）。
@@ -759,9 +775,10 @@ function AgentEditor({ agent, onChanged, onForked }: { agent: AgentDefinition; o
     name: agent.name,
     description: agent.description,
     model: agent.model,
-    // WO-AGENT-KERNEL-SELECT：缺省（字段缺失）≡ 原生——可证（内核标识上线前外部运行时开关恒关闭：
-    // 休眠门机器守 + 出货 compose 显式 0，同 zh kernelNativeTip 可证链），故两态即可，不画「未设置」第三态。
-    kernel: agent.kernel ?? ("NATIVE" as const),
+    // WO-NATIVE-RETIRE-FIX：**记录上是啥就是啥** —— 字段缺失就保持 undefined。
+    // （旧实现 `agent.kernel ?? "NATIVE"` 把「没有值」捏造成用户的选择：存量记录一保存就
+    // 整份 PUT 一个已退役取值上去 ⇒ 写侧 400，用户连改个名字都存不下来。）
+    kernel: agent.kernel,
     systemPrompt: agent.systemPrompt,
     tools: agent.tools,
     ruleBindings: agent.ruleBindings,
@@ -774,7 +791,14 @@ function AgentEditor({ agent, onChanged, onForked }: { agent: AgentDefinition; o
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }));
 
   const saveMut = useMutation({
-    mutationFn: () => saveAgent(agent.id, form),
+    // WO-NATIVE-RETIRE-FIX · 载荷里的 `kernel` **只在用户真的做了选择时**才出现（表单值 ≠ 记录现值）：
+    //  · 存量记录（字段缺失）只改名字 ⇒ 不带 kernel 键 ⇒ 写侧按缺省口径收（改前实测 400 → 改后 200）；
+    //  · 记录已有取值且没被碰过 ⇒ 也不带（服务端原样保留，UI 不替用户重发一遍他从没做过的选择）；
+    //  · 记录带着已退役取值（存量数据）⇒ 同样不带，否则这条记录永远存不下来。
+    mutationFn: () => {
+      const { kernel, ...rest } = form;
+      return saveAgent(agent.id, kernel !== agent.kernel ? { ...rest, kernel } : rest);
+    },
     onSuccess: () => {
       toast("已保存", "success");
       onChanged();
@@ -863,17 +887,39 @@ function AgentEditor({ agent, onChanged, onForked }: { agent: AgentDefinition; o
       </div>
       <div style={{ fontSize: 12, color: "var(--muted,#999)", marginBottom: 10 }}>留空则该 Agent 跟随「用途绑定矩阵」的 agent 用途模型（与矩阵保持一致）；选具体模型即按 Agent 覆盖。</div>
 
-      {/* WO-AGENT-KERNEL-SELECT · 运行内核（契约 AgentDefinition.kernel，与引擎分叉守卫同源）。
-          显式 NATIVE = 钉原生（进程级 DSH_HARNESS=1 POC 开关也翻不走）；EXTERNAL = 本 Agent 走
-          DSH 外部运行时。改动只影响**新**运行，历史运行实际内核以运行列表「内核」列为准。 */}
+      {/* WO-NATIVE-RETIRE-FIX · 运行内核（契约 AgentDefinition.kernel）。旧内核退役后这里
+          **不再是内核选择器**：执行恒走 DSH（外部运行时），字段只是「要不要把该取值显式落盘
+          在这条记录上」。下拉三态各有真值：未设置（记录上没有值）/ 已退役取值（存量数据，
+          只读回显）/ 写侧仍接受的取值（可写名单见 WRITABLE_KERNELS，页面里不写内核字面量）。
+          改前旧文案「显式 NATIVE = 钉原生」「DSH = 全仓缺省休眠」自退役起都是假话。 */}
       <div className="section-title">运行内核</div>
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 4 }}>
-        <select value={form.kernel} disabled={!editable} aria-label="运行内核" className="mono" style={{ minWidth: 220 }} onChange={(e) => set("kernel", e.target.value as "NATIVE" | "EXTERNAL")}>
-          <option value="NATIVE">原生内核</option>
-          <option value="EXTERNAL">DSH（外部运行时）</option>
+        <select
+          value={form.kernel ?? KERNEL_UNSET}
+          disabled={!editable}
+          aria-label="运行内核"
+          className="mono"
+          style={{ minWidth: 220 }}
+          onChange={(e) => set("kernel", e.target.value === KERNEL_UNSET ? undefined : (e.target.value as AgentRunKernel))}
+        >
+          {/* 「未设置」= 记录上没有落盘取值；记录一旦有值就不可再清（写侧只接受显式取值或留空）。 */}
+          <option value={KERNEL_UNSET} disabled={agent.kernel !== undefined}>
+            {t.kernelOptionUnset}
+          </option>
+          {/* 存量数据里已退役的取值：回显真相，但不可再选（写侧 400）。 */}
+          {agent.kernel !== undefined && !isWritableKernel(agent.kernel) && (
+            <option value={agent.kernel} disabled>
+              {t.kernelOptionRetired}
+            </option>
+          )}
+          {WRITABLE_KERNELS.map((k) => (
+            <option key={k} value={k}>
+              {t.kernelOptionLabel[k]}
+            </option>
+          ))}
         </select>
       </div>
-      <div style={{ fontSize: 12, color: "var(--muted,#999)", marginBottom: 10 }}>DSH = 已验收的外部运行时（全仓缺省休眠，按 Agent 开通）；仅对新运行生效，历史运行以「内核」列为准。</div>
+      <div style={{ fontSize: 12, color: "var(--muted,#999)", marginBottom: 10 }}>{t.kernelHint}</div>
 
       <div className="section-title">系统提示词</div>
       <textarea className="mono" style={{ width: "100%", minHeight: 110, fontSize: 12, marginBottom: 10 }} disabled={!editable} value={form.systemPrompt} aria-label="系统提示词" onChange={(e) => set("systemPrompt", e.target.value)} />

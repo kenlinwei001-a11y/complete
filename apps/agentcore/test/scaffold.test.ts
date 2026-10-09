@@ -45,7 +45,19 @@ describe("g8-P3 · POST /b/v1/internal/scaffold", () => {
     // DRAFT，未自动上线（R4）
     const scene = await t.repos.scenarios.byKey(TENANT, "scene_g8_demo");
     expect(scene?.status).toBe("DRAFT");
-    expect((await t.repos.agents.latestByKey(TENANT, "agt_g8_demo"))?.status).toBe("DRAFT");
+    const scaffoldedAgent = await t.repos.agents.latestByKey(TENANT, "agt_g8_demo");
+    expect(scaffoldedAgent?.status).toBe("DRAFT");
+
+    // WO-NATIVE-RETIRE-FIX（D-B）· 脚手架产出的 agent 的**执行内核**：必须**显式落盘**为 EXTERNAL，
+    // 且**不是「字段缺失」** —— 旧内核退役后，缺字段虽不影响执行（引擎已不看它），但它会让
+    // 「这条 agent 的配置面到底声明了什么」读起来是「未配置」，与写侧收口的口径（缺省即落盘 DSH）不是一回事。
+    // 该赋值（`kernel: SEED_DEFAULT_AGENT_KERNEL`）此前**全仓零断言守**：常量漂成已退役取值、
+    // 或那一行被摘掉，都没有任何测试会红。
+    // ⚠ 期望值写字面量是**刻意的**：它正是被守的那个常量的期望值；拿常量自己对自己是同义反复，
+    // 常量漂了就两边一起漂、永远绿（本单的 ③ 双向金丝雀就是拿它验的）。
+    expect(scaffoldedAgent, "脚手架没落 agent ⇒ 下面两条无从谈起").toBeTruthy();
+    expect(Object.keys(scaffoldedAgent!), "kernel 字段整条缺失 = 「未配置」形态，不是写侧的缺省口径").toContain("kernel");
+    expect(scaffoldedAgent!.kernel, "脚手架产出的 agent 的执行内核必须是 DSH（EXTERNAL）").toBe("EXTERNAL");
 
     // 幂等重跑 → 全部 REUSED
     const again = await t.app.inject({ method: "POST", url: "/b/v1/internal/scaffold", headers: { "x-service-token": SVC }, payload: manifest() });
