@@ -31,6 +31,7 @@ import type { SkillResourceReader } from "./tools/skill-resources.js";
 import { BUILTIN_TOOLS } from "./tools/registry.js";
 import { buildOntologyMcpTools, ONTOLOGY_MCP_SERVER } from "./tools/ontology-mcp.js";
 import { buildSolverMcpWireTools, type SolverCatalogItem } from "./mcp/solvers-catalog.js";
+import { buildRulesMcpTools, RULES_MCP_SERVER } from "./mcp/rules-mcp.js";
 import { parseSolverMcpToolName, SOLVERS_MCP_SERVER } from "@platform/contracts";
 import {
   WORKFLOW_MCP_CONFIG_ID,
@@ -78,6 +79,15 @@ function resolveWorkflowMcpServerPath(): string {
   const sibling = fileURLToPath(new URL("./dsh-runtime/workflow-mcp-server.js", import.meta.url));
   if (existsSync(sibling)) return sibling;
   return fileURLToPath(new URL("../dist/dsh-runtime/workflow-mcp-server.js", import.meta.url));
+}
+
+/**
+ * WO-AGENT-CONFIG-TO-DSH · 规则 MCP server 的入口文件定位 —— 与上方三个 `resolve*McpServerPath`
+ * **同一实现、同一条论证**（两种载体：生产 dist / 接缝测试 src；判据落文件存在性；两条候选都缺
+ * ⇒ 返回 dist 形态路径，子进程起不来时 mcp-client 侧 fail-closed 得 ERROR，不编一个能跑的空壳）。
+ */
+function resolveRulesMcpServerPath(): string {
+  return resolveDshServerPath("rules-mcp-server.js");
 }
 import type { FeatureGate } from "./features/gate.js";
 import { ResourceRegistryService } from "./dril/resource-registry.js";
@@ -645,6 +655,22 @@ export class ExecutionEngine {
         // 故不能像本体那样静态投影 —— 逐 run 从仓储现算，并按 `toolFilter`（全名）收窄。
         // 产出**恒为 MCP 全名形态**，binding 仍记 WORKFLOW（workflowId/version 是执行期真需要
         // 的东西；绑定表 = 端点上的唯一解析权威，wire 永远带不了它）。
+        // WO-AGENT-CONFIG-TO-DSH · 平台内置规则 MCP server：工具集**平台固定**（一只
+        // `evaluate_rules`，规则库是入参不是工具名）⇒ 与本体同走**静态投影**，不连 server。
+        // 描述逐字取 `buildRulesMcpTools`（内含 RULES_MCP_DESC_PREFIX）——DSH 臂同一段文字经
+        // MCP wire 到达模型面，两内核文本逐字同（前缀禁在本处再拼一次）。
+        if (serverName === RULES_MCP_SERVER) {
+          for (const t of buildRulesMcpTools()) {
+            if (ref.toolFilter && !ref.toolFilter.includes(t.rawName) && !ref.toolFilter.includes(t.name)) continue;
+            specs.push({
+              name: t.name,
+              description: t.description,
+              inputSchema: t.inputSchema,
+              binding: { kind: "MCP", mcpConfigId: ref.mcpConfigId },
+            });
+          }
+          continue;
+        }
         if (serverName === WORKFLOW_MCP_SERVER) {
           const wfs = await this.deps.repos.workflows.listByTenant(agent.tenantId);
           for (const wf of wfs) {
@@ -1046,6 +1072,7 @@ export class ExecutionEngine {
           const builtinPath =
             serverName === ONTOLOGY_MCP_SERVER ? resolveOntologyMcpServerPath()
             : serverName === SOLVERS_MCP_SERVER ? resolveSolversMcpServerPath()
+            : serverName === RULES_MCP_SERVER ? resolveRulesMcpServerPath()
             : undefined;
           if (builtinPath) {
 

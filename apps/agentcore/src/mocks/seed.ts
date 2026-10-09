@@ -20,6 +20,8 @@ import { ONTOLOGY_MCP_CONFIG_ID, ONTOLOGY_MCP_TOOL_NAMES, ontologyMcpToolName } 
 import { SOLVERS_MCP_CONFIG_ID } from "../mcp/solvers-catalog.js";
 import { SOLVERS_MCP_SERVER, solverMcpToolName } from "@platform/contracts";
 import { WORKFLOW_MCP_CONFIG_ID, workflowMcpToolName } from "../mcp/workflow-mcp.js";
+// WO-AGENT-CONFIG-TO-DSH · 规则面的 DSH 原生 MCP 模式（三面同改用的同名常量与全名拼接单一来源）。
+import { RULES_MCP_CONFIG_ID, RULES_MCP_SERVER, rulesMcpToolName } from "../mcp/rules-mcp.js";
 // DF.13 外协红线单一来源（C08）：场景建议问句里的红线百分数派生，禁手写。
 import { OUTSOURCE_REDLINE, outsourceRedlinePct } from "@platform/contracts";
 import { SCENARIO_CATALOG } from "../scenarios-catalog.js";
@@ -1440,7 +1442,12 @@ export function seedRegistry(now = new Date().toISOString()): {
         // ⛔ 退掉的那条是 `{ kind: "BUILTIN", name: "invoke_solver" }` —— 同一能力两条授予路并
         //    存正是本单要退的旧路。执行侧不变：MCP 调用由 executor 的 A1 shim 归一回 invoke_solver。
         solverMcpRef(SOLVER_KEYS_ANALYST),
-        { kind: "BUILTIN", name: "evaluate_rules" },
+        // WO-AGENT-CONFIG-TO-DSH · 规则从**裸 BUILTIN 授予**改挂 **MCP 面**（与切片/求解器/工作流
+        // 同一惯例：同一能力不许两条授予路并存）。三面同改：本行（授予面）+ 下方 mcpServers
+        // （DSH 挂载面）+ scopeDeclaration（声明面·全名）。⛔ 退掉的那条是
+        // `{ kind: "BUILTIN", name: "evaluate_rules" }` —— 执行体不变（MCP 调用由 executor 的
+        // 规则 shim 归回同一个 `case "evaluate_rules"`），变的只是「DSH 自己知不知道自己有这个资源」。
+        { kind: "MCP", mcpConfigId: RULES_MCP_CONFIG_ID, toolFilter: [rulesMcpToolName("evaluate_rules")] },
         { kind: "BUILTIN", name: "search_knowledge" },
         { kind: "BUILTIN", name: "query_timeseries_agg" },
         { kind: "BUILTIN", name: "search_experience" },
@@ -1454,13 +1461,13 @@ export function seedRegistry(now = new Date().toISOString()): {
       // DSH 挂载面（三面同改之二）：三个内置 MCP server 都挂上（运行期 command/args/env 由
       // engine.ts DSH 分叉注入，runToken 与工具目录都不能写死在 seed 里）。
       // 与上方 MCP ref 成对 —— 只有 ref 没有它 = 模型面拿不到工具。
-      mcpServers: [{ mcpConfigId: ONTOLOGY_MCP_CONFIG_ID }, { mcpConfigId: SOLVERS_MCP_CONFIG_ID }, { mcpConfigId: WORKFLOW_MCP_CONFIG_ID }],
+      mcpServers: [{ mcpConfigId: ONTOLOGY_MCP_CONFIG_ID }, { mcpConfigId: SOLVERS_MCP_CONFIG_ID }, { mcpConfigId: WORKFLOW_MCP_CONFIG_ID }, { mcpConfigId: RULES_MCP_CONFIG_ID }],
       scopeDeclaration: {
         objectTypes: ["Base", "Order", "Model", "Line", "Process", "Equipment", "Shipment", "Segment"],
         // 声明面按契约惯例记**全名**（scope 门在 `executor.ts`:138 用**调用原名**校验 —— 模型面是
         // `mcp__ontology__resolve_slice`，这里就必须是同一个串；记裸名会让这条路被自己的 scope 门拒）。
         toolNames: [
-          "query_objects", "aggregate_objects", "get_object", ...ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)), ...solverMcpFullNames(SOLVER_KEYS_ANALYST), "evaluate_rules",
+          "query_objects", "aggregate_objects", "get_object", ...ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)), ...solverMcpFullNames(SOLVER_KEYS_ANALYST), rulesMcpToolName("evaluate_rules"),
           "search_knowledge", "query_timeseries_agg", "search_experience", "create_action_draft",
           workflowMcpToolName("capacity_check"),
         ],
@@ -1833,7 +1840,7 @@ export const ROLE_PROFILES: CeoAgentProfile[] = [
     // `ceo-agent.ts:81` 自注：「该角色可用工具（展示·真实约束以绑定 agent scopeDeclaration.toolNames 为准）」，
     // 全仓唯一读 `toolWhitelist` 的地方是 `orchestrator.ts` 读 **package** 那份）。
     // 仍改这一处：状态相反的两份台账正是本仓反复踩的坑（展示面说裸名、真实约束是全名 ⇒ 下一个人照着它查会查错方向）。
-    agentId: "agt_seed_analyst", toolWhitelist: ["query_objects", "aggregate_objects", "get_object", ...ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)), ...solverMcpFullNames(SOLVER_KEYS_ANALYST), "evaluate_rules", "search_knowledge", "query_timeseries_agg"],
+    agentId: "agt_seed_analyst", toolWhitelist: ["query_objects", "aggregate_objects", "get_object", ...ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)), ...solverMcpFullNames(SOLVER_KEYS_ANALYST), rulesMcpToolName("evaluate_rules"), "search_knowledge", "query_timeseries_agg"],
     objectTypes: ["Base", "Order", "Model", "Line", "Process", "Equipment", "Shipment", "Segment"], systemKey: "ceo",
   },
   {
@@ -1861,7 +1868,7 @@ export const ROLE_PROFILES: CeoAgentProfile[] = [
     profileId: "role_base_planner", role: "base-planner",
     scope: { allBases: false, baseIds: [] }, // baseIds 运行时由 OBO 身份 baseScope 注入（A6 行级）
     focusMetrics: ["capacity_util", "kit_readiness"],
-    agentId: "agt_seed_analyst", toolWhitelist: ["query_objects", ...solverMcpFullNames(SOLVER_KEYS_ANALYST), ...ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)), "evaluate_rules"],
+    agentId: "agt_seed_analyst", toolWhitelist: ["query_objects", ...solverMcpFullNames(SOLVER_KEYS_ANALYST), ...ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)), rulesMcpToolName("evaluate_rules")],
     objectTypes: ["Base", "Order", "Model", "Line", "Process"], systemKey: "base-planner",
   },
 ];
@@ -1916,6 +1923,19 @@ export function seedMcpConfigs(): McpServerConfig[] {
       // 真进程形态（node 绝对路径 / 服务树绝对路径 / per-run env 与目录）由 engine 运行期注入。
       id: WORKFLOW_MCP_CONFIG_ID, tenantId: SEED_TENANT, name: "工作流 MCP（平台内置）", serverName: "workflow",
       transport: { type: "stdio", command: "node", args: ["apps/agentcore/dist/dsh-runtime/workflow-mcp-server.js"] },
+      status: "ACTIVE", lifecycle: "PUBLISHED", version: 1,
+    },
+    {
+      // WO-AGENT-CONFIG-TO-DSH · 平台内置规则 MCP server（DSH 原生 MCP 模式的载荷，与上三行同型）。
+      // 工具面 = `mcp__rules__evaluate_rules`（平台固定一件：规则**库**随租户变，但工具恒为同一只，
+      // ruleIds 是入参不是工具名）⇒ 与本体那行一样走**静态投影**，不需要 per-run 工具目录 env。
+      // **执行**不落在本进程里：它把 tools/call 转回宿主反向通道 → 同一只 GuardedToolExecutor 的
+      // `case "evaluate_rules"`（dsh-runtime/rules-mcp-server.ts 头注有完整链路）。
+      // 故本行只是「DSH 可发现/可配/可命名空间隔离」的登记项，不是第二套执行体。
+      // transport 里的 command/args 同前：**cwd=仓根 时的可用回落**，真进程形态（node 绝对路径、
+      // 服务树绝对路径、per-run runToken）由 engine.ts DSH 分叉在 run 期注入。
+      id: RULES_MCP_CONFIG_ID, tenantId: SEED_TENANT, name: "规则评估 MCP（平台内置）", serverName: RULES_MCP_SERVER,
+      transport: { type: "stdio", command: "node", args: ["apps/agentcore/dist/dsh-runtime/rules-mcp-server.js"] },
       status: "ACTIVE", lifecycle: "PUBLISHED", version: 1,
     },
     {
