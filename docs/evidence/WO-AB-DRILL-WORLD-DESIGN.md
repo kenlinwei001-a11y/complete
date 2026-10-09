@@ -138,3 +138,48 @@ drillWorldId: string      // 这次演习实际推演的那个会话
 | ④ | ⛔ **新增未决** | 若③无原语，且 `fromState` 又被 :2499 挡住 ⇒ **第三条出路是给 `POST /sessions` 加"按 baseSnapshot 建"入口** —— 那是**契约变更**，走之前要定 |
 
 **⇒ ③④ 任何一条没定清 ⇒ 不要动手。**
+
+---
+
+## §7 前置全清（2026-10-09）—— 可动工
+
+### 最后一道未读
+
+```
+repo/repo.ts:580    createPerturbation(p: Perturbation): Promise<void>
+```
+
+**⇒ 服务端能直接建扰动**（不必绕路由）⇒ v2 每一环都有**现成 API**。
+
+### 落地步骤（全部既有 API，零新机制）
+
+```
+插入点：app.ts drill 路由，:4355 那条 simAdvanceTicks 之前
+
+① 取 s 的当前态           —— 路由里已有 baseState（对照计算用的那个）
+② 建演习会话 E             —— createSimSessionWorld(c, {
+                                baseSnapshot: <s 的当前态>,
+                                scope: { kind: "drill", ofSessionId: s.id, at: <时间戳> },
+                              })
+③ 冲击入库                 —— 对每条解释出的 eff：
+                                repos.sim.createPerturbation({ ...sessionId: E... })
+                              ⛔ 这是为了让 :2490 守卫放行（persist:true 不许带 ephemeral）
+④ 推演 E                   —— simAdvanceTicks(c, E, { n: ticks, persist: true })
+                              （不带 ephemeralPerturbations —— 守规矩）
+⑤ 对照世界                 ⚠ **需定**：今天的对照是「同会话再跑一次、扰动清空」(persist:false)。
+                              改为 E 之后，对照该是「E 的 t0 态」还是「另建 E2 不带扰动」？
+                              ⇒ **动手时先定这一条**（两案都不改 E 的终态，但语义不同：
+                                「E 的 t0」= 推演前后比；「E2 不带扰动」= 有扰动/无扰动比。
+                                今天用的是后者，**保持一致更安全**）
+⑥ 报告                     —— 新增 drillWorldId: E；worldId 保持 = s.id（兼容）
+```
+
+### 判据（§4 那五条原样适用）+ 一条新增
+
+6. **原会话的 `curTick` 与 `world` 逐字节不变**（drill 前后各读一次比对）
+
+### ⚠ 一处必须随改的注释
+
+`app.ts:4338` 那段「⛔ **不入库**：这批扰动只活在下面这一次 `persist:false` 的推进里。
+演习是只读的（R4-sim ①），落盘就是「跑一次演习把世界推歪了」」—— **改完必须改写**，
+否则新的读者会以为落盘仍是禁忌。（**落盘到 E 不是"把世界推歪"，E 就是演习自己的世界。**）
