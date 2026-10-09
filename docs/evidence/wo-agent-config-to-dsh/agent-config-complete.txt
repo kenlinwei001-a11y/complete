@@ -1,0 +1,16 @@
+
+⚠ agent-config-complete:check：**门自己没准备好，本次未度量任何代码，结论作废**（RC=2）。
+  原因：dist 未构建或落后于 src（**环境**状态，与被扫代码无关）。
+  - apps/datacore 的 dist 未构建（缺 /Users/apple/deploy/complete/.claude/worktrees/agent-a626159b5dc675e7d/apps/datacore/dist）
+
+  为什么直接退出而不是照跑：本门读的是 dist、下的却是**源码**结论。dist 落后于 src 时，
+  它会说出与源码恰好相反的话，而且是绿的（欠账 #161）。
+  「dist 在不在」度量的是构建过没有，不是构建得够不够新——没准备好时本门必须闭嘴。
+
+  请先构建再重跑：  pnpm --filter datacore build
+  （或直接 pnpm -r build）
+
+  这一条读作「**我没查**」，不读作「我查了，你有问题」——两者处置相反：
+  前者去把环境补齐再重跑，后者去改代码。把前者当后者，就会去修一个根本不存在的缺陷
+  （欠账 #155 即此：dist 过期被错报成源码缺陷）。
+
