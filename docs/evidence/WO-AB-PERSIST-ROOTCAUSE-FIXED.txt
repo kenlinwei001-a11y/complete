@@ -1,0 +1,27 @@
+=== 根因在源头修好：simAdvanceTicks 的 persist:true 现在同时推进会话行（2026-10-09）===
+
+### 病（实测）
+  裸 simAdvanceTicks + persist:true ⇒ 只写 sim_tick_state，session.curTick/status 原地不动。
+  而 GET …/world 按 s.curTick 取 tick 态 ⇒ curTick 停在 0 时【读到的永远是起点】
+  ⇒ 症状表现为「推演没发生」。实测账：tick state 里有 1..30 拍，而 GET /sessions/<id> 报 curTick=0 / status=READY。
+
+### 修法（源头，不是换调用点）
+  在 simAdvanceTicks 的【persist:true 分支】里补：
+    s.curTick = curTick; s.status = "RUNNING"; await repos.sim.putSession(s);
+  ⇒ putTickState 与「推进会话行」成为**一次原子动作**；绕过 tickSimSessionWorld 也不会掉坑。
+  ⇒ tickSimSessionWorld 里那两行随之冗余（幂等，无害）。
+  ⛔ 只改 persist:true 分支：persist:false 是只读推进（对照/基线），一个字节都不许写 session
+     —— 该约束由 test/edge-active-counterfactual.test.ts 逐字节咬死。
+
+### 改动面（查证）
+  simAdvanceTicks 全仓 4 个调用点：
+    :2797 persist:true（唯一一处，就在 tickSimSessionWorld 内）
+    :3004/:3005 persist:false（基线与对照）
+    :3061（另看）
+  ⇒ 这个坑【只有一个入口】，且现在源头也堵上。
+
+### 验证（PID 44535→46128 换代核实）
+  drill 路径：drillWorldId 独立 · 演习世界 priceShock = 4.4（2+2.4 精确）· 原会话逐字节不变 ✅
+  对照（不回归）：普通建会话 + tick 5 拍 ⇒ 200 · curTick=5 · status=RUNNING ✅
+                  带 baseSnapshot 建 + tick 5 拍 ⇒ 200 · curTick=5 ✅
+  build rc=0 ✅

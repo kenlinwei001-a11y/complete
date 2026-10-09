@@ -2751,6 +2751,24 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       if (persist) {
         const stopPersist = timer.start("persist");
         await repos.sim.putTickState({ sessionId: s.id, tenantId: c.tenantId, tick: curTick, state, pending, trace });
+        /**
+         * ★ WO-DRILL-WORLD · **`persist:true` 必须同时推进会话行**（本条是那个坑的根治）。
+         *
+         * 🔴 实测的病（2026-10-09）：裸调本函数 + `persist:true` ⇒ 只写 `sim_tick_state`，
+         *   **`session.curTick` / `status` 原地不动**。而 `GET …/world` 是按 `s.curTick` 取 tick 态的
+         *   ⇒ **curTick 停在 0 时读到的永远是起点** ⇒ 症状表现为「推演没发生」。
+         *   实测账：进 `sim_tick_state` 的确实有 1..30 拍，而 `GET /sessions/<id>` 报 `curTick=0` / `status=READY`。
+         *
+         * ⚠ 为什么补在**这里**而不是只在 `tickSimSessionWorld` 里：那是把一致性押在「调用方记得用对函数」
+         *   上 —— 而它今天**已经**被绕过一次（drill 路由）。补在这里 ⇒ **落盘与推进会话行是一次原子动作**，
+         *   绕过 `tickSimSessionWorld` 也不会掉坑。`tickSimSessionWorld` 里那两行随之冗余（幂等，无害）。
+         *
+         * ⛔ 只改 `persist:true` 分支：`persist:false` 是只读推进（对照/基线），**一个字节都不许写 session** ——
+         *   这条由 `test/edge-active-counterfactual.test.ts` 逐字节咬死。
+         */
+        s.curTick = curTick;
+        s.status = "RUNNING";
+        await repos.sim.putSession(s);
         stopPersist();
       }
     }
