@@ -801,9 +801,12 @@ async function main() {
   if (fail.length) {
     console.error(`\n✗ dsh-dormancy:check 未通过（${fail.length} 条）：`);
     for (const m of fail) console.error("  - " + m);
-    console.error("\n  裁决背景：审核方判定「**代码可以并，flag 不能翻**」。翻 flag 的三条前置条件");
-    console.error("  （真 provider 从没跑过 / STALL_LOOP 护栏净减少 / MCP serverName 是 root 级预约与");
-    console.error("  tenant_id everywhere 直接冲突）逐条写在 docs/DECISION-dsh-fusion.md §3，未销账不许翻。");
+    console.error("\n  口径背景（2026-10-09 · 仓主「都改掉，不考虑回退」）：DSH 是**唯一**的 agent");
+    console.error("  执行内核，旧内核的四个入口已整体关闭 —— 本门守的是**不许悄悄回落旧内核**：");
+    console.error("  部署面不许声明假值（D1′）· 静态 import 不许扩散（D2）· 动态入口不许被任何");
+    console.error("  部署面可翻的条件包住（D3′）；三条判据与金丝雀见本文件文首。");
+    console.error("  （已推翻的旧裁决「代码可以并，flag 不能翻」与其三条前置仅作历史，留档于");
+    console.error("   docs/DECISION-dsh-fusion.md §1/§3 —— 它不再是本门的判据来源。）");
     process.exit(1); // 1 = 真有违规（与所有 toolBroken 的 2 严格分开）
   }
   console.log("\n✓ dsh-dormancy:check 通过（部署面未声明旧内核 · 静态 import 未扩散 · 入口至多 1 处且无部署面条件）");
