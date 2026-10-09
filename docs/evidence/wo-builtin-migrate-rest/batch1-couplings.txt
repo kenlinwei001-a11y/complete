@@ -48,3 +48,45 @@ WO-BUILTIN-MIGRATE-REST · 批次 1 · 第 3 节四条结构性耦合逐条交�
      本单不碰它 = 行为逐字节不变，但它是「这一族仍未迁」的残余面之一（见 remaining.txt）。
    · seed 的 `ROLE_PROFILES` 里**其余四个角色**的展示字段 `toolWhitelist` 仍写着裸名 `query_objects`
      （上一单只改了 analyst 那两行）—— 展示面与真实约束记法漂移，纯展示、零行为影响。
+
+
+============================================================
+批次 2 追加（discover / retrieve_knowledge / query_ontology / query_system_ontology）
+------------------------------------------------------------
+② 探索配额（DISCOVER_TOOLS：discover / search_experience / query_system_ontology / retrieve_knowledge）
+   本批**一半在配额集里**。配额判据在 executor 里、位于归一**之后** ⇒ 天然按身份咬；本批补了一条
+   接缝断言（B5）：以**全名**连调两次 `discover`、配额上限 1 ⇒ 第二次必须 BUDGET_EXCEEDED，
+   且超额行的审计名仍是裸名。不归一的话这条配额会**静默失效**（名字对不上集合 ⇒ 不扣名额 ⇒ 白扫）。
+③ scope 门：全名照旧（C1/C2/D3 逐 agent 扫；E3 反向对照真跑）。
+新发现（本批）：
+   · `engine.ts` 的求解器广告面收窄判据 `hasBuiltinInvokeSolver` 只看 `binding.kind === "BUILTIN"`
+     —— 批次 3 迁 `invoke_solver` 时必须改成按身份（否则通用 agent 的广告面被不必要地收窄）。已在批次 3 处置。
+   · `navigation-slice.ts` 的 `canInvokeSolvers` 认裸名 `invoke_solver`（工单第 3 节明列的硬骨头）
+     —— 已在批次 3 处置。
+   · `agent/reflect.ts` 的 `calledSolverOk` 与 `agent/loop.ts` 的 plan 自检 filter **也**按裸名认
+     `invoke_solver`，而它们读的是 **iterations[].toolCalls[].toolName = 模型面调用名（载体）**
+     —— 工单只点名了导航段那一处，实测**同族共四处**（含 `ops/fallback.ts` 的 sketch 查表）。全部批次 3 处置。
+
+============================================================
+批次 3 追加（get_breakpoint / impact_of / read_skill_resource / create_action_draft / invoke_solver）
+------------------------------------------------------------
+① `invoke_solver` 的四处裸名判据 —— **本批真遇到了**，四处全改按身份（`resolveBuiltinToolIdentity`）：
+   a. `agent/navigation-slice.ts` `canInvokeSolvers`（工单点名的那处）：不改 ⇒ 通用 agent 的求解器
+      目录段不再取活目录（静默少一段，且调用方据此**跳过取目录**）。B7 咬：全名形态仍判真 ∧
+      本体/工作流面不许被算成「调得动求解器」（反向对照）∧ 未声明恒真（金丝雀）。
+   b. `agent/reflect.ts` `calledSolverOk`：读 iterations（记的是**载体名**）⇒ 不改会把「走了 solver」
+      恒判假、求解纪律误报。B8 咬：全名 ⇒ 不算违规 ∧ 换一件工具 ⇒ 必须报出来（有鉴别力）。
+   c. `agent/loop.ts` WO-QOS-2 plan 自检 filter：不改 ⇒ `planFellBackToReAct` 静默不再置位。
+   d. `engine.ts` `hasBuiltinInvokeSolver`：不改 ⇒ 通用 agent 的求解器广告面被不必要收窄。
+② 截断豁免集按身份判：本批的 `read_skill_resource` 在豁免集里 —— 判据已是身份归一（批次 0/1 定），
+   本批直接受益；接缝套件 B4 逐条咬（全名豁免 / 非豁免件不误豁免）。
+③ scope 门全名：analyst 的声明面里 `create_action_draft` 从裸名改记**全名**（它已属内置工具 MCP 面）；
+   没改会让「哪天真的授予它」时被 scope 门用全名拒。同批把 `lived-in.test.ts` 的同类断言同步。
+④ 失败点名披露块：B6 咬渲染（换载体仍点名）∧ E4 端到端（域外调用 ⇒ DENIED ∧ 答案尾部点名）。
+   同族第二处（本批处置）：`ops/fallback.ts` 的 `SKETCH_TO_STEP` / `hasActionDraft` / `hasSolver`
+   三处按**裸名**匹配 sketch —— 而 sketch 记的是**载体名**。它们对批次 0-2 的件**已经**失效
+   （promote 时静默丢步），本批迁 `create_action_draft`/`invoke_solver` 会让它再多两处。
+   已按身份归一；接缝套件 B9 用全名 sketch 走一遍 promote，断言三步查表全中 + riskLevel=ACTION_DRAFT。
+另记一处**观测到但不动**（不在本单半径）：DSH 臂的 reassemble 路径**不调** `enrichProvenance`
+（原生臂在 loop.ts 收尾时调）⇒ 求解器的 formula/valueLabel 透传只在原生臂有。这是本单之前就有的
+两臂差异，与载体迁移无关，留给对应单。

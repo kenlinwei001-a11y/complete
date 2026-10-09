@@ -8,13 +8,13 @@ WO-BUILTIN-MIGRATE-REST · 交付边界（每个批次末回写这一份）
 --------
 批次 0（前两单）：query_objects（试点件）· evaluate_rules（规则面）· plan_slice / resolve_slice（本体面）
 批次 1：get_object · aggregate_objects · search_knowledge · query_timeseries_agg · search_experience
-批次 2（本批）：discover · retrieve_knowledge · query_ontology · query_system_ontology
+批次 2：discover · retrieve_knowledge · query_ontology · query_system_ontology
+批次 3（本批）：get_breakpoint · impact_of · read_skill_resource · create_action_draft · invoke_solver
 
-仍未迁（批次 2 结束时，按工单的 24 件清单）
+仍未迁（批次 3 结束时，按工单的 24 件清单）
 ------------------------------------------
-get_breakpoint · impact_of · invoke_solver · read_skill_resource · fill_data · run_synthetic ·
-build_domain · sim_init · sim_tick · sim_world · sim_certify · create_action_draft ·
-discover_growth_tickets · claim_growth_ticket · submit_growth_ticket   （15 件，留给本单后续批次）
+fill_data · run_synthetic · build_domain · sim_init · sim_tick · sim_world · sim_certify ·
+discover_growth_tickets · claim_growth_ticket · submit_growth_ticket   （10 件，留给本单后续批次）
 另：`agt_risk_advisor` 还留着一条**裸 BUILTIN** 的 `evaluate_rules` 授予（上一单只改了 analyst 那三面）
 —— 同一能力两条授予路并存，属本单该收的口，排在最后一批。
 
