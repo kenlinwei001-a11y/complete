@@ -3557,12 +3557,13 @@ A→B 走**既有服务间通路**（`AGENTCORE_BASE_URL` + `SERVICE_TOKEN`，�
 新鲜度判据落在**指纹**不是「最新一版」——拿最新版套一个已经变了的世界，
 就是「针对上一个事件的对策」，而它在屏上看起来完全正常。
 
-**⚠ 与 dsh（外部 agent 运行时）的关系**：走 dsh 的**唯一合法途径**是那个 agent 记录自己声明
-`kernel:"EXTERNAL"`（`WO-AGENT-KERNEL-SELECT`，engine 显式值优先于 env）。
-本链路**不翻 `DSH_HARNESS`**、不写任何部署面、**不 import `dsh-runtime`** ——
-对 dsh 的全部关系就是**回读**它跑完之后标在 `run.kernel` 上的值。
-翻 flag 的三条前置见 `docs/DECISION-dsh-fusion.md` §3（销账另有其单）。
-实测 `dsh-dormancy:check` 改后仍 **RC=0**（金丝雀 28/28）。
+**⚠ 与 dsh（外部 agent 运行时）的关系**：DSH 自从 2026-10-09 旧内核退役起是**唯一**的 agent
+执行内核（`agent.kernel` 不再是内核选择器——执行层不读它、写侧拒 `"NATIVE"`，部署面只剩
+「声明旧内核还在」这一个回退口，由 `dsh-dormancy:check` 守着）。
+本链路**不选内核**、不翻 `DSH_HARNESS`（引擎侧已零消费方）、不写任何部署面、**不 import
+`dsh-runtime`** —— 对 dsh 的全部关系就是**回读**引擎跑完之后标在 `run.kernel` 上的值
+（该标签与引擎的分叉判据同源，见 `ExecutionEngine.kernelLabelThisRun`）。
+实测 `dsh-dormancy:check` 改后仍 **RC=0**（金丝雀 32/32 全中 · 2026-10-09 复测）。
 
 **诚实位**：`provenance.agentInvolved` / `route`（`NONE`/`NATIVE`/`EXTERNAL`）/ `provider` / `model` /
 `elapsedMs` / `fallbackReason` 随回包下发。**未调用 agent 必须明写，不许留白**（铁律 1.5 判据二）；
