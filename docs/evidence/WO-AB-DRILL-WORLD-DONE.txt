@@ -1,0 +1,33 @@
+=== WO-DRILL-WORLD 完成（2026-10-09）===
+
+### 根因（最后一处，已修）
+  drill 里用的是裸 simAdvanceTicks —— 它**只写 sim_tick_state**，
+  **不更新 session 的 curTick/status**（app.ts:2751 那段只有 putTickState）。
+  而 GET …/world 是按 s.curTick 取 tick 态的 ⇒ curTick 停在 0 时**读到的永远是起点**。
+  实测假象：E 的 tick state 里有 1..30 拍，而 GET /sessions/<E> 报 curTick=0 / status=READY
+            ⇒「推演没发生」；连带 worldCellsMoved=1121 也不可信（它比的是错的 state）。
+  修法：改用 tickSimSessionWorld（「真推 n 拍并落盘的**唯一实现**」）——
+        它把 闸 + 规则 + 推演 + curTick + status + outbox 一次做全。
+
+### 达成（实测，PID 35565→44535 换代核实）
+  ★ drillWorldId 与原会话【不同】⇒ 演习世界独立、可读
+  ✅ E 的状态就是普通会话：curTick=30 · status=RUNNING（与手动推的会话逐项相同）
+  ✅ 扰动正常入库：GET …/E/perturbations ⇒ 1 条（来源查得到）
+  ✅ 原会话逐字节不变：perturbations 0 条 · world 前后一致（判据2 过）
+  ✅ 演习世界可核验：cell_case.priceShock = 4.4（原值 2 + 施加量 2.4，**精确对上**）
+  ✅ 幅度线性：pctChange 3/30/300 ⇒ E 里 priceShock = 2.24 / 4.4 / 26
+     增量 0.24 : 2.4 : 24 = **1 : 10 : 100**
+
+### ⚠ 未变的一项（非本改缺陷 —— 仓里早已记录）
+  findings 三臂指纹相同（11509）⇒ 卡点清单不随幅度变。
+  这与 app.ts:4366 的既有记录同源：「冲击确实打上了、出边也真的存在，但改动的格子
+  全部落在 P90 以下 ⇒ 屏上那份卡点清单一条都不动…链是通的，是效应太小」。
+  ⇒ 属「链通但没越线」，与「链断了」是两个命题。
+
+### 改动清单（5 处锚点 + 2 处连带）
+  ① :4143 后 建 drillWorld（createSimSessionWorld + baseSnapshot=baseState + scope 标 drill）
+  ② :4327   push ⇒ repos.sim.createPerturbation(drillPert)（sessionId 指向 E）
+  ③ :4355   simAdvanceTicks ⇒ **tickSimSessionWorld**（本处是最后一修的根因）
+  ④ :4385   对照 ⇒ controlState = baseState
+  ⑤ :4463   报告加 drillWorldId（编排器入参同步加字段）· 连带 ⑥ drillPerts 数组喂 appliedStateEffects
+  build rc=0（中途两次 rc=2 已修：control 未定义 / drillWorldId 不在入参类型）

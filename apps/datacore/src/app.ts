@@ -4366,7 +4366,12 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
 
     // ── ② 传导引擎：推 ceil(horizonDays / tickDays) 拍（**不落盘**）──────────
     const activeRules = (await sessionPropRules(c, s)).active;
-    const advanced = await simAdvanceTicks(c, drillWorld, { rules: activeRules, n: ticks, persist: true });
+    /* ★ 用 `tickSimSessionWorld`（「真推 n 拍并落盘的**唯一实现**」）而不是裸 `simAdvanceTicks`：
+         后者只写 `sim_tick_state`，**不更新 session 的 `curTick`/`status`** ——
+         而 `GET …/world` 是按 `s.curTick` 取 tick 态的 ⇒ curTick 停在 0 时**读到的永远是起点**。
+         实测症状：E 的 tick state 里有 1..30 拍，而 `GET /sessions/<E>` 报 curTick=0（status 也停 READY），
+         于是「推演没发生」的假象。本函数把 闸 + 规则 + 推演 + curTick + status + outbox 一次做全。 */
+      const advanced = await tickSimSessionWorld(c, drillWorld, ticks);
 
     /**
      * **「你加的这几件事，到底改动了世界上多少格」—— 实测，不是声明**（WO-EVENTS-WRITE-STATE）。
