@@ -386,6 +386,15 @@ export interface RunRegisteredAgentOpts {
    * 缺省（不传）= 退回拼接材料 = 修复前行为（字节兼容）。
    */
   reflectUserContent?: string;
+  /**
+   * WO-CLOSE-NATIVE-GAPS · **整段 system 覆盖**（仅探索路用；CEO/块级深问走这条）。
+   *
+   * 口径与 orchestrator 旧探索路 `baseSystem = opts.systemOverride ?? AGENT_SYSTEM_CORE` **同源**：
+   * 覆盖值是**完整 system**（`CEO_DEEP_QUESTION_SYSTEM` 本身就含 `AGENT_SYSTEM_CORE`），
+   * 故它**整体替换**「人设段 + AGENT_SYSTEM_CORE」，技能段仍照常 append。
+   * ⛔ 不传 = 既有装配（`agent.systemPrompt + CORE + 技能段`），其它调用方逐字节不变。
+   */
+  systemOverride?: string;
 }
 
 /**
@@ -466,6 +475,15 @@ export class ExecutionEngine {
    */
   private dshIsTheKernelThisRun(): boolean {
     return this.deps.agentKernelRuntime !== "inprocess";
+  }
+
+  /**
+   * 同上判据的**公开只读面** —— 供 orchestrator 的探索路落点分叉用（那条路的执行体选择必须与
+   * 引擎同一判据，不许各写一份：两处判据漂移 = 「记录说 DSH、实际跑进程内循环」这类假绿）。
+   * 产品恒 `"dsh"`；`"inprocess"` 只可能来自测试装配（见 `EngineDeps.agentKernelRuntime` 三条判据）。
+   */
+  agentKernelRuntimeMode(): "dsh" | "inprocess" {
+    return this.deps.agentKernelRuntime ?? "dsh";
   }
 
   /** 与 `dshIsTheKernelThisRun()` **同一个判据**的 run 记录标签（`AgentRunKernel` 词表见 contracts）。 */
@@ -954,7 +972,11 @@ export class ExecutionEngine {
     // 否则合成路的 system 会以 `"\n\n"` 开头，与它逐字节对齐的旧探索路产生无意义漂移
     //（`system = AGENT_SYSTEM_CORE + skillSection`，见 orchestrator 旧路）。
     const persona = agent.systemPrompt ? `${agent.systemPrompt}\n\n` : "";
-    const system = `${persona}${AGENT_SYSTEM_CORE}${buildSkillSection(skills, { query: opts.prompt, embedder })}`;
+    const skillSection = buildSkillSection(skills, { query: opts.prompt, embedder });
+    const system =
+      opts.systemOverride !== undefined
+        ? `${opts.systemOverride}${skillSection}` // 整段覆盖（探索路 CEO/块级深问·口径同旧探索路 baseSystem）
+        : `${persona}${AGENT_SYSTEM_CORE}${skillSection}`;
 
     // WO-QOS-2 · 导航切片注入（闭 G-AGENT-BLIND-REACT agent 侧半）：据本 agent 的 scopeDeclaration（objectTypes/toolNames）
     // 确定性投影本题导航图（对口 solver + 输出形状 + 相关对象/规则）注入首轮 user——agent 有对口 solver 就一步到位。

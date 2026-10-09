@@ -492,6 +492,77 @@ export function buildExploratoryTools(
   return [...builtinTools, ...ontologyTools];
 }
 
+/**
+ * WO-CLOSE-NATIVE-GAPS · **运行期合成的探索 agent**（不落库、无版本、无归属）——
+ * 「通用 agent 不在场」时自由问答探索路的落点，使它**结构上拿到一个 AgentDefinition**
+ * 从而吃到与出厂 agent 同一条执行链（scope 门 / 技能面 / 对象域门 / 规则后验 / **DSH 内核**）。
+ *
+ * 今天的行为是 X：`generalAgent === undefined`（未播种 / 被删 / 租户自建）时，`runPathB` 直调
+ * `runAgentLoop` —— 那条路结构上没有 AgentDefinition，于是**永远落旧内核**（`agent.kernel` 与
+ * `DSH_HARNESS` 都决定不了它，因为它根本不经过引擎的分叉）。
+ * 应该是 Y（仓主 2026-10-09「都改掉，不考虑回退」）：它落到 **DSH**。
+ *
+ * 形态：把本函数上方 `buildExploratoryTools` 已产出的**同一份工具面**翻译成契约定义的
+ * `AgentDefinition`（BUILTIN ref + 本体切片 MCP ref），人设/技能/预算/模型全部沿用本 run 的取值。
+ * ⛔ 三条纪律：
+ *   ① `id`/`key` 用**合成标记值**且 `attributionOverride` 传 `{ tenantId }`（无 agentId）——
+ *      绝不冒充一个真 agent（否则「这个 agent 跑过几次」会凭空多出一个从不存在的 agent，
+ *      而 `attribution:"EXPLORATORY"` 这个正面的三态判据会被抹平成"编的"）；
+ *   ② **不写 `kernel` 字段** —— 内核自本单起不由 agent 数据决定（写上去是给后来人一个假接口）；
+ *   ③ `systemPrompt` 留空（人设由 `systemOverride` 或 `AGENT_SYSTEM_CORE` 供），技能来自本 run 的
+ *      租户已发布集（`freeQaSkills`，与旧路同一来源同一函数）。
+ */
+export function buildExploratoryAgent(opts: {
+  tenantId: string;
+  tools: AgentToolSpec[];
+  skills: { skillId: string; version: number | "latest" }[];
+  model: string;
+  /** 人设段（探索路留空 = 由 systemOverride / AGENT_SYSTEM_CORE 供）。 */
+  systemPrompt?: string;
+}): AgentDefinition {
+  // 工具面翻译：BUILTIN 逐条同名 ref；MCP 按 configId 归组 → 一条 ref + toolFilter（组成与
+  // `buildExploratoryTools` 产出**逐条同源**，不新增第二份名单）。
+  const builtinNames: string[] = [];
+  const mcpFilterByConfig = new Map<string, string[]>();
+  for (const t of opts.tools) {
+    if (t.binding.kind === "BUILTIN") builtinNames.push(t.name);
+    else if (t.binding.kind === "MCP") {
+      const list = mcpFilterByConfig.get(t.binding.mcpConfigId) ?? [];
+      list.push(t.name);
+      mcpFilterByConfig.set(t.binding.mcpConfigId, list);
+    }
+  }
+  const toolRefs: AgentDefinition["tools"] = [
+    ...builtinNames.map((name): AgentDefinition["tools"][number] => ({ kind: "BUILTIN", name })),
+    ...[...mcpFilterByConfig.entries()].map(
+      ([mcpConfigId, toolFilter]): AgentDefinition["tools"][number] => ({ kind: "MCP", mcpConfigId, toolFilter }),
+    ),
+  ];
+  return {
+    id: "agt_exploratory_ephemeral",
+    tenantId: opts.tenantId,
+    key: "exploratory_ephemeral",
+    version: 1,
+    name: "探索模式 agent（运行期合成·不落库）",
+    description: "通用 agent 不在场时的自由问答落点：工具面/技能面与本 run 的探索路同源，执行走引擎既有链",
+    model: opts.model,
+    systemPrompt: opts.systemPrompt ?? "",
+    tools: toolRefs,
+    ruleBindings: { ruleKeys: [], mode: "POST_CHECK" },
+    skills: opts.skills,
+    // 本体切片 MCP 挂载面：与工具面同源（只有 ref 没有挂载 = 模型面拿不到 MCP 工具）。
+    mcpServers: [...mcpFilterByConfig.keys()].map((mcpConfigId) => ({ mcpConfigId })),
+    scopeDeclaration: {
+      objectTypes: [],
+      // 声明面 = 本 run 授予面（scope 门并集只加不减；求解器广告面的 `scopeCanInvokeSolvers`
+      // 也读它 —— 与旧探索路 `toolNamesThisTurn` 同口径）。
+      toolNames: [...builtinNames, ...[...mcpFilterByConfig.values()].flat()],
+    },
+    budget: { maxIterations: 8 },
+    status: "PUBLISHED",
+  } as AgentDefinition;
+}
+
 export class Orchestrator {
   private readonly pending = new Map<string, PendingClarificationState>();
   private readonly cancelled = new Set<string>();
@@ -2160,7 +2231,11 @@ export class Orchestrator {
     //     `attributionFields` 三态：不传 = 未知、无 agentId = EXPLORATORY、有 agentId = REGISTERED）。
     //     prompt 只喂**用户问句 + 前情摘要**：导航切片/口径语义/技能段由 engine 侧装配（同源同函数），
     //     在这里再拼一遍就是同一信息注入两遍。
-    //   · 不在场 ⇒ 逐字节落回既有 `runAgentLoop`（下方原样）。
+    //   · 不在场 ⇒ **WO-CLOSE-NATIVE-GAPS**：落点在 `this.runFreeQaEphemeral`（见其头注）——
+    //     产品路径（DSH）用运行期合成的探索 agent 走引擎既有链；测试装配（进程内循环）逐字节沿用
+    //     下方原 `runAgentLoop` 调用（本仓测试的剧本 LLM 只在进程内，见 `createTestApp` 的
+    //     `resolveTestKernelRuntime`）。两条路**同一判据源**（`engine.agentKernelRuntimeMode()`），
+    //     禁在本地再写一份表达式。
     const result = generalAgent
       ? await this.deps.engine.runRegisteredAgent({
           taskId,
@@ -2178,7 +2253,33 @@ export class Orchestrator {
           placement: { origin: "ROOT" },
           ...(reasoningTraceEnabled(enabledFeatures) ? { emitNarration: true } : {}),
         })
-      : await runAgentLoop({
+      : this.deps.engine.agentKernelRuntimeMode() === "dsh"
+        ? await this.deps.engine.runRegisteredAgent({
+            taskId,
+            // ★ WO-CLOSE-NATIVE-GAPS · 通用 agent 不在场 ⇒ **运行期合成**一个探索 agent（不落库）。
+            ephemeralAgent: buildExploratoryAgent({
+              tenantId: task.tenantId,
+              tools,
+              skills: freeQaSkills.map((s) => ({ skillId: s.id, version: "latest" as const })),
+              model: pkg.agentModel ?? "",
+            }),
+            // 归属：合成体不是任何一版持久化定义 ⇒ 正面记 EXPLORATORY（无 agentId·三态判据不抹平）。
+            attributionOverride: { tenantId: task.tenantId },
+            prompt: baseUser,
+            ctx: auth,
+            nesting: { callChain: [], budget },
+            emit: (e, p) => this.deps.events.emit(taskId, e, p).then(() => undefined),
+            isCancelled: () => this.cancelled.has(taskId),
+            onResolvedRef: (r) => resolvedRefsThisRun.push(r),
+            // 对象域门与旧探索路同口径：不收窄（行级过滤在 A6）——合成 agent 的 objectTypes 为空数组。
+            enforceObjectScope: false,
+            // 位置（与归属正交）：本路径是**这个任务本身**那次循环 ⇒ ROOT。
+            placement: { origin: "ROOT" },
+            ...(reasoningTraceEnabled(enabledFeatures) ? { emitNarration: true } : {}),
+            // 人设口径与旧路同源：override 在时整段替换（CEO/块级深问），否则 engine 侧用 AGENT_SYSTEM_CORE。
+            ...(opts?.systemOverride !== undefined ? { systemOverride: opts.systemOverride } : {}),
+          })
+        : await runAgentLoop({
       taskId,
       model,
       tenantId: task.tenantId,

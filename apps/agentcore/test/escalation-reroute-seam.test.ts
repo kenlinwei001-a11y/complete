@@ -71,7 +71,7 @@ function spyInvokedAgents(t: TestApp): { ids: string[] } {
   const rec = { ids: [] as string[] };
   const orig = t.deps.engine.runRegisteredAgent.bind(t.deps.engine);
   t.deps.engine.runRegisteredAgent = async (opts) => {
-    rec.ids.push(opts.agentId);
+    rec.ids.push(opts.agentId ?? "(ephemeral)"); // WO-CLOSE-NATIVE-GAPS：agentId 现为可选（合成探索 agent 无 id）
     return orig(opts);
   };
   return rec;
