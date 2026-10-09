@@ -1,0 +1,10 @@
+
+ RUN  v3.2.6 /private/tmp/wt-ab/apps/frontend-shell
+
+ ✓ test/exposure-responds-to-perturbation.seam.test.ts (9 tests) 150ms
+
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+   Start at  16:47:05
+   Duration  17.94s (transform 6.25s, setup 12.47s, collect 261ms, tests 150ms, environment 3.35s, prepare 638ms)
+
