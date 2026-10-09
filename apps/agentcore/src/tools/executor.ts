@@ -1,6 +1,8 @@
 import { AggregateRequestSchema, ErrorCodes, parseMcpToolFullName, parseSolverMcpToolName, QueryTimeseriesAggInputSchema, type SkillDefinition } from "@platform/contracts";
 import { parseOntologyMcpToolName } from "./ontology-mcp.js";
 import { parseRulesMcpToolName } from "../mcp/rules-mcp.js";
+// WO-BUILTIN-TO-DSH · 内置工具（BUILTIN）MCP 面：全名 → 裸名的**身份归一**（不搬执行体）。
+import { parseBuiltinMcpToolName } from "../mcp/builtin-mcp.js";
 import { newId } from "../ids.js";
 import { SKILL_RESOURCE_TEXT_LIMIT } from "../agent/context.js";
 import type { Metrics } from "../metrics.js";
@@ -139,6 +141,24 @@ export class GuardedToolExecutor {
     if (this.opts.scopeToolNames && !this.opts.scopeToolNames.includes(toolName)) {
       return this.finish(toolName, input, { error: ErrorCodes.AGENT_SCOPE_VIOLATION }, "DENIED", started, false);
     }
+    // 0.05) WO-BUILTIN-TO-DSH · 内置工具（BUILTIN）MCP 全名 → **裸名归一**（`mcp__builtin__X` → `X`）。
+    //
+    // 位置是**刻意的**：紧跟在工具 scope 门（第 0 步）之后、对象域门（第 0.1 步）之前。
+    //  · 在 scope 门之后 —— 那道门按增量 §4.2 用**调用原名**（MCP 面 = 全名）校验，
+    //    `scopeDeclaration.toolNames` 记的也是全名；在这里换名不会削弱它（越界工具照样在
+    //    上面被拒，且拒的时候审计名仍是它自己那个全名）。
+    //  · 在对象域门之前 —— 那道门判的是「这是不是读对象的那族工具」（`OBJECT_SCOPED_TOOLS`
+    //    按**工具身份**匹配）。迁移换的是**载体**（hostTools 反向工具 → MCP wire），不是身份；
+    //    若在它之后再归一，`mcp__builtin__query_objects` 不匹配集合 ⇒ 域外对象**从这道门
+    //    底下溜过去**（原生臂、DSH 臂双双失守，因为两臂都落到本方法）。
+    //  · 在这之后的整条链（IAM 裁决名、预算成本档、探索配额、READ 记忆化、dispatch 分发、
+    //    审计行名）读到的都是**裸名** —— 与迁移前逐键相同（「换载体不改行为」的单变量判据）。
+    // binding 必须跟着归一：不归 ⇒ 被派进 McpRuntime（平台内置 stdio server 默认禁用）⇒ 一次都执行不到。
+    const builtinRaw = parseBuiltinMcpToolName(toolName);
+    if (builtinRaw) {
+      toolName = builtinRaw;
+      binding = { kind: "BUILTIN" as const };
+    }
     // 0.1) WO-FIVE-ROLE P1 · 对象类型 scope 门（opt-in·仅 Coordinator 角色扇出）：读对象工具的 objectType 越界即 DENIED。
     if (this.opts.scopeObjectTypes && OBJECT_SCOPED_TOOLS.has(toolName)) {
       const inObj = (input ?? {}) as Record<string, unknown>;
@@ -163,7 +183,7 @@ export class GuardedToolExecutor {
     }
 
     // A1 求解器 MCP 工具：mcp__solvers__{key} → 复用既有 invoke_solver 执行路径（OBO 到 DataCore，零重写）。
-    // scope 门已用原名校验（line 110），此处归一到 invoke_solver 供下游分发；审计名亦记为 invoke_solver。
+    // scope 门已用原名校验，此处归一到 invoke_solver 供下游分发；审计名亦记为 invoke_solver。
     const solverKeyFromMcp = parseSolverMcpToolName(toolName);
     if (solverKeyFromMcp) {
       const inp = (input ?? {}) as Record<string, unknown>;
