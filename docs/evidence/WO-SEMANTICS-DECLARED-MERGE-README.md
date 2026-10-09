@@ -32,3 +32,29 @@
   3. **drill 路由：演习 = 普通会话**：用 tickSimSessionWorld（不是裸 simAdvanceTicks）
      且 simAdvanceTicks 的 persist:true 分支现在自身保证推进会话行（源头修）
   4. **未决**：WO-1（传导系数的业务增益独立出处）仍缺外部依据——本支只做到「实现符合描述」
+
+---
+
+## 追加（2026-10-09 第二轮）：WO-DRILL-FINANCE 落地后重跑
+
+### 新增的三处改动（本分支含）
+```
+① packages/contracts/src/sim-drill.ts   DrillReportSchema 加 finance 字段 + 各事件 routes 加 finance_world_projection
+② apps/datacore/src/sim/drill-orchestrator.ts  入参声明 + 原样透传（编排器不自己算）
+③ apps/datacore/src/app.ts   drill 路由在【演习世界】上调一次求解器并填进报告
+```
+
+### 重跑结果（全部 rc 落盘）
+```
+✅ diff 半径 8 文件全绿：
+   datacore 6 文件 55 测试  RADIUS2_RC=0
+   contracts 1 文件  4 测试  R2_CONTRACTS_RC=0
+   frontend-shell 1 文件 9 测试  R2_FE_RC=0
+✅ 五包 build rc=0（llm-adapters/contracts/agentcore/datacore/frontend-shell）
+⛔ 全量门仍 NOT-MEASURED（本机跑不动，896 文件/负载 442 ≈75h）
+```
+
+### 收编方需额外注意这一处
+`finance` 是**新增报告字段** ⇒ 读它的屏/前端若按老 schema 解析不会报错（`.optional()`），
+但要**显示**它得同步加渲染。而**时序是语义**：`finance` 必须在 `tickSimSessionWorld` **之后**取，
+`worldId` 必须用 **`drillWorldId`**（用 `s.id` 会拿到没推演过的世界 —— 那正是 WO-DRILL-WORLD 修过的坑）。
