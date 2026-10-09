@@ -81,11 +81,18 @@ export const AgentDefinitionSchema = z.object({
    */
   role: z.string().optional(),
   /**
-   * WO-AGENT-KERNEL-SELECT（additive·可选·向后兼容）：per-agent 运行内核选择。
+   * WO-AGENT-KERNEL-SELECT（additive·可选·向后兼容）：per-agent 内核**声明**字段。
    * 词表复用 AgentRunKernelSchema——与 run 归因 `run.kernel` 同词，不造第三套词表
    *（"EXTERNAL" = dsh harness 外部运行时；"DSH" 是实现名不是契约词，UI 标签层负责翻译）。
-   * 缺省/缺失 ≡ 未配置：运行时回落进程 env 分叉（DSH_HARNESS=1 ⇒ EXTERNAL），与现行行为逐字节一致；
-   * 显式值优先于 env（运维钉「原生」的 agent 不被进程级 POC 开关翻走）。
+   *
+   * ⚑ 2026-10-09 旧内核退役（仓主「都改掉，不考虑回退」）之后，本字段**不再是内核选择器**：
+   *   · **执行层不读它**：注册 agent 的执行恒走 DSH（外部运行时）。引擎的内核判据只看装配位
+   *     `EngineDeps.agentKernelRuntime`——产品面恒 `"dsh"`，`"inprocess"` 只有测试 composition root
+   *     能设；本字段与进程 env（`DSH_HARNESS`）在引擎侧都**零消费方**。
+   *   · **写侧只收 `"EXTERNAL"` 或留空**：`POST/PUT /b/v1/agents` 对显式 `"NATIVE"` 一律 400
+   *     （回退方式已不提供）；留空由服务端按出厂缺省（`SEED_DEFAULT_AGENT_KERNEL = "EXTERNAL"`）收口。
+   *   · **缺省/缺失 = 未设置**（不是「隐含某个内核取值」，屏上如实显示「未设置」）；存量记录里的
+   *     `"NATIVE"` 不改不删（历史数据），但它只是**只读回显值**，不产生任何行为、也回不去。
    */
   kernel: AgentRunKernelSchema.optional(),
 });
