@@ -6,6 +6,9 @@ import { AnthropicLlmClient } from "../src/llm/anthropic.js";
 import { OpenAiLlmClient, type OpenAiChatCompletion, type OpenAiChatPort } from "../src/llm/openai.js";
 import { GENERAL_AGENT_ID, GENERAL_AGENT_KEY, seedRegistry } from "../src/mocks/seed.js";
 import { defaultOnKeys } from "../src/features/registry.js";
+// WO-BUILTIN-TO-DSH · 出厂 agent 的内置工具已改挂 DSH 原生 MCP 面 ⇒ 剧本用**模型面真名**（全名）；
+// 审计行名仍是裸名（executor 门后归一），故下面按 "query_objects" 取审计行的读法原样成立。
+import { builtinMcpToolName } from "../src/mcp/builtin-mcp.js";
 import { BudgetTracker } from "../src/tools/budget.js";
 import { detectSingleRole, domainDescriptionLine, planCoordination } from "../src/router/coordinator.js";
 
@@ -321,7 +324,7 @@ describe("WO-DOMAIN-BY-INTENT ④ 落点变了，围栏没变（角色 agent 读
     const declared = [...quality.scopeDeclaration.objectTypes];
     expect(declared).not.toContain(probeType); // 金丝雀：探针类型真在声明面之外
 
-    t.llm.queueAgentTurn({ content: [toolUse("query_objects", { objectType: probeType, filter: {} })] });
+    t.llm.queueAgentTurn({ content: [toolUse(builtinMcpToolName("query_objects"), { objectType: probeType, filter: {} })] });
     t.llm.queueAgentTurn(FINAL);
     await t.deps.engine.runRegisteredAgent({
       taskId: "task_scope_quality",
@@ -359,7 +362,7 @@ describe("WO-DOMAIN-BY-INTENT ④ 落点变了，围栏没变（角色 agent 读
     const declared = [...quality.scopeDeclaration.objectTypes];
 
     t.llm.queueClassification(classified("quality"));
-    t.llm.queueAgentTurn({ content: [toolUse("query_objects", { objectType: probeType, filter: {} })] });
+    t.llm.queueAgentTurn({ content: [toolUse(builtinMcpToolName("query_objects"), { objectType: probeType, filter: {} })] });
     t.llm.queueAgentTurn(FINAL);
     const { agentKey, taskId } = await ask(t, Q_NO_KEYWORD_QUALITY);
 

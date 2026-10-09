@@ -34,6 +34,9 @@ import { describe, expect, it } from "vitest";
 import type { SceneEntryConfig } from "@platform/contracts";
 import { ADMIN, createTestApp, lastToolCallId, submitQuery, TENANT, waitForTask, type TestApp } from "./helpers.js";
 import { text, toolUse } from "../src/llm/mock.js";
+// WO-BUILTIN-TO-DSH · 出厂 agent 的内置工具已改挂 DSH 原生 MCP 面 ⇒ 剧本必须用**模型面真名**
+// （全名；审计行仍是裸名 —— 用例里那些 `toolName === "query_objects"` 的取法不用改）。
+import { builtinMcpToolName } from "../src/mcp/builtin-mcp.js";
 import { defaultOnKeys } from "../src/features/registry.js";
 import { GENERAL_AGENT_KEY, seedRegistry } from "../src/mocks/seed.js";
 import type { LlmBudgetPort } from "../src/ops/llm-budget.js";
@@ -79,7 +82,7 @@ function cleanFinalTurn(req: { messages: { content: unknown }[] }) {
 function scriptOnce(t: TestApp): void {
   t.llm.queueClassification({ candidates: [], outOfCatalog: true, extractedSlots: {} });
   t.llm.queueAgentTurn(
-    () => ({ content: [text("先查库存。"), toolUse("query_objects", { objectType: "Material", filter: {} })] }),
+    () => ({ content: [text("先查库存。"), toolUse(builtinMcpToolName("query_objects"), { objectType: "Material", filter: {} })] }),
     cleanFinalTurn,
   );
 }
