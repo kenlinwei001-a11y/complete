@@ -57,6 +57,13 @@ export function wireDeps(base: {
   reportRefs?: RefReporter;
   /** #92：注入自定义配额端口（测试用；缺省按 config 派生 Http/Noop）。 */
   llmBudget?: LlmBudgetPort;
+  /**
+   * WO-CLOSE-NATIVE-GAPS · **测试专用装配位**（⛔ 生产 composition root `main.ts` 永不传）：
+   * 内核运行时。缺省 `"dsh"` = 产品唯一内核（仓主 2026-10-09「都改掉，不考虑回退」）；
+   * `"inprocess"` = 测试环境没有 dsh harness / 真 provider 时改用进程内循环（= 测试替身，
+   * 与 `createTestApp` 注入 ScriptedLlmClient 同一性质）。判据三条见 `EngineDeps.agentKernelRuntime`。
+   */
+  agentKernelRuntime?: "dsh" | "inprocess";
 }): AppDeps {
   const metrics = base.metrics ?? new Metrics();
   const events = new TaskEvents(base.repos);
@@ -85,6 +92,8 @@ export function wireDeps(base: {
     llmSettings,
     skillResources: base.skillResources,
     features,
+    // 缺省不设 = DSH（产品唯一内核）。只有测试夹具会显式传 "inprocess"。
+    ...(base.agentKernelRuntime ? { agentKernelRuntime: base.agentKernelRuntime } : {}),
   });
   const orchestrator = new Orchestrator({
     repos: base.repos,
