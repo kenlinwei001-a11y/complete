@@ -22,7 +22,17 @@ export async function streamTaskEvents(
   const afterSeq = Number.isFinite(lastSeq) ? lastSeq : 0;
 
   reply.hijack();
+  // `hijack()` 之后 Fastify 不再替本回复发响应，凡经 `reply.header()` 排入的响应头
+  // （CORS 头就是这一类）都不会自己落到线路上 —— 必须显式带进 writeHead，否则
+  // 跨源 EventSource 因缺 Access-Control-Allow-Origin 被浏览器拦成 readyState=2/0 消息，
+  // 而同主机的普通 fetch 走正常回复生命周期、头照常下发 —— 同一策略两套结果。
+  // 故此处**不自建**任何 CORS 判据，只把 Fastify 已累积的头原样转运，策略仍单源在 cors 注册处。
+  const carried: Record<string, string | number | string[]> = {};
+  for (const [k, v] of Object.entries(reply.getHeaders())) {
+    if (v !== undefined) carried[k] = v;
+  }
   reply.raw.writeHead(200, {
+    ...carried,
     "content-type": "text/event-stream",
     "cache-control": "no-cache",
     connection: "keep-alive",
