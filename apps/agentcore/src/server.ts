@@ -22,6 +22,7 @@ import {
   ScaffoldManifestSchema,
   AgentRunRecordSchema,
   DecisionTraceSchema,
+  parseSolverMcpToolName,
   EvalCaseSchema,
   EvalSuiteSchema,
   LaunchScenarioBodySchema,
@@ -56,6 +57,10 @@ import { AuthError, requireRole, resolveAuth, type RequestAuth } from "./auth.js
 import { DataCoreHttpError, DataCoreUnavailableError } from "./tools/clients.js";
 import { solverAllowed, viewAllowed, featureEnabled } from "./features/registry.js";
 import { CreateIntentBodySchema, CreatePlanBodySchema, UpdateIntentBodySchema, resolvePlanForIntent, resolvePlanByRef } from "./catalog/service.js";
+// WO-PROVENANCE-TRACE-FIX · B：模型面调用名 → 审计身份，**复用**既有三个归一解析器（单源，不另写前缀规则）。
+import { parseOntologyMcpToolName } from "./tools/ontology-mcp.js";
+import { parseRulesMcpToolName } from "./mcp/rules-mcp.js";
+import { parseBuiltinMcpToolName } from "./mcp/builtin-mcp.js";
 import { encryptSecret } from "./crypto.js";
 import type { AppDeps } from "./deps.js";
 import { newId } from "./ids.js";
@@ -473,6 +478,38 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     return task;
   });
 
+  /**
+   * WO-PROVENANCE-TRACE-FIX · B：审计行的**模型面调用名**（真名）取值。
+   *
+   * 两条来源，**强优先**：
+   *   ① `byId` —— run 记录里 `toolCallId` 与审计行 id **同一枚**时的直连（原生臂与「宿主侧表命中」
+   *      的 dsh 调用走这条，零歧义）；
+   *   ② `byOrder` —— 同序配对，且必须**自证身份**：模型面名按平台既有的三个归一解析器
+   *      （`parseSolverMcpToolName` / `parseOntologyMcpToolName` / `parseRulesMcpToolName` +
+   *      `parseBuiltinMcpToolName`）算出的**审计身份**要**逐字等于**该行的 `toolName`。
+   *      为什么要这一路：dsh 内置 MCP 反向通道的 callId 由**桥进程自铸**（`mcp-host-bridge.ts`
+   *      `nextCallId`：`{raw}@{seq}`，MCP wire 上不带 DSH 帧 id）⇒ 宿主侧表键与帧 callId **不同源**，
+   *      ① **恒不命中**，而 iterations 里记的正是帧 callId。
+   *
+   * ⛔ **对不上就整位不出**（返回 undefined ⇒ 该条不写 `invokedAs`）：宁可少一位，
+   *    也不许把「某件工具的名字」安到另一次调用头上 —— 那是本仓最忌的「两套真相源」形态。
+   * ⛔ 归一解析器**全部复用既有单源**，不在本文件另写一份前缀规则（抄第二份必漂）。
+   */
+  function modelFacingToolName(
+    row: { toolName: string; input: unknown },
+    byId: string | undefined,
+    byOrder: string | undefined,
+  ): string | undefined {
+    if (byId !== undefined && byId !== row.toolName) return byId;
+    if (byOrder === undefined || byOrder === row.toolName) return undefined;
+    const solverKey = parseSolverMcpToolName(byOrder);
+    const auditIdentity =
+      solverKey !== undefined
+        ? "invoke_solver" // executor 的 A1 shim 把求解器族一律归一到这个身份
+        : (parseOntologyMcpToolName(byOrder) ?? parseRulesMcpToolName(byOrder) ?? parseBuiltinMcpToolName(byOrder) ?? byOrder);
+    return auditIdentity === row.toolName ? byOrder : undefined;
+  }
+
   // 实时验证审计层：统一决策痕迹导出（聚合 task/answer/toolCalls → 单一可导出 JSON）。
   // ontology_validation 总判定 + human_review_required 显式字段；监管可直接出示。
   app.get("/api/v1/queries/:taskId/decision-trace", async (req) => {
@@ -481,6 +518,17 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const task = await deps.repos.tasks.get(taskId);
     if (!task || task.tenantId !== a.tenantId) throw new HttpError(404, "TASK_NOT_FOUND", `task not found: ${taskId}`);
     const toolCalls = await deps.repos.toolCalls.listByTask(taskId);
+    // WO-PROVENANCE-TRACE-FIX · B+C：把「真实工具名」与「回执正文」带进决策痕迹导出。
+    //
+    // 为什么必须另取一份 run 记录：审计行（tool_calls）记的是**工具身份**（`mcp__solvers__{key}`
+    // 在 `tools/executor.ts` 归一到 `invoke_solver`，这是刻意且被 `engine.ts` 的求解纪律判据依赖的），
+    // 模型面真名只在 run 记录的 `iterations[].toolCalls[].toolName` 里。**不新增真相源**：
+    // 真名、入参、回执正文三者全部是既有落盘值，本端点只做**读投影**。
+    const runs = await deps.repos.agentRuns.listByTask(taskId);
+    const runCalls = runs.flatMap((r) => (r.iterations ?? []).flatMap((it) => it.toolCalls ?? []));
+    const runNameById = new Map(runCalls.map((c) => [c.toolCallId, c.toolName]));
+    // 同序配对的前提 = 两侧条数一致（不一致 ⇒ 不用这一路，见 modelFacingName 的 fail-closed 判据）。
+    const orderPairable = runCalls.length === toolCalls.length;
     const verdict = task.answer?.validationTrace?.crossValidation?.verdict;
     const ontologyValidation = !task.answer?.validationTrace
       ? "NONE"
@@ -501,7 +549,20 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       provenanceCount: task.answer?.provenance?.length ?? 0,
       ontologyValidation,
       humanReviewRequired,
-      toolCalls: toolCalls.map((tc) => ({ tool: tc.toolName, outcome: tc.outcome, durationMs: tc.durationMs, at: tc.createdAt })),
+      toolCalls: toolCalls.map((tc, i) => {
+        const invokedAs = modelFacingToolName(tc, runNameById.get(tc.id), orderPairable ? runCalls[i]?.toolName : undefined);
+        return {
+          tool: tc.toolName, // 审计身份（不动）
+          ...(invokedAs ? { invokedAs } : {}),
+          outcome: tc.outcome,
+          durationMs: tc.durationMs,
+          at: tc.createdAt,
+          toolCallId: tc.id,
+          input: tc.input ?? null,
+          output: tc.output,
+          outputDigest: tc.outputDigest,
+        };
+      }),
       createdAt: task.createdAt,
       completedAt: task.completedAt,
     });
