@@ -1,0 +1,224 @@
+[
+  {
+    "id": "q1",
+    "kind": "无域·开放式",
+    "text": "把所有能查的都翻一遍，给我一个关于常州基地经营状况的综合自由结论",
+    "taskId": "task_01M4J0S6TEMGX0Q36EHB8J1GF3",
+    "classification": null,
+    "path": "AGENT",
+    "matchedIntent": null,
+    "status": "CANCELLED",
+    "taskError": {
+      "code": "TASK_TERMINAL_TIMEOUT",
+      "message": "通用 agent 作答（全域）在 180s 内未收敛，已中止（阶段 通用 agent 作答（全域）·已完成 2 步）"
+    },
+    "toolCalls": [
+      "discover · OK · 4977ms",
+      "invoke_solver · OK · 1213ms",
+      "invoke_solver · OK · 2898ms",
+      "invoke_solver · ERROR · 655ms",
+      "invoke_solver · OK · 4084ms",
+      "invoke_solver · OK · 1087ms",
+      "invoke_solver · OK · 1990ms",
+      "invoke_solver · OK · 944ms",
+      "invoke_solver · OK · 5415ms",
+      "invoke_solver · OK · 6152ms",
+      "get_object · OK · 344ms",
+      "invoke_solver · BUDGET_EXCEEDED · 0ms"
+    ],
+    "trustLevel": "AGENT_EXPLORATORY",
+    "ontologyValidation": "NONE",
+    "humanReviewRequired": true,
+    "runs": [
+      {
+        "agentKey": "general",
+        "agentId": "agt_general",
+        "kernel": "EXTERNAL",
+        "attribution": "REGISTERED",
+        "model": "dcp:llmp_dqxgqpfgydw5rd3j:deepseek-flash",
+        "status": null,
+        "iterations": 3,
+        "innerToolCalls": [
+          "it0: mcp__builtin__discover · OK · 6867ms",
+          "it0: mcp__solvers__cockpit_kpi · OK · 5047ms",
+          "it0: mcp__solvers__base_capacity_outlook · OK · 5388ms",
+          "it0: mcp__solvers__metric_rollup · ERROR · 5052ms",
+          "it0: mcp__solvers__chain_impediments · ERROR · 4795ms",
+          "it1: mcp__solvers__chain_impediments · ERROR · 5007ms",
+          "it1: mcp__solvers__supply_demand_gap_attribution · ERROR · 5004ms",
+          "it1: mcp__solvers__finance_pnl · OK · 8768ms",
+          "it1: mcp__solvers__bottleneck_matrix · OK · 1543ms",
+          "it1: mcp__solvers__risk_timeline · OK · 2051ms",
+          "it2: mcp__solvers__supply_demand_gap_attribution · OK · 965ms",
+          "it2: mcp__solvers__chain_impediments · OK · 5490ms",
+          "it2: mcp__solvers__counterfactual_timeline · OK · 6925ms",
+          "it2: mcp__builtin__get_object · OK · 368ms",
+          "it2: mcp__solvers__credit_exposure · ERROR · 211ms"
+        ],
+        "placement": null,
+        "budget": {
+          "maxIterations": 24,
+          "maxToolCalls": 40,
+          "maxSolverCalls": 8,
+          "maxDurationMs": 600000,
+          "maxClarifications": 0,
+          "maxDiscoverCalls": 1,
+          "maxRoundTrips": 4
+        },
+        "budgetExhausted": false
+      }
+    ],
+    "eventCounts": {
+      "task.accepted": 1,
+      "routing.completed": 1,
+      "step.completed": 948,
+      "answer.final": 1,
+      "task.failed": 1,
+      "step.started": 15,
+      "task.cancelled": 1
+    },
+    "thinkFrames": 931,
+    "thinkSegments": 4,
+    "narrationFrames": 0,
+    "narrationSegments": 0,
+    "terminalFrames": [
+      {
+        "code": "TASK_TERMINAL_TIMEOUT",
+        "message": "通用 agent 作答（全域）在 180s 内未收敛，已中止（阶段 通用 agent 作答（全域）·已完成 2 步）"
+      },
+      {
+        "reason": "user cancelled"
+      }
+    ]
+  },
+  {
+    "id": "q2",
+    "kind": "有域·生产",
+    "text": "常州基地产能瓶颈在哪道工序？各产线的利用率和硬产能上限分别是多少？",
+    "taskId": "task_01M4J10CKGMJNGMC7WWQX0FQWR",
+    "classification": {
+      "candidates": [
+        {
+          "intentKey": "ceo_bottleneck",
+          "confidence": 1
+        }
+      ],
+      "outOfCatalog": false,
+      "extractedSlots": {
+        "baseIds": [
+          "changzhou"
+        ]
+      },
+      "latencyMs": 0,
+      "model": "deterministic:ceo-route"
+    },
+    "path": "WORKFLOW",
+    "matchedIntent": {
+      "intentId": "int_ceo_bottleneck_v1",
+      "intentKey": "ceo_bottleneck",
+      "version": 1
+    },
+    "status": "COMPLETED",
+    "taskError": null,
+    "toolCalls": [
+      "invoke_solver · OK · 5111ms"
+    ],
+    "trustLevel": "VERIFIED_WORKFLOW",
+    "ontologyValidation": "NONE",
+    "humanReviewRequired": false,
+    "runs": [],
+    "eventCounts": {
+      "task.accepted": 1,
+      "routing.completed": 1,
+      "step.started": 2,
+      "step.completed": 2,
+      "answer.final": 1
+    },
+    "thinkFrames": 0,
+    "thinkSegments": 0,
+    "narrationFrames": 0,
+    "narrationSegments": 0,
+    "terminalFrames": []
+  },
+  {
+    "id": "q3",
+    "kind": "有域·供应",
+    "text": "长协和现货的齐套缺口差在哪？哪几张订单最先受影响？",
+    "taskId": "task_01M4J12HPWPF58P93B99RHVN2H",
+    "classification": {
+      "candidates": [],
+      "outOfCatalog": true,
+      "extractedSlots": {},
+      "latencyMs": 0,
+      "model": "agent:role:supply-chain"
+    },
+    "path": "AGENT",
+    "matchedIntent": null,
+    "status": "COMPLETED",
+    "taskError": {
+      "code": "TASK_TERMINAL_TIMEOUT",
+      "message": "角色 agent 作答（供应链）在 180s 内未收敛，已中止（阶段 角色 agent 作答（供应链）·已完成 5196 步）"
+    },
+    "toolCalls": [
+      "invoke_solver · OK · 684ms",
+      "invoke_solver · ERROR · 21208ms",
+      "query_objects · OK · 804ms",
+      "invoke_solver · OK · 595ms",
+      "invoke_solver · OK · 431ms",
+      "query_objects · OK · 62ms",
+      "query_objects · OK · 49ms"
+    ],
+    "trustLevel": "AGENT_EXPLORATORY",
+    "ontologyValidation": "NONE",
+    "humanReviewRequired": true,
+    "runs": [
+      {
+        "agentKey": "supply_chain",
+        "agentId": "agt_supply_chain",
+        "kernel": "EXTERNAL",
+        "attribution": "REGISTERED",
+        "model": "dcp:llmp_dqxgqpfgydw5rd3j:deepseek-flash",
+        "status": null,
+        "iterations": 5,
+        "innerToolCalls": [
+          "it0: mcp__solvers__mrp_netting · OK · 3011ms",
+          "it0: mcp__solvers__kit_readiness · ERROR · 21278ms",
+          "it0: mcp__builtin__query_objects · OK · 7999ms",
+          "it1: mcp__solvers__kit_readiness · OK · 634ms",
+          "it1: mcp__solvers__kit_readiness · OK · 464ms",
+          "it2: mcp__builtin__query_objects · OK · 107ms",
+          "it2: mcp__builtin__query_objects · OK · 74ms"
+        ],
+        "placement": null,
+        "budget": {
+          "maxIterations": 24,
+          "maxToolCalls": 40,
+          "maxSolverCalls": 8,
+          "maxDurationMs": 600000,
+          "maxClarifications": 0,
+          "maxDiscoverCalls": 1,
+          "maxRoundTrips": 4
+        },
+        "budgetExhausted": false
+      }
+    ],
+    "eventCounts": {
+      "task.accepted": 1,
+      "routing.completed": 1,
+      "step.completed": 5666,
+      "step.started": 7,
+      "answer.final": 2,
+      "task.failed": 1
+    },
+    "thinkFrames": 5189,
+    "thinkSegments": 4,
+    "narrationFrames": 470,
+    "narrationSegments": 5,
+    "terminalFrames": [
+      {
+        "code": "TASK_TERMINAL_TIMEOUT",
+        "message": "角色 agent 作答（供应链）在 180s 内未收敛，已中止（阶段 角色 agent 作答（供应链）·已完成 5196 步）"
+      }
+    ]
+  }
+]

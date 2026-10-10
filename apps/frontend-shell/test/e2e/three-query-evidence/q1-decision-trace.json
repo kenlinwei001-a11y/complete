@@ -1,0 +1,89 @@
+{
+  "decisionId": "task_01M4J0S6TEMGX0Q36EHB8J1GF3",
+  "tenantId": "demo",
+  "question": "把所有能查的都翻一遍，给我一个关于常州基地经营状况的综合自由结论",
+  "status": "CANCELLED",
+  "path": "AGENT",
+  "resolvedRefs": [],
+  "trustLevel": "AGENT_EXPLORATORY",
+  "unverifiedNumerics": false,
+  "provenanceCount": 0,
+  "ontologyValidation": "NONE",
+  "humanReviewRequired": true,
+  "toolCalls": [
+    {
+      "tool": "discover",
+      "outcome": "OK",
+      "durationMs": 4977,
+      "at": "2026-10-10T04:28:03.357Z"
+    },
+    {
+      "tool": "invoke_solver",
+      "outcome": "OK",
+      "durationMs": 1213,
+      "at": "2026-10-10T04:28:08.587Z"
+    },
+    {
+      "tool": "invoke_solver",
+      "outcome": "OK",
+      "durationMs": 2898,
+      "at": "2026-10-10T04:28:14.282Z"
+    },
+    {
+      "tool": "invoke_solver",
+      "outcome": "ERROR",
+      "durationMs": 655,
+      "at": "2026-10-10T04:28:24.090Z"
+    },
+    {
+      "tool": "invoke_solver",
+      "outcome": "OK",
+      "durationMs": 4084,
+      "at": "2026-10-10T04:28:46.871Z"
+    },
+    {
+      "tool": "invoke_solver",
+      "outcome": "OK",
+      "durationMs": 1087,
+      "at": "2026-10-10T04:28:48.467Z"
+    },
+    {
+      "tool": "invoke_solver",
+      "outcome": "OK",
+      "durationMs": 1990,
+      "at": "2026-10-10T04:28:50.486Z"
+    },
+    {
+      "tool": "invoke_solver",
+      "outcome": "OK",
+      "durationMs": 944,
+      "at": "2026-10-10T04:28:53.689Z"
+    },
+    {
+      "tool": "invoke_solver",
+      "outcome": "OK",
+      "durationMs": 5415,
+      "at": "2026-10-10T04:28:59.152Z"
+    },
+    {
+      "tool": "invoke_solver",
+      "outcome": "OK",
+      "durationMs": 6152,
+      "at": "2026-10-10T04:29:06.109Z"
+    },
+    {
+      "tool": "get_object",
+      "outcome": "OK",
+      "durationMs": 344,
+      "at": "2026-10-10T04:29:06.471Z"
+    },
+    {
+      "tool": "invoke_solver",
+      "outcome": "BUDGET_EXCEEDED",
+      "durationMs": 0,
+      "at": "2026-10-10T04:29:06.689Z"
+    }
+  ],
+  "createdAt": "2026-10-10T04:22:48.406Z",
+  "completedAt": "2026-10-10T04:29:55.127Z"
+}

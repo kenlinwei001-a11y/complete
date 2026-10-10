@@ -1,0 +1,28 @@
+{
+  "url": "http://127.0.0.1:5173/v/decision-console",
+  "taskId": "task_01M4J10CKGMJNGMC7WWQX0FQWR",
+  "canary": {
+    "testidElements": 53,
+    "taskRoot": true
+  },
+  "thinkRow": 0,
+  "thinkToggle": 0,
+  "thinkSummary": 0,
+  "thinkBody": 0,
+  "narration": 0,
+  "narrationIteration": 0,
+  "roleTracks": 0,
+  "steps": 0,
+  "stepIteration": 0,
+  "routingBadge": null,
+  "trustBadge": "✓ 已验证 · 工作流",
+  "reasoningMode": null,
+  "unverifiedStrip": null,
+  "taskFailed": null,
+  "taskInterrupted": null,
+  "answerText": "✓ 已验证 · 工作流\n\nCEO 瓶颈定位（求解器 bottleneck_matrix·溯源见下 ?）：\n\ndataMode\nMOCK\nfactors\n瓶颈工序、设备OEE、人力工时、物料齐套、物流时长、换型损失、良率波动\nruleSetVersion\nrsv_b0897bc9\n[1]\nbase\ttightness\tprimary\tprovenanceSynthetic\thardCapacity\n常州\t{\"瓶颈工序\":90,\"设备OEE\":63,\"人力工时\":64,\"物料齐套\":64,\"物流时长\":64,\"换型损失\":63,\"良率波动\":68}\t瓶颈工序\t是\t{\"status\":\"OK\",\"processId\":\"LINE-WS-changzhou-filling-formation\",\"processName\":\"化成\",\"unitKind\":\"化成柜位\",\"units\":1849,\"unitDailyThroughput\":93,\"capacityPerDay\":167486.12,\"requiredPerDay\":166768,\"shortfallPerDay\":0,\"binding\":false,\"tightness\":0}\n👍\n👎\n查看完整执行过程 →",
+  "taskRootText": "✓ 已验证 · 工作流\n\nCEO 瓶颈定位（求解器 bottleneck_matrix·溯源见下 ?）：\n\ndataMode\nMOCK\nfactors\n瓶颈工序、设备OEE、人力工时、物料齐套、物流时长、换型损失、良率波动\nruleSetVersion\nrsv_b0897bc9\n[1]\nbase\ttightness\tprimary\tprovenanceSynthetic\thardCapacity\n常州\t{\"瓶颈工序\":90,\"设备OEE\":63,\"人力工时\":64,\"物料齐套\":64,\"物流时长\":64,\"换型损失\":63,\"良率波动\":68}\t瓶颈工序\t是\t{\"status\":\"OK\",\"processId\":\"LINE-WS-changzhou-filling-formation\",\"processName\":\"化成\",\"unitKind\":\"化成柜位\",\"units\":1849,\"unitDailyThroughput\":93,\"capacityPerDay\":167486.12,\"requiredPerDay\":166768,\"shortfallPerDay\":0,\"binding\":false,\"tightness\":0}\n👍\n👎\n查看完整执行过程 →\n▸ 推演过程（编排 DAG）",
+  "panelText": "查询对话\n✕\n把所有能查的都翻一遍，给我一个关于常州基地经营状况的综合自由结论\n任务失败 · TASK_TERMINAL_TIMEOUT · 通用 agent 作答（全域）在 180s 内未收敛，已中止（阶段 通用 agent 作答（全域）·已完成 2 步）\n▸ 推演过程（编排 DAG）\n常州基地产能瓶颈在哪道工序？各产线的利用率和硬产能上限分别是多少？\n✓ 已验证 · 工作流\n\nCEO 瓶颈定位（求解器 bottleneck_matrix·溯源见下 ?）：\n\ndataMode\nMOCK\nfactors\n瓶颈工序、设备OEE、人力工时、物料齐套、物流时长、换型损失、良率波动\nruleSetVersion\nrsv_b0897bc9\n[1]\nbase\ttightness\tprimary\tprovenanceSynthetic\thardCapacity\n常州\t{\"瓶颈工序\":90,\"设备OEE\":63,\"人力工时\":64,\"物料齐套\":64,\"物流时长\":64,\"换型损失\":63,\"良率波动\":68}\t瓶颈工序\t是\t{\"status\":\"OK\",\"processId\":\"LINE-WS-changzhou-filling-formation\",\"processName\":\"化成\",\"unitKind\":\"化成柜位\",\"units\":1849,\"unitDailyThroughput\":93,\"capacityPerDay\":167486.12,\"requiredPerDay\":166768,\"shortfallPerDay\":0,\"binding\":false,\"tightness\":0}\n👍\n👎\n查看完整执行过程 →\n▸ 推演过程（编排 DAG）",
+  "thinkSummaries": [],
+  "narrations": []
+}

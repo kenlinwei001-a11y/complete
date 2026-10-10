@@ -1,0 +1,28 @@
+{
+  "url": "http://127.0.0.1:5173/v/decision-console",
+  "taskId": "task_01M4J0S6TEMGX0Q36EHB8J1GF3",
+  "canary": {
+    "testidElements": 42,
+    "taskRoot": true
+  },
+  "thinkRow": 0,
+  "thinkToggle": 0,
+  "thinkSummary": 0,
+  "thinkBody": 0,
+  "narration": 0,
+  "narrationIteration": 0,
+  "roleTracks": 0,
+  "steps": 0,
+  "stepIteration": 0,
+  "routingBadge": null,
+  "trustBadge": null,
+  "reasoningMode": null,
+  "unverifiedStrip": null,
+  "taskFailed": "任务失败 · TASK_TERMINAL_TIMEOUT · 通用 agent 作答（全域）在 180s 内未收敛，已中止（阶段 通用 agent 作答（全域）·已完成 2 步）",
+  "taskInterrupted": null,
+  "answerText": null,
+  "taskRootText": "任务失败 · TASK_TERMINAL_TIMEOUT · 通用 agent 作答（全域）在 180s 内未收敛，已中止（阶段 通用 agent 作答（全域）·已完成 2 步）\n▸ 推演过程（编排 DAG）",
+  "panelText": "查询对话\n✕\n把所有能查的都翻一遍，给我一个关于常州基地经营状况的综合自由结论\n任务失败 · TASK_TERMINAL_TIMEOUT · 通用 agent 作答（全域）在 180s 内未收敛，已中止（阶段 通用 agent 作答（全域）·已完成 2 步）\n▸ 推演过程（编排 DAG）",
+  "thinkSummaries": [],
+  "narrations": []
+}

@@ -1,0 +1,16 @@
+✓ 已验证 · 工作流
+
+CEO 瓶颈定位（求解器 bottleneck_matrix·溯源见下 ?）：
+
+dataMode
+MOCK
+factors
+瓶颈工序、设备OEE、人力工时、物料齐套、物流时长、换型损失、良率波动
+ruleSetVersion
+rsv_b0897bc9
+[1]
+base	tightness	primary	provenanceSynthetic	hardCapacity
+常州	{"瓶颈工序":90,"设备OEE":63,"人力工时":64,"物料齐套":64,"物流时长":64,"换型损失":63,"良率波动":68}	瓶颈工序	是	{"status":"OK","processId":"LINE-WS-changzhou-filling-formation","processName":"化成","unitKind":"化成柜位","units":1849,"unitDailyThroughput":93,"capacityPerDay":167486.12,"requiredPerDay":166768,"shortfallPerDay":0,"binding":false,"tightness":0}
+👍
+👎
+查看完整执行过程 →

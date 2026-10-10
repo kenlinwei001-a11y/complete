@@ -1,0 +1,17 @@
+{
+  "pageOrigin": "http://127.0.0.1:5173",
+  "esUrlHost": "http://127.0.0.1:4002",
+  "taskId": "task_01M4J10CKGMJNGMC7WWQX0FQWR",
+  "es": {
+    "opened": false,
+    "readyState": 2,
+    "msgs": 0,
+    "errorEvents": 1,
+    "verdict": "STREAM-DEAD"
+  },
+  "jsonControl": {
+    "status": 200,
+    "ok": true,
+    "bodyHead": "{\"id\":\"task_01M4J10CKGMJNGMC7WWQX0FQWR\",\"tenantId\":\"demo\",\"userId\":\"usr_demo_admin\",\"packageId\":\"pkg_battery_manufacturi"
+  }
+}

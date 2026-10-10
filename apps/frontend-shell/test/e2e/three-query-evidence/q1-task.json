@@ -1,0 +1,40 @@
+{
+  "id": "task_01M4J0S6TEMGX0Q36EHB8J1GF3",
+  "tenantId": "demo",
+  "userId": "usr_demo_admin",
+  "packageId": "pkg_battery_manufacturing",
+  "conversationId": "conv_01M4J0S6TPP8BDSG6FEKS00FDE",
+  "query": "把所有能查的都翻一遍，给我一个关于常州基地经营状况的综合自由结论",
+  "context": {
+    "view": "",
+    "selectedObjects": [],
+    "filters": {},
+    "pageContext": {
+      "view": "",
+      "entities": [],
+      "selection": [],
+      "drillPath": [],
+      "actions": []
+    }
+  },
+  "status": "CANCELLED",
+  "clarificationRounds": 0,
+  "createdAt": "2026-10-10T04:22:48.406Z",
+  "path": "AGENT",
+  "answer": {
+    "trustLevel": "AGENT_EXPLORATORY",
+    "unverifiedNumerics": false,
+    "provenance": [],
+    "blocks": [
+      {
+        "type": "text",
+        "markdown": "**通用 agent 作答（全域）在 180s 内未收敛，已中止。**\n\n中止前已完成：compose-miss_01M4J0STXNXTDBCY8MYM4Q2CC7；dril-inject_01M4J0Z9W7Q7D7MBREK1TW3ZE4。\n\n这不是\"算不出来\"，是这条路径超过了 180s 的作答上限 —— 与其让你继续等，不如如实告诉你它停在哪。\n\n**你现在可以**：把问题问得更具体（点名基地 / 型号 / 时间窗），走确定性求解器通常十几秒就有答案；或把问题拆小后分别提问。"
+      }
+    ]
+  },
+  "error": {
+    "code": "TASK_TERMINAL_TIMEOUT",
+    "message": "通用 agent 作答（全域）在 180s 内未收敛，已中止（阶段 通用 agent 作答（全域）·已完成 2 步）"
+  },
+  "completedAt": "2026-10-10T04:29:55.127Z"
+}

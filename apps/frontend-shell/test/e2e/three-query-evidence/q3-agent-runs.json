@@ -1,0 +1,120 @@
+{
+  "taskId": "task_01M4J12HPWPF58P93B99RHVN2H",
+  "runs": [
+    {
+      "id": "run_01M4J192MK72PTYB6HDB49KHB8",
+      "taskId": "task_01M4J12HPWPF58P93B99RHVN2H",
+      "model": "dcp:llmp_dqxgqpfgydw5rd3j:deepseek-flash",
+      "iterations": [
+        {
+          "index": 0,
+          "toolCalls": [
+            {
+              "toolCallId": "call_00_lC3XTuq8XbFOz6dsNEIc7937",
+              "toolName": "mcp__solvers__mrp_netting",
+              "input": {},
+              "outcome": "OK",
+              "durationMs": 3011
+            },
+            {
+              "toolCallId": "call_01_ibcDgsQKP9QzV4M4IMcs2827",
+              "toolName": "mcp__solvers__kit_readiness",
+              "input": {
+                "base": "常州"
+              },
+              "outcome": "ERROR",
+              "durationMs": 21278
+            },
+            {
+              "toolCallId": "call_02_5i0WMEcM5KyZsY5gKJtQ8383",
+              "toolName": "mcp__builtin__query_objects",
+              "input": {
+                "objectType": "PurchaseOrder",
+                "filter": {},
+                "limit": 60
+              },
+              "outcome": "OK",
+              "durationMs": 7999
+            }
+          ]
+        },
+        {
+          "index": 1,
+          "toolCalls": [
+            {
+              "toolCallId": "call_00_YrdqToypF3nVf1qSpLtp4526",
+              "toolName": "mcp__solvers__kit_readiness",
+              "input": {},
+              "outcome": "OK",
+              "durationMs": 634
+            },
+            {
+              "toolCallId": "call_01_snF0mY4idWAtWn0OqspL0539",
+              "toolName": "mcp__solvers__kit_readiness",
+              "input": {
+                "base": "常州基地"
+              },
+              "outcome": "OK",
+              "durationMs": 464
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "toolCalls": [
+            {
+              "toolCallId": "call_00_dxFBDP5bdWHkrlTNuOZD5900",
+              "toolName": "mcp__builtin__query_objects",
+              "input": {
+                "objectType": "Material",
+                "filter": {},
+                "limit": 40
+              },
+              "outcome": "OK",
+              "durationMs": 107
+            },
+            {
+              "toolCallId": "call_01_fB8qwSAG3YjDRGv2o8aC8190",
+              "toolName": "mcp__builtin__query_objects",
+              "input": {
+                "objectType": "Supplier",
+                "filter": {},
+                "limit": 40
+              },
+              "outcome": "OK",
+              "durationMs": 74
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "toolCalls": []
+        },
+        {
+          "index": 4,
+          "toolCalls": []
+        }
+      ],
+      "budget": {
+        "maxIterations": 24,
+        "maxToolCalls": 40,
+        "maxSolverCalls": 8,
+        "maxDurationMs": 600000,
+        "maxClarifications": 0,
+        "maxDiscoverCalls": 1,
+        "maxRoundTrips": 4
+      },
+      "budgetExhausted": false,
+      "totalInputTokens": 64967,
+      "totalOutputTokens": 8554,
+      "tenantId": "demo",
+      "agentId": "agt_supply_chain",
+      "agentKey": "supply_chain",
+      "agentVersion": 1,
+      "attribution": "REGISTERED",
+      "kernel": "EXTERNAL",
+      "createdAt": "2026-10-10T04:31:28.403Z",
+      "origin": "ROOT"
+    }
+  ]
+}

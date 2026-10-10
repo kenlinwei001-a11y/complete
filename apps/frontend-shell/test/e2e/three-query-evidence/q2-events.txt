@@ -1,0 +1,30 @@
+:ok
+
+id: 1
+event: task.accepted
+data: {"taskId":"task_01M4J10CKGMJNGMC7WWQX0FQWR"}
+
+id: 2
+event: routing.completed
+data: {"path":"WORKFLOW","intentKey":"ceo_bottleneck","confidence":1}
+
+id: 3
+event: step.started
+data: {"stepId":"s1","type":"invoke_solver"}
+
+id: 4
+event: step.completed
+data: {"stepId":"s1","type":"invoke_solver","outcome":"OK","durationMs":5113}
+
+id: 5
+event: step.started
+data: {"stepId":"render","type":"render_answer"}
+
+id: 6
+event: step.completed
+data: {"stepId":"render","type":"render_answer","outcome":"OK","durationMs":2}
+
+id: 7
+event: answer.final
+data: {"trustLevel":"VERIFIED_WORKFLOW","blocks":[{"type":"text","markdown":"CEO 瓶颈定位（求解器 bottleneck_matrix·溯源见下 ⟦ref:0⟧）："},{"type":"kpi","label":"dataMode","value":"MOCK","provId":"prov_01M4J10HN9Z6749E2HX6PT6V5W"},{"type":"kpi","label":"factors","value":"瓶颈工序、设备OEE、人力工时、物料齐套、物流时长、换型损失、良率波动","provId":"prov_01M4J10HN9Z6749E2HX6PT6V5W"},{"type":"kpi","label":"ruleSetVersion","value":"rsv_b0897bc9","provId":"prov_01M4J10HN9Z6749E2HX6PT6V5W"},{"type":"table","columns":["base","tightness","primary","provenanceSynthetic","hardCapacity"],"rows":[["常州","{\"瓶颈工序\":90,\"设备OEE\":63,\"人力工时\":64,\"物料齐套\":64,\"物流时长\":64,\"换型损失\":63,\"良率波动\":68}","瓶颈工序","是","{\"status\":\"OK\",\"processId\":\"LINE-WS-changzhou-filling-formation\",\"processName\":\"化成\",\"unitKind\":\"化成柜位\",\"units\":1849,\"unitDailyThroughput\":93,\"capacityPerDay\":167486.12,\"requiredPerDay\":166768,\"shortfallPerDay\":0,\"binding\":false,\"tightness\":0}"]],"provId":"prov_01M4J10HN9Z6749E2HX6PT6V5W"}],"provenance":[{"id":"prov_01M4J10HN9Z6749E2HX6PT6V5W","toolCallId":"tc_01M4J10HN7EPFG9VRNR4JCCNDN","toolName":"invoke_solver","outputPath":"$.data","snapshotVersion":"1.2","source":"TOOL_RESULT"}],"unverifiedNumerics":false}
+

@@ -1,0 +1,121 @@
+204  http://127.0.0.1:4001/a/v1/auth/refresh
+401 application/json http://127.0.0.1:4001/a/v1/auth/refresh
+204  http://127.0.0.1:4001/a/v1/auth/login
+200 application/json http://127.0.0.1:4001/a/v1/auth/login
+200 application/json http://127.0.0.1:4001/a/v1/me/workspace
+204  http://127.0.0.1:4001/a/v1/me/workspace
+204  http://127.0.0.1:4001/a/v1/history/watermark
+204  http://127.0.0.1:4001/a/v1/data-health
+200 application/json http://127.0.0.1:4001/a/v1/history/watermark
+200 application/json http://127.0.0.1:4001/a/v1/data-health
+204  http://127.0.0.1:4002/b/v1/scenarios
+200 application/json http://127.0.0.1:4002/b/v1/scenarios
+204  http://127.0.0.1:4001/a/v1/tenants/demo/features
+200 application/json http://127.0.0.1:4001/a/v1/tenants/demo/features
+200 application/json http://127.0.0.1:4001/a/v1/sim/drill/catalog
+200 application/json http://127.0.0.1:4001/a/v1/sim/sessions
+200 application/json http://127.0.0.1:4001/a/v1/action-drafts?status=PENDING_APPROVAL
+204  http://127.0.0.1:4001/a/v1/sim/drill/catalog
+204  http://127.0.0.1:4001/a/v1/sim/sessions
+204  http://127.0.0.1:4001/a/v1/action-drafts?status=PENDING_APPROVAL
+202 application/json http://127.0.0.1:4002/b/v1/queries
+204  http://127.0.0.1:4002/b/v1/queries
+204  http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+204  http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+200 application/json http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+200 application/json http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+204  http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+200 application/json http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+204  http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A23%3A07.402Z
+200 application/json http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A23%3A07.402Z
+204  http://127.0.0.1:4002/b/v1/queries/task_01M4J0S6TEMGX0Q36EHB8J1GF3
+200 application/json http://127.0.0.1:4002/b/v1/queries/task_01M4J0S6TEMGX0Q36EHB8J1GF3
+204  http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+200 application/json http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+204  http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A23%3A07.402Z
+204  http://127.0.0.1:4001/a/v1/data-health
+500 application/json http://127.0.0.1:4002/b/v1/queries/task_01M4J0S6TEMGX0Q36EHB8J1GF3/events?access_token=eyJhbGciOiJSUzI1NiIsImtpZCI6ImtleV9hN3JrOHZiM2owZ2NtcDdyIn0.eyJ0aWQiOiJkZ
+200 application/json http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A23%3A07.402Z
+200 application/json http://127.0.0.1:4001/a/v1/data-health
+204  http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+204  http://127.0.0.1:4001/a/v1/data-health
+204  http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A23%3A07.402Z
+200 application/json http://127.0.0.1:4001/a/v1/data-health
+200 application/json http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+200 application/json http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A23%3A07.402Z
+204  http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A23%3A07.402Z
+204  http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+200 application/json http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+200 application/json http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A23%3A07.402Z
+204  http://127.0.0.1:4002/b/v1/queries/task_01M4J0S6TEMGX0Q36EHB8J1GF3
+200 application/json http://127.0.0.1:4002/b/v1/queries/task_01M4J0S6TEMGX0Q36EHB8J1GF3
+204  http://127.0.0.1:4002/b/v1/queries
+202 application/json http://127.0.0.1:4002/b/v1/queries
+204  http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+200 application/json http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+204  http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A26%3A22.578Z
+200 application/json http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A26%3A22.578Z
+204  http://127.0.0.1:4001/a/v1/data-health
+200 application/json http://127.0.0.1:4001/a/v1/data-health
+204  http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A26%3A22.578Z
+204  http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+200 application/json http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+200 application/json http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A26%3A22.578Z
+204  http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+204  http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A26%3A22.578Z
+200 application/json http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+200 application/json http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A26%3A22.578Z
+204  http://127.0.0.1:4002/b/v1/queries/task_01M4J10CKGMJNGMC7WWQX0FQWR
+200 application/json http://127.0.0.1:4002/b/v1/queries/task_01M4J10CKGMJNGMC7WWQX0FQWR
+204  http://127.0.0.1:4002/b/v1/queries
+202 application/json http://127.0.0.1:4002/b/v1/queries
+204  http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+200 application/json http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+204  http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A26%3A22.578Z
+200 application/json http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A26%3A22.578Z
+204  http://127.0.0.1:4001/a/v1/data-health
+200 application/json http://127.0.0.1:4001/a/v1/data-health
+204  http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A26%3A22.578Z
+200 application/json http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A26%3A22.578Z
+204  http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+200 application/json http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+204  http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+200 application/json http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+204  http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A26%3A22.578Z
+200 application/json http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A26%3A22.578Z
+204  http://127.0.0.1:4002/b/v1/queries/task_01M4J12HPWPF58P93B99RHVN2H
+200 application/json http://127.0.0.1:4002/b/v1/queries/task_01M4J12HPWPF58P93B99RHVN2H
+204  http://127.0.0.1:4001/a/v1/data-health
+200 application/json http://127.0.0.1:4001/a/v1/data-health
+204  http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A26%3A22.578Z
+204  http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+200 application/json http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+200 application/json http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A26%3A22.578Z
+204  http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+200 application/json http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+204  http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A26%3A22.578Z
+200 application/json http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A26%3A22.578Z
+204  http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A26%3A22.578Z
+204  http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+200 application/json http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+200 application/json http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A26%3A22.578Z
+204  http://127.0.0.1:4002/b/v1/queries/task_01M4J12HPWPF58P93B99RHVN2H
+200 application/json http://127.0.0.1:4002/b/v1/queries/task_01M4J12HPWPF58P93B99RHVN2H
+204  http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+200 application/json http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+204  http://127.0.0.1:4001/a/v1/data-health
+204  http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A26%3A22.578Z
+200 application/json http://127.0.0.1:4001/a/v1/data-health
+200 application/json http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A26%3A22.578Z
+204  http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+204  http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A26%3A22.578Z
+200 application/json http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+200 application/json http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A26%3A22.578Z
+204  http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A26%3A22.578Z
+204  http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+200 application/json http://127.0.0.1:4001/a/v1/outbox?since=2026-10-10T04%3A26%3A22.578Z
+200 application/json http://127.0.0.1:4002/b/v1/outbox?since=2026-10-10T04%3A22%3A45.401Z
+204  http://127.0.0.1:4002/b/v1/queries/task_01M4J12HPWPF58P93B99RHVN2H
+200 application/json http://127.0.0.1:4002/b/v1/queries/task_01M4J12HPWPF58P93B99RHVN2H
+204  http://127.0.0.1:4001/a/v1/data-health
+200 application/json http://127.0.0.1:4001/a/v1/data-health

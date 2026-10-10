@@ -1,0 +1,227 @@
+{
+  "decisionId": "task_01M4J12HPWPF58P93B99RHVN2H",
+  "tenantId": "demo",
+  "question": "长协和现货的齐套缺口差在哪？哪几张订单最先受影响？",
+  "status": "COMPLETED",
+  "path": "AGENT",
+  "classification": {
+    "candidates": [],
+    "outOfCatalog": true,
+    "extractedSlots": {},
+    "latencyMs": 0,
+    "model": "agent:role:supply-chain"
+  },
+  "resolvedRefs": [
+    {
+      "kind": "agent",
+      "key": "supply_chain",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C03",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C08",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C13",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C05",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C12",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C18",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C23",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C26",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C27",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C28",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C29",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C30",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C31",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C32",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C33",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C01",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C02",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C04",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C06",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C09",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C10",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C11",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C15",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C16",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C21",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C22",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C24",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C25",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C34",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C35",
+      "version": 1
+    },
+    {
+      "kind": "rule",
+      "key": "C36",
+      "version": 1
+    }
+  ],
+  "trustLevel": "AGENT_EXPLORATORY",
+  "unverifiedNumerics": true,
+  "provenanceCount": 0,
+  "ontologyValidation": "NONE",
+  "humanReviewRequired": true,
+  "toolCalls": [
+    {
+      "tool": "invoke_solver",
+      "outcome": "OK",
+      "durationMs": 684,
+      "at": "2026-10-10T04:30:01.139Z"
+    },
+    {
+      "tool": "invoke_solver",
+      "outcome": "ERROR",
+      "durationMs": 21208,
+      "at": "2026-10-10T04:30:22.449Z"
+    },
+    {
+      "tool": "query_objects",
+      "outcome": "OK",
+      "durationMs": 804,
+      "at": "2026-10-10T04:30:30.463Z"
+    },
+    {
+      "tool": "invoke_solver",
+      "outcome": "OK",
+      "durationMs": 595,
+      "at": "2026-10-10T04:30:33.488Z"
+    },
+    {
+      "tool": "invoke_solver",
+      "outcome": "OK",
+      "durationMs": 431,
+      "at": "2026-10-10T04:30:33.956Z"
+    },
+    {
+      "tool": "query_objects",
+      "outcome": "OK",
+      "durationMs": 62,
+      "at": "2026-10-10T04:30:42.023Z"
+    },
+    {
+      "tool": "query_objects",
+      "outcome": "OK",
+      "durationMs": 49,
+      "at": "2026-10-10T04:30:42.116Z"
+    }
+  ],
+  "createdAt": "2026-10-10T04:27:54.460Z",
+  "completedAt": "2026-10-10T04:31:28.423Z"
+}

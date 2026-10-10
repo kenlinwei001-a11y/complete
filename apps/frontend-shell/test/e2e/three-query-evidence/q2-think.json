@@ -1,0 +1,17 @@
+{
+  "eventCounts": {
+    "task.accepted": 1,
+    "routing.completed": 1,
+    "step.started": 2,
+    "step.completed": 2,
+    "answer.final": 1
+  },
+  "thinkFrames": 0,
+  "thinkSegments": 0,
+  "narrationFrames": 0,
+  "narrationSegments": 0,
+  "thinkSegmentsDetail": [],
+  "narrationSegmentsDetail": [],
+  "terminalFrames": [],
+  "answerFinalCount": 1
+}

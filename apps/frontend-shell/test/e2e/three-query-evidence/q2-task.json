@@ -1,0 +1,117 @@
+{
+  "id": "task_01M4J10CKGMJNGMC7WWQX0FQWR",
+  "tenantId": "demo",
+  "userId": "usr_demo_admin",
+  "packageId": "pkg_battery_manufacturing",
+  "conversationId": "task_01M4J0S6TEMGX0Q36EHB8J1GF3",
+  "query": "常州基地产能瓶颈在哪道工序？各产线的利用率和硬产能上限分别是多少？",
+  "context": {
+    "view": "",
+    "selectedObjects": [],
+    "filters": {},
+    "conversationId": "task_01M4J0S6TEMGX0Q36EHB8J1GF3",
+    "pageContext": {
+      "view": "",
+      "entities": [],
+      "selection": [],
+      "drillPath": [],
+      "actions": []
+    }
+  },
+  "status": "COMPLETED",
+  "clarificationRounds": 0,
+  "createdAt": "2026-10-10T04:26:43.696Z",
+  "classification": {
+    "candidates": [
+      {
+        "intentKey": "ceo_bottleneck",
+        "confidence": 1
+      }
+    ],
+    "outOfCatalog": false,
+    "extractedSlots": {
+      "baseIds": [
+        "changzhou"
+      ]
+    },
+    "latencyMs": 0,
+    "model": "deterministic:ceo-route"
+  },
+  "matchedIntent": {
+    "intentId": "int_ceo_bottleneck_v1",
+    "intentKey": "ceo_bottleneck",
+    "version": 1
+  },
+  "slots": {
+    "baseIds": [
+      "changzhou"
+    ]
+  },
+  "path": "WORKFLOW",
+  "answer": {
+    "trustLevel": "VERIFIED_WORKFLOW",
+    "blocks": [
+      {
+        "type": "text",
+        "markdown": "CEO 瓶颈定位（求解器 bottleneck_matrix·溯源见下 ⟦ref:0⟧）："
+      },
+      {
+        "type": "kpi",
+        "label": "dataMode",
+        "value": "MOCK",
+        "provId": "prov_01M4J10HN9Z6749E2HX6PT6V5W"
+      },
+      {
+        "type": "kpi",
+        "label": "factors",
+        "value": "瓶颈工序、设备OEE、人力工时、物料齐套、物流时长、换型损失、良率波动",
+        "provId": "prov_01M4J10HN9Z6749E2HX6PT6V5W"
+      },
+      {
+        "type": "kpi",
+        "label": "ruleSetVersion",
+        "value": "rsv_b0897bc9",
+        "provId": "prov_01M4J10HN9Z6749E2HX6PT6V5W"
+      },
+      {
+        "type": "table",
+        "columns": [
+          "base",
+          "tightness",
+          "primary",
+          "provenanceSynthetic",
+          "hardCapacity"
+        ],
+        "rows": [
+          [
+            "常州",
+            "{\"瓶颈工序\":90,\"设备OEE\":63,\"人力工时\":64,\"物料齐套\":64,\"物流时长\":64,\"换型损失\":63,\"良率波动\":68}",
+            "瓶颈工序",
+            "是",
+            "{\"status\":\"OK\",\"processId\":\"LINE-WS-changzhou-filling-formation\",\"processName\":\"化成\",\"unitKind\":\"化成柜位\",\"units\":1849,\"unitDailyThroughput\":93,\"capacityPerDay\":167486.12,\"requiredPerDay\":166768,\"shortfallPerDay\":0,\"binding\":false,\"tightness\":0}"
+          ]
+        ],
+        "provId": "prov_01M4J10HN9Z6749E2HX6PT6V5W"
+      }
+    ],
+    "provenance": [
+      {
+        "id": "prov_01M4J10HN9Z6749E2HX6PT6V5W",
+        "toolCallId": "tc_01M4J10HN7EPFG9VRNR4JCCNDN",
+        "toolName": "invoke_solver",
+        "outputPath": "$.data",
+        "snapshotVersion": "1.2",
+        "source": "TOOL_RESULT"
+      }
+    ],
+    "unverifiedNumerics": false
+  },
+  "resolvedRefs": [
+    {
+      "kind": "plan",
+      "key": "ceo_bottleneck",
+      "version": 1
+    }
+  ],
+  "completedAt": "2026-10-10T04:26:48.875Z"
+}

@@ -1,0 +1,40 @@
+{
+  "base": "http://127.0.0.1:5173",
+  "landingUrl": "http://127.0.0.1:5173/",
+  "realBackendHits": 121,
+  "dockCanary": {
+    "dockBar": true,
+    "dockPanel": false,
+    "home": true
+  },
+  "queries": [
+    {
+      "id": "q1",
+      "kind": "无域·开放式",
+      "text": "把所有能查的都翻一遍，给我一个关于常州基地经营状况的综合自由结论",
+      "taskId": "task_01M4J0S6TEMGX0Q36EHB8J1GF3",
+      "terminal": "failed",
+      "elapsedS": 226,
+      "submitError": null
+    },
+    {
+      "id": "q2",
+      "kind": "有域·生产",
+      "text": "常州基地产能瓶颈在哪道工序？各产线的利用率和硬产能上限分别是多少？",
+      "taskId": "task_01M4J10CKGMJNGMC7WWQX0FQWR",
+      "terminal": "answer",
+      "elapsedS": 66,
+      "submitError": null
+    },
+    {
+      "id": "q3",
+      "kind": "有域·供应",
+      "text": "长协和现货的齐套缺口差在哪？哪几张订单最先受影响？",
+      "taskId": "task_01M4J12HPWPF58P93B99RHVN2H",
+      "terminal": "failed",
+      "elapsedS": 208,
+      "submitError": null
+    }
+  ],
+  "consoleErrors": []
+}

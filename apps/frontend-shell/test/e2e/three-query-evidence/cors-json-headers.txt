@@ -1,0 +1,10 @@
+HTTP/1.1 200 OK
+vary: Origin
+access-control-allow-origin: http://127.0.0.1:5173
+access-control-allow-credentials: true
+content-type: application/json; charset=utf-8
+content-length: 2383
+Date: Sat, 10 Oct 2026 04:34:38 GMT
+Connection: keep-alive
+Keep-Alive: timeout=72
+

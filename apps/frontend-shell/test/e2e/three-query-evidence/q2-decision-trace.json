@@ -1,0 +1,50 @@
+{
+  "decisionId": "task_01M4J10CKGMJNGMC7WWQX0FQWR",
+  "tenantId": "demo",
+  "question": "常州基地产能瓶颈在哪道工序？各产线的利用率和硬产能上限分别是多少？",
+  "status": "COMPLETED",
+  "path": "WORKFLOW",
+  "classification": {
+    "candidates": [
+      {
+        "intentKey": "ceo_bottleneck",
+        "confidence": 1
+      }
+    ],
+    "outOfCatalog": false,
+    "extractedSlots": {
+      "baseIds": [
+        "changzhou"
+      ]
+    },
+    "latencyMs": 0,
+    "model": "deterministic:ceo-route"
+  },
+  "matchedIntent": {
+    "intentId": "int_ceo_bottleneck_v1",
+    "intentKey": "ceo_bottleneck",
+    "version": 1
+  },
+  "resolvedRefs": [
+    {
+      "kind": "plan",
+      "key": "ceo_bottleneck",
+      "version": 1
+    }
+  ],
+  "trustLevel": "VERIFIED_WORKFLOW",
+  "unverifiedNumerics": false,
+  "provenanceCount": 1,
+  "ontologyValidation": "NONE",
+  "humanReviewRequired": false,
+  "toolCalls": [
+    {
+      "tool": "invoke_solver",
+      "outcome": "OK",
+      "durationMs": 5111,
+      "at": "2026-10-10T04:26:48.872Z"
+    }
+  ],
+  "createdAt": "2026-10-10T04:26:43.696Z",
+  "completedAt": "2026-10-10T04:26:48.875Z"
+}
