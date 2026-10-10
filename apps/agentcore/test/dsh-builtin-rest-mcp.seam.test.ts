@@ -34,7 +34,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { mcpServerNameSlug, type AgentDefinition } from "@platform/contracts";
+import { mcpServerNameSlug, type AgentDefinition, type GrowthTicket } from "@platform/contracts";
 import { createMockDataCore } from "../src/mocks/clients.js";
 import { createMemoryRepos } from "../src/persistence/memory.js";
 import { Metrics } from "../src/metrics.js";
@@ -108,6 +108,12 @@ const MIGRATED: readonly string[] = [
   "build_domain",
   "sim_init",
   "sim_tick",
+  // 批次 5（本单·**收尾批**）：推演指挥台四件的后两件 + 自成长发动机 A4 工单施工面三件
+  "sim_world",
+  "sim_certify",
+  "discover_growth_tickets",
+  "claim_growth_ticket",
+  "submit_growth_ticket",
 ];
 
 /** 专属面（各自的内置 server 承载，不在内置工具 server 上）：本体两件 + 规则一件。 */
@@ -119,13 +125,20 @@ const DEDICATED: ReadonlySet<string> = new Set<string>([
 /** 内置工具 MCP server 的**全部**成员（注册表现算 —— 判据是「注册表 − 专属面」，不手抄）。 */
 const SERVER_ROSTER: readonly string[] = BUILTIN_TOOLS.map((t) => t.name).filter((n) => !DEDICATED.has(n));
 
-/** 本批**仍未迁**的件（= 花名册 − 已迁）：它们**必须仍在反向通道上** —— 反向金丝雀。 */
+/**
+ * 本批**仍未迁**的件（= 花名册 − 已迁）：它们**必须仍在反向通道上** —— 反向金丝雀。
+ * ⚠ 批次 5 是**收尾批** ⇒ 本数组**结构性为空**（花名册已全迁）。空集不度量「反向通道上还有东西」，
+ *   故这一支金丝雀改由 `EXPECT_GENERAL_BARE` 承担（见下）—— 它现算的是**注册表 − 本体专属 − 已迁**，
+ *   本批之后仍非空（`evaluate_rules` 在**规则面**上，不属本 server 花名册，本单不迁它）。
+ */
 const NOT_YET_MIGRATED: readonly string[] = SERVER_ROSTER.filter((n) => !MIGRATED.includes(n));
 
 /**
  * 通用 agent 的裸名面 = **注册表 − 本体专属 − 已迁**（与 seed 侧那条 filter 同一条判据，
  * 但在这里独立再算一遍）。比 `NOT_YET_MIGRATED` 多一件 `evaluate_rules` —— 它在**规则面**上，
- * 不在本 server 的花名册里，本单最后一批才迁它。
+ * 不在本 server 的花名册里，**不属本单**（本单只迁本 server 花名册上的件）。
+ * ⚠ 批次 5（收尾批）之后 `NOT_YET_MIGRATED` 空、而本数组仍非空 ⇒ 反向通道的活金丝雀就是它：
+ *   通用 agent 上这件**必须仍是裸名前向授予**（它同时是 `dsh-rules-mcp` 那条「旧载体金丝雀」的读数锚）。
  */
 const EXPECT_GENERAL_BARE: readonly string[] = BUILTIN_TOOLS.map((t) => t.name).filter(
   (n) => !(ONTOLOGY_MCP_TOOL_NAMES as readonly string[]).includes(n) && !MIGRATED.includes(n),
@@ -161,6 +174,14 @@ const MIN_INPUT: Record<string, Record<string, unknown>> = {
   // sim_tick 必须有会话才走得通；最小装置里没有前置 sim_init ⇒ 诚实落 ERROR（B2 只咬归一与审计名，
   // 不咬业务的四态 —— 同批的 get_object / read_skill_resource 在批次 1/3 也是 ERROR）。
   sim_tick: { sessionId: "sims_probe", n: 1 },
+  // 批次 5：同族的 sim_world / sim_certify 同样需要会话 ⇒ 最小装置里诚实落 ERROR（同上）。
+  sim_world: { sessionId: "sims_probe" },
+  sim_certify: { sessionId: "sims_probe", scope: "GLOBAL" },
+  // 工单三件：最小装置里没有工单行 ⇒ discover 诚实返空集、claim/submit 返 TICKET_NOT_FOUND
+  // （**不抛异常**，落 OK + 结构化 error —— 归一咬的是审计名，不是业务四态）。
+  discover_growth_tickets: {},
+  claim_growth_ticket: { ticketId: "gtk_probe", assignee: "code-agent-probe" },
+  submit_growth_ticket: { ticketId: "gtk_probe", note: "b2-probe" },
 };
 
 /** 同批：`discover` 一族走**探索配额**（`DISCOVER_TOOLS`）—— 归一后配额判据必须仍咬得住。 */
@@ -172,16 +193,17 @@ const FINAL_ANSWER_ARGS = JSON.stringify({
   provenance: [],
 });
 /**
- * e2e 探针（入参带 probe 标记 ⇒ 数据面实参统计只认这一条）。
- * ⚠ 每进一批把它换成**本批**的一件：判据① 要的是「本批的这件」迁前迁后逐键相同。
- * 批次 4 = `fill_data`（CL.2 合规合成首件；数据面落
- * `dataCore.ontology.fillData(ctx, {typeKey, fields, rows})` —— 入参可辨认）。
+ * e2e 探针（回执带 probe 标记 ⇒ 数据面读数证明「真读到了数据面上的那一行」）。
+ * ⚠ 每进一批把它换成**本批**的一件：判据① 要的是「本批的这件」迁前迁后**逐键**相同。
+ * 批次 5 = `discover_growth_tickets`（A4 工单施工面首件）。选它的第二个理由同样重要：
+ * 它的入参是**静态空对象** ⇒ 判据① 的「同实参」可以**逐字节**比，不必为夹具现生成的值做归一
+ * （同批的 `sim_world`/`sim_certify` 必须先把 `sessionId` 现开，两臂的 id 天然不同）。
  */
-const PROBE_RAW = "fill_data";
-/** 探针实参：`fields` 里这个串是**数据面实参统计的识别标记**（只认这一条，免得把内部调用算进来）。 */
+const PROBE_RAW = "discover_growth_tickets";
+/** 探针实参（静态：判据① 要逐字节比实参，禁夹具现生成的值进实参）。 */
+const PROBE_ARGS = JSON.stringify({});
+/** 探针标记：写进**数据面上那一行**的 `fromQuestion` ⇒ 回执里带着它 = 真读到那一行。 */
 const PROBE_MARKER = "wo-builtin-rest-probe";
-const PROBE_TYPE_KEY = "Order";
-const PROBE_ARGS = JSON.stringify({ typeKey: PROBE_TYPE_KEY, fields: [PROBE_MARKER], rows: 3 });
 /**
  * 探针件的**持有者**（出厂种子里第一个授予它的 agent）。判据① 必须用它跑 ——
  * 用一个没被授予该件的 agent 跑，模型面压根没有它（那量的是别的东西）。
@@ -192,13 +214,26 @@ const PROBE_AGENT_ID: string = (() => {
   return holder.id;
 })();
 
-/** 数据面读法：`fill_data` 落到 `dataCore.ontology.fillData(ctx, {typeKey, fields, rows})`。 */
-const probeCallsOf = (spy: { mock: { calls: unknown[][] } }) =>
-  spy.mock.calls.filter(
-    (c) =>
-      (c[1] as { typeKey?: string } | undefined)?.typeKey === PROBE_TYPE_KEY &&
-      ((c[1] as { fields?: string[] } | undefined)?.fields ?? []).includes(PROBE_MARKER),
-  );
+/**
+ * 在**数据面**上放一行探针工单（夹具输入，不是被测行为）：使 `discover_growth_tickets` 的回执**非空**，
+ * 且回执里带着 `PROBE_MARKER` ⇒ 「数据面真读到了那一行」有逐字证据（不是「调了没调」）。
+ */
+async function seedProbeTicket(t: TestApp): Promise<void> {
+  await t.repos.growthTickets.upsert({
+    id: "gtk_wo_builtin_rest_probe",
+    tenantId: TENANT,
+    fromQuestion: `探针工单 ${PROBE_MARKER}`,
+    gapCode: "NO_PLAN",
+    ioContract: { inputs: ["Model"], outputShape: ["value", "provenance"] },
+    ontologyRefs: { objectTypes: ["Model"], slices: [], rules: [] },
+    acceptance: "应能答出可验证答案",
+    status: "OPEN",
+    createdAt: "2026-06-18T00:00:00.000Z",
+  } satisfies GrowthTicket);
+}
+
+/** 数据面读法：`discover_growth_tickets` 落到 `repos.growthTickets.listByTenant(tenantId)`。 */
+const probeCallsOf = (spy: { mock: { calls: unknown[][] } }) => spy.mock.calls.filter((c) => c[0] === TENANT);
 
 interface CapturedReq {
   runToken?: string;
@@ -372,8 +407,18 @@ function ungrantedOne(agent: AgentDefinition, raw: string): AgentDefinition {
  * **反向对照形态**（判据③）：MCP 挂载在、但授予面（toolFilter）**不含**已迁的这批。
  * 换授同 server 的**另一件**（还没迁的一件）—— 证明「读不到」不是「整台 server 塌了」。
  */
-/** 反向对照的「换授件」= **同 server 尚未迁**的一件（全迁完之后退到花名册首件，仍同 server）。 */
+/**
+ * 反向对照的「换授件」= **同 server 尚未迁**的一件；批次 5（收尾批）之后花名册已全迁
+ * ⇒ 退到**花名册首件**（仍同 server，判据不变：换授件在模型面/展开面里 = 「不是整台 server 塌了」）。
+ */
 const UNGRANTED_SWAP: string = NOT_YET_MIGRATED[0] ?? SERVER_ROSTER[0]!;
+/**
+ * 反向对照里「**被拿掉**的那批」= 已迁件 − 换授件。
+ * ⚠ 收尾批之后换授件必然是**已迁件**（花名册上没有别的了），而它是被**换授进来**的 ⇒
+ *   它当然出现在展开面里（它就是那只金丝雀）。判「拿掉 ⇒ 展开面里没有它」时必须把它排除，
+ *   否则是拿夹具自己的设置当反证（对它的那三条断言在 D3/E3 里各有一份，不靠这个循环）。
+ */
+const REMOVED_IN_REVERSE: readonly string[] = MIGRATED.filter((n) => n !== UNGRANTED_SWAP);
 function ungrantedAgent(agent: AgentDefinition): AgentDefinition {
   const swapped = builtinMcpToolName(UNGRANTED_SWAP);
   const kept = rawOfFilter(builtinRef(agent)).filter((n) => !MIGRATED.includes(n));
@@ -510,11 +555,16 @@ function bareExecutor() {
 // A 组 · DSH 侧真身：真 stdio MCP 客户端 → 真 spawn → tools/list / tools/call
 // ═══════════════════════════════════════════════════════════════════════════
 describe("WO-BUILTIN-MIGRATE-REST · A 组：DSH 侧真看到的这批工具（MCP wire 面）", () => {
-  it("前置自证：server 入口文件真实存在 ∧ 花名册非空 ∧ 仍有未迁件（否则金丝雀恒真）", () => {
+  it("前置自证：server 入口文件真实存在 ∧ 花名册非空 ∧ 已全迁（收尾批）∧ 反向金丝雀换了锚", () => {
     expect(existsSync(SERVER_PATH), `缺入口 ${SERVER_PATH}（先 pnpm --filter agentcore build）`).toBe(true);
     expect(SERVER_ROSTER.length, "花名册 = 注册表 − 专属面").toBe(BUILTIN_MCP_TOOL_NAMES.length);
     expect(MIGRATED.length).toBeGreaterThan(0);
-    expect(NOT_YET_MIGRATED.length, "本批之后仍有未迁件 ⇒「未迁仍在反向通道」那条不是对空集断言").toBeGreaterThan(0);
+    // ⚠ 批次 5 = **收尾批** ⇒「本 server 仍未迁件」这一支金丝雀**结构性作废**（对空集断言恒真，
+    //   不是「验过了」）。故这里改钉**新的真相**：花名册已全迁（反过来咬：哪天又漏一件，这里先红）。
+    expect(NOT_YET_MIGRATED.length, "收尾批：本 server 花名册已全迁（有未迁件 ⇒ 本批没做完）").toBe(0);
+    // 反向通道的**活**金丝雀换锚到跨面的那一件（通用 agent 的裸名面）：它非空 ⇒
+    // 「已迁件退出反向通道」那几条不是拿空集当证据（见 C2/C4/D3）。
+    expect(EXPECT_GENERAL_BARE.length, "反向通道的活金丝雀（跨面）：通用 agent 仍非空").toBeGreaterThan(0);
   });
 
   it("A1 tools/list（判据②）：真 spawn + 真握手，本批每一件都在 ∧ 名/描述/入参模式与注册表逐字同源", { timeout: SEAM_TIMEOUT }, async () => {
@@ -537,7 +587,9 @@ describe("WO-BUILTIN-MIGRATE-REST · A 组：DSH 侧真看到的这批工具（M
     console.log(
       `\n  ── A1 DSH 侧真 tools/list（${names.length} 件 · 真 spawn 子进程）──\n` +
         `  本批（模型面名）：${MIGRATED.map((r) => `${r}=${full(r)}`).join(" · ")}\n` +
-        `  仍未迁（同 server 也广告，但出厂 agent 未授予 ⇒ 反向通道）：${NOT_YET_MIGRATED.join(" · ")}\n`,
+        `  仍未迁（同 server 也广告，但出厂 agent 未授予 ⇒ 反向通道）：${
+          NOT_YET_MIGRATED.join(" · ") || "(无 —— 收尾批：花名册已全迁；反向通道上只剩规则面那件 evaluate_rules)"
+        }\n`,
     );
   });
 
@@ -635,7 +687,7 @@ describe("WO-BUILTIN-MIGRATE-REST · B 组：MCP 全名归一回同一具执行�
 
   it("B3b 工具 scope 门按**调用原名**判（本批耦合）：本批件以全名调用、声明面不含它 ⇒ DENIED 且拒绝行记**全名**；声明面补上全名即放行", async () => {
     // ⚠ 这一条与 B3 的区别是**门不同、拒绝行记法也不同**：B3 是对象域门（在归一**之后** ⇒ 记裸名），
-    // 本条是步骤 0 的工具 scope 门（在归一**之前** ⇒ 记调用原名）。本批要证的是：`fill_data` 换了载体
+    // 本条是步骤 0 的工具 scope 门（在归一**之前** ⇒ 记调用原名）。本批要证的是：`sim_world` 换了载体
     // 之后，门既不因「名字里多了前缀」而**误拒**（声明面记全名即放行），也不因载体而**放行越界**。
     const repos = createMemoryRepos();
     const mk = (taskId: string, scopeToolNames: string[]) =>
@@ -652,6 +704,7 @@ describe("WO-BUILTIN-MIGRATE-REST · B 组：MCP 全名归一回同一具执行�
     const allowed = await mk("task_tool_scope_ok", [full(PROBE_RAW)]).run(full(PROBE_RAW), MIN_INPUT[PROBE_RAW]!);
     expect(allowed.outcome, "声明面记全名 ⇒ 不被 scope 门误拒（这才是迁移要的形态）").not.toBe("DENIED");
     // 金丝雀：同一条门对**裸名**形态同样咬得住（证明上面不是「只认全名」的新病）
+    // ⚠ 声明面里写的裸名件必须**不是** `PROBE_RAW` 自己（那会变成「声明含它 ⇒ 放行」，判据反了）。
     const bareDenied = await mk("task_tool_scope_bare", ["sim_world"]).run(PROBE_RAW, MIN_INPUT[PROBE_RAW]!);
     expect(bareDenied.outcome, "裸名形态同样被拒（门不因载体而换判据）").toBe("DENIED");
   });
@@ -771,7 +824,7 @@ function rawName(n: string): string {
 // C 组 · 三面同改（授予 ∧ 挂载 ∧ 声明）+ engine 真装配
 // ═══════════════════════════════════════════════════════════════════════════
 describe("WO-BUILTIN-MIGRATE-REST · C 组：三面同改 + 只剩一条授予路", () => {
-  it("C1 出厂 analyst：本批四件 + 试点件全在 MCP 面上，裸名退净，配置行在册", () => {
+  it("C1 出厂 analyst：迁前真正持有的那几件全在 MCP 面上，裸名退净，配置行在册", () => {
     const agent = seedAnalyst();
     const ref = builtinRef(agent);
     expect(ref, "analyst 有内置工具 MCP 授予 ref").toBeTruthy();
@@ -793,7 +846,7 @@ describe("WO-BUILTIN-MIGRATE-REST · C 组：三面同改 + 只剩一条授予�
     expect(row!.status).toBe("ACTIVE");
   });
 
-  it("C2 **逐 agent** 扫出厂种子：本批每一件都只剩 MCP 一条路（裸名授予 = 0）∧ 未迁件仍在反向通道", () => {
+  it("C2 **逐 agent** 扫出厂种子：本批每一件都只剩 MCP 一条路（裸名授予 = 0）∧ 反向通道仍非空（换锚跨面那件）", () => {
     const agents = seedRegistry().agents;
     expect(agents.length, "金丝雀：出厂 agent 数量非空").toBeGreaterThanOrEqual(11);
     for (const a of agents) {
@@ -840,7 +893,7 @@ describe("WO-BUILTIN-MIGRATE-REST · C 组：三面同改 + 只剩一条授予�
     expect((spec.tools ?? []).map((x) => x.name), "harness 白名单含全名").toContain(full(EXPECT_ANALYST_RAW[0]));
   });
 
-  it("C4 engine 真装配（通用 agent）：裸名面 = 未迁件 ∧ Phase6C 不砍内置工具面（原生臂真跑）", async () => {
+  it("C4 engine 真装配（通用 agent）：裸名面 = 注册表 − 本体专属 − 已迁 ∧ Phase6C 不砍内置工具面（原生臂真跑）", async () => {
     const { spec, expanded } = await setupFromSeedAgent(seedAgent(GENERAL_AGENT_ID));
     const names = expanded.map((x) => x.name);
     // 通用 agent：已迁全量在模型面（全名），未迁全量在反向面（裸名）
@@ -849,7 +902,7 @@ describe("WO-BUILTIN-MIGRATE-REST · C 组：三面同改 + 只剩一条授予�
     for (const raw of MIGRATED) expect(hostNames).not.toContain(raw);
     expect(hostNames, "反向工具面 = 裸名面逐条相同（两处同源）").toEqual([...EXPECT_GENERAL_BARE].sort());
 
-    // Phase6C 收窄豁免：内置工具面**不参与** top-k（否则通用 agent 的 26 件会被砍到 8 以内）
+    // Phase6C 收窄豁免：内置工具面**不参与** top-k（否则通用 agent 的 25 件内置面会被砍到 8 以内）
     const t = await createTestApp();
     try {
       await seedWorld(t, seedAgent(GENERAL_AGENT_ID, { kernel: "NATIVE" }));
@@ -903,7 +956,9 @@ describe("WO-BUILTIN-MIGRATE-REST · D 组：迁前/迁后单变量对照（setu
   it("D3 反向对照（判据③·setup 层）：授予面换授 ⇒ 展开面/允许表一起没有它（同 server 另一件仍在）", async () => {
     const un = await setupFromSeedAgent(ungrantedAgent(seedAnalyst()));
     const names = un.expanded.map((x) => x.name);
-    for (const raw of MIGRATED) {
+    // ⚠ 遍历的是 `REMOVED_IN_REVERSE`（= 已迁件 − 换授件），**不是** `MIGRATED`：
+    //   换授件是被**换授进来**的，它当然在展开面里 —— 拿夹具自己的设置当反证是假的。
+    for (const raw of REMOVED_IN_REVERSE) {
       expect(names, `授予面拿掉 ⇒ ${raw} 不在展开面`).not.toContain(full(raw));
       expect(names, `裸名也没有`).not.toContain(raw);
     }
@@ -941,7 +996,8 @@ describe("WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁
     const { t, close } = await startToolExecApp({ stubUrl: `${stub.url}/v1`, serviceToken: SERVICE_TOKEN });
     try {
       await seedWorld(t, seedAgent(PROBE_AGENT_ID));
-      const fillSpy = vi.spyOn(t.dataCore.ontology, "fillData");
+      await seedProbeTicket(t);
+      const listSpy = vi.spyOn(t.repos.growthTickets, "listByTenant");
       const result = await runAgent(t, "task_rest_e1", PROBE_AGENT_ID);
       expect(result.run.kernel, "真走 DSH 分叉").toBe("EXTERNAL");
 
@@ -953,14 +1009,14 @@ describe("WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁
       expect(visible.find((x) => x.name === full(PROBE_RAW))?.description, "描述逐字 = MCP 广告文本").toBe(advertised.description);
       expect(names.length, "金丝雀：模型面没空掉").toBeGreaterThan(5);
 
-      const probeCalls = probeCallsOf(fillSpy);
-      expect(probeCalls.length, "模型那一次合成恰一次").toBe(1);
-      expect((probeCalls[0]![1] as { fields: string[] }).fields, "入参逐键 = 模型给的").toContain(PROBE_MARKER);
-      expect((probeCalls[0]![1] as { typeKey: string }).typeKey, "入参逐键 = 模型给的").toBe(PROBE_TYPE_KEY);
+      const probeCalls = probeCallsOf(listSpy);
+      expect(probeCalls.length, "模型那一次读恰一次（按租户筛，不把内部调用算进来）").toBe(1);
+      expect(probeCalls[0]![0], "数据面实参逐键 = 本租户").toBe(TENANT);
 
       const rows = await t.repos.toolCalls.listByTask("task_rest_e1");
       const row = rows.find((r) => r.toolName === PROBE_RAW);
       expect(row?.outcome, "内置工具审计行").toBe("OK");
+      expect(JSON.stringify(row!.output), "回执带着探针行的标记 ⇒ 真读到数据面上那一行").toContain(PROBE_MARKER);
       expect(rows.find((r) => r.toolName === full(PROBE_RAW)), "审计面不许有全名行（有 = 两条路都执行过）").toBeUndefined();
 
       const second = JSON.stringify(stub.requests[1]!.body);
@@ -995,7 +1051,8 @@ describe("WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁
     const { t, close } = await startToolExecApp({ stubUrl: `${stub.url}/v1`, serviceToken: SERVICE_TOKEN });
     try {
       await seedWorld(t, preMigrationOne(seedAgent(PROBE_AGENT_ID), PROBE_RAW));
-      const fillSpy = vi.spyOn(t.dataCore.ontology, "fillData");
+      await seedProbeTicket(t);
+      const listSpy = vi.spyOn(t.repos.growthTickets, "listByTenant");
       const result = await runAgent(t, "task_rest_e2", PROBE_AGENT_ID);
       expect(result.run.kernel, "真走 DSH 分叉").toBe("EXTERNAL");
 
@@ -1010,8 +1067,8 @@ describe("WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁
           .sort(),
       );
       expect(stillMigrated.length, "金丝雀：单变量臂不是「整台 server 撤了」").toBeGreaterThan(0);
-      const probeCalls = probeCallsOf(fillSpy);
-      expect(probeCalls.length, "迁前臂：模型那一次合成恰一次").toBe(1);
+      const probeCalls = probeCallsOf(listSpy);
+      expect(probeCalls.length, "迁前臂：模型那一次读恰一次").toBe(1);
       const rows = await t.repos.toolCalls.listByTask("task_rest_e2");
       const preRow = rows.find((r) => r.toolName === PROBE_RAW);
       expect(preRow?.outcome, "同一只 host executor、同一行审计名").toBe("OK");
@@ -1054,14 +1111,16 @@ describe("WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁
     const { t, close } = await startToolExecApp({ stubUrl: `${stub.url}/v1`, serviceToken: SERVICE_TOKEN });
     try {
       await seedWorld(t, ungrantedOne(seedAgent(PROBE_AGENT_ID), PROBE_RAW));
-      const fillSpy = vi.spyOn(t.dataCore.ontology, "fillData");
+      // 探针行**照放**（数据面上有那一行 ⇒ 「零读数」量的不是「本来就没数据」）
+      await seedProbeTicket(t);
+      const listSpy = vi.spyOn(t.repos.growthTickets, "listByTenant");
       const result = await runAgent(t, "task_rest_e3", PROBE_AGENT_ID);
       expect(result.run.kernel, "真走 DSH 分叉").toBe("EXTERNAL");
       const names = stubVisibleTools(stub).map((x) => x.name);
       expect(names, `授予面拿掉 ⇒ DSH 侧看不到 ${PROBE_RAW}`).not.toContain(full(PROBE_RAW));
       expect(names, `裸名形态也不在`).not.toContain(PROBE_RAW);
       expect(names, "金丝雀：同 server 换授的那件在模型面").toContain(builtinMcpToolName(UNGRANTED_SWAP));
-      expect(probeCallsOf(fillSpy).length, "宿主零数据面调用（fail-closed）").toBe(0);
+      expect(probeCallsOf(listSpy).length, "宿主零数据面调用（fail-closed）").toBe(0);
       const rows = await t.repos.toolCalls.listByTask("task_rest_e3");
       expect(rows.some((r) => r.toolName === PROBE_RAW && r.outcome === "OK"), "不许有 OK 审计行").toBe(false);
       expect(names.length, "金丝雀：模型面没空掉").toBeGreaterThan(5);

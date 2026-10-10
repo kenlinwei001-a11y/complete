@@ -1,0 +1,84 @@
+npm warn Unknown env config "side-effects-cache". This will stop working in the next major version of npm.
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/agent-ab5ecf2a2fd9b4e5d/apps/agentcore
+
+ ✓ test/mcp-top8-vs-roster.seam.test.ts (4 tests) 6596ms
+   ✓ WO-MCP-TOP8-VS-ROSTER · ① ≤8 个 MCP 工具的 agent：目录段 == 可调用面 > agt_capacity_planner（5 求解器 + 本体切片面，≤8）：双向差集为空，且 == 其 toolFilter  4669ms
+   ✓ WO-MCP-TOP8-VS-ROSTER · ②④ >8 个 MCP 工具的 agent：广告面 ⊆ 可调用面 且 可调用 ⊆ 广告面 > agt_seed_analyst（16 求解器）：目录段键集 == 模型面求解器键集（双向差集为空）  980ms
+   ✓ WO-MCP-TOP8-VS-ROSTER · ③ 对照：把 deferred 的键调进去 ⇒ 它进目录段 > gap_attribution：Q_CAPACITY 下不在目录段（deferred）· Q_GAP 下在（granted）  922ms
+stdout | test/general-agent-dsh.seam.test.ts > WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核） > ②-b 对照：通用 agent 不在场 + **测试装配（进程内循环）** ⇒ EXPLORATORY + NATIVE（产品态读数见 ②-c）
+[WO-GENERAL-AGENT-DSH ②-b] run={"attribution":"EXPLORATORY","kernel":"NATIVE","agentId":null}
+
+stdout | test/general-agent-dsh.seam.test.ts > WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核） > ③ 目录驱动自证：工具清单 / 对象类型清单都是目录现算（贴三个数 + 差集解释）
+[WO-GENERAL-AGENT-DSH ③·tools] 目录={"builtinFace":26,"ontologyMcp":2,"solvers":63,"workflowsPublished":4} 合计=95 agent清单=95 差集=0 ｜未进清单的目录项=2（DRAFT 工作流：未发布定义不是可调用工具）
+
+stdout | test/general-agent-dsh.seam.test.ts > WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核） > ③ 目录驱动自证：工具清单 / 对象类型清单都是目录现算（贴三个数 + 差集解释）
+[WO-GENERAL-AGENT-DSH ③·objectTypes] 目录=14 · 声明面=0（刻意留空：全量的判据是字段 allObjectTypes，⛔ 不手抄清单） · 运行期有效面=14（③-b 的 DENY payload `allowed` 原文与目录逐条相同） · 差集(有效面 vs 目录)=0
+
+stdout | test/general-agent-dsh.seam.test.ts > WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核） > ③-b 对象域「目录现算」真生效：读**声明面之外**的类型不被 scope 门拒（对照臂必须 DENIED）
+[WO-GENERAL-AGENT-DSH ③-b] 通用 agent 读 Material ⇒ {"data":{"items":[],"total":0},"total":0,"truncated":false,"snapshotVersion":"ont-snap-001@1","empty":true,"hint":"对象类型 Material 存在但 0 实例：可能租户未引导，请先 run_synthetic/bootstrap 合成计划域，而非判定\"无数据\"。"}
+[WO-GENERAL-AGENT-DSH ③-b·对照] agt_seed_explore 读 Material ⇒ {"error":"AGENT_SCOPE_VIOLATION","objectType":"Material","allowed":["Base","Order","Model","Line"]}
+[WO-GENERAL-AGENT-DSH ③-b·有效域] 通用 agent 读目录外类型 ⇒ {"error":"AGENT_SCOPE_VIOLATION","objectType":"NoSuchType_Probe","allowed":["Base","Customer","Equipment","Line","Material","MaterialBalance","Model","Order","OrderLine","Process","Segment","Shipment","WIPLot","WorkOrder"]}
+
+stdout | test/general-agent-dsh.seam.test.ts > WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核） > ⑤ 真有角色关键词的问句不受影响：仍落到角色 agent（agent.coordinator 开时）
+[WO-GENERAL-AGENT-DSH ⑤] classification.model=agent:role:supply-chain runKey=supply_chain
+
+ ❯ test/general-agent-dsh.seam.test.ts (7 tests | 3 failed) 112551ms
+   × WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核） > ① 无角色关键词 ⇒ agentKey=通用 agent · kernel=EXTERNAL · 归属 REGISTERED 33662ms
+     → waitForTask timeout: task_01M4HYV2B2SJGRBNQ0617EF775 status=EXECUTING_AGENT
+   × WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核） > ②-a 退役证明：把该 agent 的 kernel 设回 NATIVE ⇒ **仍落 EXTERNAL**（旧回退开关已失效） 30749ms
+     → waitForTask timeout: task_01M4HYW0FN1JT1KJXGPD58M862 status=EXECUTING_AGENT
+   ✓ WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核） > ②-b 对照：通用 agent 不在场 + **测试装配（进程内循环）** ⇒ EXPLORATORY + NATIVE（产品态读数见 ②-c）  1124ms
+   × WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核） > ②-c ★ 通用 agent 不在场 + 装配位=DSH ⇒ 合成探索 agent · kernel=EXTERNAL · 归属仍 EXPLORATORY 40359ms
+     → waitForTask timeout: task_01M4HYWZ76168K2E7SYAFS2B8M status=EXECUTING_AGENT
+   ✓ WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核） > ③ 目录驱动自证：工具清单 / 对象类型清单都是目录现算（贴三个数 + 差集解释）  768ms
+   ✓ WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核） > ③-b 对象域「目录现算」真生效：读**声明面之外**的类型不被 scope 门拒（对照臂必须 DENIED）  2804ms
+   ✓ WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核） > ⑤ 真有角色关键词的问句不受影响：仍落到角色 agent（agent.coordinator 开时）  3072ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/general-agent-dsh.seam.test.ts > WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核） > ① 无角色关键词 ⇒ agentKey=通用 agent · kernel=EXTERNAL · 归属 REGISTERED
+Error: waitForTask timeout: task_01M4HYV2B2SJGRBNQ0617EF775 status=EXECUTING_AGENT
+ ❯ Module.waitForTask test/helpers.ts:135:13
+    133|     if (task && predicate(task)) return task;
+    134|     if (Date.now() - start > timeoutMs) {
+    135|       throw new Error(`waitForTask timeout: ${taskId} status=${task?.s…
+       |             ^
+    136|     }
+    137|     await new Promise((r) => setTimeout(r, 20));
+ ❯ test/general-agent-dsh.seam.test.ts:108:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  test/general-agent-dsh.seam.test.ts > WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核） > ②-a 退役证明：把该 agent 的 kernel 设回 NATIVE ⇒ **仍落 EXTERNAL**（旧回退开关已失效）
+Error: waitForTask timeout: task_01M4HYW0FN1JT1KJXGPD58M862 status=EXECUTING_AGENT
+ ❯ Module.waitForTask test/helpers.ts:135:13
+    133|     if (task && predicate(task)) return task;
+    134|     if (Date.now() - start > timeoutMs) {
+    135|       throw new Error(`waitForTask timeout: ${taskId} status=${task?.s…
+       |             ^
+    136|     }
+    137|     await new Promise((r) => setTimeout(r, 20));
+ ❯ test/general-agent-dsh.seam.test.ts:145:7
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  test/general-agent-dsh.seam.test.ts > WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核） > ②-c ★ 通用 agent 不在场 + 装配位=DSH ⇒ 合成探索 agent · kernel=EXTERNAL · 归属仍 EXPLORATORY
+Error: waitForTask timeout: task_01M4HYWZ76168K2E7SYAFS2B8M status=EXECUTING_AGENT
+ ❯ Module.waitForTask test/helpers.ts:135:13
+    133|     if (task && predicate(task)) return task;
+    134|     if (Date.now() - start > timeoutMs) {
+    135|       throw new Error(`waitForTask timeout: ${taskId} status=${task?.s…
+       |             ^
+    136|     }
+    137|     await new Promise((r) => setTimeout(r, 20));
+ ❯ test/general-agent-dsh.seam.test.ts:193:7
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  3 failed | 8 passed (11)
+   Start at  11:47:51
+   Duration  169.94s (transform 21.89s, setup 0ms, collect 102.63s, tests 119.15s, environment 1ms, prepare 3.55s)
+

@@ -4,6 +4,7 @@ import { createTestApp, TENANT, type TestApp } from "./helpers.js";
 import { text, toolUse } from "../src/llm/mock.js";
 import { seedMcpConfigs, seedRegistry } from "../src/mocks/seed.js";
 import { SOLVERS_MCP_CONFIG_ID } from "../src/mcp/solvers-catalog.js";
+import { BUILTIN_MCP_CONFIG_ID } from "../src/mcp/builtin-mcp.js";
 import { BudgetTracker } from "../src/tools/budget.js";
 import { enterNesting } from "../src/runtime.js";
 import { projectNavigationSlice, renderNavigationSlice } from "../src/agent/navigation-slice.js";
@@ -205,7 +206,14 @@ describe("WO-MCP-TOP8-VS-ROSTER · ②④ >8 个 MCP 工具的 agent：广告面
       // （`mcp__builtin__query_objects`，平台内置工具面按构造恒全量注入）⇒ 判据落回
       // 「**参与收窄的那一面**恰为 top-8」＝全 MCP 面 − 内置面，而不是全 MCP 面 == 8。
       const builtinFace = allToolNames.filter((n) => n.startsWith("mcp__builtin__"));
-      expect(builtinFace.length, "内置工具面恰一件（豁免不计入 top-k 名额）").toBe(1);
+      // ⚠ WO-BUILTIN-MIGRATE-REST：这里原写死「恰一件」（= 试点批 query_objects 的读数）。
+      // 内置工具面**逐批长**（批次 1 起 analyst 持有 5 件，见 seed 的内置工具授予 ref）⇒ 写死的 1
+      // 从批次 1 起就**结构性恒假**（与产品对错无关的读数，一跑就红）。改为从**该 agent 自己的
+      // 内置授予面**现算（同本文件的 `grantedFilterOf` 口径）；这一行只做前提自证，
+      // 真正的牙是下一行「**参与收窄的那一面**恰为 top-8」——它没动。
+      const builtinRef = agent.tools.find((r) => r.kind === "MCP" && r.mcpConfigId === BUILTIN_MCP_CONFIG_ID);
+      const builtinGranted = builtinRef && builtinRef.kind === "MCP" ? (builtinRef.toolFilter ?? []) : [];
+      expect(builtinFace.length, "内置工具面恒全量（= 该 agent 的内置授予面，豁免不计入 top-k 名额）").toBe(builtinGranted.length);
       expect(
         allToolNames.filter((n) => n.startsWith("mcp__") && !n.startsWith("mcp__builtin__")).length,
         "参与收窄的 MCP 工具面没被截到 top-8 ⇒ 本臂前提不成立",

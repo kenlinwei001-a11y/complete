@@ -1,0 +1,16 @@
+npm warn Unknown env config "side-effects-cache". This will stop working in the next major version of npm.
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/agent-ab5ecf2a2fd9b4e5d/apps/agentcore
+
+ ✓ test/dsh-solvers-mcp.seam.test.ts (16 tests) 10001ms
+   ✓ WO-SOLVERS-MCP-REAL · A 组：真 stdio MCP server（MCP wire 面） > A1 tools/list：工具名 == 独立拼出来的 mcp__solvers__{key}，且声明模式逐字段透传  1736ms
+   ✓ WO-SOLVERS-MCP-REAL · A 组：真 stdio MCP server（MCP wire 面） > A2 tools/call：宿主收到的是**全名 + 扁平原文**；模型面回执是逐字 <tool_data> 包络  1587ms
+   ✓ WO-SOLVERS-MCP-REAL · A 组：真 stdio MCP server（MCP wire 面） > A3 对照实验（减输入）：拿掉 SOLVERS_MCP_TOOLS_JSON ⇒ 工具数 2 → 0（证明 env 是真来源）  2216ms
+   ✓ WO-SOLVERS-MCP-REAL · A 组：真 stdio MCP server（MCP wire 面） > A4 对照实验（改输入）：改 argHints ⇒ wire 上 description 按可预言的方式变  2504ms
+   ✓ WO-SOLVERS-MCP-REAL · A 组：真 stdio MCP server（MCP wire 面） > A5 未授予的工具：回 isError 且宿主收到 **0** 次转发（fail-closed，不猜）  1466ms
+
+ Test Files  1 passed (1)
+      Tests  16 passed (16)
+   Start at  12:00:52
+   Duration  18.37s (transform 3.64s, setup 0ms, collect 6.91s, tests 10.00s, environment 0ms, prepare 246ms)
+

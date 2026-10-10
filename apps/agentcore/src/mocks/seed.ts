@@ -1921,9 +1921,14 @@ const BUILTIN_MIGRATED_B2 = ["discover", "retrieve_knowledge", "query_ontology",
  * `agent/reflect.ts` 的 `calledSolverOk`；漏一处就是**静默少东西**而不是报错）。
  */
 const BUILTIN_MIGRATED_B3 = ["get_breakpoint", "impact_of", "read_skill_resource", "create_action_draft", "invoke_solver"] as const;
-/** 批次 4：合规合成/建域三件（CL.2）+ 推演指挥台 `SIM_COMMANDER_TOOLS` 四件里的**前两件**
- *  （`sim_world` / `sim_certify` 留给下一批 —— 同族分批只为「红在哪一批」分得清，不是能力差异）。 */
+/** 批次 4：合规合成/建域三件（CL.2）+ 推演指挥台 `SIM_COMMANDER_TOOLS` 四件里的**前两件**。 */
 const BUILTIN_MIGRATED_B4 = ["fill_data", "run_synthetic", "build_domain", "sim_init", "sim_tick"] as const;
+/**
+ * 批次 5（**收尾批**）：推演指挥台 `SIM_COMMANDER_TOOLS` 的**后两件** + 自成长发动机 A4 的
+ * 工单施工面三件。本批之后本 server 花名册上**再无未迁件**（判据：`BUILTIN_MCP_TOOL_NAMES`
+ * 与 `BUILTIN_MIGRATED` 的差集为空）—— 三处按裸名认这 5 件的运行期判据**一处都没有**（见台账）。
+ */
+const BUILTIN_MIGRATED_B5 = ["sim_world", "sim_certify", "discover_growth_tickets", "claim_growth_ticket", "submit_growth_ticket"] as const;
 /** 通用 agent 的**累计**迁移集（它的语义 = 平台全部内置工具 ⇒ 跟着台账长，不另抄一份）。 */
 const BUILTIN_MIGRATED = [
   ...BUILTIN_QUERY,
@@ -1931,6 +1936,7 @@ const BUILTIN_MIGRATED = [
   ...BUILTIN_MIGRATED_B2,
   ...BUILTIN_MIGRATED_B3,
   ...BUILTIN_MIGRATED_B4,
+  ...BUILTIN_MIGRATED_B5,
 ] as const;
 
 /**

@@ -1,0 +1,38 @@
+WO-BUILTIN-BATCH5 · 批次 5 · 第五条耦合逐条点名（5 件的裸名判据扫描）
+============================================================
+扫描方法（先自证工具，再报否定结论）：
+  金丝雀（已知必中）：cd apps/agentcore && grep -rn '"invoke_solver"' src | wc -l
+  ⇒ 实测 58
+  同一查法逐件数本批 5 件在 src/ 里的字符串字面量位（逐条读回，判定它是不是「按名字做判据」）：
+    ── sim_world ──
+      src/mocks/seed.ts:1931:const BUILTIN_MIGRATED_B5 = ["sim_world", "sim_certify", "discover_growth_tickets", "claim_growth_ticket", "submit_growth_ticket"] as const;
+      src/tools/executor.ts:561:      case "sim_world":
+      src/tools/registry.ts:379:    name: "sim_world",
+      src/tools/registry.ts:459:export const SIM_COMMANDER_TOOLS = ["sim_init", "sim_tick", "sim_world", "sim_certify"] as const;
+    ── sim_certify ──
+      src/tools/registry.ts:391:    name: "sim_certify",
+      src/tools/registry.ts:459:export const SIM_COMMANDER_TOOLS = ["sim_init", "sim_tick", "sim_world", "sim_certify"] as const;
+      src/mocks/seed.ts:1931:const BUILTIN_MIGRATED_B5 = ["sim_world", "sim_certify", "discover_growth_tickets", "claim_growth_ticket", "submit_growth_ticket"] as const;
+      src/tools/executor.ts:563:      case "sim_certify":
+    ── discover_growth_tickets ──
+      src/tools/registry.ts:421:    name: "discover_growth_tickets",
+      src/mocks/seed.ts:1931:const BUILTIN_MIGRATED_B5 = ["sim_world", "sim_certify", "discover_growth_tickets", "claim_growth_ticket", "submit_growth_ticket"] as const;
+      src/tools/executor.ts:584:      case "discover_growth_tickets":
+    ── claim_growth_ticket ──
+      src/mocks/seed.ts:1931:const BUILTIN_MIGRATED_B5 = ["sim_world", "sim_certify", "discover_growth_tickets", "claim_growth_ticket", "submit_growth_ticket"] as const;
+      src/tools/registry.ts:432:    name: "claim_growth_ticket",
+      src/tools/executor.ts:586:      case "claim_growth_ticket":
+    ── submit_growth_ticket ──
+      src/mocks/seed.ts:1931:const BUILTIN_MIGRATED_B5 = ["sim_world", "sim_certify", "discover_growth_tickets", "claim_growth_ticket", "submit_growth_ticket"] as const;
+      src/tools/executor.ts:588:      case "submit_growth_ticket":
+      src/tools/registry.ts:443:    name: "submit_growth_ticket",
+
+① 求解入口类裸名判据（批次3 的 invoke_solver 四处：navigation-slice canInvokeSolvers / engine hasBuiltinInvokeSolver / reflect calledSolverOk / ops-fallback 查表）
+   本批 5 件**一件都不进求解入口** ⇒ 未遇到；四处已在批次3 全改按身份（resolveBuiltinToolIdentity），B7/B8/B9 仍是活牙（本批跑过，全绿）。
+② 截断豁免集 / 对象域门按身份判（两张名单原文，逐字）：
+     src/agent/loop.ts:376:export const TRUNCATION_EXEMPT_TOOLS = new Set(["query_timeseries_agg", "read_skill_resource"]);
+     src/tools/executor.ts:51:const OBJECT_SCOPED_TOOLS = new Set(["query_objects", "get_object", "aggregate_objects"]);
+   本批 5 件在两份名单里**一件都不在** ⇒ 两条门对本批无作用面，也无需改。
+③ 工具 scope 门用**调用原名**校验 —— 本批遇到，B3b 已咬（全名调用 + 声明面不含 ⇒ DENIED 且拒绝行记全名；补全名即放行；裸名形态仍被拒）。
+④ 失败点名披露块：通用面照咬（B6 渲染层 + E4 端到端），本批无专项探针。
+⑤ 探索配额 DISCOVER_TOOLS：本批 5 件**一件都不在**（discover/search_experience/query_system_ontology/retrieve_knowledge）⇒ 配额面不受影响，B5 仍绿。
