@@ -1,0 +1,63 @@
+WO-MULTIHOP-COMPLETENESS · §5 完备性对照表的「理论上需要」一列
+================================================================
+⚠ 本清单在三题的任何 agent-run 读数落地**之前**写就（见本文件 mtime 与各 q*/poll.log
+   首个采样时刻的先后）。判据：本文件的 mtime 必须早于 q1/agent-runs.json 的 mtime。
+   这不是为了自证清白，是因为「事后按调过的去倒推」会让这张表失去度量力。
+
+口径：一行 = 一个**资源类别**（不是工具名）。判定该类别「有/没有」的依据见下。
+「有」的两种形态必须分开写：
+  · OBJ  = 有对象类型且有实例（可取）
+  · SOLV = 有专门求解器
+  · TYPEOBJ_EMPTY = 有对象类型但零实例（有型无数据）
+  · NONE = 全仓无此资源
+
+
+--- 题 1 · SO-3391 取消 → 损失多少利润 ---
+题干要求「说明损失的构成 + 每个数字的来源」⇒ 至少要区分营收损失/毛利损失/已发生沉没成本。
+
+ 1. 订单本身（金额/数量/单价/交期）        OBJ  Order.so/qty/unitPrice/value/due（实测 SO-3391：qty 7259 · unitPrice 22198 · value 161135282）
+ 2. 该订单行的 BOM（用料与用量）           OBJ  BOMHeader→BOMDetail.materialId/quantity/lossRate（105 条明细）
+ 3. 物料单价（成本口径）                  OBJ  Material.unitPrice（8 个物料）
+ 4. 现有库存/在途（能不能退、能不能转用）   OBJ  FinishedGoodsInventory.qtyOnHand(18) · Material.onHand/inTransit · MaterialBatch · PurchaseOrder
+ 5. 已投工/在制（已花的钱算不算损失）       OBJ  WorkOrder.qtyActual(260) · WIPLot(260) · WIPMove
+ 6. 毛利/成本口径（损失营收 or 损失毛利）   SOLV finance_pnl / margin_attribution · OBJ GrossMarginBridge(4) / FinancePlan
+ 7. 该订单的交期与可承诺量（能否转售他单）   SOLV atp_check（读 FG 现货 + WorkOrder 在制 + 交期前可排产能三源）
+ 8. 物料齐套（取消后释放的料能否他用）      SOLV mrp_netting / kit_readiness（读 MaterialBalance 9 条）
+ 9. 客户/合同（有无违约金、长协约束）       OBJ  Customer · LongTermAgreement
+10. 全链环节损失归因                     SOLV chain_loss_attribution
+
+--- 题 2 · 4680-NCM 交付窗口 6 周压到 4 周 → 在制/排产/换型 ---
+ 1. 在制批次（WIP）                      OBJ  WIPLot(260).currentProcess/qty · WIPMove
+ 2. 在制工单                             OBJ  WorkOrder(260).qtyPlanned/qtyActual/modelId/lineId
+ 3. 产线产能/节拍                        OBJ  Line(130).max_capacity_day · CapacityPool · ProcessCapabilityWindow · ProductLineCapability
+ 4. 换型矩阵/损失                        OBJ  ChangeoverMatrix(30).minutes/changeoverPressure（实测 2170-NCM→4680-LFP = 114 分钟）
+ 5. 订单交期分布（压窗口挤到谁）           OBJ  Order.due(500 张) · OrderPromise
+ 6. 重排/挤占推演                        SOLV sop_reschedule（原文：「给定目标订单+新交期，算能否提前/挤占哪些在手单/跨基地拆多少/被挤单延期/**换型加班延误代价**」）
+ 7. 换型序列优化                         SOLV changeover_sequence / sequencing_optimize
+ 8. 产能可行性（4 周内够不够）             SOLV capacity_forecast / capacity_ledger / bottleneck_matrix
+ 9. 齐套（压窗口后料跟不跟得上）           SOLV kit_readiness / mrp_netting
+10. 设备可用性（OEE/停机吃掉的产能）       OBJ  EquipmentOEE · EquipmentDowntime · MaintPlan
+11. 排产计划对象                        ⚠ TYPEOBJ_EMPTY  ProductionSchedule **存在但实测 0 条实例**（ShiftPlan 待核）
+12. 工序路径/标准工时                    OBJ  Routing · Operation.standardTime/setupTime · Process.agingDays
+
+--- 题 3 · 电解液涨 15% → 传导到哪些订单毛利 ---
+ 1. BOM 用量 × 该物料占比                OBJ  BOMDetail.quantity/lossRate（105）→ 成本占比（Electrolyte 实测 bomUnit 0.816 · unitPrice 41.34 · isKeyMaterial true）
+ 2. 物料价格（当前与涨幅）                OBJ  Material.unitPrice · CommodityPriceTrend · Material.priceShock（实测 elyte priceShock=2）
+ 3. 受影响订单集（哪些单用这个料）          OBJ  Order(500)→Model→BOMHeader→BOMDetail→Material 四跳 · Order.channel/segment
+ 4. 毛利口径（能不能转嫁、倒挂）           SOLV margin_attribution（成本项拆解+倒挂群主驱动）· finance_pnl · OBJ GrossMarginBridge(4)
+ 5. 已签合同价能不能调（能不能传导）        OBJ  LongTermAgreement · Order.unitPrice · PriceRealization · BidRecord
+ 6. 扰动后毛利投影                        SOLV finance_world_projection（读世界态 costPressure）· counterfactual_timeline
+ 7. 供应脆弱性（涨价伴随断供风险）          SOLV supply_vulnerability（BOM 成本 × 在手订单量敞口）· MaterialBalance(9)
+ 8. 替代料（能不能换掉电解液）             OBJ  MaterialAlternative
+ 9. 成本压力传导规则                      OBJ  Material.priceShock --×coeff--> Model.costPressure（传导规则；Model.costPressure 实测 115）
+10. 全链损失归因                         SOLV chain_loss_attribution
+
+--- 判定「有」的实测依据（本次现取，存 _env/） ---
+object-types.json    100 个已发布对象类型
+solvers-registry.json 63 个求解器
+ontology-graph.json  158 条链接边（Order→Model→BOMHeader→BOMDetail→Material 链存在；
+                     Order→WorkOrder→WIPLot；Model→ChangeoverMatrix；WorkOrder→Line→CapacityPool）
+计数实测（POST /a/v1/objects/query limit=1 读 total）：
+  WIPLot 260 · WorkOrder 260 · ChangeoverMatrix 30 · GrossMarginBridge 4 ·
+  FinishedGoodsInventory 18 · BOMDetail 105 · BOMHeader 15 · Line 130 ·
+  MaterialBalance 9 · Order 500 · Material 8 · ProductionSchedule 0 ⚠

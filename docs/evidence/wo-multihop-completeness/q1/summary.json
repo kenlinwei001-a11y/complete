@@ -1,0 +1,42 @@
+{
+  "status": "COMPLETED",
+  "path": "AGENT",
+  "matchedIntent": null,
+  "classification": {
+    "outOfCatalog": true,
+    "candidates": [],
+    "domainReason": "",
+    "model": "dcp:llmp_dqxgqpfgydw5rd3j:deepseek-flash"
+  },
+  "sse_frames": 5993,
+  "step_completed_frames": 5981,
+  "answer_final_frames": 1,
+  "agent_think_frames": 4887,
+  "agent_think_steps": 4,
+  "runs": 1,
+  "run_kernels": [
+    "EXTERNAL"
+  ],
+  "run_agentKeys": [
+    "general"
+  ],
+  "iterations_total": 5,
+  "toolCalls_total": 9,
+  "tool_names_uniq": [
+    "mcp__solvers__order_fullchain",
+    "mcp__builtin__discover",
+    "mcp__builtin__query_objects",
+    "mcp__solvers__quote_margin",
+    "mcp__solvers__finance_pnl",
+    "mcp__solvers__credit_exposure",
+    "mcp__builtin__retrieve_knowledge",
+    "mcp__solvers__generic_inference"
+  ],
+  "toolCalls_audit": 9,
+  "provenance_count": 23,
+  "ref_range": [
+    0,
+    22
+  ],
+  "answer_chars": 1870
+}

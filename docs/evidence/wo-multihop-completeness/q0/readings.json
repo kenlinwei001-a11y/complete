@@ -1,0 +1,66 @@
+{
+  "tag": "q0",
+  "parser_canary": {
+    "step_completed": 321,
+    "answer_final": 1,
+    "routing_completed": 1
+  },
+  "parser_alive": true,
+  "task": {
+    "id": "task_01M4JQNYTY11W9H6SMF9AB5WCW",
+    "status": "COMPLETED",
+    "path": "AGENT",
+    "matchedIntent": null,
+    "classification_candidates": [],
+    "classification_outOfCatalog": true,
+    "classification_domainRole": null,
+    "classification_domainReason": "问句为「ping 冒烟」的连通性/冒烟测试探针，不含任何业务问题；供应链、生产、质量三域均不覆盖此类平台探测请求，故判不出域。",
+    "classifier_model": "dcp:llmp_dqxgqpfgydw5rd3j:deepseek-flash"
+  },
+  "runs": [
+    {
+      "id": "run_01M4JQPVXC9W2QQPX2AZ7W1M6A",
+      "kernel": "EXTERNAL",
+      "agentKey": "general",
+      "origin": "ROOT",
+      "stepId": null,
+      "iterations": 2,
+      "budgetExhausted": false,
+      "toolCalls": []
+    }
+  ],
+  "tool_ledger": {
+    "authoritative_total": 0,
+    "distinct_tools": [],
+    "trace_total": 0,
+    "trace_invokedAs": [],
+    "cross_check": "COUNT_MATCH"
+  },
+  "trace_calls": [],
+  "think": {
+    "frames": 44,
+    "steps": 1,
+    "segments": [
+      {
+        "stepId": "think-1-1-0",
+        "frames": 44,
+        "chars": 186,
+        "text": "The user just sent \"ping 冒烟\" which is a smoke test. This isn't a real business question, so I should just give a brief, honest response without making any tool calls or fabricating data."
+      }
+    ]
+  },
+  "answer": {
+    "trustLevel": "AGENT_EXPLORATORY",
+    "unverifiedNumerics": true,
+    "block_types": [
+      "text"
+    ],
+    "chars": 518,
+    "text": "pong — 冒烟连通正常。\n\n本轮是连通性/冒烟探测，不是业务问句，所以我没有调用任何业务工具，也**没有业务数字可报**（无数字即无溯源项，属诚实标注而非漏标）。\n\n平台侧已确认的可用面（仅静态目录，未取数）：\n- **对象面**：本租户已发布对象类型可达（基地 Base、订单 Order、AnnualScenario、ARInvoice/ARAging、BOM 等），当前场景视图为 orders；\n- **求解器面**：63 个已注册求解器可按需直调（如 order_fullchain 逐单三闸、atp_check 可承接量、base_capacity_outlook 基地 30/60/90 天前瞻、capacity_forecast 型号产能推演、sop_reschedule 交期重排、portfolio 全局最优、gap_attribution 缺口归因）；\n- **写出口**：唯一出口是 create_action_draft，只出草稿、需审批，绝不声称已执行。\n\n想跑真用例的话，给我一句业务问句即可（如「某基地未来 90 天产能够不够」「XX 单能不能接」），我会调对应求解器取数并逐数字标 ⟦ref:N⟧。",
+    "ref_tokens": 0,
+    "ref_range": null,
+    "ref_distinct": [],
+    "provenance_count": 0,
+    "provenance": []
+  }
+}

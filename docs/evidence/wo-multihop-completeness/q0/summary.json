@@ -1,0 +1,21 @@
+{
+  "status": "COMPLETED",
+  "path": "AGENT",
+  "classification": {},
+  "sse_frames": 324,
+  "agent_think_frames": 0,
+  "runs": 1,
+  "run_kernels": [
+    "EXTERNAL"
+  ],
+  "run_agentKeys": [
+    "general"
+  ],
+  "iterations_total": 2,
+  "toolCalls_total": 0,
+  "tool_names_uniq": [],
+  "toolCalls_audit": 0,
+  "provenance_count": 0,
+  "ref_range": null,
+  "answer_chars": 518
+}

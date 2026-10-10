@@ -1,0 +1,1298 @@
+:ok
+
+id: 1
+event: task.accepted
+data: {"taskId":"task_01M4JQNYTY11W9H6SMF9AB5WCW"}
+
+id: 2
+event: routing.completed
+data: {"path":"AGENT","note":"进入探索模式"}
+
+id: 3
+event: step.completed
+data: {"stepId":"compose-miss_01M4JQNZY987WCVPBAG32A8QGJ","type":"compose_fallback","outcome":"compile-miss: 导航图无已登记 args schema 的对口 solver（无候选）→ fallback react","durationMs":0}
+
+id: 4
+event: step.completed
+data: {"stepId":"dril-inject_01M4JQP42S4WEN68KQ0VAENN3M","type":"dril_package_injected","outcome":"DRIL 预选：solver=finance_pnl,decision_play,counterfactual_timeline,cockpit_kpi｜slice=—｜rule=—","durationMs":0}
+
+id: 5
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":"The"}
+
+id: 6
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" user"}
+
+id: 7
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" just"}
+
+id: 8
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" sent"}
+
+id: 9
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" \""}
+
+id: 10
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":"ping"}
+
+id: 11
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" "}
+
+id: 12
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":"冒"}
+
+id: 13
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":"烟"}
+
+id: 14
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":"\""}
+
+id: 15
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" which"}
+
+id: 16
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" is"}
+
+id: 17
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" a"}
+
+id: 18
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" smoke"}
+
+id: 19
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" test"}
+
+id: 20
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":"."}
+
+id: 21
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" This"}
+
+id: 22
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" isn"}
+
+id: 23
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":"'t"}
+
+id: 24
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" a"}
+
+id: 25
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" real"}
+
+id: 26
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" business"}
+
+id: 27
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" question"}
+
+id: 28
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":","}
+
+id: 29
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" so"}
+
+id: 30
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" I"}
+
+id: 31
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" should"}
+
+id: 32
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" just"}
+
+id: 33
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" give"}
+
+id: 34
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" a"}
+
+id: 35
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" brief"}
+
+id: 36
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":","}
+
+id: 37
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" honest"}
+
+id: 38
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" response"}
+
+id: 39
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" without"}
+
+id: 40
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" making"}
+
+id: 41
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" any"}
+
+id: 42
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" tool"}
+
+id: 43
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" calls"}
+
+id: 44
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" or"}
+
+id: 45
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" fabric"}
+
+id: 46
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":"ating"}
+
+id: 47
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":" data"}
+
+id: 48
+event: step.completed
+data: {"stepId":"think-1-1-0","type":"agent_think","text":"."}
+
+id: 49
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"p"}
+
+id: 50
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"ong"}
+
+id: 51
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":" —"}
+
+id: 52
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":" "}
+
+id: 53
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"冒"}
+
+id: 54
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"烟"}
+
+id: 55
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"连通"}
+
+id: 56
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"正常"}
+
+id: 57
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"。\n\n"}
+
+id: 58
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"本轮"}
+
+id: 59
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"是"}
+
+id: 60
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"连通"}
+
+id: 61
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"性"}
+
+id: 62
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"/"}
+
+id: 63
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"冒"}
+
+id: 64
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"烟"}
+
+id: 65
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"探测"}
+
+id: 66
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"，"}
+
+id: 67
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"不是"}
+
+id: 68
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"业务"}
+
+id: 69
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"问"}
+
+id: 70
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"句"}
+
+id: 71
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"，"}
+
+id: 72
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"所以"}
+
+id: 73
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"我没有"}
+
+id: 74
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"调用"}
+
+id: 75
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"任何"}
+
+id: 76
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"业务"}
+
+id: 77
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"工具"}
+
+id: 78
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"，"}
+
+id: 79
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"也"}
+
+id: 80
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"**"}
+
+id: 81
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"没有"}
+
+id: 82
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"业务"}
+
+id: 83
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"数字"}
+
+id: 84
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"可"}
+
+id: 85
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"报"}
+
+id: 86
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"**"}
+
+id: 87
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"（"}
+
+id: 88
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"无"}
+
+id: 89
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"数字"}
+
+id: 90
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"即"}
+
+id: 91
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"无"}
+
+id: 92
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"溯源"}
+
+id: 93
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"项"}
+
+id: 94
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"，"}
+
+id: 95
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"属"}
+
+id: 96
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"诚实"}
+
+id: 97
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"标注"}
+
+id: 98
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"而非"}
+
+id: 99
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"漏"}
+
+id: 100
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"标"}
+
+id: 101
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"）。\n\n"}
+
+id: 102
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"平台"}
+
+id: 103
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"侧"}
+
+id: 104
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"已"}
+
+id: 105
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"确认"}
+
+id: 106
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"的"}
+
+id: 107
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"可用"}
+
+id: 108
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"面"}
+
+id: 109
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"（"}
+
+id: 110
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"仅"}
+
+id: 111
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"静态"}
+
+id: 112
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"目录"}
+
+id: 113
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"，"}
+
+id: 114
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"未"}
+
+id: 115
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"取"}
+
+id: 116
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"数"}
+
+id: 117
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"）"}
+
+id: 118
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"：\n"}
+
+id: 119
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"-"}
+
+id: 120
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":" **"}
+
+id: 121
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"对象"}
+
+id: 122
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"面"}
+
+id: 123
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"**"}
+
+id: 124
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"："}
+
+id: 125
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"本"}
+
+id: 126
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"租"}
+
+id: 127
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"户"}
+
+id: 128
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"已"}
+
+id: 129
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"发布"}
+
+id: 130
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"对象"}
+
+id: 131
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"类型"}
+
+id: 132
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"可达"}
+
+id: 133
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"（"}
+
+id: 134
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"基地"}
+
+id: 135
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":" Base"}
+
+id: 136
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"、"}
+
+id: 137
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"订单"}
+
+id: 138
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":" Order"}
+
+id: 139
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"、"}
+
+id: 140
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"Annual"}
+
+id: 141
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"Scenario"}
+
+id: 142
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"、"}
+
+id: 143
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"AR"}
+
+id: 144
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"Invoice"}
+
+id: 145
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"/"}
+
+id: 146
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"ARA"}
+
+id: 147
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"ging"}
+
+id: 148
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"、"}
+
+id: 149
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"B"}
+
+id: 150
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"OM"}
+
+id: 151
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":" "}
+
+id: 152
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"等"}
+
+id: 153
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"），"}
+
+id: 154
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"当前"}
+
+id: 155
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"场景"}
+
+id: 156
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"视图"}
+
+id: 157
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"为"}
+
+id: 158
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":" orders"}
+
+id: 159
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"；\n"}
+
+id: 160
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"-"}
+
+id: 161
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":" **"}
+
+id: 162
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"求解"}
+
+id: 163
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"器"}
+
+id: 164
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"面"}
+
+id: 165
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"**"}
+
+id: 166
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"："}
+
+id: 167
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"63"}
+
+id: 168
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":" "}
+
+id: 169
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"个"}
+
+id: 170
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"已"}
+
+id: 171
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"注册"}
+
+id: 172
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"求解"}
+
+id: 173
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"器"}
+
+id: 174
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"可按"}
+
+id: 175
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"需"}
+
+id: 176
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"直"}
+
+id: 177
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"调"}
+
+id: 178
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"（"}
+
+id: 179
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"如"}
+
+id: 180
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":" order"}
+
+id: 181
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"_full"}
+
+id: 182
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"chain"}
+
+id: 183
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":" "}
+
+id: 184
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"逐"}
+
+id: 185
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"单"}
+
+id: 186
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"三"}
+
+id: 187
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"闸"}
+
+id: 188
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"、"}
+
+id: 189
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"at"}
+
+id: 190
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"p"}
+
+id: 191
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"_check"}
+
+id: 192
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":" "}
+
+id: 193
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"可"}
+
+id: 194
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"承接"}
+
+id: 195
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"量"}
+
+id: 196
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"、"}
+
+id: 197
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"base"}
+
+id: 198
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"_c"}
+
+id: 199
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"apacity"}
+
+id: 200
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"_out"}
+
+id: 201
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"look"}
+
+id: 202
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":" "}
+
+id: 203
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"基地"}
+
+id: 204
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":" "}
+
+id: 205
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"30"}
+
+id: 206
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"/"}
+
+id: 207
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"60"}
+
+id: 208
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"/"}
+
+id: 209
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"90"}
+
+id: 210
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":" "}
+
+id: 211
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"天"}
+
+id: 212
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"前瞻"}
+
+id: 213
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"、"}
+
+id: 214
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"capacity"}
+
+id: 215
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"_"}
+
+id: 216
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"fore"}
+
+id: 217
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"cast"}
+
+id: 218
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":" "}
+
+id: 219
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"型号"}
+
+id: 220
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"产能"}
+
+id: 221
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"推"}
+
+id: 222
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"演"}
+
+id: 223
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"、"}
+
+id: 224
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"s"}
+
+id: 225
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"op"}
+
+id: 226
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"_res"}
+
+id: 227
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"chedule"}
+
+id: 228
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":" "}
+
+id: 229
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"交"}
+
+id: 230
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"期"}
+
+id: 231
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"重"}
+
+id: 232
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"排"}
+
+id: 233
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"、"}
+
+id: 234
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"portfolio"}
+
+id: 235
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":" "}
+
+id: 236
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"全局"}
+
+id: 237
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"最优"}
+
+id: 238
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"、"}
+
+id: 239
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"gap"}
+
+id: 240
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"_"}
+
+id: 241
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"att"}
+
+id: 242
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"ribution"}
+
+id: 243
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":" "}
+
+id: 244
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"缺口"}
+
+id: 245
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"归"}
+
+id: 246
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"因"}
+
+id: 247
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"）；\n"}
+
+id: 248
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"-"}
+
+id: 249
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":" **"}
+
+id: 250
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"写"}
+
+id: 251
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"出口"}
+
+id: 252
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"**"}
+
+id: 253
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"："}
+
+id: 254
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"唯一"}
+
+id: 255
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"出口"}
+
+id: 256
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"是"}
+
+id: 257
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":" create"}
+
+id: 258
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"_action"}
+
+id: 259
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"_d"}
+
+id: 260
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"raft"}
+
+id: 261
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"，"}
+
+id: 262
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"只"}
+
+id: 263
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"出"}
+
+id: 264
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"草"}
+
+id: 265
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"稿"}
+
+id: 266
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"、"}
+
+id: 267
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"需"}
+
+id: 268
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"审批"}
+
+id: 269
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"，"}
+
+id: 270
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"绝不"}
+
+id: 271
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"声称"}
+
+id: 272
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"已"}
+
+id: 273
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"执行"}
+
+id: 274
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"。\n\n"}
+
+id: 275
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"想"}
+
+id: 276
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"跑"}
+
+id: 277
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"真"}
+
+id: 278
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"用例"}
+
+id: 279
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"的话"}
+
+id: 280
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"，"}
+
+id: 281
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"给我"}
+
+id: 282
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"一句"}
+
+id: 283
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"业务"}
+
+id: 284
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"问"}
+
+id: 285
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"句"}
+
+id: 286
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"即可"}
+
+id: 287
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"（"}
+
+id: 288
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"如"}
+
+id: 289
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"「"}
+
+id: 290
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"某"}
+
+id: 291
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"基地"}
+
+id: 292
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"未来"}
+
+id: 293
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":" "}
+
+id: 294
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"90"}
+
+id: 295
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":" "}
+
+id: 296
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"天"}
+
+id: 297
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"产"}
+
+id: 298
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"能够"}
+
+id: 299
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"不够"}
+
+id: 300
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"」「"}
+
+id: 301
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"XX"}
+
+id: 302
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":" "}
+
+id: 303
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"单"}
+
+id: 304
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"能不能"}
+
+id: 305
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"接"}
+
+id: 306
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"」"}
+
+id: 307
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"），"}
+
+id: 308
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"我会"}
+
+id: 309
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"调"}
+
+id: 310
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"对应"}
+
+id: 311
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"求解"}
+
+id: 312
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"器"}
+
+id: 313
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"取"}
+
+id: 314
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"数"}
+
+id: 315
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"并"}
+
+id: 316
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"逐"}
+
+id: 317
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"数字"}
+
+id: 318
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"标"}
+
+id: 319
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":" ⟦"}
+
+id: 320
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"ref"}
+
+id: 321
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":":N"}
+
+id: 322
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"⟧"}
+
+id: 323
+event: step.completed
+data: {"stepId":"narration-1-2","type":"agent_narration","text":"。"}
+
+id: 324
+event: answer.final
+data: {"trustLevel":"AGENT_EXPLORATORY","blocks":[{"type":"text","markdown":"pong — 冒烟连通正常。\n\n本轮是连通性/冒烟探测，不是业务问句，所以我没有调用任何业务工具，也**没有业务数字可报**（无数字即无溯源项，属诚实标注而非漏标）。\n\n平台侧已确认的可用面（仅静态目录，未取数）：\n- **对象面**：本租户已发布对象类型可达（基地 Base、订单 Order、AnnualScenario、ARInvoice/ARAging、BOM 等），当前场景视图为 orders；\n- **求解器面**：63 个已注册求解器可按需直调（如 order_fullchain 逐单三闸、atp_check 可承接量、base_capacity_outlook 基地 30/60/90 天前瞻、capacity_forecast 型号产能推演、sop_reschedule 交期重排、portfolio 全局最优、gap_attribution 缺口归因）；\n- **写出口**：唯一出口是 create_action_draft，只出草稿、需审批，绝不声称已执行。\n\n想跑真用例的话，给我一句业务问句即可（如「某基地未来 90 天产能够不够」「XX 单能不能接」），我会调对应求解器取数并逐数字标 ⟦ref:N⟧。"}],"provenance":[],"unverifiedNumerics":true,"stats":{"sessionStats":{"turns":1,"steps":2,"llmMs":4792,"toolMs":101,"ttftMs":1774,"ttftSteps":2,"decodeMs":3018,"decodeTokens":749},"tokenUsage":{"uncachedInputTokens":5056,"outputTokens":749,"cacheReadTokens":64128,"cacheWriteTokens":0},"contextPressure":{"pressureTokens":34835}}}
+
