@@ -814,3 +814,98 @@ describe("数字红线 · 真实语料的误报面（钉住，防静默改变）
     expect(r.ok, "去掉数字仍被拦 ⇒ 拦截理由不是数字，本节的归因就错了").toBe(true);
   });
 });
+
+/**
+ * WO-PROVENANCE-TRACE-FIX（2026-10-10 活服务实测 task_01M4JD5ZV67RMXRE896TSMQM59 帧形）·
+ * 软收尾**只兜正文、把同一份入参里的 provenance 一并丢掉**的那个口子。
+ *
+ * 实测现象：模型调了 `final_answer`，`blocks` 用 `{type:"text",text:…}` / `{type:"kpi",items:[…,ref:N]}`
+ * （不合 `AnswerBlockSchema`）⇒ 整份 safeParse 失败 ⇒ 走软收尾 ⇒ `provenance` 恒 `[]`，
+ * 而交付正文里按平台契约写的 ⟦ref:N⟧ 全部指空表。
+ *
+ * ⛔ 本节钉的是**两件事不可合并**：块不合 schema（格式手滑，正文兜底即可）≠ 模型没声明出处。
+ * ⛔ 反向金丝雀（下方）钉的是**不许从这条口子变成「平台代编溯源」**。
+ */
+describe("reassemble · WO-PROVENANCE-TRACE-FIX 软收尾抢救模型自声明的 provenance", () => {
+  const toolResult = (toolCallId: string, isError: boolean, text = "ok"): DshSessionEvent => ({
+    type: "tool/result",
+    data: { turn: 1, step: 1, message: { content: [{ type: "tool-result", toolCallId, content: [{ type: "text", text }], isError }] } },
+  });
+  /** 活服务实测的畸形 final_answer：`blocks` 字段名不合契约（text/ref 而非 markdown/provId）。 */
+  const malformedFinalAnswer = (provenance: unknown): DshSessionEvent =>
+    toolCall("fa", "final_answer", { blocks: [{ type: "text", text: "正文 ⟦ref:0⟧" }], provenance });
+
+  it("① 畸形 blocks + 合法 provenance ⇒ 正文兜底（现行为）× **出处照抢救**（本单修复）", () => {
+    const r = reassembleDshRun(
+      [
+        toolCall("c1", "mcp__solvers__affected_orders", { baseId: "常州" }),
+        toolResult("c1", false, '{"data":{"affected":[]}}'),
+        assistantMessage("正文 ⟦ref:0⟧"),
+        malformedFinalAnswer([{ toolCallId: "c1", outputPath: "data.affected" }]),
+        turnEnd("completed"),
+      ],
+      { newProvId: provIds },
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.closing, "blocks 不合契约 ⇒ 仍是软收尾（正文不许采信模型那份字段名）").toBe("SOFT_CLOSE");
+    expect(r.answer.blocks, "正文走 lastAssistantText 兜底").toEqual([{ type: "text", markdown: "正文 ⟦ref:0⟧" }]);
+    expect(r.answer.provenance, "模型在同一份被拒入参里声明的出处 ⇒ 必须抢救下来").toHaveLength(1);
+    expect(r.answer.provenance[0]).toMatchObject({ toolCallId: "c1", toolName: "mcp__solvers__affected_orders", outputPath: "data.affected" });
+    expect(r.answer.unverifiedNumerics, "⟦ref:0⟧ 落在 [0,1) 内 ⇒ 该句豁免").toBe(false);
+  });
+
+  it("② 宿主审计行 id（tc_…）也能回填工具名（模型在回执信封里看到的就是它）", () => {
+    const hostToolCalls = new Map([
+      // 桥铸键形态 = `{模型面全名}@{自增}`（mcp-host-bridge.ts nextCallId 单源）
+      ["mcp__solvers__affected_orders@1", { outcome: "OK" as const, toolCallId: "tc_host_1", durationMs: 42 }],
+    ]);
+    const r = reassembleDshRun(
+      [
+        toolCall("call_00_x", "mcp__solvers__affected_orders", { baseId: "常州" }),
+        toolResult("call_00_x", false, '{"data":{"affected":[]}}'),
+        assistantMessage("正文 ⟦ref:0⟧"),
+        malformedFinalAnswer([{ toolCallId: "tc_host_1", outputPath: "data.affected" }]),
+        turnEnd("completed"),
+      ],
+      { newProvId: provIds, hostToolCalls },
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.answer.provenance[0]?.toolName, "tc_ id 指不回工具名 = 有表但每条都指不出是哪件工具").toBe(
+      "mcp__solvers__affected_orders",
+    );
+  });
+
+  it("★ 反向金丝雀：模型**没声明** provenance ⇒ 软收尾 provenance 仍恒空（不许平台代编）", () => {
+    const frames = [
+      toolCall("c1", "query_objects", { objectType: "Order" }),
+      toolResult("c1", false, '{"data":[]}'),
+      // 正文带**业务数字 + 悬空标记**（只有标记字符、没有数字的句子本来就不该亮 —— 那是检测面的既有口径）
+      assistantMessage("受影响订单共 47 张 ⟦ref:0⟧"),
+      malformedFinalAnswer(undefined), // 只有 blocks，没有 provenance 键
+      turnEnd("completed"),
+    ];
+    const r = reassembleDshRun(frames.map((f) => ({ ...f })), { newProvId: provIds });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.answer.provenance, "没声明就是没声明 —— 平台不许拿「本次成功调用清单」按位置配上去").toEqual([]);
+    expect(r.answer.unverifiedNumerics, "标记指不出 ⇒ 该句不豁免 ⇒ 47 判裸数，诚实标照亮").toBe(true);
+  });
+
+  it("★ 反向金丝雀·位置完整性：provenance 中间一项坏 ⇒ **整份不采**（防下标整体前移）", () => {
+    const r = reassembleDshRun(
+      [
+        toolCall("c1", "query_objects", { objectType: "Order" }),
+        toolResult("c1", false, '{"data":[]}'),
+        assistantMessage("正文 ⟦ref:1⟧"),
+        malformedFinalAnswer([{ toolCallId: "c1", outputPath: "$" }, "nonsense"]),
+        turnEnd("completed"),
+      ],
+      { newProvId: provIds },
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.answer.provenance, "丢中间一项会让 ⟦ref:1⟧ 静默指向另一条数据源 —— 宁可整份空").toEqual([]);
+  });
+});

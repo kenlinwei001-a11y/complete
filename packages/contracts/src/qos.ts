@@ -666,7 +666,44 @@ export const DecisionTraceSchema = z.object({
   ontologyValidation: z.enum(["ALL_PASS", "PARTIAL", "CONFLICT", "NO_EVIDENCE", "NONE"]),
   /** 显式人工复核标志：AGENT_EXPLORATORY / 未验证数字 / 交叉验证冲突 → true。 */
   humanReviewRequired: z.boolean(),
-  toolCalls: z.array(z.object({ tool: z.string(), outcome: z.string(), durationMs: z.number().optional(), at: z.string().optional() })).default([]),
+  /**
+   * 工具调用留痕。
+   *
+   * ⚠ WO-PROVENANCE-TRACE-FIX（2026-10-10 活服务实测）· 修前每条只有
+   * `{tool, outcome, durationMs, at}` —— `tool` 是**审计身份**，而 MCP 面到达的工具在
+   * `tools/executor.ts` 被归一到身份（`mcp__solvers__{key}` → `invoke_solver`），
+   * 于是「一次运行里跨 4 件工具」在只读本端点时**长得像同一件工具刷屏 6 次**，
+   * 且看不出入参（实测 task_01M4JD5ZV67RMXRE896TSMQM59：6 条全 `invoke_solver`/`query_objects`，
+   * 而 agent-runs 的 iterations 里是 affected_orders / bottleneck_matrix /
+   * base_capacity_outlook / query_objects 四件）。故补四个 additive 字段。
+   *
+   * ⛔ 三件事**不许读成**「字段改名」：
+   *   · `tool` **一个字不改** —— 它是审计身份（`engine.ts` 的求解纪律判据按它取值），
+   *     真名是**另加一位**而不是替换（改身份 = 动治理判据，越界）；
+   *   · `invokedAs` 由**已落盘的 run 记录**（`agent-runs` 的 `iterations[].toolCalls[].toolName`）
+   *     对位而来，**不是**在本端点另算一份命名规则；对不上就**整位不出**（宁缺勿错，见 server.ts）；
+   *   · `input` / `output` 是**审计行原值**（executor 落库前已 redact），不是二次加工。
+   */
+  toolCalls: z
+    .array(
+      z.object({
+        tool: z.string(),
+        /** 模型面调用名（载体名，如 `mcp__solvers__affected_orders`）；与审计身份同名时不出。 */
+        invokedAs: z.string().optional(),
+        outcome: z.string(),
+        durationMs: z.number().optional(),
+        at: z.string().optional(),
+        /** 审计行 id（`tc_…`）—— 与 `answer.provenance[].toolCallId` 对位用。 */
+        toolCallId: z.string().optional(),
+        /** 该次调用的真实入参（审计行原值；求解器族含 `solverKey` ⇒ 真实工具名在此位上可见）。 */
+        input: z.unknown().optional(),
+        /** 回执正文（审计行原值；**null = 原始回执超 64KB 未存正文**，此时只有 `outputDigest`）。 */
+        output: z.unknown().optional(),
+        /** 回执正文摘要（正文超限时它是唯一的完整性凭据）。 */
+        outputDigest: z.string().optional(),
+      }),
+    )
+    .default([]),
   /** WO-DETERMINISTIC-CROSS-DOMAIN（additive·可选）：确定性多域分路计划留痕（区分 routeSource·诚实 coupledPairs）。 */
   multiIntentPlan: MultiIntentPlanSchema.optional(),
   createdAt: IsoTime,
