@@ -1,0 +1,43 @@
+WO-BUILTIN-BATCH4 · 批次 4 · 判据①②③⑤ 原始读数（fill_data / run_synthetic / build_domain / sim_init / sim_tick）
+=============================================================================================================
+原始出处：`apps/agentcore` 下 `npx vitest run test/dsh-builtin-rest-mcp.seam.test.ts --reporter=verbose`
+（全文见同目录 `b4-seam.txt`，Test Files 1 passed (1) / Tests 25 passed (25) / RC=0）
+
+── 判据② DSH 真 tools/list（真 spawn 真握手，A1）──
+  ── A1 DSH 侧真 tools/list（25 件 · 真 spawn 子进程）──
+  本批（模型面名）：query_objects=mcp__builtin__query_objects · get_object=mcp__builtin__get_object · aggregate_objects=mcp__builtin__aggregate_objects · search_knowledge=mcp__builtin__search_knowledge · query_timeseries_agg=mcp__builtin__query_timeseries_agg · search_experience=mcp__builtin__search_experience · discover=mcp__builtin__discover · retrieve_knowledge=mcp__builtin__retrieve_knowledge · query_ontology=mcp__builtin__query_ontology · query_system_ontology=mcp__builtin__query_system_ontology · get_breakpoint=mcp__builtin__get_breakpoint · impact_of=mcp__builtin__impact_of · read_skill_resource=mcp__builtin__read_skill_resource · create_action_draft=mcp__builtin__create_action_draft · invoke_solver=mcp__builtin__invoke_solver · fill_data=mcp__builtin__fill_data · run_synthetic=mcp__builtin__run_synthetic · build_domain=mcp__builtin__build_domain · sim_init=mcp__builtin__sim_init · sim_tick=mcp__builtin__sim_tick
+  仍未迁（同 server 也广告，但出厂 agent 未授予 ⇒ 反向通道）：sim_world · sim_certify · discover_growth_tickets · claim_growth_ticket · submit_growth_ticket
+
+── 判据① 迁前/迁后 run 记录对照（同一条 query · 同一个 agent agt_general · 只有载体变）──
+  ── 判据① 迁前/迁后 run 记录对照（同一条 query · 同一个 agent agt_general · 只有载体变）──
+  载体（模型面名）  迁前=fill_data  迁后=mcp__builtin__fill_data   ← 唯一变的一格
+  审计行名          迁前=fill_data  迁后=fill_data
+  outcome           迁前=OK  迁后=OK
+  实参              {"typeKey":"Order","fields":["wo-builtin-rest-probe"],"rows":3}
+                    byteEqual=true
+  审计回执(前 200)  {"connId":"conn_growth_Order","rowCount":3,"provisional":true,"_note":"未审核合成数据（PROVISIONAL）：业务数字请用 query_objects 读回真实物化值；转正经 create_action_draft 走审批。"}
+                    迁前迁后 byteEqual=true（len=151）
+  模型面回执(内层)  迁前迁后 byteEqual=true
+
+── 判据③ 反向对照（e2e · E3：授予面拿掉 ⇒ DSH 侧读不到它 ∧ 宿主零数据面调用）──
+  ── E3 反向对照 · 模型面里的内置工具面 ──
+  mcp__builtin__aggregate_objects, mcp__builtin__build_domain, mcp__builtin__create_action_draft, mcp__builtin__discover, mcp__builtin__get_breakpoint, mcp__builtin__get_object, mcp__builtin__impact_of, mcp__builtin__invoke_solver, mcp__builtin__query_objects, mcp__builtin__query_ontology, mcp__builtin__query_system_ontology, mcp__builtin__query_timeseries_agg, mcp__builtin__read_skill_resource, mcp__builtin__retrieve_knowledge, mcp__builtin__run_synthetic, mcp__builtin__search_experience, mcp__builtin__search_knowledge, mcp__builtin__sim_init, mcp__builtin__sim_tick, mcp__builtin__sim_world
+  ── 审计行 ──
+  []
+  （`fill_data` 不在上面那串里 —— 它是被拿掉的那一件；同 server 的 sim_world 在 = 不是「整台 server 塌了」）
+
+── 判据⑤ 归一（B1/B2）+ 门一道不松（B3 对象域门 / B3b 工具 scope 门 / B4 截断豁免 / B6 失败点名）──
+  ── B2 逐件真跑（全名调用 → 审计行裸名）──
+  query_objects/OK · get_object/ERROR · aggregate_objects/OK · search_knowledge/OK · query_timeseries_agg/OK · search_experience/OK · discover/OK · retrieve_knowledge/OK · query_ontology/OK · query_system_ontology/OK · get_breakpoint/OK · impact_of/OK · read_skill_resource/ERROR · create_action_draft/OK · invoke_solver/OK · fill_data/OK · run_synthetic/OK · build_domain/OK · sim_init/OK · sim_tick/ERROR
+  （本批 5 件：fill_data/OK · run_synthetic/OK · build_domain/OK · sim_init/OK · sim_tick/ERROR。
+    sim_tick 的 ERROR 是**最小装置无前置会话**的诚实错误，不是归一失守 —— B2 咬的是「审计行真落库 ∧
+    落行名=裸名 ∧ 不落 unknown-tool」，三条都过；对照：批次 1/3 的 get_object、read_skill_resource 同形。）
+
+  ✓ B3b 工具 scope 门按**调用原名**判（本批耦合）：本批件以全名调用、声明面不含它 ⇒ DENIED 且拒绝行记**全名**；声明面补上全名即放行
+  ✓ B4 截断豁免集按**身份**判：全名形态照样豁免 ∧ 非豁免件不豁免
+  ✓ B6 失败点名披露块：换个载体仍点得出名（渲染里带的是调用名，不是 unknown）
+
+── 判据⑤ 三面同改（C 组）──
+  ✓ C2 **逐 agent** 扫出厂种子：本批每一件都只剩 MCP 一条路（裸名授予 = 0）∧ 未迁件仍在反向通道
+  ── C4 通用 agent 原生臂模型面 · 内置工具面 20 件（已迁全量）· 收窄面 8 件 ──
+  （20 = 试点件 1 + 批次1 五件 + 批次2 四件 + 批次3 五件 + 批次4 五件）

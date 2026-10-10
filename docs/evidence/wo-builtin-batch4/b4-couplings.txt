@@ -1,0 +1,55 @@
+WO-BUILTIN-BATCH4 · 批次 4 · 第 3 节四条结构性耦合逐条交代
+============================================================
+批次 4 = fill_data · run_synthetic · build_domain · sim_init · sim_tick
+（CL.2 合规合成/建域三件 + 增量4 §5 推演指挥台 `SIM_COMMANDER_TOOLS` 四件里的前三件）
+
+扫描方法（先自证工具，再报否定结论）：
+  cd apps/agentcore
+  金丝雀（已知必中）：`grep -rn "\"invoke_solver\"" src | wc -l` ⇒ **58**
+  同一查法逐件数本批 5 件在 `src/` 里的字符串字面量位：
+    fill_data 3 · run_synthetic 3 · build_domain 3 · sim_init 4 · sim_tick 4
+  逐条读回那 3/4 处，**全部**落在四个位置、没有一个是「按名字做判据」的：
+    `tools/registry.ts` 的 `name:` 定义行 · `tools/executor.ts` 的 `case "X":` 分发行 ·
+    `mocks/seed.ts` 的台账 `BUILTIN_MIGRATED_B4` · `tools/registry.ts` 的 `SIM_COMMANDER_TOOLS` 常量。
+  ⇒ 本批**没有**任何「按裸名认这 5 件」的运行期判据（批次 3 的 `invoke_solver` 有四处，本批零处）。
+
+① 求解入口类裸名判据（`invoke_solver` 那四处）
+   本批**未遇到** —— 5 件都不进求解入口。四处已在批次 3 全改按身份（`resolveBuiltinToolIdentity`），
+   本批直接受益、无需再改；接缝套件 B7/B8/B9 仍是活的回归牙（本批跑过，全绿）。
+   另：`engine.ts` 的 `unmetSolverPreconditions` 判的是 `c.toolName`，而 `c` 是**审计行**（归一后记裸名）
+   —— 故它不需要改，这也是「归一为什么必须存在」的正面样本。
+
+② 截断豁免集 / 对象域门按身份判
+   本批**未遇到**（两张名单的原文，逐字）：
+     `agent/loop.ts:376`  `export const TRUNCATION_EXEMPT_TOOLS = new Set(["query_timeseries_agg", "read_skill_resource"]);`
+     `tools/executor.ts:51` `const OBJECT_SCOPED_TOOLS = new Set(["query_objects", "get_object", "aggregate_objects"]);`
+   本批 5 件在两份名单里**一件都不在** ⇒ 两条门按身份判的既有实现（批次 0/1 定）对本批无作用面，
+   也无需改。B4/B3 仍逐条咬（本批跑过，全绿）。
+
+③ 工具 scope 门用**调用原名**校验 —— 本批**遇到，新增反证 B3b**
+   这一条是本批唯一与载体直接相关的门，位置关系必须写清（`tools/executor.ts` 第 0 步与第 0.05 步）：
+     · 步骤 0（工具 scope 门）按**调用原名**比 `scopeDeclaration.toolNames` ⇒ 迁后模型面名是
+       `mcp__builtin__fill_data`，**声明面就必须记全名**（seed 三面同改里那一条 `builtinMcpFullNames`）。
+       记裸名 = 本批件被自己的门**误拒**（静默少能力）；不记 = 越界放行。
+     · 步骤 0.05（归一）在门**之后** ⇒ 拒绝行的审计名是**调用原名（全名）**，与对象域门（在归一之后 ⇒ 记裸名）**不同**。
+   B3b 三条判据（含对照与金丝雀）：声明面不含它 ⇒ DENIED 且拒绝行记全名；声明面补上全名 ⇒ 放行；
+   裸名形态同样被拒（门不因载体换判据）。
+   全名照旧贯穿其余三处（授予面 `toolFilter` / DSH `toolAllowlist` / 声明面）—— C1/C2/C3/C4/D2/D3 逐 agent 扫。
+
+④ 失败点名披露块
+   本批**未遇到专项**（本批 5 件不是仓库里那两处披露专项探针所用的件），但通用面照咬：
+   B6（渲染层：换载体仍点名、空失败不产块）与 E4（端到端：DSH 臂全名载体 ⇒ DENIED ∧ 答案尾部点名
+   `mcp__builtin__get_object（DENIED）：…AGENT_SCOPE_VIOLATION`）本批跑过，全绿。
+
+另记两处**观测到但不动**（不在本单半径，登记备查）
+------------------------------------------------
+· `router/orchestrator.ts` `buildExploratoryTools`：**场景包白名单**那条路仍产出裸 `BUILTIN` 名的
+  sim 工具（`opts.simCommanderOn && simNames.includes(t.name)` ⇒ `binding:{kind:"BUILTIN"}`）。
+  它的授予面是**场景包数据**、不是 agent 配置，上一单已登记为「另一张单」；本批改的是 **agent 配置路**
+  的三面，不碰它 ⇒ 行为逐字节不变。⚠ 影响面写清：迁后**同一个** `sim_init` 在 agent 路是
+  `mcp__builtin__sim_init`、在场景包路仍是裸 `sim_init` —— 两条路各自单变量成立，
+  但「同一能力两种载体并存」这个结构债仍在（已登记，非本批引入）。
+· `tools/registry.ts:346` 注「sim 工具仅当 sim.commander(+sim.sandbox) 同开才对 agent 可见」——
+  那条 entitlement 门实现在 `orchestrator.ts` 的**场景包/指挥台 NL 分路**上（`simCommanderEnabled`），
+  **不在** agent 配置路；而出厂通用 agent 的边（`BUILTIN_TOOLS` 过滤）迁前就无条件含 sim 三件。
+  ⇒ 迁前迁后同权，本批不改变 entitlement 语义（这不是本批开的口，也不是本批该收的口）。
