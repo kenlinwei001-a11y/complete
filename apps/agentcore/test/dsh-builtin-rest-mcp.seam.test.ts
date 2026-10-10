@@ -749,8 +749,13 @@ describe("WO-BUILTIN-MIGRATE-REST · B 组：MCP 全名归一回同一具执行�
       { toolName: full("get_object"), outcome: "DENIED", reason: "AGENT_SCOPE_VIOLATION: 该工具超出本 Agent 的能力声明" },
     ]);
     expect(block, "有失败 ⇒ 有披露块").toBeTruthy();
-    expect(block!.markdown).toContain(full("get_object"));
-    expect(block!.markdown).toContain("DENIED");
+    // ⚠ 先钉型别再读 markdown：`AnswerBlock` 是联合类型，直接 `block.markdown` 过不了
+    //   `tsconfig.typecheck.json`（前批遗留的三处红之一，本批顺手清掉）。钉型别反而更严 ——
+    //   披露块若哪天不再是 text block，这里先红。
+    expect(block!.type, "披露块是 text block").toBe("text");
+    const md = (block as { markdown: string }).markdown;
+    expect(md).toContain(full("get_object"));
+    expect(md).toContain("DENIED");
     // 金丝雀：空失败 ⇒ 不产块（否则上面两条对「永远产块」的实现恒真）
     expect(renderFailedCallsBlock([])).toBeUndefined();
   });
@@ -890,7 +895,9 @@ describe("WO-BUILTIN-MIGRATE-REST · D 组：迁前/迁后单变量对照（setu
     expect(postNames, "单变量：除这一批外其余授予逐字同（对照不是整表换掉）").toEqual(preNames);
     // 件数守恒（两个方向都不许多/少）
     expect(post.expanded.filter((x) => x.name.startsWith(`mcp__${BUILTIN_MCP_SERVER}__`)).length).toBe(EXPECT_ANALYST_RAW.length);
-    expect(pre.expanded.filter((x) => EXPECT_ANALYST_RAW.includes(x.name)).length).toBe(EXPECT_ANALYST_RAW.length);
+    // ⚠ `EXPECT_ANALYST_RAW` 是 `as const` 元组 ⇒ `.includes(x.name)`（string）过不了 typecheck；
+    //   宽成 `readonly string[]` 再查（前批遗留的第二处红，本批顺手清掉；判据一字未改）。
+    expect(pre.expanded.filter((x) => (EXPECT_ANALYST_RAW as readonly string[]).includes(x.name)).length).toBe(EXPECT_ANALYST_RAW.length);
   });
 
   it("D3 反向对照（判据③·setup 层）：授予面换授 ⇒ 展开面/允许表一起没有它（同 server 另一件仍在）", async () => {
