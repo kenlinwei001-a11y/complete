@@ -598,12 +598,68 @@ export function foldDshIterations(
 }
 
 /**
+ * WO-PROVENANCE-TRACE-FIX · 软收尾时的 **provenance 抢救**（抢救模型**自己声明**的那一份，
+ * 不是平台代编一份）。
+ *
+ * ══ 今天的行为是 X（活服务实测 2026-10-10 · task_01M4JD5ZV67RMXRE896TSMQM59）═══════════
+ * 模型调了 `final_answer`，正文与 kpi 块里带 ⟦ref:0⟧…⟦ref:6⟧（**指向它自己那份 provenance 的下标**），
+ * 但 `blocks` 不合 `AnswerBlockSchema`（模型用了 `{"type":"text","text":…}` / `{"type":"kpi","items":[…,"ref":N]}`，
+ * 平台契约要的是 `markdown` / `provId`）⇒ `FinalAnswerInputSchema.safeParse` 整份失败 ⇒ 走软收尾。
+ * 软收尾**只兜正文**（`lastAssistantText`），**把同一份入参里的 provenance 一并丢掉** ⇒ 交付的
+ * `answer.provenance` 恒 `[]`，而正文的 ⟦ref:N⟧ 全部落在空表之外（屏上是「有出处」的样子）。
+ *
+ * ══ 应该是 Y ═══════════════════════════════════════════════════════════════════════════
+ * **块不合 schema** 与 **模型没声明出处** 是两件事：前者是格式手滑（WO-DSH-ARM-GAPS 已定性为
+ * 不该整份丢），后者才是「不编造溯源」。今天一句 `parsed?.success` 把两件事合并处理了 ——
+ * 形态：
+ * > **「我用『整份 final_answer 没通过校验』当作『模型没声明过出处』的证据，
+ * >   而前者并不度量后者 —— 出处就在同一份被拒的入参里。」**
+ * 故软收尾时**只抢救 provenance 这一项**（`blocks` 仍走正文兜底、仍不采信）。
+ *
+ * ⛔ 两条硬边界（缺一条就不是本函数）：
+ *   ① **位置完整性优先**：任一条目不是「带字符串 toolCallId 的对象」⇒ **整份不采**
+ *      （丢中间一项会让后面每一项的下标整体前移，⟦ref:N⟧ 会静默指向错误的数据源）。
+ *      `outputPath` 缺失/非串降级为 `"$"`（它是展示路径，不影响位置语义）。
+ *   ② **空数组 ⇒ undefined**：模型没声明（或声明为空）时**不给平台代编的兜底** ——
+ *      「不编造溯源」这条设计一个字没动（`provenance` 仍为空 ⇒ `unverifiedNumerics` 照亮、
+ *      屏上仍如实披露）。**这不是** stall/预算尽那两条降级出口的口径：那两条的正文是
+ *      **平台自撰**的复述（它知道正文引用的是哪些调用），而软收尾的正文是**模型自撰**的，
+ *      平台把「本次成功调用清单」按位置配上去 = 替模型猜下标，正是本仓最忌的「编造」。
+ */
+export function salvageDeclaredProvenance(
+  finalCall: { input: unknown } | undefined,
+): { toolCallId: string; outputPath: string }[] | undefined {
+  const input = finalCall?.input;
+  if (typeof input !== "object" || input === null) return undefined;
+  const raw = (input as Record<string, unknown>).provenance;
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const out: { toolCallId: string; outputPath: string }[] = [];
+  for (const e of raw) {
+    if (typeof e !== "object" || e === null) return undefined; // ① 位置完整性：一项坏 ⇒ 整份不采
+    const o = e as Record<string, unknown>;
+    if (typeof o.toolCallId !== "string") return undefined;
+    out.push({ toolCallId: o.toolCallId, outputPath: typeof o.outputPath === "string" ? o.outputPath : "$" });
+  }
+  return out;
+}
+
+/**
  * 重组装主函数。事件顺序即 wire 顺序；只读不改。
  */
 export function reassembleDshRun(events: readonly DshSessionEvent[], opts: ReassembleOptions = {}): ReassembledRun {
   const newProvId = opts.newProvId ?? (() => newId("prov")); // 与 loop.ts 同一生成器（ids.ts 单源）
   const calls = collectToolCalls(events);
   const toolNameByCallId = new Map(calls.map((c) => [c.toolCallId, c.name]));
+  // WO-PROVENANCE-TRACE-FIX · **模型面 id 与帧 id 不是同一个字符串**：模型在上下文里看到的
+  // 是工具回执信封 `<tool_data tool_call_id="tc_…">`（宿主审计行 id），而帧流里是 DSH 自己的
+  // `call_00_…`。模型声明 provenance 时引用的是**它看得见的那个**（实测其思考里写的正是 `tc_…` 形态），
+  // 只按帧 id 回填 ⇒ 每一条都落 `"unknown"`（有表、但每条都指不出是哪件工具）。
+  // 故再用宿主侧表（帧 callId → 宿主 tc_ id）补一张反向表，**两种 id 都认**。
+  // ⛔ 只补不覆盖：帧 id 命中优先（同一条调用两个 id 都指同一工具，先到先得即可）。
+  for (const [frameCallId, host] of opts.hostToolCalls ?? []) {
+    const name = toolNameByCallId.get(frameCallId);
+    if (name !== undefined && !toolNameByCallId.has(host.toolCallId)) toolNameByCallId.set(host.toolCallId, name);
+  }
   // sketch：loop.ts:1146 同口径 —— 元工具（final_answer/技能加载器）不进 sketch。
   // 技能加载器名 = dsh 臂真名 `skill`（上游常量，@deepseek-ai/dsh-tool-skill，不可配）；
   // native 的 `load_skill` 不流经本函数（本函数只吃 dsh 帧流）。
@@ -746,12 +802,16 @@ export function reassembleDshRun(events: readonly DshSessionEvent[], opts: Reass
   //
   // ══ 安全边界：这一步**没有**放宽任何治理面（逐条点名，缺一条都不成立）═══════════════════════
   //   · 数字红线（下方 `scanBlocks(blocks)`）照跑 —— 软收尾的正文**同样**被扫，agent 自撰的裸数照样拒。
-  //   · `provenancePolicy=required` 照拒 —— 软收尾 provenance 恒空 ⇒ 该支必红（治理未松）。
+  //   · `provenancePolicy=required` **判据未动**（仍是「表为空即拒」）—— 只是「模型没声明 provenance」
+  //     与「模型声明了但 blocks 写坏」不再被合并成同一个结果：前者照拒（反向金丝雀·甲咬这条），
+  //     后者的要求**本来就已被满足**（final_answer 里确实带了 provenance）⇒ 采信它，不是放宽门。
   //   · `writeMode`（要求 action_draft 块）照拒 —— 软收尾无该块 ⇒ 必红。
   //   即：**被放宽的只有「格式手滑」。治理与红线一个字没动。**
   const parsed = finalCall ? FinalAnswerInputSchema.safeParse(finalCall.input) : undefined;
-  if (parsed?.success) {
-    for (const p of parsed.data.provenance) {
+  // loop.ts:1431-1446 同口径：模型声明的每一条 {toolCallId, outputPath} → 全量 ProvenanceRef，
+  // toolName 从帧流回填（`audit?.toolName ?? "unknown"` 同口径）。
+  const pushProvenance = (declared: readonly { toolCallId: string; outputPath: string }[]) => {
+    for (const p of declared) {
       provenance.push({
         id: newProvId(),
         source: "TOOL_RESULT",
@@ -760,11 +820,18 @@ export function reassembleDshRun(events: readonly DshSessionEvent[], opts: Reass
         outputPath: p.outputPath,
       });
     }
+  };
+  if (parsed?.success) {
     blocks = parsed.data.blocks;
+    pushProvenance(parsed.data.provenance);
   } else {
-    // 软收尾（无 final_answer **或** final_answer 入参不合 schema）：最后文本兜底，
-    // provenance 空 = 诚实 NO_ANSWER 不编造溯源。
+    // 软收尾（无 final_answer **或** final_answer 入参不合 schema）：最后文本兜底。
+    // ⚠ WO-PROVENANCE-TRACE-FIX 起：**正文兜底 ≠ 出处也丢** —— 模型在同一份被拒的入参里
+    //   声明的 provenance 照抢救（见 salvageDeclaredProvenance 头注：位置完整性 + 空则不给兜底）。
+    //   `blocks` 仍一个字节都不采信（模型那份 `text`/`ref` 字段名不合契约，采信即改契约）。
     blocks = [{ type: "text", markdown: lastAssistantText(events) || "（探索模式未能产出回答）" }];
+    const salvaged = salvageDeclaredProvenance(finalCall);
+    if (salvaged) pushProvenance(salvaged);
   }
 
   const policy = opts.governance?.provenancePolicy ?? "best_effort";
