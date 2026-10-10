@@ -1,0 +1,58 @@
+
+ RUN  v3.2.6 /private/tmp/wt-ab/apps/datacore
+
+ ❯ test/sim-drill.seam.test.ts (23 tests | 1 failed | 22 skipped) 20949ms
+   ↓ WO-SIM-DRILL-P12 · 推演演习接缝 > ① 路由表登记了全部 11 类事件，且每类至少一条路由（枚举加了表没加 ⇒ 当场抛）
+   ↓ WO-SIM-DRILL-P12 · 推演演习接缝 > ① 11 类事件**全部**有世界态落点，且每个落点在真规则表上**真有出边**（落在叶子上比不落更糟）
+   × WO-SIM-DRILL-P12 · 推演演习接缝 > ① 回执：appliedStateEffects[].downstream 与真规则表**同源**（键错 ⇒ 恒空 ⇒ 屏上每件事都印「没有出边」） 20942ms
+     → 落点在真规则表上有出边而回执为空 ⇒ 查 landingType 的键与 drillPert.id 是否同源: expected [] to deeply equal [ 'Model.costPressure ×0.109318171' ]
+   ↓ WO-SIM-DRILL-P12 · 推演演习接缝 > ① 加一个新事件只需改**一处**：路由与校验规则全部由 DRILL_EVENT_SPECS 派生
+   ↓ WO-SIM-DRILL-P12 · 推演演习接缝 > ① 入参解释是声明式的：required 缺值 ⇒ 报 missing（而不是硬调一次拿 400）
+   ↓ WO-SIM-DRILL-P12 · 推演演习接缝 > ② 端到端：SO-3391 提前 10 天 ⇒ 求解器真被调 + 屏上给出被挤占订单号与代价数字
+   ↓ WO-SIM-DRILL-P12 · 推演演习接缝 > ② 事件驱动的结论**只在给了事件时**出现（scanOnly 不调求解器）
+   ↓ WO-SIM-DRILL-P12 · 推演演习接缝 > ③ 推演 N 天 ⇒ ceil(N/tickDays) 个 tick，且天口径随会话走
+   ↓ WO-SIM-DRILL-P12 · 推演演习接缝 > ③ tickDays 从 SimSession 透到**下游四页的消费面**（会话列表投影）
+   ↓ WO-SIM-DRILL-P12 · 推演演习接缝 > ④ 诚实位：sop_reschedule 无 dataMode 字段 ⇒ 归一成 UNDECLARED，不冒充 LIVE
+   ↓ WO-SIM-DRILL-P12 · 推演演习接缝 > ④ 诚实位归一的**唯一实现**：认识的值原样保留，不认识 / 缺失一律 UNDECLARED
+   ↓ WO-SIM-DRILL-P12 · 推演演习接缝 > ⑤ 求解器抛错 ⇒ 记「未能评估」**留在清单里**，绝不从屏上消失
+   ↓ WO-SIM-DRILL-P12 · 推演演习接缝 > ⑤ 全部失败 ⇒ allFailed=true 且文案明说「不是没有风险」（与「无卡点」是两个状态）
+   ↓ WO-SIM-DRILL-P12 · 推演演习接缝 > ⑤ 调通但没登记归一规则 ⇒ 同样记「未能评估」，不静默丢结果
+   ↓ WO-SIM-DRILL-P12 · 推演演习接缝 > ⑥ 卡点/脆弱点按 P90/P95 分位切，三类由构造互斥（零配置·不许出现固定红线）
+   ↓ WO-SIM-DRILL-P12 · 推演演习接缝 > ⑥ 单样本变量不硬判（「算不出分布」不冒充「没事」）
+   ↓ WO-SIM-DRILL-P12 · 推演演习接缝 > ⑥ 堵点用**传递闭包**不是出度（出度会把「直连 3 个叶子」排在「直连 1 个再散 40 个」前面）
+   ↓ WO-SIM-DRILL-P12 · 推演演习接缝 > ⑥ 传导图成环不死循环（真实传导图允许成环）
+   ↓ WO-SIM-DRILL-P12 · 推演演习接缝 > ⑥ 分位函数：空样本回 null（不是 0）——「算不出阈值」不是「阈值为 0」
+   ↓ WO-SIM-DRILL-P12 · 推演演习接缝 > ⑦ R6：同输入重跑，结论逐字节一致
+   ↓ WO-SIM-DRILL-P12 · 推演演习接缝 > ⑦ R4-sim：演习是只读的 —— 世界线 curTick 一格不动
+   ↓ WO-SIM-DRILL-P12 · 推演演习接缝 > ⑦ 规模闸：逐类截断 + 诚实位（「我给了 N 条」与「一共 M 条」分得开）
+   ↓ WO-SIM-DRILL-P12 · 推演演习接缝 > ⑦ 规模闸**逐类**限而非全局 Top-N（全局会把整类低分结论挤掉 = 把截断伪装成结论）
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/sim-drill.seam.test.ts > WO-SIM-DRILL-P12 · 推演演习接缝 > ① 回执：appliedStateEffects[].downstream 与真规则表**同源**（键错 ⇒ 恒空 ⇒ 屏上每件事都印「没有出边」）
+AssertionError: 落点在真规则表上有出边而回执为空 ⇒ 查 landingType 的键与 drillPert.id 是否同源: expected [] to deeply equal [ 'Model.costPressure ×0.109318171' ]
+
+- Expected
++ Received
+
+- [
+-   "Model.costPressure ×0.109318171",
+- ]
++ []
+
+ ❯ test/sim-drill.seam.test.ts:160:7
+    158|       eff[0].downstream,
+    159|       "落点在真规则表上有出边而回执为空 ⇒ 查 landingType 的键与 drillPert.id 是否同源",
+    160|     ).toEqual(expected);
+       |       ^
+    161|     await t.app.close();
+    162|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 22 skipped (23)
+   Start at  14:42:37
+   Duration  35.75s (transform 8.19s, setup 0ms, collect 13.75s, tests 20.95s, environment 4ms, prepare 347ms)
+

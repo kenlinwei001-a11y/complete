@@ -32,6 +32,7 @@ import { scanDrillFindings, transitiveClosureSizes, quantileSorted } from "../sr
  * 靶① 路由表改空 ⇒ ②「求解器真被调用」红
  * 靶② 归一处 `dataMode` 强制 LIVE ⇒ ④「诚实位」红
  * 靶③ 求解器抛错时静默跳过 ⇒ ⑤「未能评估仍在清单里」红
+ * 靶④（2026-10-10 加）回执 `landingType` 键回退成 `s.id` ⇒ ①「回执与规则表同源」红
  */
 
 const enableSim = async (t: TestApp) =>
@@ -124,6 +125,39 @@ describe("WO-SIM-DRILL-P12 · 推演演习接缝", () => {
         `${s.kind} 的落点 ${eff.objectType}.${eff.stateVar} 在真规则表上零出边 ⇒ 打上去一步都传不下去`,
       ).toBeGreaterThan(0);
     }
+    await t.app.close();
+  });
+
+  it("① 回执：appliedStateEffects[].downstream 与真规则表**同源**（键错 ⇒ 恒空 ⇒ 屏上每件事都印「没有出边」）", async () => {
+    /**
+     * 靶④（2026-10-10 真咬过一次）：路由里 `landingType` 的键曾误写 `simpert_drill_${s.id}_${i}`，
+     * 而 `drillPert.id` 是 `simpert_drill_${drillWorld.id}_${i}` ⇒ `landingType.get(p.id)` 恒 undefined
+     * ⇒ `downstream` **恒空** ⇒ 屏上每条事件都印「这一格…没有出边——打上去也传不下去」，
+     * 而引擎其实传得下去（同一屏的财务三行随幅度线性变化就是反证）。
+     * 上面那条「落点在真规则表上真有出边」测的是**表**，测不到**回执**——回执是路由侧的装配，必须端到端。
+     */
+    const t = await seededApp();
+    const sid = await newSession(t);
+    const rep = await runDrill(t, sid, {
+      horizonDays: 30,
+      events: [{ kind: "MATERIAL_REPRICE", targetObjectId: "cell_case", payload: { pctChange: 30 }, effectiveDay: 0 }],
+    });
+    const eff = rep.appliedStateEffects;
+    expect(eff.length, "一条事件 ⇒ 一条回执").toBe(1);
+    // 金丝雀：冲击真打上了 —— 若这行为假，下面的空下游是「事件没生效」，不是回执 bug。
+    expect(eff[0].applied, "冲击没打上 ⇒ 空下游的成因分不清，本跑判废").toBe(true);
+    // 与 ① 的金丝雀同一条边（Material.priceShock → Model.costPressure），**现读规则表**比对，
+    // 不写死系数 —— 系数是种子数据，改了不该红；回执与表脱钩才该红。
+    const rules = await t.repos.sim.listPropagationRules("demo", true);
+    const expected = rules
+      .filter((r) => r.sourceStateVar === eff[0].targetStateVar && r.sourceTypeKey === "Material")
+      .map((r) => `${r.targetTypeKey}.${r.targetStateVar} ×${r.coefficient}`)
+      .sort();
+    expect(expected.length, "金丝雀：真规则表里 priceShock 应有至少一条出边").toBeGreaterThan(0);
+    expect(
+      eff[0].downstream,
+      "落点在真规则表上有出边而回执为空 ⇒ 查 landingType 的键与 drillPert.id 是否同源",
+    ).toEqual(expected);
     await t.app.close();
   });
 

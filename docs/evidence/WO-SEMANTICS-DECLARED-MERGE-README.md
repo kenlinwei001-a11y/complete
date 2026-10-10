@@ -75,4 +75,10 @@
 ```
 
 复跑方法与两个假象的排查（vite 旧 transform 档 / 探针选择器盲区）见 `WO-AB-DRILL-FINANCE-SCREEN.txt`。
-本轮**零源码改动**（探针金丝雀已移除，工作树与 58aede7ab 的源码逐字节同）。
+
+### 追加修正（同日）：回执 downstream 恒空 —— 一行键错（屏上是假话，已修）
+  `app.ts` 的 `landingType.set` 键误用 `s.id`（同文件其余三处都是
+  `simpert_drill_${drillWorld.id}_${i}`）⇒ `downstream` 恒 `[]` ⇒ 屏上**每条**事件都印
+  「没有出边」（而同屏财务三行随幅度线性 = 引擎明明传得下去的反证）。
+  修 + build + 重起 + 三幅度屏验 + 新增防回归测试（靶④ 变异红）—— 详见 `WO-AB-DRILL-RECEIPT-FIX.txt`。
+  ⚠ 收编时注意：本修与「finance 进报告」是**两笔独立改动**，可分开取舍。

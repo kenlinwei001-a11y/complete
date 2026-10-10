@@ -1,0 +1,19 @@
+
+ RUN  v3.2.6 /private/tmp/wt-ab/apps/datacore
+
+ ✓ test/sim-drill.seam.test.ts (23 tests) 339647ms
+   ✓ WO-SIM-DRILL-P12 · 推演演习接缝 > ① 11 类事件**全部**有世界态落点，且每个落点在真规则表上**真有出边**（落在叶子上比不落更糟）  57869ms
+   ✓ WO-SIM-DRILL-P12 · 推演演习接缝 > ① 回执：appliedStateEffects[].downstream 与真规则表**同源**（键错 ⇒ 恒空 ⇒ 屏上每件事都印「没有出边」）  69557ms
+   ✓ WO-SIM-DRILL-P12 · 推演演习接缝 > ② 端到端：SO-3391 提前 10 天 ⇒ 求解器真被调 + 屏上给出被挤占订单号与代价数字  50952ms
+   ✓ WO-SIM-DRILL-P12 · 推演演习接缝 > ② 事件驱动的结论**只在给了事件时**出现（scanOnly 不调求解器）  30986ms
+   ✓ WO-SIM-DRILL-P12 · 推演演习接缝 > ③ 推演 N 天 ⇒ ceil(N/tickDays) 个 tick，且天口径随会话走  13349ms
+   ✓ WO-SIM-DRILL-P12 · 推演演习接缝 > ③ tickDays 从 SimSession 透到**下游四页的消费面**（会话列表投影）  13270ms
+   ✓ WO-SIM-DRILL-P12 · 推演演习接缝 > ④ 诚实位：sop_reschedule 无 dataMode 字段 ⇒ 归一成 UNDECLARED，不冒充 LIVE  29430ms
+   ✓ WO-SIM-DRILL-P12 · 推演演习接缝 > ⑦ R6：同输入重跑，结论逐字节一致  54384ms
+   ✓ WO-SIM-DRILL-P12 · 推演演习接缝 > ⑦ R4-sim：演习是只读的 —— 世界线 curTick 一格不动  19729ms
+
+ Test Files  1 passed (1)
+      Tests  23 passed (23)
+   Start at  14:36:13
+   Duration  376.27s (transform 18.59s, setup 0ms, collect 34.30s, tests 339.65s, environment 0ms, prepare 451ms)
+

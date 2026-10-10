@@ -106,6 +106,11 @@ try {
   const plans = await p.locator('[data-testid="dc-plans"]').textContent().catch(() => null);
   say(`9b dc-plans=${plans === null ? "—（未命中）" : `命中，前 100 字 "${String(plans).replace(/\s+/g, " ").slice(0, 100)}"`}`);
   say(`9c dc-invariant-note=${await p.locator('[data-testid="dc-invariant-note"]').count()} 处`);
+  // 出边回执（字符串判定）：修复后应出「这一格的出边（顺着往下推的第一跳）：…」
+  const bodyTxt = await p.evaluate(() => document.body.innerText);
+  const edge = (bodyTxt.match(/这一格的出边（顺着往下推的第一跳）：[^\n]*/) ?? [])[0]
+    ?? (bodyTxt.match(/⚠ 这一格在本租户的关系图上[^\n]*/) ?? [])[0] ?? "—（两形态都没找到）";
+  say(`9d 出边回执: ${edge}`);
   say(`10 结论=${ok ? "财务三行已上屏" : "未见 dc-finance-COST"}`);
   await p.screenshot({ path: OUT.replace(/\.txt$/, "-shot.png") });
 } catch (e) {

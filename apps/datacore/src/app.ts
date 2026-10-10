@@ -4379,7 +4379,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         rangePct: eff.rangePct,
         observedRange: svRange,
       });
-      landingType.set(`simpert_drill_${s.id}_${i}`, eff.declaredObjectType);
+      // ⚠ 键必须与 `drillPert.id` 同源（`simpert_drill_${drillWorld.id}_${i}`）——
+      //   曾误写 `s.id` ⇒ 与下方 `landingType.get(p.id)` 恒不匹配 ⇒ downstream 恒 []
+      //   ⇒ 屏上**每一条**事件都印「没有出边」而引擎其实传得下去（2026-10-10 截图实据）。
+      landingType.set(`simpert_drill_${drillWorld.id}_${i}`, eff.declaredObjectType);
     }
 
     // ── ② 传导引擎：推 ceil(horizonDays / tickDays) 拍（**不落盘**）──────────

@@ -1,0 +1,35 @@
+=== WO-AB-DRILL-RECEIPT-FIX（2026-10-10）：回执 downstream 恒空 —— 一行键错 ===
+
+### 症状（截图为据）
+  「事件影响与对策」结果区「已生效」卡，对**每一条**事件都印：
+  「⚠ 这一格在本租户的关系图上「没有出边」—— 打上去也传不下去，屏上其余的数不会因它而动。」
+  而同屏财务三行（9875.05 万元 @ pctChange=300）恰恰随幅度线性变化 —— 自相矛盾。
+
+### 根因（一行，实据齐）
+  apps/datacore/src/app.ts 回执装配处：
+    drillPert.id         = `simpert_drill_${drillWorld.id}_${i}`   ← 全链路（effectEventKind/effectReceipt）都用它
+    landingType.set(...) = `simpert_drill_${s.id}_${i}`            ← ✗ 用了**原会话** s.id
+    downstream 过滤器     = landingType.get(p.id)                   ← p.id 是 drillWorld 键 ⇒ 恒 undefined
+  ⇒ sourceTypeKey === undefined 恒不成立 ⇒ downstream 恒 []。
+  判据（直调 API）：修复前 downstream=[]，而规则表里确有
+  Material.priceShock→Model.costPressure ×0.109318171（且 worldCellsMoved=1295 ⇒ 引擎真传了）。
+
+### 修（已 build + 重起 4052：60840 → 88338）
+  landingType.set(`simpert_drill_${drillWorld.id}_${i}`, …)  // 与 drillPert.id 同源，含防回归注释
+  API 复核：downstream = ["Model.costPressure ×0.109318171"] ✓
+
+### 屏验（修复后三幅度重跑，探针第 9d 行）
+  FLOW-MAT-{3,30,300}.txt 第 9d 行均：
+    这一格的出边（顺着往下推的第一跳）：Model.costPressure ×0.109318171
+  财务三行不受影响：98.75 / 987.51 / 9875.05 万元（与前一致）
+
+### 防回归（新增靶④）
+  test/sim-drill.seam.test.ts 新增：
+    「① 回执：appliedStateEffects[].downstream 与真规则表**同源**」
+    —— 现读规则表比对（不写死系数：系数是种子数据，改了不该红；回执与表脱钩才该红）
+    + applied=true 金丝雀（空下游的成因必须分得开：事件没生效 vs 回执装配错）。
+  证据三件套（rc 如实）：
+    SIM-DRILL-SEAM-23-green.txt     rc=0  23/23
+    SIM-DRILL-SEAM-mutation-red.txt rc=1  靶④ 变异（键回退 s.id）⇒ 断言红：
+        expected [] to deeply equal [ 'Model.costPressure ×0.109318171' ]
+    SIM-DRILL-SEAM-restore-green.txt rc=0  cp 备份还原（未用 git checkout），复绿
