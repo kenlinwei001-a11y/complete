@@ -34,7 +34,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { mcpServerNameSlug, type AgentDefinition } from "@platform/contracts";
+import { mcpServerNameSlug, type AgentDefinition, type GrowthTicket } from "@platform/contracts";
 import { createMockDataCore } from "../src/mocks/clients.js";
 import { createMemoryRepos } from "../src/persistence/memory.js";
 import { Metrics } from "../src/metrics.js";
@@ -193,16 +193,16 @@ const FINAL_ANSWER_ARGS = JSON.stringify({
   provenance: [],
 });
 /**
- * e2e 探针（入参带 probe 标记 ⇒ 数据面实参统计只认这一条）。
- * ⚠ 每进一批把它换成**本批**的一件：判据① 要的是「本批的这件」迁前迁后逐键相同。
- * 批次 5 = `sim_world`（推演指挥台四件里本批的后两件之一；数据面落
- * `dataCore.sim.world(ctx, sessionId)` —— **会话由测试自己开** ⇒ `sessionId` 就是唯一识别标记，
- * 比按字段值筛更硬：全测试跑下来只有那一只 id）。
+ * e2e 探针（回执带 probe 标记 ⇒ 数据面读数证明「真读到了数据面上的那一行」）。
+ * ⚠ 每进一批把它换成**本批**的一件：判据① 要的是「本批的这件」迁前迁后**逐键**相同。
+ * 批次 5 = `discover_growth_tickets`（A4 工单施工面首件）。选它的第二个理由同样重要：
+ * 它的入参是**静态空对象** ⇒ 判据① 的「同实参」可以**逐字节**比，不必为夹具现生成的值做归一
+ * （同批的 `sim_world`/`sim_certify` 必须先把 `sessionId` 现开，两臂的 id 天然不同）。
  */
-const PROBE_RAW = "sim_world";
-/** 探针实参：`sessionId` 由 `openProbeSession()` 现开（A2 回环不真执行 ⇒ 用占位值即可）。 */
-let PROBE_ARGS = JSON.stringify({ sessionId: "sims_wo-builtin-rest-probe" });
-/** 探针会话的基态快照键 —— 回执里带着它 = 数据面真读到了**本测试开的那一只**会话。 */
+const PROBE_RAW = "discover_growth_tickets";
+/** 探针实参（静态：判据① 要逐字节比实参，禁夹具现生成的值进实参）。 */
+const PROBE_ARGS = JSON.stringify({});
+/** 探针标记：写进**数据面上那一行**的 `fromQuestion` ⇒ 回执里带着它 = 真读到那一行。 */
 const PROBE_MARKER = "wo-builtin-rest-probe";
 /**
  * 探针件的**持有者**（出厂种子里第一个授予它的 agent）。判据① 必须用它跑 ——
@@ -215,21 +215,25 @@ const PROBE_AGENT_ID: string = (() => {
 })();
 
 /**
- * 开一只**探针沙盘会话**（模拟态，绝不写真值）：`sim_world` 要有真数据面回执才量得出归一，
- * 且 `sessionId` 由本测试生成 ⇒ 数据面实参统计可按它精确筛选（不把内部调用算进来）。
- * ⚠ 会顺带把 `PROBE_ARGS` 钉到这一只 id 上（e2e 两臂都用它）；stub 剧本随后再 push（见 E 组）。
+ * 在**数据面**上放一行探针工单（夹具输入，不是被测行为）：使 `discover_growth_tickets` 的回执**非空**，
+ * 且回执里带着 `PROBE_MARKER` ⇒ 「数据面真读到了那一行」有逐字证据（不是「调了没调」）。
  */
-async function openProbeSession(t: TestApp): Promise<string> {
-  const r = (await t.dataCore.sim.init(CTX, { baseSnapshot: { [PROBE_MARKER]: 1 } })) as { id?: unknown };
-  const sid = String(r.id ?? "");
-  if (!sid) throw new Error("探针会话没开出 id");
-  PROBE_ARGS = JSON.stringify({ sessionId: sid });
-  return sid;
+async function seedProbeTicket(t: TestApp): Promise<void> {
+  await t.repos.growthTickets.upsert({
+    id: "gtk_wo_builtin_rest_probe",
+    tenantId: TENANT,
+    fromQuestion: `探针工单 ${PROBE_MARKER}`,
+    gapCode: "NO_PLAN",
+    ioContract: { inputs: ["Model"], outputShape: ["value", "provenance"] },
+    ontologyRefs: { objectTypes: ["Model"], slices: [], rules: [] },
+    acceptance: "应能答出可验证答案",
+    status: "OPEN",
+    createdAt: "2026-06-18T00:00:00.000Z",
+  } satisfies GrowthTicket);
 }
 
-/** 数据面读法：`sim_world` 落到 `dataCore.sim.world(ctx, sessionId)` —— 只认探针会话那一只。 */
-const probeCallsOf = (spy: { mock: { calls: unknown[][] } }, sid: string) =>
-  spy.mock.calls.filter((c) => c[1] === sid);
+/** 数据面读法：`discover_growth_tickets` 落到 `repos.growthTickets.listByTenant(tenantId)`。 */
+const probeCallsOf = (spy: { mock: { calls: unknown[][] } }) => spy.mock.calls.filter((c) => c[0] === TENANT);
 
 interface CapturedReq {
   runToken?: string;
@@ -700,6 +704,7 @@ describe("WO-BUILTIN-MIGRATE-REST · B 组：MCP 全名归一回同一具执行�
     const allowed = await mk("task_tool_scope_ok", [full(PROBE_RAW)]).run(full(PROBE_RAW), MIN_INPUT[PROBE_RAW]!);
     expect(allowed.outcome, "声明面记全名 ⇒ 不被 scope 门误拒（这才是迁移要的形态）").not.toBe("DENIED");
     // 金丝雀：同一条门对**裸名**形态同样咬得住（证明上面不是「只认全名」的新病）
+    // ⚠ 声明面里写的裸名件必须**不是** `PROBE_RAW` 自己（那会变成「声明含它 ⇒ 放行」，判据反了）。
     const bareDenied = await mk("task_tool_scope_bare", ["sim_world"]).run(PROBE_RAW, MIN_INPUT[PROBE_RAW]!);
     expect(bareDenied.outcome, "裸名形态同样被拒（门不因载体而换判据）").toBe("DENIED");
   });
@@ -983,20 +988,16 @@ describe("WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁
     else process.env.DSH_HARNESS_DIR = savedEnv.DSH_HARNESS_DIR;
   });
   it("E1 迁后（DSH 原生 MCP）：模型面有全名 ∧ 真调 ∧ 数据面真查 ∧ 审计行（裸名）", { timeout: SEAM_TIMEOUT }, async () => {
-    // ⚠ 探针会话必须先开（`sessionId` 要进剧本）⇒ 剧本**后 push**：`startStubOpenAi` 是按下标
-    //   读**同一只数组**（不是开机时拍快照），故 push 在 run 之前即可。
-    const rounds: StubRound[] = [];
-    const stub = await startStubOpenAi(rounds);
+    const stub = await startStubOpenAi([
+      { toolCall: { name: full(PROBE_RAW), arguments: PROBE_ARGS }, usage: PLAIN_USAGE },
+      { toolCall: { name: "final_answer", arguments: FINAL_ANSWER_ARGS }, usage: PLAIN_USAGE },
+      { text: "stub final answer", usage: PLAIN_USAGE },
+    ] satisfies StubRound[]);
     const { t, close } = await startToolExecApp({ stubUrl: `${stub.url}/v1`, serviceToken: SERVICE_TOKEN });
     try {
       await seedWorld(t, seedAgent(PROBE_AGENT_ID));
-      const sid = await openProbeSession(t);
-      rounds.push(
-        { toolCall: { name: full(PROBE_RAW), arguments: PROBE_ARGS }, usage: PLAIN_USAGE },
-        { toolCall: { name: "final_answer", arguments: FINAL_ANSWER_ARGS }, usage: PLAIN_USAGE },
-        { text: "stub final answer", usage: PLAIN_USAGE },
-      );
-      const worldSpy = vi.spyOn(t.dataCore.sim, "world");
+      await seedProbeTicket(t);
+      const listSpy = vi.spyOn(t.repos.growthTickets, "listByTenant");
       const result = await runAgent(t, "task_rest_e1", PROBE_AGENT_ID);
       expect(result.run.kernel, "真走 DSH 分叉").toBe("EXTERNAL");
 
@@ -1008,14 +1009,14 @@ describe("WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁
       expect(visible.find((x) => x.name === full(PROBE_RAW))?.description, "描述逐字 = MCP 广告文本").toBe(advertised.description);
       expect(names.length, "金丝雀：模型面没空掉").toBeGreaterThan(5);
 
-      const probeCalls = probeCallsOf(worldSpy, sid);
-      expect(probeCalls.length, "模型那一次读恰一次（按探针会话 id 筛，不把内部调用算进来）").toBe(1);
-      expect(probeCalls[0]![1], "数据面实参逐键 = 模型给的（会话 id 逐字）").toBe(sid);
+      const probeCalls = probeCallsOf(listSpy);
+      expect(probeCalls.length, "模型那一次读恰一次（按租户筛，不把内部调用算进来）").toBe(1);
+      expect(probeCalls[0]![0], "数据面实参逐键 = 本租户").toBe(TENANT);
 
       const rows = await t.repos.toolCalls.listByTask("task_rest_e1");
       const row = rows.find((r) => r.toolName === PROBE_RAW);
       expect(row?.outcome, "内置工具审计行").toBe("OK");
-      expect(JSON.stringify(row!.output), "回执带着探针会话的基态 ⇒ 真读到本测试开的那一只").toContain(PROBE_MARKER);
+      expect(JSON.stringify(row!.output), "回执带着探针行的标记 ⇒ 真读到数据面上那一行").toContain(PROBE_MARKER);
       expect(rows.find((r) => r.toolName === full(PROBE_RAW)), "审计面不许有全名行（有 = 两条路都执行过）").toBeUndefined();
 
       const second = JSON.stringify(stub.requests[1]!.body);
@@ -1042,19 +1043,16 @@ describe("WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁
   });
 
   it("E2 迁前（对照臂·同一 query · 同一 agent · 单变量）：能力在反向工具面（裸名）∧ 同一执行体同一行审计名", { timeout: SEAM_TIMEOUT }, async () => {
-    // 同 E1：探针会话先开、剧本后 push（两臂的 `sessionId` 各自现开，⛔ 不跨用例复用上一条的）。
-    const rounds: StubRound[] = [];
-    const stub = await startStubOpenAi(rounds);
+    const stub = await startStubOpenAi([
+      { toolCall: { name: PROBE_RAW, arguments: PROBE_ARGS }, usage: PLAIN_USAGE },
+      { toolCall: { name: "final_answer", arguments: FINAL_ANSWER_ARGS }, usage: PLAIN_USAGE },
+      { text: "stub final answer", usage: PLAIN_USAGE },
+    ] satisfies StubRound[]);
     const { t, close } = await startToolExecApp({ stubUrl: `${stub.url}/v1`, serviceToken: SERVICE_TOKEN });
     try {
       await seedWorld(t, preMigrationOne(seedAgent(PROBE_AGENT_ID), PROBE_RAW));
-      const sid = await openProbeSession(t);
-      rounds.push(
-        { toolCall: { name: PROBE_RAW, arguments: PROBE_ARGS }, usage: PLAIN_USAGE },
-        { toolCall: { name: "final_answer", arguments: FINAL_ANSWER_ARGS }, usage: PLAIN_USAGE },
-        { text: "stub final answer", usage: PLAIN_USAGE },
-      );
-      const worldSpy = vi.spyOn(t.dataCore.sim, "world");
+      await seedProbeTicket(t);
+      const listSpy = vi.spyOn(t.repos.growthTickets, "listByTenant");
       const result = await runAgent(t, "task_rest_e2", PROBE_AGENT_ID);
       expect(result.run.kernel, "真走 DSH 分叉").toBe("EXTERNAL");
 
@@ -1069,7 +1067,7 @@ describe("WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁
           .sort(),
       );
       expect(stillMigrated.length, "金丝雀：单变量臂不是「整台 server 撤了」").toBeGreaterThan(0);
-      const probeCalls = probeCallsOf(worldSpy, sid);
+      const probeCalls = probeCallsOf(listSpy);
       expect(probeCalls.length, "迁前臂：模型那一次读恰一次").toBe(1);
       const rows = await t.repos.toolCalls.listByTask("task_rest_e2");
       const preRow = rows.find((r) => r.toolName === PROBE_RAW);
@@ -1104,27 +1102,25 @@ describe("WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁
   });
 
   it("E3 反向对照（判据③·e2e）：授予面拿掉 ⇒ DSH 侧读不到它 ∧ 宿主零数据面调用（那条读数是活的）", { timeout: SEAM_TIMEOUT }, async () => {
-    const rounds: StubRound[] = [];
-    const stub = await startStubOpenAi(rounds);
+    const stub = await startStubOpenAi([
+      // 模型**照旧**点名它（幻觉/陈旧剧本）—— 授予面已拿掉，DSH 侧不该让它到达数据面
+      { toolCall: { name: full(PROBE_RAW), arguments: PROBE_ARGS }, usage: PLAIN_USAGE },
+      { toolCall: { name: "final_answer", arguments: FINAL_ANSWER_ARGS }, usage: PLAIN_USAGE },
+      { text: "stub final answer", usage: PLAIN_USAGE },
+    ] satisfies StubRound[]);
     const { t, close } = await startToolExecApp({ stubUrl: `${stub.url}/v1`, serviceToken: SERVICE_TOKEN });
     try {
       await seedWorld(t, ungrantedOne(seedAgent(PROBE_AGENT_ID), PROBE_RAW));
-      // 探针会话**照开**（会话真在 ⇒ 「零数据面调用」量的不是「会话不存在」那个错误）
-      const sid = await openProbeSession(t);
-      rounds.push(
-        // 模型**照旧**点名它（幻觉/陈旧剧本）—— 授予面已拿掉，DSH 侧不该让它到达数据面
-        { toolCall: { name: full(PROBE_RAW), arguments: PROBE_ARGS }, usage: PLAIN_USAGE },
-        { toolCall: { name: "final_answer", arguments: FINAL_ANSWER_ARGS }, usage: PLAIN_USAGE },
-        { text: "stub final answer", usage: PLAIN_USAGE },
-      );
-      const worldSpy = vi.spyOn(t.dataCore.sim, "world");
+      // 探针行**照放**（数据面上有那一行 ⇒ 「零读数」量的不是「本来就没数据」）
+      await seedProbeTicket(t);
+      const listSpy = vi.spyOn(t.repos.growthTickets, "listByTenant");
       const result = await runAgent(t, "task_rest_e3", PROBE_AGENT_ID);
       expect(result.run.kernel, "真走 DSH 分叉").toBe("EXTERNAL");
       const names = stubVisibleTools(stub).map((x) => x.name);
       expect(names, `授予面拿掉 ⇒ DSH 侧看不到 ${PROBE_RAW}`).not.toContain(full(PROBE_RAW));
       expect(names, `裸名形态也不在`).not.toContain(PROBE_RAW);
       expect(names, "金丝雀：同 server 换授的那件在模型面").toContain(builtinMcpToolName(UNGRANTED_SWAP));
-      expect(probeCallsOf(worldSpy, sid).length, "宿主零数据面调用（fail-closed）").toBe(0);
+      expect(probeCallsOf(listSpy).length, "宿主零数据面调用（fail-closed）").toBe(0);
       const rows = await t.repos.toolCalls.listByTask("task_rest_e3");
       expect(rows.some((r) => r.toolName === PROBE_RAW && r.outcome === "OK"), "不许有 OK 审计行").toBe(false);
       expect(names.length, "金丝雀：模型面没空掉").toBeGreaterThan(5);
