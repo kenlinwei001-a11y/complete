@@ -26,8 +26,13 @@ import path from "node:path";
 
 const BASE = process.env.E2E_BASE ?? "http://127.0.0.1:5173";
 const OUT = process.env.TQ_OUT ?? "/tmp/tq-evidence";
-const CDP_PORT = Number(process.env.TQ_CDP_PORT ?? 9441);
-const PROFILE = process.env.TQ_PROFILE ?? "/tmp/tq-chrome-profile";
+/* ⚠ 2026-10-10 实测坑（本探针自己踩过）：写死 CDP 端口 + 复用 profile 目录时，
+   上一轮**没杀干净**的 Chrome 会占住端口 ⇒ 本轮连上的是**旧浏览器实例**（而它的 profile
+   刚被本轮 rmSync 删了）⇒ 页面 readyState 卡在 interactive、屏上全空。
+   现象与「前端坏了」一模一样，其实是我们自己的孤儿进程。两条对策：
+   ① 端口按 pid 派生（每轮不同）② 退出路径一律 SIGKILL（SIGTERM 实测杀不掉 Chrome 主进程）。 */
+const CDP_PORT = Number(process.env.TQ_CDP_PORT ?? (9500 + (process.pid % 400)));
+const PROFILE = process.env.TQ_PROFILE ?? `/tmp/tq-chrome-profile-${process.pid}`;
 const PORTS = (process.env.E2E_API_PORTS ?? "4001|4002").replace(/[^0-9|]/g, "");
 const MAX_WAIT_MS = Number(process.env.TQ_MAX_WAIT_MS ?? 900_000); // 单条 query 最长等待（默认 15 分钟）
 
@@ -45,8 +50,12 @@ const chrome = spawn("/Applications/Google Chrome.app/Contents/MacOS/Google Chro
   `--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${PROFILE}`,
   "--window-size=1680,900", "about:blank",
 ], { stdio: "ignore" });
-const bail = (msg, rc) => { console.log("FATAL: " + msg); chrome.kill(); process.exit(rc); };
-process.on("SIGINT", () => { chrome.kill(); process.exit(130); });
+const hardKill = () => { try { chrome.kill("SIGKILL"); } catch {} };
+const bail = (msg, rc) => { console.log("FATAL: " + msg); hardKill(); process.exit(rc); };
+process.on("SIGINT", () => { hardKill(); process.exit(130); });
+process.on("SIGTERM", () => { hardKill(); process.exit(143); });
+process.on("uncaughtException", (e) => { console.log("FATAL(uncaught): " + (e?.stack ?? e)); hardKill(); process.exit(1); });
+process.on("exit", hardKill);
 
 let version = null;
 for (let i = 0; i < 40; i++) {
@@ -54,8 +63,13 @@ for (let i = 0; i < 40; i++) {
   try { version = await (await fetch(`http://127.0.0.1:${CDP_PORT}/json/version`)).json(); break; } catch {}
 }
 if (!version) bail("Chrome CDP 40×500ms 未就绪", 2);
+// 自证连的是**自己这一轮**起的 Chrome（端口按 pid 派生 + 回显校验；防孤儿实例冒充）
+if (!String(version.webSocketDebuggerUrl ?? "").includes(`:${CDP_PORT}/`)) {
+  bail(`CDP 端口回显不一致：${version.webSocketDebuggerUrl} 不含 :${CDP_PORT} ⇒ 连到别的实例了`, 2);
+}
+console.log(`Chrome ${version.Browser} · CDP :${CDP_PORT} · profile ${PROFILE} · pid ${process.pid}`);
 const targets = await (await fetch(`http://127.0.0.1:${CDP_PORT}/json/list`)).json();
-const page0 = targets.find((t) => t.type === "page");
+const page0 = targets.find((t) => t.type === "page" && t.url === "about:blank") ?? targets.find((t) => t.type === "page");
 if (!page0) bail("没有 page target", 2);
 
 const ws = new WebSocket(page0.webSocketDebuggerUrl);
@@ -125,6 +139,18 @@ for (let i = 0; i < 180; i++) {
 if (!ok) bail("登录后未落首页", 3);
 const landingUrl = await evalJs("location.href");
 console.log("登录落点:", landingUrl, "| 真实后端回包:", netHits.length, "条");
+
+// ⚠ 提问条**不在首页**：ShellLayout 只在 `/v/` 视图页挂 QueryDock（`location.pathname.startsWith("/v/")`）。
+//   2026-10-10 实测：登录落在 `/`（首页），dockBar/dockPanel 皆 false —— 不是"量法坏了"，
+//   是这一屏真没有。故**点左导航第一项**（`nav-dash` 经营驾驶舱）进视图页，全程不手敲 URL。
+console.log("== ①.5 点左导航进视图页（提问条只挂在 /v/ 路径） ==");
+const clickedNav = await evalJs(`(() => {
+  const el = document.querySelector('[data-testid="nav-dash"]') ?? [...document.querySelectorAll('[data-testid^="nav-"]')].find((e) => e.tagName === 'A' && (e.getAttribute('href') ?? '').startsWith('/v/'));
+  if (!el) return { ok: false, navKeys: [...document.querySelectorAll('[data-testid^="nav-"]')].map((e) => e.getAttribute('data-testid')).slice(0, 8) };
+  const label = el.innerText.slice(0, 30); el.click(); return { ok: true, testid: el.getAttribute('data-testid'), label };
+})()`);
+console.log("  点了:", JSON.stringify(clickedNav));
+await waitFor(`location.pathname.startsWith('/v/')`, "落到 /v/ 视图页", 30);
 
 // 金丝雀 · 量法活着：查询组件挂载证明（ShellLayout 在所有 /v/ 路径常驻）
 await waitFor(`!!(document.querySelector('[data-testid="query-dock-bar"]') || document.querySelector('[data-testid="query-dock-panel"]'))`, "提问条挂载", 60);
