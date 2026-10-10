@@ -1463,8 +1463,13 @@ export function seedRegistry(now = new Date().toISOString()): {
         // + 下方 mcpServers（DSH 挂载面）+ scopeDeclaration（声明面·全名）。⛔ 退掉的那条是
         // `{kind:"BUILTIN", name:"query_objects"}` —— 执行体不变（MCP 调用由 executor 的
         // 内置工具 shim 归回同一个 `case "query_objects"`），变的只是「DSH 自己认不认得这族工具」。
-        builtinMcpRef(BUILTIN_QUERY),
-        { kind: "BUILTIN", name: "get_object" },
+        // WO-BUILTIN-MIGRATE-REST · 批次 1：analyst 手里这四件（取对象/搜知识/时序/经验）与
+        // 试点件同一条路 —— 从**裸 BUILTIN 授予**改挂**内置工具 MCP 面**。三面同改：本行（授予面）
+        // + 下方 mcpServers（DSH 挂载面）+ scopeDeclaration（声明面·全名）。⛔ 退掉的是
+        // `{kind:"BUILTIN", name:"get_object"|"search_knowledge"|"query_timeseries_agg"|"search_experience"}`，
+        // 执行体不变（MCP 调用由 executor 的门后 shim 归回同一个 `case`），变的只是「DSH 认得这族工具」。
+        // `BUILTIN_ANALYST_MCP` 同时喂「授予」与「声明」两处，禁各写一份。
+        builtinMcpRef(BUILTIN_ANALYST_MCP),
         // WO-DSH-RESOURCE-REACH 收敛②：切片从**裸 BUILTIN 授予**改挂 **MCP 面**（同 agt_capacity_planner）。
         // 配套三面同改：本行（授予面）+ 下方 mcpServers（DSH 挂载面）+ scopeDeclaration（声明面，记全名）。
         // ⛔ 替代掉的那条是 `{ kind: "BUILTIN", name: "resolve_slice" }` —— 同一能力两条授予路并存
@@ -1481,9 +1486,6 @@ export function seedRegistry(now = new Date().toISOString()): {
         // `{ kind: "BUILTIN", name: "evaluate_rules" }` —— 执行体不变（MCP 调用由 executor 的
         // 规则 shim 归回同一个 `case "evaluate_rules"`），变的只是「DSH 自己知不知道自己有这个资源」。
         { kind: "MCP", mcpConfigId: RULES_MCP_CONFIG_ID, toolFilter: [rulesMcpToolName("evaluate_rules")] },
-        { kind: "BUILTIN", name: "search_knowledge" },
-        { kind: "BUILTIN", name: "query_timeseries_agg" },
-        { kind: "BUILTIN", name: "search_experience" },
         // WO-WORKFLOW-MCP · 工作流从 **旧 WORKFLOW 记法**（`{kind:"WORKFLOW", workflowId, version}`）
         // 改挂 **MCP 面**（三面同改之一：授予面）。⛔ 不是两条路并存 —— 旧写法在本 agent 上已退掉，
         // 同一条产能校核流程现在只有 MCP 这一条授予路（执行体仍是 runWorkflowAsTool，没换）。
@@ -1500,8 +1502,11 @@ export function seedRegistry(now = new Date().toISOString()): {
         // 声明面按契约惯例记**全名**（scope 门在 `executor.ts`:138 用**调用原名**校验 —— 模型面是
         // `mcp__ontology__resolve_slice`，这里就必须是同一个串；记裸名会让这条路被自己的 scope 门拒）。
         toolNames: [
-          ...builtinMcpFullNames(BUILTIN_QUERY), "aggregate_objects", "get_object", ...ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)), ...solverMcpFullNames(SOLVER_KEYS_ANALYST), rulesMcpToolName("evaluate_rules"),
-          "search_knowledge", "query_timeseries_agg", "search_experience", "create_action_draft",
+          ...builtinMcpFullNames(BUILTIN_ANALYST_MCP), builtinMcpToolName("aggregate_objects"), ...ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)), ...solverMcpFullNames(SOLVER_KEYS_ANALYST), rulesMcpToolName("evaluate_rules"),
+          // WO-BUILTIN-MIGRATE-REST · `aggregate_objects` 与 `create_action_draft` 都记**全名**：
+          // 它们在声明面里、不在授予面里（迁前迁后都是），而它们已属内置工具 MCP 面 —— 记裸名会让
+          // 「哪天真的授予它」时被 scope 门用全名拒（声明面与模型面记法漂移）。
+          builtinMcpToolName("create_action_draft"),
           workflowMcpToolName("capacity_check"),
         ],
       },
@@ -1773,20 +1778,20 @@ export function seedRegistry(now = new Date().toISOString()): {
       ].join("\n"),
       tools: [
         // ① 全部内置工具（注册表现算）；本体切片两件套改挂 MCP 面 ⇒ 裸名结构性剔除（同 scenario package 的惯例）。
-        // WO-BUILTIN-TO-DSH · 本 agent 已改挂**内置工具 MCP 面**的那几件（`BUILTIN_QUERY`）同样从
-        // 旧载体剔除 —— 同一个数组 `BUILTIN_QUERY` 同时喂「这里剔除」与下方「MCP ref 授予」，
-        // 禁两处各写一份（写漏一处 = 同一能力两条授予路并存 = 本单要退的病）。
+        // WO-BUILTIN-TO-DSH / WO-BUILTIN-MIGRATE-REST · 本 agent 已改挂**内置工具 MCP 面**的那些件
+        // （`BUILTIN_MIGRATED` 累计台账）同样从旧载体剔除 —— **同一个数组**同时喂「这里剔除」与
+        // 下方「MCP ref 授予」，禁两处各写一份（写漏一处 = 同一能力两条授予路并存 = 要退的病）。
         ...BUILTIN_TOOLS.filter(
           (t) =>
             !(ONTOLOGY_MCP_TOOL_NAMES as readonly string[]).includes(t.name) &&
-            !(BUILTIN_QUERY as readonly string[]).includes(t.name),
+            !(BUILTIN_MIGRATED as readonly string[]).includes(t.name),
         ).map((t): AgentDefinition["tools"][number] => ({ kind: "BUILTIN", name: t.name })),
-        // ②③④⑤ 四张目录：本体切片 / 全部求解器 / 全部工作流 / **内置工具面**（本单新增，
-        // `toolFilter` 收窄到本 agent 已迁移的那几件）。
+        // ②③④⑤ 四张目录：本体切片 / 全部求解器 / 全部工作流 / **内置工具面**
+        // （`toolFilter` 收窄到本 agent 已迁移的那几件 = 累计台账）。
         { kind: "MCP", mcpConfigId: ONTOLOGY_MCP_CONFIG_ID },
         { kind: "MCP", mcpConfigId: SOLVERS_MCP_CONFIG_ID },
         { kind: "MCP", mcpConfigId: WORKFLOW_MCP_CONFIG_ID },
-        builtinMcpRef(BUILTIN_QUERY),
+        builtinMcpRef(BUILTIN_MIGRATED),
       ] as AgentDefinition["tools"],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
       // ③ 技能目录现算（已发布 ∧ 非写回型）——见上方 ③ 的说明。
@@ -1809,10 +1814,11 @@ export function seedRegistry(now = new Date().toISOString()): {
           ...BUILTIN_TOOLS.filter(
             (t) =>
               !(ONTOLOGY_MCP_TOOL_NAMES as readonly string[]).includes(t.name) &&
-              !(BUILTIN_QUERY as readonly string[]).includes(t.name),
+              !(BUILTIN_MIGRATED as readonly string[]).includes(t.name),
           ).map((t) => t.name),
-          // WO-BUILTIN-TO-DSH · 已迁到 MCP 面的那几件按契约惯例记**全名**（与授予面同源数组）。
-          ...builtinMcpFullNames(BUILTIN_QUERY),
+          // WO-BUILTIN-TO-DSH / WO-BUILTIN-MIGRATE-REST · 已迁到 MCP 面的那些件按契约惯例记**全名**
+          // （与授予面同源数组，禁各写一份）。
+          ...builtinMcpFullNames(BUILTIN_MIGRATED),
           ...ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)),
         ],
         allTools: true,
@@ -1893,8 +1899,46 @@ const builtinMcpRef = (rawNames: readonly string[]) =>
   ({ kind: "MCP", mcpConfigId: BUILTIN_MCP_CONFIG_ID, toolFilter: rawNames.map((n) => builtinMcpToolName(n)) }) as AgentDefinition["tools"][number];
 const builtinMcpFullNames = (rawNames: readonly string[]) => rawNames.map((n) => builtinMcpToolName(n));
 
-/** 「查数据」那一条 —— 每个 agent 都在用（本单的试点件）。 */
+/** 「查数据」那一条 —— 每个 agent 都在用（WO-BUILTIN-TO-DSH 的试点件）。 */
 const BUILTIN_QUERY = ["query_objects"] as const;
+
+/**
+ * WO-BUILTIN-MIGRATE-REST · **内置工具迁移台账**：把仍走 `setup.hostTools` 反向通道的内置工具
+ * 分批搬到 DSH 原生 MCP 面（`mcp__builtin__*`）。`BUILTIN_QUERY` 是上一单的试点件，本单从批次 1 起。
+ *
+ * ⚠ **一批只加这一批**，本批判据过了再进下一批 —— 一批里混进未验的改动，「红在哪一批」就再也分不清。
+ * ⚠ 同一份数组同时喂三面（旧载体剔除 / MCP ref 授予 / 声明面），禁各写一份：写漏一处 =
+ *   同一能力两条授予路并存（或申报面与授予面状态相反），正是这条线要退的病。
+ * ⚠ 件名必须**逐条 = 内置工具 MCP server 上的裸名**（`mcp/builtin-mcp.ts` 的成员），否则
+ *   `expandAgentTools` 的 toolFilter 匹配不上 ⇒ 该件静默零工具。
+ */
+const BUILTIN_MIGRATED_B1 = ["get_object", "aggregate_objects", "search_knowledge", "query_timeseries_agg", "search_experience"] as const;
+/** 批次 2：能力发现一族（`discover` 是元工具：不确定用什么时先调它）。 */
+const BUILTIN_MIGRATED_B2 = ["discover", "retrieve_knowledge", "query_ontology", "query_system_ontology"] as const;
+/**
+ * 批次 3：写路径与求解入口（`invoke_solver` 是**硬骨头** —— 三处按裸名认它的判据必须先改成认身份，
+ * 见 `navigation-slice.ts` 的 `canInvokeSolvers` / `engine.ts` 的 `hasBuiltinInvokeSolver` /
+ * `agent/reflect.ts` 的 `calledSolverOk`；漏一处就是**静默少东西**而不是报错）。
+ */
+const BUILTIN_MIGRATED_B3 = ["get_breakpoint", "impact_of", "read_skill_resource", "create_action_draft", "invoke_solver"] as const;
+/** 批次 4：合规合成/建域三件（CL.2）+ 推演指挥台 `SIM_COMMANDER_TOOLS` 四件里的**前两件**
+ *  （`sim_world` / `sim_certify` 留给下一批 —— 同族分批只为「红在哪一批」分得清，不是能力差异）。 */
+const BUILTIN_MIGRATED_B4 = ["fill_data", "run_synthetic", "build_domain", "sim_init", "sim_tick"] as const;
+/** 通用 agent 的**累计**迁移集（它的语义 = 平台全部内置工具 ⇒ 跟着台账长，不另抄一份）。 */
+const BUILTIN_MIGRATED = [
+  ...BUILTIN_QUERY,
+  ...BUILTIN_MIGRATED_B1,
+  ...BUILTIN_MIGRATED_B2,
+  ...BUILTIN_MIGRATED_B3,
+  ...BUILTIN_MIGRATED_B4,
+] as const;
+
+/**
+ * 出厂 analyst 的内置工具集合（= 它**迁前真正持有**的那几件：试点件 + 批次 1 的四件）。
+ * ⚠ 刻意**不含** `aggregate_objects` —— 它在 analyst 的**声明面**里、却从不在**授予面**里；
+ * 顺手加进去就是「换载体时顺带加能力」，而本单的单变量判据是「只有载体变」。
+ */
+const BUILTIN_ANALYST_MCP = ["query_objects", "get_object", "search_knowledge", "query_timeseries_agg", "search_experience"] as const;
 
 /**
  * WO-FIVE-ROLE-AI-EMPLOYEE P1 · 五角色画像单一来源（激活 CeoAgentProfile·此前 app 侧零消费的死契约）。
@@ -1910,7 +1954,7 @@ export const ROLE_PROFILES: CeoAgentProfile[] = [
     // `ceo-agent.ts:81` 自注：「该角色可用工具（展示·真实约束以绑定 agent scopeDeclaration.toolNames 为准）」，
     // 全仓唯一读 `toolWhitelist` 的地方是 `orchestrator.ts` 读 **package** 那份）。
     // 仍改这一处：状态相反的两份台账正是本仓反复踩的坑（展示面说裸名、真实约束是全名 ⇒ 下一个人照着它查会查错方向）。
-    agentId: "agt_seed_analyst", toolWhitelist: [...builtinMcpFullNames(BUILTIN_QUERY), "aggregate_objects", "get_object", ...ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)), ...solverMcpFullNames(SOLVER_KEYS_ANALYST), rulesMcpToolName("evaluate_rules"), "search_knowledge", "query_timeseries_agg"],
+    agentId: "agt_seed_analyst", toolWhitelist: [...builtinMcpFullNames(BUILTIN_ANALYST_MCP), builtinMcpToolName("aggregate_objects"), ...ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)), ...solverMcpFullNames(SOLVER_KEYS_ANALYST), rulesMcpToolName("evaluate_rules")],
     objectTypes: ["Base", "Order", "Model", "Line", "Process", "Equipment", "Shipment", "Segment"], systemKey: "ceo",
   },
   {

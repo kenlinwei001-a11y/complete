@@ -45,7 +45,7 @@ import type { ToolAuthCtx } from "../src/tools/clients.js";
 import { buildSessionSetup } from "../src/dsh-runtime/setup-spec.js";
 import { buildOntologyMcpTools, ONTOLOGY_MCP_DESC_PREFIX } from "../src/tools/ontology-mcp.js";
 // WO-BUILTIN-TO-DSH · 内置工具 MCP 面的全名拼接（本文件新增的金丝雀用它，禁手抄字面量）。
-import { builtinMcpToolName } from "../src/mcp/builtin-mcp.js";
+import { BUILTIN_MCP_TOOL_NAMES, builtinMcpToolName } from "../src/mcp/builtin-mcp.js";
 import { buildExploratoryTools } from "../src/router/orchestrator.js";
 import {
   WORKFLOW_MCP_CONFIG_ID,
@@ -575,10 +575,23 @@ describe("RESOURCE-REACH · A 授予面契约（seed → expandAgentTools → se
     const analystSeed = seedRegistry().agents.find((a) => a.id === "agt_seed_analyst");
     if (!analystSeed) throw new Error("seed analyst not found");
     const other = await setupFromSeedAgent({ ...analystSeed, kernel: "EXTERNAL" } as AgentDefinition);
+    // ⚠ WO-BUILTIN-MIGRATE-REST：analyst 的**未迁件已归零**（本批把它手里最后四件也迁走了）
+    // ⇒ 旧载体金丝雀换成**通用 agent**（它还有未迁件：discover 一族走反向通道）。
+    const generalSeed = seedRegistry().agents.find((a) => a.id === "agt_general");
+    if (!generalSeed) throw new Error("seed general agent not found");
     expect(
       (other.spec.hostTools ?? []).map((x) => x.name),
-      "旧载体金丝雀：未迁工具仍在反向工具面（analyst 的 get_object）",
-    ).toContain("get_object");
+      "旧载体金丝雀①：analyst 已无未迁件 ⇒ 其余反向工具面结构性为空",
+    ).toEqual([]);
+    const general = await setupFromSeedAgent({ ...generalSeed, kernel: "EXTERNAL" } as AgentDefinition);
+    // 旧载体金丝雀②：通用 agent 的**两半合起来 = 内置工具花名册全量**（任一半归零都会在这里现形，
+    // 且不随本单一批批迁移而漂 —— 每进一批只是件从这一半挪到那一半）。
+    const generalHost = (general.spec.hostTools ?? []).map((x) => x.name);
+    const generalMcp = (general.spec.tools ?? []).map((x) => x.name).filter((n) => n.startsWith("mcp__builtin__"));
+    expect(generalHost.length + generalMcp.length, "旧载体金丝雀②：反向面 + MCP 面 = 花名册全量").toBe(
+      BUILTIN_MCP_TOOL_NAMES.length + 1, // +1 = evaluate_rules（在**规则面**上，不在本 server 花名册里）
+    );
+    expect(generalHost.length, "金丝雀有牙：反向面本批仍非空（未迁件还在）").toBeGreaterThan(0);
   });
 
   it("A2 对照（把 MCP 授予拿掉）：展开面 / 允许表 / mcpServers **三面一起**收缩——这是 D1 变异能红的前提", async () => {
@@ -603,13 +616,16 @@ describe("RESOURCE-REACH · A 授予面契约（seed → expandAgentTools → se
     // 内置工具 MCP 面（WO-BUILTIN-TO-DSH）与工作流 MCP 面。
     expect(allow, "允许表没空掉（MCP 面仍在）").toContain(builtinMcpToolName("query_objects"));
     expect(allow).toContain(SEED_WF_TOOL);
-    const analystSeed = seedRegistry().agents.find((a) => a.id === "agt_seed_analyst");
-    if (!analystSeed) throw new Error("seed analyst not found");
-    const other = await setupFromSeedAgent({ ...analystSeed, kernel: "EXTERNAL" } as AgentDefinition);
-    expect(
-      (other.spec.hostTools ?? []).map((x) => x.name),
-      "旧载体金丝雀：未迁工具仍在反向工具面（analyst 的 get_object）",
-    ).toContain("get_object");
+    // ⚠ WO-BUILTIN-MIGRATE-REST：同 A1 —— analyst 已无未迁件，旧载体金丝雀换成通用 agent。
+    const generalSeed = seedRegistry().agents.find((a) => a.id === "agt_general");
+    if (!generalSeed) throw new Error("seed general agent not found");
+    const general = await setupFromSeedAgent({ ...generalSeed, kernel: "EXTERNAL" } as AgentDefinition);
+    const generalHost = (general.spec.hostTools ?? []).map((x) => x.name);
+    const generalMcp = (general.spec.tools ?? []).map((x) => x.name).filter((n) => n.startsWith("mcp__builtin__"));
+    expect(generalHost.length + generalMcp.length, "旧载体金丝雀：反向面 + MCP 面 = 花名册全量").toBe(
+      BUILTIN_MCP_TOOL_NAMES.length + 1, // +1 = evaluate_rules（在**规则面**上，不在本 server 花名册里）
+    );
+    expect(generalHost.length, "金丝雀有牙：反向面本批仍非空（未迁件还在）").toBeGreaterThan(0);
   });
 });
 

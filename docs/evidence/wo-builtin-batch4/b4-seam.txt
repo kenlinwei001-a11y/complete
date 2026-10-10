@@ -1,0 +1,109 @@
+npm warn Unknown env config "side-effects-cache". This will stop working in the next major version of npm.
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/agent-a2268b0ce2e41a45e/apps/agentcore
+
+ ✓ test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · A 组：DSH 侧真看到的这批工具（MCP wire 面） > 前置自证：server 入口文件真实存在 ∧ 花名册非空 ∧ 仍有未迁件（否则金丝雀恒真） 2ms
+ ✓ test/lived-in.test.ts > 运营态出厂配置 §2/§3（场景入口 / analyst / 经验记忆库） > §2 七场景入口零配置：模式/绑定/建议问题/历史问答全在种子内 285ms
+ ✓ test/lived-in.test.ts > 运营态出厂配置 §2/§3（场景入口 / analyst / 经验记忆库） > §3 出厂 analyst agent：四要素提示词 + scopeDeclaration + 预算，出厂即 PUBLISHED 83ms
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · A 组：DSH 侧真看到的这批工具（MCP wire 面） > A1 tools/list（判据②）：真 spawn + 真握手，本批每一件都在 ∧ 名/描述/入参模式与注册表逐字同源
+
+  ── A1 DSH 侧真 tools/list（25 件 · 真 spawn 子进程）──
+  本批（模型面名）：query_objects=mcp__builtin__query_objects · get_object=mcp__builtin__get_object · aggregate_objects=mcp__builtin__aggregate_objects · search_knowledge=mcp__builtin__search_knowledge · query_timeseries_agg=mcp__builtin__query_timeseries_agg · search_experience=mcp__builtin__search_experience · discover=mcp__builtin__discover · retrieve_knowledge=mcp__builtin__retrieve_knowledge · query_ontology=mcp__builtin__query_ontology · query_system_ontology=mcp__builtin__query_system_ontology · get_breakpoint=mcp__builtin__get_breakpoint · impact_of=mcp__builtin__impact_of · read_skill_resource=mcp__builtin__read_skill_resource · create_action_draft=mcp__builtin__create_action_draft · invoke_solver=mcp__builtin__invoke_solver · fill_data=mcp__builtin__fill_data · run_synthetic=mcp__builtin__run_synthetic · build_domain=mcp__builtin__build_domain · sim_init=mcp__builtin__sim_init · sim_tick=mcp__builtin__sim_tick
+  仍未迁（同 server 也广告，但出厂 agent 未授予 ⇒ 反向通道）：sim_world · sim_certify · discover_growth_tickets · claim_growth_ticket · submit_growth_ticket
+
+
+ ✓ test/lived-in.test.ts > 运营态出厂配置 §2/§3（场景入口 / analyst / 经验记忆库） > §3 经验记忆库种子：50 例、同租户重跑字节一致（确定性）、多场景覆盖 91ms
+ ✓ test/lived-in.test.ts > 运营态出厂配置 §2/§3（场景入口 / analyst / 经验记忆库） > §3 search_experience：路径 B READ 检索（余弦降序 topK）+ 统一审计（tool_calls） 190ms
+ ✓ test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · A 组：DSH 侧真看到的这批工具（MCP wire 面） > A1 tools/list（判据②）：真 spawn + 真握手，本批每一件都在 ∧ 名/描述/入参模式与注册表逐字同源 541ms
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · A 组：DSH 侧真看到的这批工具（MCP wire 面） > A2 tools/call：宿主收到的是**全名** + 入参逐键原文；模型面回执是逐字 <tool_data> 包络
+
+  ── A2 tools/call 回环 ──
+  宿主收到 toolName=mcp__builtin__fill_data input={"typeKey":"Order","fields":["wo-builtin-rest-probe"],"rows":3}
+  模型面回执=<tool_data tool_call_id="tc_loopback">{"data":{"hits":[{"docId":"doc-9","text":"回环回执"}]},"snapshotVersion":"sv-1"}</tool_data>
+
+
+ ✓ test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · A 组：DSH 侧真看到的这批工具（MCP wire 面） > A2 tools/call：宿主收到的是**全名** + 入参逐键原文；模型面回执是逐字 <tool_data> 包络 627ms
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · A 组：DSH 侧真看到的这批工具（MCP wire 面） > A3 对照（减输入）：无宿主桥 ⇒ fail-closed 明确失败 ∧ 不静默成功
+
+  ── A3 fail-closed（无宿主桥）──
+  MCP server 未接上宿主执行通道（缺 PLATFORM_TOOL_EXEC_URL/DSH_RUN_TOKEN）——本 run 的本服务器工具一律 fail-closed，不做任何静默降级。
+
+
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · B 组：MCP 全名归一回同一具执行体（门一道不松） > B2 审计名归一（逐件真跑）：以**全名**调用本批每一件，落行名一律是**裸名** ∧ 不许落到 unknown-tool
+
+  ── B2 逐件真跑（全名调用 → 审计行裸名）──
+  query_objects/OK · get_object/ERROR · aggregate_objects/OK · search_knowledge/OK · query_timeseries_agg/OK · search_experience/OK · discover/OK · retrieve_knowledge/OK · query_ontology/OK · query_system_ontology/OK · get_breakpoint/OK · impact_of/OK · read_skill_resource/ERROR · create_action_draft/OK · invoke_solver/OK · fill_data/OK · run_synthetic/OK · build_domain/OK · sim_init/OK · sim_tick/ERROR
+
+
+ ✓ test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · A 组：DSH 侧真看到的这批工具（MCP wire 面） > A3 对照（减输入）：无宿主桥 ⇒ fail-closed 明确失败 ∧ 不静默成功 358ms
+ ✓ test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · B 组：MCP 全名归一回同一具执行体（门一道不松） > B1 身份归一（逐件）：全名→裸名可逆 ∧ 裸名原样返回 1ms
+ ✓ test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · B 组：MCP 全名归一回同一具执行体（门一道不松） > B2 审计名归一（逐件真跑）：以**全名**调用本批每一件，落行名一律是**裸名** ∧ 不许落到 unknown-tool 39ms
+ ✓ test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · B 组：MCP 全名归一回同一具执行体（门一道不松） > B3 对象域门（§4.2 一个字不许松）：域外对象照样被拒 ∧ 拒绝行记的是**裸名**（归一在门之前）∧ 域内放行 2ms
+ ✓ test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · B 组：MCP 全名归一回同一具执行体（门一道不松） > B3b 工具 scope 门按**调用原名**判（本批耦合）：本批件以全名调用、声明面不含它 ⇒ DENIED 且拒绝行记**全名**；声明面补上全名即放行 1ms
+ ✓ test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · B 组：MCP 全名归一回同一具执行体（门一道不松） > B4 截断豁免集按**身份**判：全名形态照样豁免 ∧ 非豁免件不豁免 0ms
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · C 组：三面同改 + 只剩一条授予路 > C4 engine 真装配（通用 agent）：裸名面 = 未迁件 ∧ Phase6C 不砍内置工具面（原生臂真跑）
+
+  ── C4 通用 agent 原生臂模型面 · 内置工具面 20 件（已迁全量）· 收窄面 8 件 ──
+
+
+ ✓ test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · B 组：MCP 全名归一回同一具执行体（门一道不松） > B5 探索配额（`DISCOVER_TOOLS`）按**身份**咬：全名形态照样消耗同一份配额 ∧ 超额即 BUDGET_EXCEEDED 168ms
+ ✓ test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · B 组：MCP 全名归一回同一具执行体（门一道不松） > B7 求解能力判据按**身份**认（判据①的耦合）：全名形态照样算得出「调得动 solver」 1ms
+ ✓ test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · B 组：MCP 全名归一回同一具执行体（门一道不松） > B8 复盘「求解纪律」按**身份**认（判据①的耦合）：iterations 里是全名也算「走了 solver」 2ms
+ ✓ test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · B 组：MCP 全名归一回同一具执行体（门一道不松） > B9 失败→意图提升的 sketch 查表按**身份**认（判据①的耦合）：全名 sketch 仍出得一步、标记位仍在 1ms
+ ✓ test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · B 组：MCP 全名归一回同一具执行体（门一道不松） > B6 失败点名披露块：换个载体仍点得出名（渲染里带的是调用名，不是 unknown） 0ms
+ ✓ test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · C 组：三面同改 + 只剩一条授予路 > C1 出厂 analyst：本批四件 + 试点件全在 MCP 面上，裸名退净，配置行在册 3ms
+ ✓ test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · C 组：三面同改 + 只剩一条授予路 > C2 **逐 agent** 扫出厂种子：本批每一件都只剩 MCP 一条路（裸名授予 = 0）∧ 未迁件仍在反向通道 34ms
+ ✓ test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · C 组：三面同改 + 只剩一条授予路 > C3 engine 真装配（analyst）：expanded 出全名 ∧ 反向工具面**空**（单路证明）∧ 允许表 = 本 agent 那几件 46ms
+ ✓ test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · C 组：三面同改 + 只剩一条授予路 > C4 engine 真装配（通用 agent）：裸名面 = 未迁件 ∧ Phase6C 不砍内置工具面（原生臂真跑） 161ms
+ ✓ test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · D 组：迁前/迁后单变量对照（setup 层） > D1 迁前臂：同一批件在反向工具面（裸名）∧ DSH 侧零内置工具 server 认知 34ms
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E1 迁后（DSH 原生 MCP）：模型面有全名 ∧ 真调 ∧ 数据面真查 ∧ 审计行（裸名）
+
+  ── E1 迁后臂 · DSH 模型面（首轮 · 97 件）──
+  探针件在模型面：true（名=mcp__builtin__fill_data）
+  ── 审计行 ──
+  ["fill_data/OK"]
+  ── 回执原文 ──
+  <tool_data tool_call_id="tc_01M4HWPT9NDVY0JNP1F3R2EJS7">{"connId":"conn_growth_Order","rowCount":3,"provisional":true,"_note":"未审核合成数据（PROVISIONAL）：业务数字请用 query_objects 读回真实物化值；转正经 create_action_draft 走审批。"}</tool_data>
+
+
+ ✓ test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · D 组：迁前/迁后单变量对照（setup 层） > D2 迁后臂：同一批件改走 MCP ⇒ 除载体外两臂逐字同（能力一件不多一件不少） 82ms
+ ✓ test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · D 组：迁前/迁后单变量对照（setup 层） > D3 反向对照（判据③·setup 层）：授予面换授 ⇒ 展开面/允许表一起没有它（同 server 另一件仍在） 20ms
+ ✓ test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E1 迁后（DSH 原生 MCP）：模型面有全名 ∧ 真调 ∧ 数据面真查 ∧ 审计行（裸名） 3712ms
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E2 迁前（对照臂·同一 query · 同一 agent · 单变量）：能力在反向工具面（裸名）∧ 同一执行体同一行审计名
+
+  ── 判据① 迁前/迁后 run 记录对照（同一条 query · 同一个 agent agt_general · 只有载体变）──
+  载体（模型面名）  迁前=fill_data  迁后=mcp__builtin__fill_data   ← 唯一变的一格
+  审计行名          迁前=fill_data  迁后=fill_data
+  outcome           迁前=OK  迁后=OK
+  实参              {"typeKey":"Order","fields":["wo-builtin-rest-probe"],"rows":3}
+                    byteEqual=true
+  审计回执(前 200)  {"connId":"conn_growth_Order","rowCount":3,"provisional":true,"_note":"未审核合成数据（PROVISIONAL）：业务数字请用 query_objects 读回真实物化值；转正经 create_action_draft 走审批。"}
+                    迁前迁后 byteEqual=true（len=151）
+  模型面回执(内层)  迁前迁后 byteEqual=true
+
+
+ ✓ test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E2 迁前（对照臂·同一 query · 同一 agent · 单变量）：能力在反向工具面（裸名）∧ 同一执行体同一行审计名 4926ms
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E3 反向对照（判据③·e2e）：授予面拿掉 ⇒ DSH 侧读不到它 ∧ 宿主零数据面调用（那条读数是活的）
+
+  ── E3 反向对照 · 模型面里的内置工具面 ──
+  mcp__builtin__aggregate_objects, mcp__builtin__build_domain, mcp__builtin__create_action_draft, mcp__builtin__discover, mcp__builtin__get_breakpoint, mcp__builtin__get_object, mcp__builtin__impact_of, mcp__builtin__invoke_solver, mcp__builtin__query_objects, mcp__builtin__query_ontology, mcp__builtin__query_system_ontology, mcp__builtin__query_timeseries_agg, mcp__builtin__read_skill_resource, mcp__builtin__retrieve_knowledge, mcp__builtin__run_synthetic, mcp__builtin__search_experience, mcp__builtin__search_knowledge, mcp__builtin__sim_init, mcp__builtin__sim_tick, mcp__builtin__sim_world
+  ── 审计行 ──
+  []
+
+
+ ✓ test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E3 反向对照（判据③·e2e）：授予面拿掉 ⇒ DSH 侧读不到它 ∧ 宿主零数据面调用（那条读数是活的） 3638ms
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E4 §4.2 端到端 + 失败点名：DSH 臂上调它读**域外**对象 ⇒ 对象域门照样拒 ∧ 答案尾部点得出名
+
+  ── E4 失败点名（DSH 臂 · 全名载体）──
+  [{"type":"text","markdown":"已读到所需数据，结论见下。"},{"type":"text","markdown":"【本次运行中有工具调用未成功】以下结论未包含这些调用的结果，请勿把它们当作已核实的数据： - mcp__builtin__get_object（DENIED）：Error: AGENT_SCOPE_VIOLATION: 该工具超出本 Agent 的能力声明"}]
+  ── 审计行 ──
+  ["get_object/DENIED"]
+
+
+ ✓ test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E4 §4.2 端到端 + 失败点名：DSH 臂上调它读**域外**对象 ⇒ 对象域门照样拒 ∧ 答案尾部点得出名 3948ms
+
+ Test Files  2 passed (2)
+      Tests  29 passed (29)
+   Start at  11:11:23
+   Duration  24.70s (transform 2.94s, setup 0ms, collect 10.82s, tests 19.00s, environment 0ms, prepare 607ms)
+

@@ -1,0 +1,30 @@
+WO-BUILTIN-MIGRATE-REST · 交付边界（每个批次末回写这一份）
+========================================================
+台账定义：**已迁** = 该工具的出厂授予面已改挂 DSH 原生 MCP 面（`mcp__builtin__*` / 各自专属 server），
+执行体不变（同一只 GuardedToolExecutor）。判据是**授予面**，不是「server 广告里有没有它」
+（内置工具 server 从上一单起就广告全部 25 件 —— 广告 ≠ 可调用：可调用面由 toolFilter/允许表收窄）。
+
+批次进度
+--------
+批次 0（前两单）：query_objects（试点件）· evaluate_rules（规则面）· plan_slice / resolve_slice（本体面）
+批次 1：get_object · aggregate_objects · search_knowledge · query_timeseries_agg · search_experience
+批次 2：discover · retrieve_knowledge · query_ontology · query_system_ontology
+批次 3：get_breakpoint · impact_of · read_skill_resource · create_action_draft · invoke_solver
+批次 4（WO-BUILTIN-BATCH4 交付）：fill_data · run_synthetic · build_domain · sim_init · sim_tick
+（证据在 `docs/evidence/wo-builtin-batch4/`；分支 `claude/handoff-builtin-batch4`）
+
+仍未迁（批次 4 结束时）
+---------------------
+sim_world · sim_certify（`SIM_COMMANDER_TOOLS` 四件的后两件）·
+discover_growth_tickets · claim_growth_ticket · submit_growth_ticket   （5 件，留给后续批次）
+另：`agt_risk_advisor` 还留着一条**裸 BUILTIN** 的 `evaluate_rules` 授予（上一单只改了 analyst 那三面）
+—— 同一能力两条授予路并存，属本单该收的口，排在最后一批。
+
+本单**不迁**的遗留面（不是漏做，是结构性留白，逐条给判据）
+--------------------------------------------------------
+· `skill-probe.ts` 的探针/孪生 agent：裸 BUILTIN 授予（query_objects / get_object / invoke_solver /
+  evaluate_rules / retrieve_knowledge / read_skill_resource）+ `mcpServers: []`。
+  它们的授予面来自**代码构造**而不是 agent 配置；改它要连 skill 评测的双臂差分一起动（`mcpServers` 非空
+  会引入第二个变量），属另一张单。
+· `router/orchestrator.ts` `buildExploratoryTools`：场景包白名单仍产出裸 BUILTIN 名 + hostTools 反向通道
+  （上一单的交付边界里已登记为「另一张单」：那一条的授予面是**场景包数据**不是 agent 配置）。

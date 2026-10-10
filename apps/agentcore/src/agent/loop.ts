@@ -1256,7 +1256,9 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     //（不阻断真工具·ReAct 兜底照跑）。仅当传入导航图 solver 集时判定；缺省不介入（既有行为逐字节不变）。
     if (opts.sliceSolverKeys && opts.sliceSolverKeys.length > 0) {
       const turnSolvers = toolUses
-        .filter((b) => b.name === "invoke_solver")
+        // ⚠ WO-BUILTIN-MIGRATE-REST：模型面调用名是**载体**（`mcp__builtin__invoke_solver`），
+        // 判据按身份归一再比 —— 不归一这条 plan 自检会静默不再触发。
+        .filter((b) => resolveBuiltinToolIdentity(b.name) === "invoke_solver")
         .map((b) => String((b.input as { solverKey?: unknown } | undefined)?.solverKey ?? ""))
         .filter(Boolean);
       if (!planWithinSlice(turnSolvers, opts.sliceSolverKeys)) planFellBackToReAct = true;

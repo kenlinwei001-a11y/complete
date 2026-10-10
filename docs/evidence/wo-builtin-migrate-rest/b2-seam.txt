@@ -1,0 +1,90 @@
+npm warn Unknown env config "side-effects-cache". This will stop working in the next major version of npm.
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/agent-adfaa59886e57c31c/apps/agentcore
+
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · A 组：DSH 侧真看到的这批工具（MCP wire 面） > A1 tools/list（判据②）：真 spawn + 真握手，本批每一件都在 ∧ 名/描述/入参模式与注册表逐字同源
+
+  ── A1 DSH 侧真 tools/list（25 件 · 真 spawn 子进程）──
+  本批（模型面名）：query_objects=mcp__builtin__query_objects · get_object=mcp__builtin__get_object · aggregate_objects=mcp__builtin__aggregate_objects · search_knowledge=mcp__builtin__search_knowledge · query_timeseries_agg=mcp__builtin__query_timeseries_agg · search_experience=mcp__builtin__search_experience · discover=mcp__builtin__discover · retrieve_knowledge=mcp__builtin__retrieve_knowledge · query_ontology=mcp__builtin__query_ontology · query_system_ontology=mcp__builtin__query_system_ontology
+  仍未迁（同 server 也广告，但出厂 agent 未授予 ⇒ 反向通道）：get_breakpoint · impact_of · invoke_solver · read_skill_resource · fill_data · run_synthetic · build_domain · sim_init · sim_tick · sim_world · sim_certify · create_action_draft · discover_growth_tickets · claim_growth_ticket · submit_growth_ticket
+
+
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · A 组：DSH 侧真看到的这批工具（MCP wire 面） > A2 tools/call：宿主收到的是**全名** + 入参逐键原文；模型面回执是逐字 <tool_data> 包络
+
+  ── A2 tools/call 回环 ──
+  宿主收到 toolName=mcp__builtin__query_ontology input={"rootType":"Base","select":[{"type":"Order","fields":["so","qty"]}],"probe":"wo-builtin-rest-probe"}
+  模型面回执=<tool_data tool_call_id="tc_loopback">{"data":{"hits":[{"docId":"doc-9","text":"回环回执"}]},"snapshotVersion":"sv-1"}</tool_data>
+
+
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · A 组：DSH 侧真看到的这批工具（MCP wire 面） > A3 对照（减输入）：无宿主桥 ⇒ fail-closed 明确失败 ∧ 不静默成功
+
+  ── A3 fail-closed（无宿主桥）──
+  MCP server 未接上宿主执行通道（缺 PLATFORM_TOOL_EXEC_URL/DSH_RUN_TOKEN）——本 run 的本服务器工具一律 fail-closed，不做任何静默降级。
+
+
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · B 组：MCP 全名归一回同一具执行体（门一道不松） > B2 审计名归一（逐件真跑）：以**全名**调用本批每一件，落行名一律是**裸名** ∧ 不许落到 unknown-tool
+
+  ── B2 逐件真跑（全名调用 → 审计行裸名）──
+  query_objects/OK · get_object/ERROR · aggregate_objects/OK · search_knowledge/OK · query_timeseries_agg/OK · search_experience/OK · discover/OK · retrieve_knowledge/OK · query_ontology/OK · query_system_ontology/OK
+
+
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · C 组：三面同改 + 只剩一条授予路 > C4 engine 真装配（通用 agent）：裸名面 = 未迁件 ∧ Phase6C 不砍内置工具面（原生臂真跑）
+
+  ── C4 通用 agent 原生臂模型面 · 内置工具面 10 件（已迁全量）· 收窄面 8 件 ──
+
+
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E1 迁后（DSH 原生 MCP）：模型面有全名 ∧ 真调 ∧ 数据面真查 ∧ 审计行（裸名）
+
+  ── E1 迁后臂 · DSH 模型面（首轮 · 97 件）──
+  探针件在模型面：true（名=mcp__builtin__query_ontology）
+  ── 审计行 ──
+  ["query_ontology/OK"]
+  ── 回执原文 ──
+  <tool_data tool_call_id="tc_01M4G47YE8TGJ3G0W5PB5C4VJK">{"data":{"rows":[{"Order.so":"SO-0001","Order.qty":1200},{"Order.so":"SO-0002","Order.qty":800}],"columns":["Order.so","Order.qty"],"provenance":[{"typeKey":"Order","objId":"obj_order_
+
+
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E2 迁前（对照臂·同一 query · 同一 agent · 单变量）：能力在反向工具面（裸名）∧ 同一执行体同一行审计名
+
+  ── 判据① 迁前/迁后 run 记录对照（同一条 query · 同一个 agent agt_general · 只有载体变）──
+  载体（模型面名）  迁前=query_ontology  迁后=mcp__builtin__query_ontology   ← 唯一变的一格
+  审计行名          迁前=query_ontology  迁后=query_ontology
+  outcome           迁前=OK  迁后=OK
+  实参              {"rootType":"Base","select":[{"type":"Order","fields":["so","qty"]}],"probe":"wo-builtin-rest-probe"}
+                    byteEqual=true
+  审计回执(前 200)  {"data":{"rows":[{"Order.so":"SO-0001","Order.qty":1200},{"Order.so":"SO-0002","Order.qty":800}],"columns":["Order.so","Order.qty"],"provenance":[{"typeKey":"Order","objId":"obj_order_SO-0001","linkPa
+                    迁前迁后 byteEqual=true（len=682）
+  模型面回执(内层)  迁前迁后 byteEqual=true
+
+
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E3 反向对照（判据③·e2e）：授予面拿掉 ⇒ DSH 侧读不到它 ∧ 宿主零数据面调用（那条读数是活的）
+
+  ── E3 反向对照 · 模型面里的内置工具面 ──
+  mcp__builtin__aggregate_objects, mcp__builtin__discover, mcp__builtin__get_breakpoint, mcp__builtin__get_object, mcp__builtin__query_objects, mcp__builtin__query_system_ontology, mcp__builtin__query_timeseries_agg, mcp__builtin__retrieve_knowledge, mcp__builtin__search_experience, mcp__builtin__search_knowledge
+  ── 审计行 ──
+  []
+
+
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E4 §4.2 端到端 + 失败点名：DSH 臂上调它读**域外**对象 ⇒ 对象域门照样拒 ∧ 答案尾部点得出名
+
+  ── E4 失败点名（DSH 臂 · 全名载体）──
+  [{"type":"text","markdown":"已读到所需数据，结论见下。"},{"type":"text","markdown":"【本次运行中有工具调用未成功】以下结论未包含这些调用的结果，请勿把它们当作已核实的数据： - mcp__builtin__get_object（DENIED）：Error: AGENT_SCOPE_VIOLATION: 该工具超出本 Agent 的能力声明"}]
+  ── 审计行 ──
+  ["get_object/DENIED"]
+
+
+ ✓ test/dsh-builtin-rest-mcp.seam.test.ts (21 tests) 87506ms
+   ✓ WO-BUILTIN-MIGRATE-REST · A 组：DSH 侧真看到的这批工具（MCP wire 面） > A1 tools/list（判据②）：真 spawn + 真握手，本批每一件都在 ∧ 名/描述/入参模式与注册表逐字同源  907ms
+   ✓ WO-BUILTIN-MIGRATE-REST · A 组：DSH 侧真看到的这批工具（MCP wire 面） > A2 tools/call：宿主收到的是**全名** + 入参逐键原文；模型面回执是逐字 <tool_data> 包络  1917ms
+   ✓ WO-BUILTIN-MIGRATE-REST · A 组：DSH 侧真看到的这批工具（MCP wire 面） > A3 对照（减输入）：无宿主桥 ⇒ fail-closed 明确失败 ∧ 不静默成功  1118ms
+   ✓ WO-BUILTIN-MIGRATE-REST · B 组：MCP 全名归一回同一具执行体（门一道不松） > B5 探索配额（`DISCOVER_TOOLS`）按**身份**咬：全名形态照样消耗同一份配额 ∧ 超额即 BUDGET_EXCEEDED  485ms
+   ✓ WO-BUILTIN-MIGRATE-REST · C 组：三面同改 + 只剩一条授予路 > C4 engine 真装配（通用 agent）：裸名面 = 未迁件 ∧ Phase6C 不砍内置工具面（原生臂真跑）  473ms
+   ✓ WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E1 迁后（DSH 原生 MCP）：模型面有全名 ∧ 真调 ∧ 数据面真查 ∧ 审计行（裸名）  13654ms
+   ✓ WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E2 迁前（对照臂·同一 query · 同一 agent · 单变量）：能力在反向工具面（裸名）∧ 同一执行体同一行审计名  17411ms
+   ✓ WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E3 反向对照（判据③·e2e）：授予面拿掉 ⇒ DSH 侧读不到它 ∧ 宿主零数据面调用（那条读数是活的）  20139ms
+   ✓ WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E4 §4.2 端到端 + 失败点名：DSH 臂上调它读**域外**对象 ⇒ 对象域门照样拒 ∧ 答案尾部点得出名  30990ms
+
+ Test Files  1 passed (1)
+      Tests  21 passed (21)
+   Start at  18:44:18
+   Duration  98.84s (transform 5.22s, setup 0ms, collect 10.05s, tests 87.51s, environment 0ms, prepare 367ms)
+
