@@ -1,0 +1,40 @@
+{
+  "status": "COMPLETED",
+  "path": "AGENT",
+  "matchedIntent": null,
+  "classification": {
+    "outOfCatalog": true,
+    "candidates": [],
+    "domainReason": "",
+    "model": "dcp:llmp_dqxgqpfgydw5rd3j:deepseek-flash"
+  },
+  "sse_frames": 7522,
+  "step_completed_frames": 7504,
+  "answer_final_frames": 1,
+  "agent_think_frames": 6890,
+  "agent_think_steps": 7,
+  "runs": 1,
+  "run_kernels": [
+    "EXTERNAL"
+  ],
+  "run_agentKeys": [
+    "general"
+  ],
+  "iterations_total": 7,
+  "toolCalls_total": 15,
+  "tool_names_uniq": [
+    "mcp__builtin__invoke_solver",
+    "mcp__builtin__discover",
+    "mcp__builtin__query_objects",
+    "mcp__builtin__aggregate_objects",
+    "mcp__builtin__evaluate_rules",
+    "mcp__builtin__final_answer"
+  ],
+  "toolCalls_audit": 13,
+  "provenance_count": 12,
+  "ref_range": [
+    0,
+    8
+  ],
+  "answer_chars": 1188
+}

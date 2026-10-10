@@ -1,0 +1,35 @@
+{
+  "status": "COMPLETED",
+  "path": "AGENT",
+  "matchedIntent": null,
+  "classification": {
+    "outOfCatalog": true,
+    "candidates": [],
+    "domainReason": "",
+    "model": "dcp:llmp_dqxgqpfgydw5rd3j:deepseek-flash"
+  },
+  "sse_frames": 1653,
+  "step_completed_frames": 1645,
+  "answer_final_frames": 1,
+  "agent_think_frames": 1269,
+  "agent_think_steps": 3,
+  "runs": 1,
+  "run_kernels": [
+    "EXTERNAL"
+  ],
+  "run_agentKeys": [
+    "general"
+  ],
+  "iterations_total": 4,
+  "toolCalls_total": 5,
+  "tool_names_uniq": [
+    "mcp__builtin__retrieve_knowledge",
+    "mcp__builtin__discover",
+    "mcp__builtin__search_experience",
+    "mcp__builtin__final_answer"
+  ],
+  "toolCalls_audit": 4,
+  "provenance_count": 3,
+  "ref_range": null,
+  "answer_chars": 1151
+}

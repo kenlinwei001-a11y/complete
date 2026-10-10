@@ -1,0 +1,214 @@
+WO-MULTIHOP-COMPLETENESS · 交付表
+================================
+取证环境：datacore 127.0.0.1:4001（pid 85568）· agentcore 127.0.0.1:4002（pid 1371）
+树：/Users/apple/deploy/wo-live @ 0ec076eac（= origin/claude/inspiring-gates-aqzjg tip）
+预算（从 4002 进程 env 实读）：QOS_AGENT_MAX_DISCOVER_CALLS=1 · QOS_AGENT_MAX_ROUND_TRIPS=4 ·
+  QOS_AGENT_PER_TOOL_CALL_CAP=8 · QOS_AGENT_LOOP_REPEAT_CAP=3 · QOS_AGENT_RETRY_MAX_ATTEMPTS=1
+⚠ agentcore dist mtime 10-10 18:27 > git HEAD 18:04 ⇒ agentcore 与 HEAD 一致；
+  datacore dist mtime 10-07 00:10 而进程 10-08 13:59 起 ⇒ **datacore 侧 dist 落后 HEAD 三天**，
+  本次三题的读数全部经 agentcore→datacore REST，datacore 若带旧代码，其读数不代表 HEAD 行为。
+  本单未改任何代码，故未重建 dist；此不一致如实记，不据此下任何「已修/未修」结论。
+
+════════════════════════════════════════════════════════════════════════
+第一部分 · 三题「输入 / 过程 / 结论」
+════════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────
+题 1 · SO-3391 取消 → 损失多少利润（要求给构成 + 每个数字的来源）
+────────────────────────────────────────────────────────────
+【输入】SO-3391 真实存在（POST /a/v1/objects/query Order.so=SO-3391 实测）：
+  qty 7259 · unitPrice 22198 · value 161135282 · model 4680-NCM · cust 广汽集团 ·
+  due 2026-06-24 · bases [hefei, jinhua] · creditUsedRatio 1.15 · costPressure 115
+【过程】task_01M4JQQPGXDT61PWFWZBNJ865K · path=AGENT · kernel=EXTERNAL · agentKey=general
+  iterations=5 · 工具调用 9 次 / 8 件 · 思考 4887 帧 / 拼成 4 段（2395+3189+2895+7403 字）
+  DRIL 预选：solver=chain_loss_attribution, finance_world_projection, quote_margin, ontology_query
+              slice=base_risk_profile · rule=C13,C32,C05,C06
+  调用账（真名 + 入参，出自 /agent-runs）：
+   1 mcp__solvers__order_fullchain {so:SO-3391}                      OK
+   2 mcp__builtin__discover       {kind:object_types}                OK     ← 吃掉唯一发现名额
+   3 mcp__builtin__query_objects  {Order, so:SO-3391}                OK
+   4 mcp__solvers__quote_margin   {custName:广汽集团, modelId:4680-NCM} OK
+   5 mcp__solvers__finance_pnl    {}                                 OK
+   6 mcp__solvers__credit_exposure{custName:广汽集团, newOrderAmount:161135282} OK
+   7 mcp__builtin__discover       {kind:solvers, query:"订单取消 利润损失 毛利"} BUDGET_EXCEEDED
+   8 mcp__builtin__retrieve_knowledge {query:"某张销售订单被客户取消…"}     BUDGET_EXCEEDED
+   9 mcp__solvers__generic_inference {apply:[{Order, obj_order_SO-3391, status=CANCELLED}]} OK
+【结论】1870 字 · provenance 23 条 · 正文 ⟦ref:0⟧–⟦ref:22⟧（用到 17 个不同号）·
+  trustLevel=AGENT_EXPLORATORY · unverifiedNumerics=true
+  要点（原文）：**「平台无法给出『SO-3391 被取消损失的利润』的权威直出数字」**；
+  可确证的是收入敞口 161,135,282 元 ⟦ref:0⟧ = 7,259 套 ⟦ref:1⟧ × 22,198 元/套 ⟦ref:2⟧；
+  毛利 19% ⟦ref:4⟧（底线 12% ⟦ref:5⟧）；量级 ≈3,062 万元为**模型自乘的派生值，自标 unverified**；
+  显式列出「违约金/索赔、投料报废、呆滞 = 未取到，平台无该口径」。
+
+════════════════════════════════════════════════════════════════════════
+第二部分 · 完备性对照表（主产出）
+════════════════════════════════════════════════════════════════════════
+口径：「有」= 本次实测该资源在运行态存在（给出实证）；「缺」分三态——
+  **有但没调**（工具/对象存在且可达，本次未取）/ **有型无数据**（对象类型在、实例 0）/
+  **没有**（全仓无此资源）。
+
+── 题 1 ──────────────────────────────────────────────────────────────────
+| 理论上需要 | 实际调了 | 缺 | 缺的定性（附实证） |
+|---|---|---|---|
+| 订单本身（金额/数量/单价/交期） | ✓ query_objects(Order) + order_fullchain | — | — |
+| 该订单行的 BOM（用料与用量） | △ 仅经求解器代取（quote_margin 回执含 bomId=BOM-4680-NCM-V1.0 / bomRows=7 / bomCost=632.835） | 未直取 | **有但没调**：BOMDetail 105 条实测在；`query_objects{objectType:"BOMDetail"}` 一键可达，且 discover 已把 BOMDetail 标出 instanceCount=105 |
+| 物料单价（成本口径） | △ 同上，仅经 quote_margin 的 unitBasis 自述 Σ BOMDetail.quantity×Material.unitPrice×(1+lossRate) | 未直取 | **有但没调**：Material 8 件实测在（电解液 unitPrice 41.34） |
+| 现有库存/在途（能不能退/转用） | ✗ | **缺** | **有但没调**：FinishedGoodsInventory 18 · Material.onHand/inTransit · MaterialBalance 9 · MaterialBatch 24 · PurchaseOrder 30 · InventoryTxn 128 —— 全部实测有实例；结论原文却写「平台无该口径」 |
+| 已投工/在制（已花的钱算不算损失） | ✗ | **缺** | **有但没调**：WIPLot 260 · WorkOrder 260 实测在；且授予集内就有解此问的 `atp_check`（其自述「读…在制未交(WorkOrder.qtyActual)」）。结论原文写「已投料/在制报废…平台无对应口径」 |
+| 毛利/成本口径 | ✓ finance_pnl + quote_margin | — | 但两口径互相打架（19% vs 87.07%），模型自陈 gap=G-QUOTE-BOM-PRICE-UNIT-SCALE |
+| 交期与可承诺量 | △ order_fullchain 内含交期闸 | — | — |
+| 物料齐套 | △ order_fullchain 的 kit 判只给 1 个物料（三元正极 缺口 1858 吨） | 窄 | **有但没调**：`mrp_netting`/`kit_readiness` 均在 general agent 授予集内、均未调 |
+| 客户/合同（违约金、长协约束） | △ credit_exposure 只给信用额度 | 半缺 | **有但没调**：LongTermAgreement 实测 3 条实例；结论原文写「违约金/索赔…平台无该口径」 |
+| 全链环节损失归因 | ✗ | **缺** | **有但没调**：`chain_loss_attribution` 被 DRIL **预选并递到上下文里**，一次未调 |
+| 呆滞/可释放资金 | ✗ | **缺** | **有但没调**：`inventory_optimize`（自述「目标水位/超储/欠储/**呆滞**与可释放资金」）在目录内、未调 |
+| —— 关键 —— | | | |
+| 「取消」这个扰动本身的下游传导 | ✓ 调了 generic_inference，**回执为空** | **断链** | **不是资源问题，是本体缺边**：回执 `{deltas:[],rows:[],affectedObjects:0,dataMode:"EMPTY"}`，note 原话「该属性无下游派生边·无法前向重算（apply 命中但 dryRunDeltas 空）——本体缺派生边而非静默 0，见断点 G-CAPACITY-YIELD-DERIVATION」 |
+
+── 题 2 · 4680-NCM 交付窗口 6 周压到 4 周 ────────────────────────────────
+【输入】4680-NCM 真实存在（Order.model 字段即它；租户 6 个型号）
+【过程】task_01M4JQW6RGRK649RWSD4CKXNQG · path=AGENT · kernel=EXTERNAL
+  iterations=7 · 工具调用 15 次 / 6 件 · 思考 6890 帧 / 7 段
+  DRIL 预选：solver=**sop_reschedule**, capacity_ledger, audit_timeline, base_capacity_outlook
+              rule=C01,C22,C04,C29
+  调用账：invoke_solver×8（capacity_forecast×3 / affected_orders / changeover_sequence /
+          base_capacity_outlook / portfolio / capacity_ledger）· query_objects×2（WIPLot, WorkOrder）
+          · aggregate_objects×2 · discover×1 · evaluate_rules×1(拒) · final_answer×1(拒)
+【结论】1188 字 · provenance 12 条 · 正文 ⟦ref:0,2,3,4,5,6,8⟧（5 条 provenance 未被正文引用）·
+  trustLevel=AGENT_EXPLORATORY · unverifiedNumerics=true
+  要点：4 周 P90 天花板 7.5539 万套 vs 有效需求 6.5392 万套，富余 1.0147 万套 ⟦ref:0⟧；
+  21 张在订单延期 1–3 天 ⟦ref:2⟧；4680-NCM 在制 44 批 / 139,064 件 ⟦ref:3⟧，
+  按状态拆 合格 41,994·在制 52,437·待检 21,340·报废 23,293 ⟦ref:6⟧；
+  换型「需要，但只有 1 次 43 分钟，C22 PASS」⟦ref:4⟧。
+
+| 理论上需要 | 实际调了 | 缺 | 缺的定性 |
+|---|---|---|---|
+| 在制批次 WIP | ✓ query_objects(WIPLot) + aggregate_objects 按状态拆 | — | — |
+| 在制工单 | ✓ query_objects(WorkOrder) | — | — |
+| 产线产能/节拍 | ✓ capacity_forecast×3 + capacity_ledger + base_capacity_outlook | — | 但 Line/CapacityPool 均只经求解器代取，未直取 |
+| 换型矩阵/损失 | △ changeover_sequence 求解器（未直取 ChangeoverMatrix） | ⚠ 绑错对象 | **有但取值不可信**：回执 `lineId:"L1"`，而 Line 表 130 条里 **没有 lineId=L1**（真 id 形如 LINE-WS-changzhou-assembly）⇒ 该换型结论挂在一条不存在的线体上（43 分钟这个数字本身与 ChangeoverMatrix 的 4680-NCM→2170-NCM=43 分钟一致） |
+| 订单交期分布 | ✓ affected_orders（21 单 / 7 客户 / 逐单 delay + 风险行） | — | — |
+| 重排/挤占推演 | ✗ | **缺** | **有但没调（本题最硬的一条）**：`sop_reschedule` 是 DRIL **预选第一位**，自述「给定目标订单+新交期，算能否提前/**挤占哪些在手单**/跨基地拆多少/被挤单延期/**换型加班延误代价**」——与本题逐字对口。实测亲手调用可跑通：POST /a/v1/solvers/sop_reschedule/invoke {targetOrderId:SO-3391} → 200，回执 `verdict:"可提前：挤占 2 单腾产能（跨 2 基地拆产）"` + 逐基地分摊 + provenance(drillType Line)。模型思考里提到 sop_reschedule 3 次，一次未调 |
+| 换型序列优化 | ✓ changeover_sequence | — | 见上「绑错对象」 |
+| 产能可行性 | ✓ | — | — |
+| 齐套（压窗后料跟不跟得上） | ✗ | **缺** | **有但没调**：`kit_readiness`/`mrp_netting` 在授予集内；模型思考里「齐套」0 次、「物料」0 次、「BOM」0 次 ⇒ 这一维**从未进入推理** |
+| 设备可用性（OEE/停机） | △ 仅作 affected_orders 的风险因子名出现 | 未直取 | **有但没调**：EquipmentOEE / EquipmentDowntime / MaintPlan 三型实测在 |
+| 排产计划对象 | ✗ | **有型无数据** | ProductionSchedule **类型存在但实例 0 条**（实测 total=0）⇒ 这一维平台确实没有数据，属「没有」而非「没调」 |
+| 工序路径/标准工时 | ✗ | **缺** | **有但没调**：Routing 15 · Operation 150 实测在 |
+
+── 题 3 · 电解液涨价 15% → 传导到哪些订单毛利 ───────────────────────────
+【输入】电解液真实存在：matId=elyte · unitPrice 41.34 · bomUnit 0.816 · isKeyMaterial true ·
+  priceShock 2 · onHand 5173 · inTransit 1169 · supplierIds [SUP-015,008,009]
+  用它的 BOM 明细 15 条（跨 2170-NCM / 4680-LFP / 4680-NCM / 圆柱-LFP / 方形-LFP / 方形-NCM）
+【过程】task_01M4JR0AN3D12DCJ7NZ3TN6CX1 · path=AGENT · kernel=EXTERNAL
+  iterations=4 · 工具调用 5 次 / 4 件 · 思考 1269 帧 / 3 段
+  DRIL 预选：solver=finance_world_projection, order_fullchain, supply_vulnerability, ontology_query
+              slice=base_risk_profile · rule=C24,C16,C15,C32
+  调用账：
+   1 mcp__builtin__retrieve_knowledge {query:"电解液涨价15% 传导到哪些订单的毛利 成本压力 传导"} OK  ← 吃掉唯一发现名额
+   2 mcp__builtin__discover       {kind:solvers, …}      BUDGET_EXCEEDED (maxDiscoverCalls exceeded)
+   3 mcp__builtin__discover       {kind:object_types}    BUDGET_EXCEEDED
+   4 mcp__builtin__search_experience {query:"原材料涨价 影响哪些订单毛利 传导链"} BUDGET_EXCEEDED
+   5 mcp__builtin__final_answer   {blocks:[…]}           ERROR (name not in scope allow-list)
+【结论】1151 字 · provenance 3 条 · **正文 ⟦ref:N⟧ 一个都没有**（ref_distinct = []）·
+  trustLevel=AGENT_EXPLORATORY · unverifiedNumerics=true
+  要点（原文）：**「本轮无法给出业务数字——取证环节失败」「不给任何编造数字」**；
+  给出方法与补救路径（sim_init 开沙盘 → finance_world_projection 取 Δ → 沿 BOM 定位 → quote_margin 核地板线）；
+  明示缺口「需求清单是电解液在 BOM 中的单台用量 + 订单毛利基线，缺这两项任何数字都不可信」。
+
+| 理论上需要 | 实际调了 | 缺 | 缺的定性 |
+|---|---|---|---|
+| BOM 用量 × 该物料占比 | ✗ | **全缺** | **有但没调（且本轮结构上够不到）**：BOMDetail 105 条、elyte 命中 15 条实测在；但 agent 在第一轮就把唯一的发现名额花在 retrieve_knowledge 上，此后 3 次发现型调用全 BUDGET_EXCEEDED ⇒ 它再也没机会走到任何一个领域工具 |
+| 物料价格（当前与涨幅） | ✗ | **全缺** | **有但没调**：Material.unitPrice / CommodityPriceTrend / MaterialBatch(24) / PurchaseOrder(30) 均在 |
+| 受影响订单集（哪些单用这个料） | ✗ | **全缺** | **有但没调**：四跳链 Order(500)→Model→BOMHeader(15)→BOMDetail→Material 数据全满；`query_ontology`（本体多跳遍历）在授予集内，未调 |
+| 毛利口径（能不能转嫁、倒挂） | ✗ | **全缺** | **有但没调**：`margin_attribution`（自述「成本项拆解 + 倒挂群主驱动聚合」）、finance_pnl 均在授予集；GrossMarginBridge 4 条实测在 |
+| 已签合同价能不能调 | ✗ | **全缺** | **有但没调**：LongTermAgreement 3 条 · PriceRealization · BidRecord 均在 |
+| 扰动后毛利投影 | ✗ | **全缺** | **有但没调**：`finance_world_projection` 是 DRIL **预选第一位**（自述「施加了那条扰动之后，成本/毛利/应收各变成多少钱…即 finance_pnl 答不出的那一问」），一次未调——本轮它连目录都读不到 |
+| 供应脆弱性 | ✗ | **全缺** | **有但没调**：`supply_vulnerability` DRIL 预选第三位，未调 |
+| 替代料 | ✗ | **全缺** | **有但没调**：MaterialAlternative 在 |
+| 成本压力传导规则 | ✗ | **全缺** | **有但没调**：Material.priceShock --→ Model.costPressure 这条边在（Model.costPressure 实测 115） |
+
+════════════════════════════════════════════════════════════════════════
+第三部分 · 判据五条读数
+════════════════════════════════════════════════════════════════════════
+① 金丝雀 · agent_think 帧 > 0
+   三题**全部走 agent 路**（path=AGENT / kernel=EXTERNAL / agentKey=general），思考帧：
+   q1 4887 帧·4 段 | q2 6890 帧·7 段 | q3 1269 帧·3 段 ⇒ 三题均**真进入 agent 推演**。
+   ⚠ 计数口径订正（本单实测）：`agent_think` **不是事件名**，是 `event: step.completed` 载荷里的
+   `type` 字段；首版探针按 `^event: agent_think$` 数，三题全数出 0 —— 那是**量法坏了**不是「没思考」。
+   金丝雀：同一解析器同时数出 step.completed 与 answer.final（q1 5981/1 · q2 7504/1 · q3 1645/1）。
+
+② 多跳自证 · iterations > 1 且工具跨 ≥2 件
+   q1 iterations=5 · 8 件 | q2 iterations=7 · 6 件 | q3 iterations=4 · **4 件全是元工具（零领域工具）**。
+   ⇒ q1、q2 满足；**q3 形式上满足、实质不满足**——它跨的 4 件是 discover/retrieve_knowledge/
+   search_experience/final_answer，没有一件取到业务对象。
+
+③ 完备性对照表 —— 见第二部分（含逐条定性）
+
+④ 链可追 · 每题挑 2 个关键数追到「哪次调用 + 回执哪个字段」
+   q1-a：结论「收入敞口 161,135,282 元」⟦ref:0⟧ → provenance[0]={toolCallId tc_01M4JQS1S45BTKRFGP58WZ4960,
+        toolName mcp__builtin__query_objects, outputPath "data[0].props.value"} → decision-trace 该次
+        调用回执 `{"data":[{"id":"obj_order_SO-3391",…"value":161135282,…}]}` ✓ 取到 **161135282**
+   q1-b：结论「毛利 19% / 底线 12%」⟦ref:4⟧⟦ref:5⟧ → 同一 tc 的
+        `data.kpis.marginPct=19` / `data.kpis.floorPct=12`（mcp__solvers__order_fullchain）✓ 取到 19 / 12
+   q1 全量：23 条 provenance **23/23 可解析**（正文字段路径全部命中回执正文）
+   q2-a：结论「44 个在制批次 / 139,064 件」⟦ref:3⟧ → mcp__builtin__aggregate_objects 回执
+        `data.rows[2].group.modelId=="4680-NCM"` → `metrics.sum_qty=139064`、`count_id=44` ✓
+   q2-b：结论「换型 1 次 43 分钟，C22 PASS」⟦ref:4⟧ → mcp__solvers__changeover_sequence 回执
+        `data.totalChangeoverMin=43` + `data.evaluatedRules[key=C22].outcome="PASS"` ✓
+        （我曾疑「C22 PASS」无凭据，回执正文里确有 —— 该疑点已撤销）
+   q2 全量：12 条 provenance **11/12 可解析**；唯一不可解析 = ref:9 ← `portfolio` 调用，
+        回执正文为 **null**（该次求解器返回空）
+   q3：**3 条 provenance，正文 0 个 ⟦ref⟧** ⇒ 无「正文数字 → 调用」的链可追（因为它没给数字）
+
+⑤ 诚实 · 逐条点名
+   追不到的：
+   - q2 ref:9（portfolio）→ 回执 `null`。本次未查明是求解器空结果还是调用失败。
+   - q3 无任何 ⟦ref⟧ ⇒ 追数不可执行；但它的结论本就声明「不给数字」，属如实自限，非掩盖。
+   - 三题的 `unverifiedNumerics` 均为 true，且 q1/q2/q3 均自标 AGENT_EXPLORATORY。
+   思考里找不到依据的调用：
+   - 三题 9/15/5 次调用**均有**对应思考段落，未发现「无理由调用」（q1 思考含 BOM 9 次、
+     在制 1 次、在途 1 次、违约 5 次、呆滞 3 次）。
+   - ⚠ 反向的一条更严重：思考**想到了**却没调用 —— q1 思考原文「no 违约金/处置成本 object data
+     available…平台无对应口径」，而 LongTermAgreement 实测 3 条、WIPLot 260 条、WorkOrder 260 条、
+     FinishedGoodsInventory 18 条**都在**。这是「**我没找到**」被写成「**它不存在**」——
+     与仓库铁律 0.5 判据 5 同形，只是这次犯的是 agent 自己。
+   - q2 思考提到 `sop_reschedule` 3 次却未调；思考中「齐套/物料/BOM」各 0 次。
+   引擎侧两条调用失败（非模型选择）：
+   - `mcp__builtin__final_answer` 与 `mcp__builtin__evaluate_rules` 被 DSH harness 的 scope 门拒绝，
+     原话「tool X not in agent scope allow-list (scopeDeclaration ∪ granted)」（q2 各 1 次、q3 1 次）。
+     该 allow-list 取自 `spec.tools[].name`；general agent 的工具面里**已迁移件用 MCP 全名授予、
+     未迁移件（evaluate_rules/final_answer 不在迁移台账）用裸名授予** ⇒ 模型按 MCP 前缀调用未迁移件即被拒。
+     q3 结论原文自陈「此前一次误用了 mcp__builtin__final_answer 工具名被拒，已改用 final_answer 正常收尾」
+     —— **模型先诊断出了它**。两次被拒的 final_answer 均靠软收尾抢救出答复（q2 答复即被拒那次
+     `blocks` 的转述）。
+     q2 思考段原话进一步坐实同一诊断：「Hmm, other builtin tools like evaluate_rules also failed
+     with the same message, while discover, query_objects, aggregate_objects, invoke_solver worked.」
+     ⇒ 三题里**两次**由模型自己指出该门是「有的名字过、有的名字不过」，非单一偶发。
+
+════════════════════════════════════════════════════════════════════════
+第四部分 · 贯穿三题的一条机制（本单最重要的横切发现）
+════════════════════════════════════════════════════════════════════════
+部署态 `QOS_AGENT_MAX_DISCOVER_CALLS=1`，而 `discover` / `search_experience` /
+`query_system_ontology` / `retrieve_knowledge` **四件共用这同一条配额**（实读工具集常量
+DISCOVER_TOOLS 四元组；部署值实读进程 env）。
+
+后果：**每题只允许一件「探索/发现」工具成功，谁先跑谁独占。**
+  · q1 把名额花在 `discover{object_types}` ⇒ 后续 discover(solvers) 与 retrieve_knowledge 双双
+    BUDGET_EXCEEDED ⇒ 它**从未看到求解器目录**（连被 DRIL 预选的 chain_loss_attribution 也没调）。
+  · q3 把名额花在 `retrieve_knowledge` ⇒ discover(solvers) / discover(object_types) /
+    search_experience **三件同时** BUDGET_EXCEEDED（iter0 并发发出）⇒ 零领域工具，直接判「取证失败」。
+  · q2 唯一一件 discover(object_types) 成功且此后不再需要发现 ⇒ 13 次领域调用全部畅通 ⇒
+    资源覆盖是三题里最全的。
+    （q2 能在 iter0 直接点出 `capacity_forecast` / `affected_orders` 而不必先查目录，是因为这两个
+    键**写死在 `invoke_solver` 的工具描述文本里**；它的思考原话「Let me do parallel: capacity_forecast,
+    affected_orders, and maybe discover solvers for changeover.」——即**靠描述文本兜住了目录**。
+    这一条不改变上面的判据，但说明 q2 的完整度里有一份运气成分：它想用的键恰好被描述点名。）
+
+⇒ 「推演完不完整」在本题集上的**主导变量不是模型的选择，而是它第一轮把唯一那一次发现花在哪**。
+判据（实测计数，发现型=DISCOVER_TOOLS 四件）：
+  q1 发现型 3 / 领域型 6（order_fullchain, query_objects, quote_margin, finance_pnl,
+     credit_exposure, generic_inference）
+  q2 发现型 1 / 领域型 13（invoke_solver×8, query_objects×2, aggregate_objects×2, evaluate_rules×1）
+  q3 发现型 4 / 领域型 **0**
+⇒ 领域调用数 6 / 13 / 0 与「首轮发现调用是否命中目录」严格同序：命中的（q2）拿到 13 次领域调用，
+花在别处的（q1）拿到 6 次且从此再无目录可查，三件并发全灭的（q3）拿到 0 次。
