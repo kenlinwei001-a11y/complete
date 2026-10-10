@@ -1,0 +1,22 @@
+WO-BUILTIN-BATCH4 · 判据④ 环境/门 读数（冻结提交 b61ec2292）
+==========================================================
+== pnpm --filter @platform/contracts build ==      CONTRACTS_RC=0
+== pnpm --filter @platform/llm-adapters build ==   LLM_RC=0
+== pnpm --filter agentcore build ==                AGENTCORE_BUILD_RC=0
+（三项原始输出见 docs/evidence/wo-builtin-migrate-rest/typecheck-build.txt 同形命令，本次重跑 2026-10-10）
+
+== pnpm --filter agentcore typecheck ==            AGENTCORE_TYPECHECK_RC=0
+== pnpm --filter @platform/contracts typecheck ==  CONTRACTS_TYPECHECK_RC=0
+（⚠ 这两条在**本批之前是红的**：`test/dsh-builtin-rest-mcp.seam.test.ts` 三处 —— dd7ae2275 版本逐条复现过
+  `:712/:713`（`block.markdown` 在 AnswerBlock 联合类型上取不到）与 `:853`（`as const` 元组的 `.includes(string)`）。
+  前批用的是 `tsc -p tsconfig.json --noEmit`（只含 src，不含 test）所以没看见。本批就手清掉，判据一字未改。）
+
+== node scripts/check-dsh-dormancy.mjs ==          DORMANCY_RC=0
+  ✅ 金丝雀 32/32 全中（必咬 20 + 必不咬 12 · D1 10 + D2/D3 17 + 归类器 5）
+  · 扫描面：部署面 8 文件 · 源码面 714 文件（下界 5 / 200，均已过 ⇒ 下面的「零处」是真的零，不是没扫到）
+  · D1 部署面开 flag 0 处 · D2 白名单外静态 import 0 处 · D3 入口 动态 1（其中被部署面条件包住 0）/ 静态(白名单外) 0
+  ✓ dsh-dormancy:check 通过（部署面未声明旧内核 · 静态 import 未扩散 · 入口至多 1 处且无部署面条件）
+
+== 判据④ 锚子集（后台跑一次）==
+  见 b4-anchor-dsh.txt / .rc：33 文件 398 passed | 4 skipped，RC=0
+  （批次 3 同命令读数 397 passed | 4 skipped —— 本批 +1 = 新增的 B3b 一条断言）
