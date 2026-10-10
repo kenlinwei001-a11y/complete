@@ -1,0 +1,224 @@
+#!/usr/bin/env node
+// ════════════════════════════════════════════════════════════════════════════
+// WO-ONTOGRAPH-DB · 本体图谱 ⇄ 后台数据库的**唯一**桥
+//
+// 抽取器（写侧）与自检器（读侧）都只经本文件碰仓储。**一份实现，不许各抄一份** ——
+// 抄了就会出现「写的时候 id 这么铸、读的时候那么铸」，而两边各自都跑得通、
+// 只有对账时才露馅，且露出来的症状是「库里没有这条原子」这种**否定结论**，
+// 最容易被读成「数据没落进去」而其实是「读法错了」。
+// （同一条理由写在 CLAUDE.md 铁律 0.6：金丝雀必须与主逻辑共用同一份实现。）
+//
+// 用法：
+//   node scripts/ontology-graph/graph-db.mjs --selftest [--graph <dir>]
+//        # 目录 → 落库 → 读回 → 对账 + 幂等 + 两条读路等价（本单验收 ②③④⑥）
+//   node scripts/ontology-graph/graph-db.mjs --list
+//        # 列出库里有哪些快照（三个基数各多少）
+//
+// 后端怎么选（**与 datacore 自己的规则逐字相同，不另立一套**）：
+//   `DATABASE_URL` 有值 ⇒ pg（启动时幂等跑 migrations）；没值 ⇒ memory。
+//   ⚠ memory 是**进程内**的：它验的是映射与幂等，⛔ 不是落盘。
+//     所以写侧在 memory 下会**明说**「本次没有落盘」，读侧在 memory 下会**拒绝**
+//     给出「库里没有」这类否定结论 —— 空的内存仓储与空的数据库在屏上一模一样。
+// ════════════════════════════════════════════════════════════════════════════
+
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const REPO = path.resolve(HERE, "..", "..");
+const DATACORE_DIST = path.join(REPO, "apps", "datacore", "dist");
+const MIGRATIONS_DIR = path.join(REPO, "apps", "datacore", "migrations");
+
+/** 默认租户。图谱讲的是**本仓源码**，不属于任何客户；但 R2 要求每条读写都带租户，故给它一个显式的。 */
+export const DEFAULT_TENANT = process.env.ONTOGRAPH_TENANT || "platform";
+
+// ── ① 行 id 的**唯一**铸法 ───────────────────────────────────────────────────
+// 写侧读侧共用这四个函数。⛔ 谁在别处再拼一次字符串，谁就制造了第二套真相源。
+export const snapshotId = (tenantId, generatedFrom) => `${tenantId}:${generatedFrom}`;
+export const atomRowId = (snapId, atomId) => `${snapId}:${atomId}`;
+export const sliceRowId = (snapId, sliceKey) => `${snapId}:slice:${sliceKey}`;
+/** 边 id 用**排序后的序号**。为什么不用 (kind,from,to)：见 domain.ts OntoGraphEdgeRecord 头注。 */
+export const edgeRowId = (snapId, ordinal) => `${snapId}:edge:${String(ordinal).padStart(6, "0")}`;
+
+/**
+ * 边的全序键（R6）。必须把**每一个会出现的字段**都放进去，否则同三元组的两条边
+ * 谁在前谁在后由 push 顺序决定 —— 那在换一台机器/换一个 TS 版本时会翻，
+ * 于是「同 commit 重跑内容等价」这条命题静悄悄地不成立。
+ */
+export const edgeSortKey = (e) =>
+  [e.kind, e.from, e.to, e.pkg ?? "", e.line ?? "", e.count ?? "", e.confidence ?? "", e.via ?? ""].join("\u0000");
+
+// ── ② 后端选择 ──────────────────────────────────────────────────────────────
+
+/**
+ * 打开仓储。返回 `{ repos, backend, databaseUrl, persistent }`。
+ * `persistent=false` ⇒ 本次写入**进程退出即失**，调用方必须把这句话打到屏上。
+ */
+export async function openRepos({ databaseUrl = process.env.DATABASE_URL } = {}) {
+  const need = (f) => {
+    const p = path.join(DATACORE_DIST, f);
+    if (!fs.existsSync(p)) {
+      throw new Error(
+        `datacore 未 build：缺 ${path.relative(REPO, p)}\n` +
+        `  先跑：pnpm --filter @platform/contracts build && pnpm --filter @platform/llm-adapters build && pnpm --filter datacore build`,
+      );
+    }
+    return pathToFileURL(p).href;
+  };
+  if (databaseUrl) {
+    const { createPgRepos } = await import(need("repo/pg.js"));
+    // createPgRepos 自己会跑 migrations（幂等）—— 这正是 datacore 启动时走的那条路，不另写一套。
+    const repos = await createPgRepos(databaseUrl, MIGRATIONS_DIR);
+    return { repos, backend: "pg", databaseUrl, persistent: true };
+  }
+  const { createMemoryRepos } = await import(need("repo/memory.js"));
+  return { repos: createMemoryRepos(), backend: "memory", databaseUrl: null, persistent: false };
+}
+
+// ── ③ 归一图（写侧与读侧共同的中间形态）────────────────────────────────────
+// 形状：{ generatedFrom, index, atoms:[{pkg, ...atomDoc}], edges:[edgeDoc], slices:[sliceDoc] }
+// `index` 就是 INDEX.yaml 的对象形态，**一个键都不裁**。
+
+/** 把归一图铸成四张表的行。写侧与 `--selftest` 共用，故 id 只可能有一种。 */
+export function toRows(graph, tenantId) {
+  const snapId = snapshotId(tenantId, graph.generatedFrom);
+  const atoms = graph.atoms.map((a) => {
+    const { pkg, ...doc } = a;
+    return { id: atomRowId(snapId, doc.id), tenantId, snapshotId: snapId, atomId: doc.id, pkg, doc };
+  });
+  // ⚠ 排序在铸 id **之前**，且是这里唯一一次 —— 序号即 id，换个排序就换一批 id。
+  const sorted = graph.edges.slice().sort((x, y) => edgeSortKey(x).localeCompare(edgeSortKey(y)));
+  const edges = sorted.map((doc, i) => ({
+    id: edgeRowId(snapId, i), tenantId, snapshotId: snapId, kind: doc.kind, doc,
+  }));
+  const slices = graph.slices.map((doc) => ({
+    id: sliceRowId(snapId, doc.sliceKey), tenantId, snapshotId: snapId, sliceKey: doc.sliceKey, doc,
+  }));
+  const snapshot = { id: snapId, tenantId, generatedFrom: graph.generatedFrom, doc: graph.index };
+  return { snapId, snapshot, atoms, edges, slices };
+}
+
+/**
+ * 落库（幂等：同一 `generatedFrom` 重跑是**覆盖**不是追加）。
+ *
+ * 覆盖靠的是 `replaceAtoms/Edges/Slices` 的「先删该快照旧行再写」，**不是** upsert：
+ * upsert 只保证「写进去的那些对」，上一轮多出来的行会永远活着，
+ * 而两次的条数都"看起来对"—— 那是本单验收 ③ 专门要咬的那一类。
+ */
+export async function writeGraph(repos, graph, tenantId) {
+  const { snapId, snapshot, atoms, edges, slices } = toRows(graph, tenantId);
+  await repos.ontoGraph.putSnapshot(snapshot);
+  await repos.ontoGraph.replaceAtoms(tenantId, snapId, atoms);
+  await repos.ontoGraph.replaceEdges(tenantId, snapId, edges);
+  await repos.ontoGraph.replaceSlices(tenantId, snapId, slices);
+  return { snapId, wrote: { atoms: atoms.length, edges: edges.length, slices: slices.length } };
+}
+
+/**
+ * 从库里读回归一图。`snapshotIdOrNull` 为空时取**最新一个**快照
+ * （= listSnapshots 的最后一条；排序由仓储显式给，R6）。
+ *
+ * ⚠ 读不到时返回 `{ ok:false, reason }` 而**不是**一个空图 ——
+ *   空图会让下游把「我没连上 / 快照不在」输出成「图谱里没有 X」，
+ *   而这两句话是两个不同的命题（CLAUDE.md 铁律 0.6）。
+ */
+export async function readGraph(repos, tenantId, snapshotIdOrNull) {
+  let snapId = snapshotIdOrNull;
+  if (!snapId) {
+    const all = await repos.ontoGraph.listSnapshots(tenantId);
+    if (all.length === 0) return { ok: false, reason: `租户 ${tenantId} 名下一个快照都没有（⛔ 这是「库里没落过」，不是「图谱是空的」）` };
+    snapId = all[all.length - 1].id;
+  }
+  const snap = await repos.ontoGraph.getSnapshot(tenantId, snapId);
+  if (!snap) return { ok: false, reason: `快照不存在或不属本租户：${snapId}` };
+  const [atomRows, edgeRows, sliceRows, counts] = await Promise.all([
+    repos.ontoGraph.listAtoms(tenantId, snapId),
+    repos.ontoGraph.listEdges(tenantId, snapId),
+    repos.ontoGraph.listSlices(tenantId, snapId),
+    repos.ontoGraph.counts(tenantId, snapId),
+  ]);
+  return {
+    ok: true, snapId, counts,
+    graph: {
+      generatedFrom: snap.generatedFrom,
+      index: snap.doc,
+      atoms: atomRows.map((r) => ({ pkg: r.pkg, ...r.doc })),
+      edges: edgeRows.map((r) => r.doc),
+      slices: sliceRows.map((r) => r.doc),
+    },
+  };
+}
+
+// ── ④ --selftest / --list ───────────────────────────────────────────────────
+
+function j(v) { return JSON.stringify(v); }
+
+/** 稳定序列化：对象键排序后 JSON —— 用来判「两次落库内容等价」（R6）。 */
+export function stableJson(v) {
+  const walk = (x) => {
+    if (Array.isArray(x)) return x.map(walk);
+    if (x && typeof x === "object") {
+      const o = {};
+      for (const k of Object.keys(x).sort()) o[k] = walk(x[k]);
+      return o;
+    }
+    return x;
+  };
+  return JSON.stringify(walk(v));
+}
+
+async function cli() {
+  const argv = process.argv.slice(2);
+  const arg = (name, dflt) => {
+    const i = argv.indexOf(name);
+    return i >= 0 && argv[i + 1] ? argv[i + 1] : dflt;
+  };
+  const tenant = arg("--tenant", DEFAULT_TENANT);
+  const say = (s) => process.stdout.write(s + "\n");
+
+  const opened = await openRepos();
+  say(`后端：${opened.backend}${opened.persistent ? "" : "  ⚠ **进程内内存仓储 —— 本次不落盘**"}`);
+  try {
+    if (argv.includes("--list")) {
+      const snaps = await opened.repos.ontoGraph.listSnapshots(tenant);
+      if (!opened.persistent) say("⛔ memory 后端下的「一个都没有」不构成证据（跨进程读不到）。要真查请设 DATABASE_URL。");
+      say(`租户 ${tenant} 名下快照 ${snaps.length} 个：`);
+      for (const s of snaps) {
+        const c = await opened.repos.ontoGraph.counts(tenant, s.id);
+        say(`  ${s.id}  generatedFrom=${s.generatedFrom}  原子 ${c.atoms} · 边 ${c.edges} · 切片 ${c.slices}`);
+      }
+      return 0;
+    }
+    if (argv.includes("--selftest")) {
+      const { loadGraphDirAsNormalized } = await import(pathToFileURL(path.join(HERE, "premise-check.mjs")).href);
+      const dir = path.resolve(process.cwd(), arg("--graph", path.join(REPO, ".ontology-graph")));
+      say(`源目录：${path.relative(REPO, dir)}`);
+      const norm = loadGraphDirAsNormalized(dir);
+      if (!norm.ok) { say(`❌ 目录读不出来：${norm.reason}`); return 1; }
+      say(`目录自述：原子 ${norm.graph.index?.counts?.atoms} · 边 ${norm.graph.index?.counts?.edges} · 切片 ${norm.graph.index?.counts?.slices}`);
+      say(`目录实读：原子 ${norm.graph.atoms.length} · 边 ${norm.graph.edges.length} · 切片 ${norm.graph.slices.length}`);
+
+      const w1 = await writeGraph(opened.repos, norm.graph, tenant);
+      const r1 = await readGraph(opened.repos, tenant, w1.snapId);
+      if (!r1.ok) { say(`❌ 读回失败：${r1.reason}`); return 1; }
+      say(`第一次落库：写 ${j(w1.wrote)} · 库中 ${j(r1.counts)}`);
+
+      const w2 = await writeGraph(opened.repos, norm.graph, tenant);
+      const r2 = await readGraph(opened.repos, tenant, w2.snapId);
+      say(`第二次落库：写 ${j(w2.wrote)} · 库中 ${j(r2.counts)}（幂等 ⇒ 三个数必须不变，不是翻倍）`);
+
+      const same = stableJson(r1.graph) === stableJson(r2.graph);
+      say(`R6 两次读回内容等价：${same ? "✅ 一致" : "❌ 不一致"}`);
+      return same ? 0 : 1;
+    }
+    say("用法：--selftest [--graph <dir>] | --list [--tenant <id>]");
+    return 2;
+  } finally {
+    await opened.repos.close();
+  }
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  process.exit(await cli());
+}

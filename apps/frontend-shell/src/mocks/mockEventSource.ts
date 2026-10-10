@@ -64,6 +64,9 @@ export class MockEventSource {
   private taskId: string;
   private cursor: number; // 已投递的最大事件 id
   private timer: ReturnType<typeof setTimeout> | null = null;
+  /** 构造期的 open/pump 首帧调度。**必须与 `timer` 分开存**：`pump()` 用 `if (this.timer) return`
+   *  作为"已有调度"的哨兵，若复用同一字段会让首帧误判为已排程而永不投递。 */
+  private openTimer: ReturnType<typeof setTimeout> | null = null;
   private script: TaskScript | undefined;
 
   constructor(url: string) {
@@ -75,7 +78,12 @@ export class MockEventSource {
     this.script = registry.get(this.taskId);
     this.script?.listeners.add(this);
     this.readyState = 1;
-    setTimeout(() => {
+    // 该定时器必须被记录：原先是裸 setTimeout，close() 无从取消 —— 测试若在构造与回调之间结束，
+    // 回调便在测试环境拆除后执行 pump()，vitest 报 "caught after test environment was torn down"。
+    // 这是 CI 上偶发红的泄漏源之一（同一 sha 一次 RC=0 一次 RC=1）。
+    this.openTimer = setTimeout(() => {
+      this.openTimer = null;
+      if (this.readyState === 2) return;
       this.onopen?.(new Event("open"));
       this.pump();
     }, 0);
@@ -92,7 +100,8 @@ export class MockEventSource {
 
   close(): void {
     this.readyState = 2;
-    if (this.timer) clearTimeout(this.timer);
+    if (this.timer) { clearTimeout(this.timer); this.timer = null; }
+    if (this.openTimer) { clearTimeout(this.openTimer); this.openTimer = null; }
     this.script?.listeners.delete(this);
   }
 

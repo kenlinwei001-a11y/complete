@@ -1,0 +1,15 @@
+
+ RUN  v3.2.6 /private/tmp/wt-base-dc/apps/datacore
+
+stdout | test/adversary-r6-golden-probe.test.ts > ADVERSARY · R6 golden probe > prints sha256 of risk_timeline({}) on this tree
+ADVERSARY_GOLDEN len=230841 sha256=ed27635d15a275f3b4964d27429a71307075cfabaf229ac3a2e6fc978bd97b57
+
+ ✓ test/adversary-r6-golden-probe.test.ts (1 test) 65735ms
+   ✓ ADVERSARY · R6 golden probe > prints sha256 of risk_timeline({}) on this tree  65732ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  18:52:49
+   Duration  134.67s (transform 33.17s, setup 0ms, collect 61.28s, tests 65.74s, environment 4ms, prepare 2.25s)
+
+CANARY_RC=0

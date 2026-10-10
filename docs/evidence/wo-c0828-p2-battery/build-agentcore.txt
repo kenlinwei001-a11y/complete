@@ -1,0 +1,4 @@
+
+> agentcore@0.1.0 build /Users/apple/deploy/complete/apps/agentcore
+> tsc -p tsconfig.json
+

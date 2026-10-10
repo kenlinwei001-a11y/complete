@@ -1,0 +1,293 @@
+{
+  "sim": {
+    "ran": true,
+    "perResponse": [
+      {
+        "url": "/a/v1/sim/view-config",
+        "status": 200,
+        "bytes": 683902,
+        "yuanChar": 0,
+        "keys": {},
+        "yuanCharNonMoney": 0
+      },
+      {
+        "url": "/a/v1/sim/drill/state-var-layers",
+        "status": 200,
+        "bytes": 2453,
+        "yuanChar": 0,
+        "keys": {},
+        "yuanCharNonMoney": 0
+      },
+      {
+        "url": "/a/v1/sim/propagation-rules?published=true",
+        "status": 200,
+        "bytes": 27220,
+        "yuanChar": 0,
+        "keys": {},
+        "yuanCharNonMoney": 0
+      },
+      {
+        "url": "/a/v1/sim/sessions",
+        "status": 200,
+        "bytes": 871,
+        "yuanChar": 0,
+        "keys": {},
+        "yuanCharNonMoney": 0
+      },
+      {
+        "url": "/a/v1/sim/propagation-rules?published=true",
+        "status": 200,
+        "bytes": 27220,
+        "yuanChar": 0,
+        "keys": {},
+        "yuanCharNonMoney": 0
+      },
+      {
+        "url": "/a/v1/sim/sessions/sims_demo_seed_world/perturbations",
+        "status": 200,
+        "bytes": 376,
+        "yuanChar": 0,
+        "keys": {},
+        "yuanCharNonMoney": 0
+      },
+      {
+        "url": "/a/v1/sim/sessions/sims_demo_seed_world/metric-series?limit=500&stateVars=blockedPressure%2Cchangeov",
+        "status": 200,
+        "bytes": 210749,
+        "yuanChar": 0,
+        "keys": {},
+        "yuanCharNonMoney": 0
+      },
+      {
+        "url": "/a/v1/sim/sessions/sims_demo_seed_world/world",
+        "status": 200,
+        "bytes": 418325,
+        "yuanChar": 0,
+        "keys": {},
+        "yuanCharNonMoney": 0
+      },
+      {
+        "url": "/a/v1/sim/sessions/sims_demo_seed_world/perturbations",
+        "status": 201,
+        "bytes": 418667,
+        "yuanChar": 0,
+        "keys": {},
+        "yuanCharNonMoney": 0
+      },
+      {
+        "url": "/a/v1/sim/sessions/sims_demo_seed_world/tick",
+        "status": 200,
+        "bytes": 2882689,
+        "yuanChar": 0,
+        "keys": {
+          "amount": 9124,
+          "value": 4658
+        },
+        "yuanCharNonMoney": 0
+      },
+      {
+        "url": "/a/v1/sim/sessions/sims_demo_seed_world/perturbations",
+        "status": 200,
+        "bytes": 700,
+        "yuanChar": 0,
+        "keys": {},
+        "yuanCharNonMoney": 0
+      },
+      {
+        "url": "/a/v1/sim/sessions/sims_demo_seed_world/perturbations",
+        "status": 200,
+        "bytes": 700,
+        "yuanChar": 0,
+        "keys": {},
+        "yuanCharNonMoney": 0
+      },
+      {
+        "url": "/a/v1/sim/sessions",
+        "status": 200,
+        "bytes": 871,
+        "yuanChar": 0,
+        "keys": {},
+        "yuanCharNonMoney": 0
+      },
+      {
+        "url": "/a/v1/sim/view-config",
+        "status": 200,
+        "bytes": 683902,
+        "yuanChar": 0,
+        "keys": {},
+        "yuanCharNonMoney": 0
+      },
+      {
+        "url": "/a/v1/sim/drill/state-var-layers",
+        "status": 200,
+        "bytes": 2453,
+        "yuanChar": 0,
+        "keys": {},
+        "yuanCharNonMoney": 0
+      },
+      {
+        "url": "/a/v1/sim/propagation-rules?published=true",
+        "status": 200,
+        "bytes": 27220,
+        "yuanChar": 0,
+        "keys": {},
+        "yuanCharNonMoney": 0
+      },
+      {
+        "url": "/a/v1/sim/sessions/sims_demo_seed_world/metric-series?limit=500&stateVars=blockedPressure%2Cchangeov",
+        "status": 200,
+        "bytes": 234021,
+        "yuanChar": 0,
+        "keys": {},
+        "yuanCharNonMoney": 0
+      },
+      {
+        "url": "/a/v1/sim/propagation-rules?published=true",
+        "status": 200,
+        "bytes": 27220,
+        "yuanChar": 0,
+        "keys": {},
+        "yuanCharNonMoney": 0
+      },
+      {
+        "url": "/a/v1/sim/chain-loss-matrix",
+        "status": 200,
+        "bytes": 30072,
+        "yuanChar": 0,
+        "keys": {},
+        "yuanCharNonMoney": 0
+      },
+      {
+        "url": "/a/v1/sim/sessions/sims_demo_seed_world/world",
+        "status": 200,
+        "bytes": 422499,
+        "yuanChar": 0,
+        "keys": {},
+        "yuanCharNonMoney": 0
+      },
+      {
+        "url": "/a/v1/sim/view-config",
+        "status": 200,
+        "bytes": 683902,
+        "yuanChar": 0,
+        "keys": {},
+        "yuanCharNonMoney": 0
+      },
+      {
+        "url": "/a/v1/sim/sessions/sims_demo_seed_world/node-detail?nodeId=demand.consensus",
+        "status": 200,
+        "bytes": 3870,
+        "yuanChar": 1,
+        "keys": {},
+        "yuanCharNonMoney": 0
+      },
+      {
+        "url": "/a/v1/sim/sessions/sims_demo_seed_world/world",
+        "status": 200,
+        "bytes": 422499,
+        "yuanChar": 0,
+        "keys": {},
+        "yuanCharNonMoney": 0
+      },
+      {
+        "url": "/a/v1/sim/sessions/sims_demo_seed_world/perturbations",
+        "status": 200,
+        "bytes": 700,
+        "yuanChar": 0,
+        "keys": {},
+        "yuanCharNonMoney": 0
+      },
+      {
+        "url": "/a/v1/sim/sessions",
+        "status": 200,
+        "bytes": 871,
+        "yuanChar": 0,
+        "keys": {},
+        "yuanCharNonMoney": 0
+      },
+      {
+        "url": "/a/v1/sim/sessions/sims_demo_seed_world/world",
+        "status": 200,
+        "bytes": 422499,
+        "yuanChar": 0,
+        "keys": {},
+        "yuanCharNonMoney": 0
+      },
+      {
+        "url": "/a/v1/sim/chain-loss-drill",
+        "status": 200,
+        "bytes": 751,
+        "yuanChar": 0,
+        "keys": {
+          "value": 1
+        },
+        "yuanCharNonMoney": 0
+      },
+      {
+        "url": "/a/v1/sim/sessions/sims_demo_seed_world/metric-series",
+        "status": 200,
+        "bytes": 5999,
+        "yuanChar": 0,
+        "keys": {},
+        "yuanCharNonMoney": 0
+      },
+      {
+        "url": "/a/v1/sim/optimize-pareto/assemble",
+        "status": 200,
+        "bytes": 756262,
+        "yuanChar": 4,
+        "keys": {
+          "revenue": 873,
+          "cost": 11349
+        },
+        "yuanCharNonMoney": 0
+      },
+      {
+        "url": "/a/v1/sim/optimize-pareto",
+        "status": 200,
+        "bytes": 18187,
+        "yuanChar": 3,
+        "keys": {
+          "revenue": 28,
+          "cost": 28,
+          "value": 81
+        },
+        "yuanCharNonMoney": 0
+      }
+    ],
+    "aggregate": {
+      "bytes": 8417670,
+      "yuanChar": 8,
+      "yuanCharNonMoney": 0,
+      "keys": {
+        "amount": 9124,
+        "value": 4740,
+        "revenue": 901,
+        "cost": 11377
+      }
+    }
+  },
+  "canary": {
+    "material": {
+      "url": "/a/v1/objects?type=Material&pageSize=50",
+      "status": 200,
+      "bytes": 6271,
+      "yuanChar": 2,
+      "keys": {
+        "unitPrice": 16
+      },
+      "yuanCharNonMoney": 2
+    },
+    "order": {
+      "url": "/a/v1/objects?type=Order&pageSize=20",
+      "status": 200,
+      "bytes": 15452,
+      "yuanChar": 0,
+      "keys": {
+        "unitPrice": 40,
+        "value": 40
+      },
+      "yuanCharNonMoney": 0
+    }
+  }
+}

@@ -1,0 +1,23 @@
+## ④ 真服务烟测 canonical 树（PORT=4011 · SEED_DEMO=1 · 内存模式）2026-09-20 17:57:59
+
+### 自证（本实例=合并树 dist）
+{"level":30,"time":1789898175457,"pid":47397,"hostname":"appledeMacBook-Pro-3.local","msg":"SEED_DEMO=1: calibration debt — forecasts=0 paired=0 expected.minPaired=30 欠 30 对 coveragePct=0"}
+
+### ① GET /a/v1/calibration/debt
+{"forecasts":0,"paired":0,"unpaired":0,"coveragePct":0,"expected":{"minPaired":30,"rationale":"学习类能力（B7 代理模型 / C5 结构校准 / C6 经验库 / A10 搜索环）准入至少需要 30 对实料配对（缺省 = 一个评估窗口 EVAL_WINDOW_DAYS=30 的覆盖；solverParams.calibration.minPairedRealized 可覆盖）。当前欠 30 对 —— 没有期望值的指标是装饰不是监控（PRD-ground-truth §2.1 F2）。"},"byMetric":[],"oldestUnpairedAgeDays":null}
+
+### ② GET /a/v1/calibration/gate
+{"open":false,"paired":0,"minPaired":30,"shortfall":30,"capabilities":[{"key":"B7","name":"代理模型（surrogate 双臂对照）","allowed":false,"reason":"B7 代理模型（surrogate 双臂对照） 拒绝启用：实料配对 0 < 准入期望 30（欠 30 对）——⛔ 不许降级成用仿真数据凑合跑（循环论证，零信息）；先经 F1 摄取面补实料"},{"key":"C5","name":"结构校准（边权重/系数回归）","allowed":false,"reason":"C5 结构校准（边权重/系数回归） 拒绝启用：实料配对 0 < 准入期望 30（欠 30 对）——⛔ 不许降级成用仿真数据凑合跑（循环论证，零信息）；先经 F1 摄取面补实料"},{"key":"C6","name":"推演经验库（扰动,预测,实际 三元组）","allowed":false,"reason":"C6 推演经验库（扰动,预测,实际 三元组） 拒绝启用：实料配对 0 < 准入期望 30（欠 30 对）——⛔ 不许降级成用仿真数据凑合跑（循环论证，零信息）；先经 F1 摄取面补实料"},{"key":"A10","name":"假设搜索环（推翻数度量）","allowed":false,"reason":"A10 假设搜索环（推翻数度量） 拒绝启用：实料配对 0 < 准入期望 30（欠 30 对）——⛔ 不许降级成用仿真数据凑合跑（循环论证，零信息）；先经 F1 摄取面补实料"}],"rationale":"学习类能力（B7 代理模型 / C5 结构校准 / C6 经验库 / A10 搜索环）准入至少需要 30 对实料配对（缺省 = 一个评估窗口 EVAL_WINDOW_DAYS=30 的覆盖；solverParams.calibration.minPairedRealized 可覆盖）。当前欠 30 对 —— 没有期望值的指标是装饰不是监控（PRD-ground-truth §2.1 F2）。"}
+
+### ③ explain-slice（全量世界 · obj_model_4680-LFP · tick=1）
+-- maxNodes=20 --
+nodes=20 edges=95 coverage={"maxNodes":20,"truncated":true,"droppedNodes":27,"droppedEdges":106,"amountCoveredPct":57.08}
+-- maxNodes=1000 --
+nodes=112 edges=405 coverage={"maxNodes":1000,"truncated":false,"droppedNodes":0,"droppedEdges":0,"amountCoveredPct":100}
+-- 缺 targetObjectId ⇒ 400 --
+{"error":{"code":"VALIDATION_ERROR","message":"targetObjectId 必填（解释切片收敛的是「某一格为什么变成这样」）","requestId":"req_r5tkerkwyvbh5g9t"}} HTTP=400
+-- tick=99 空 trace ⇒ 404 --
+{"error":{"code":"NOT_FOUND","message":"tick 99 的传导 trace（该拍无贡献行或 tick 不存在；空 trace 不出切片 —— 空图会被读成「没有因果链」） not found","requestId":"req_nmkxy5xqjrr5ezhp"}} HTTP=404
+
+### 收尾
+实例 47397 已停（kill 后 ps 无、readyz 000 PORT-CLOSED）。四探全对：debt 契约逐字（expected.rationale 含『没有期望值的指标是装饰不是监控』）· gate open=false 四能力披露拒因 · 切片 20 截断/1000 全图 pct:100 · 400 点名 · 404 诚实空。

@@ -1,0 +1,38 @@
+WO-BUILTIN-MIGRATE-REST · 批次 1 · 判据①/②/③ 原始读数（从接缝套件真跑输出截取 · 原文）
+
+── 判据② DSH 侧真 tools/list（真 spawn 子进程 + 真 MCP 握手）──
+  ── A1 DSH 侧真 tools/list（25 件 · 真 spawn 子进程）──
+  本批（模型面名）：query_objects=mcp__builtin__query_objects · get_object=mcp__builtin__get_object · aggregate_objects=mcp__builtin__aggregate_objects · search_knowledge=mcp__builtin__search_knowledge · query_timeseries_agg=mcp__builtin__query_timeseries_agg · search_experience=mcp__builtin__search_experience
+  仍未迁（同 server 也广告，但出厂 agent 未授予 ⇒ 反向通道）：discover · retrieve_knowledge · query_ontology · query_system_ontology · get_breakpoint · impact_of · invoke_solver · read_skill_resource · fill_data · run_synthetic · build_domain · sim_init · sim_tick · sim_world · sim_certify · create_action_draft · discover_growth_tickets · claim_growth_ticket · submit_growth_ticket
+
+
+
+── 判据① 迁前/迁后 run 记录对照（同一条 query · 同一个 agent）──
+  ── 判据① 迁前/迁后 run 记录对照（同一条 query · 同一个 agent agt_seed_analyst）──
+  载体（模型面名）  迁前=search_knowledge  迁后=mcp__builtin__search_knowledge   ← 唯一变的一格
+  审计行名          迁前=search_knowledge  迁后=search_knowledge
+  outcome           迁前=OK  迁后=OK
+  实参              {"query":"探针:常州基地产能","topK":3}
+                    byteEqual=true
+  审计回执(前 200)  {"data":{"hits":[{"text":"化成工序产能由化成柜通道数与单通道产出决定；扩通道需设备部审批。通道利用率超过 95% 持续三日应升级瓶颈告警（C05），并评估老化库位余量。","score":0.219,"docId":"doc_sop_huacheng","span":{"start":0,"end":132},"source":"工艺SOP-化成工序.md"},{"tex
+                    迁前迁后 byteEqual=true（len=578）
+  模型面回执(内层)  迁前迁后 byteEqual=true
+
+
+--
+  ── 判据① 迁前/迁后 run 记录对照（同一条 query · 同一个 agent agt_seed_analyst）──
+  载体（模型面名）  迁前=query_objects  迁后=mcp__builtin__query_objects   ← 唯一变的一格
+
+── 判据③ 反向对照（e2e · DSH 侧模型面读不到）──
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E3 反向对照（判据③·e2e）：授予面拿掉 ⇒ DSH 侧读不到它 ∧ 宿主零数据面调用（那条读数是活的）
+
+  ── E3 反向对照 · 模型面里的内置工具面 ──
+  mcp__builtin__discover
+  ── 审计行 ──
+  []
+
+
+stdout | test/dsh-builtin-mcp.seam.test.ts > WO-BUILTIN-TO-DSH · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E3 反向对照（判据③·e2e）：授予面拿掉 ⇒ DSH 侧模型面**没有它** ∧ 宿主零数据面调用（那条读数是活的）
+
+
+── 判据② 附：审计行（全名调用 → 裸名落行）──

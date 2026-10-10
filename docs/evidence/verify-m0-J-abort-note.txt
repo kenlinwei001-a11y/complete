@@ -1,0 +1,17 @@
+J 中止记录（2026-09-20）
+
+调度方转向指令①原话：
+「刚才的 TaskStop 是调度方执行转向指令①的『杀 J』：datacore 重跑剩余 ~336 文件按当时速率近 3 小时，跑在已被 canonical 收编取代的旧树上，每分钟都是浪费。残留进程已查实清零（vitest 0 条、worktree 进程 0 条），J 中止无连带损伤。」
+
+部分日志事实（verify-m0-J-datacore-full.txt，78,521 字节）：
+- 27 个测试文件跑完全绿（grep -c "✓ test/" = 27）；
+- 零真失败：FAIL 字样 9 处全是 EXECUTION_FAILED 业务字符串（诚实失败类测试的命名与输出），无 ✗ 测试文件；
+- 进程被 TaskStop 终止，无自然退出码 ⇒ 同名 .rc 记 ABORTED-BY-TASKSTOP 标记，防假 0。
+
+旁证（中止前已落盘）：
+- verify-m0-J-full-build.txt/.rc：四包 build RC=0；
+- verify-m0-J-full-test.txt：环境性死亡 wrapper 的遗骸日志，死前三包绿——contracts 104/104(9f) · llm-adapters 35/35(2f) · agentcore 1461+7skip/1468(208f)，全篇零真红；
+- verify-m0-J-gate-summary.txt：full build rc=0；
+- verify-m0-J-status-note.txt：中止前的防断流接管笔记（历史留存）。
+
+按转向指令：原 J 项之后的旧树验证项全部作废，不回头补。复验主线转并后审计（claude/handoff-m0-postmerge-audit @ 60d04679e）。

@@ -1,0 +1,49 @@
+{
+  "note": "chain-scan-honesty:check 的 H5 业务名棘轮。key = 文件 + 声明原文 sha256 前 16 位（不是行号——行号会漂）；文案一改哈希即变 ⇒ 豁免当场失效、门重新红。maxExemptions 必须恒等于条数（加一条 = 一处显眼 diff）；只降不升。",
+  "maxExemptions": 4,
+  "exemptions": {
+    "apps/datacore/src/solvers/chain-impediment.ts#f8e79f8321aa9601": {
+      "file": "apps/datacore/src/solvers/chain-impediment.ts",
+      "token": "老化库",
+      "reason": "判据表 semantics 字段：给人读的判据释义，不进任何代码逻辑、不进回包，仅供交付说明与本体登记引用（H2 已单独守住真正的输出构造位）"
+    },
+    "packages/contracts/src/process-capacity.ts#d12f12809917b353": {
+      "file": "packages/contracts/src/process-capacity.ts",
+      "token": "化成柜",
+      "reason": "工艺单元种类枚举值（capacityUnitKind），是 D3 硬容量读法的判别键本身，不是可外置的展示文案；换行业时随 ProcessCapacitySpec 整表替换"
+    },
+    "packages/contracts/src/process-capacity.ts#fbfdfc64826aa800": {
+      "file": "packages/contracts/src/process-capacity.ts",
+      "token": "老化库",
+      "reason": "同上，unitKind 枚举值参与 readProcessHardCapacity 的读法分派；移到对象库会让读法与数据互为依赖形成环"
+    }
+  },
+  "noteLiteral": "H8 字面量阈值棘轮：阈值源 source==='literal' 的判据条数，只降不升。literal 不是罪 —— 它在规则表达式里、可审计、改规则即改判定；但它比 param 僵（要改表达式而非旋钮），故存量记账、新增被挡。迁往 params 即可收窄。",
+  "maxLiteralThresholds": 4,
+  "literalThresholds": [
+    {
+      "bindingId": "BOTTLENECK.CAPACITY.line-utilization-redline",
+      "ruleKey": "C05",
+      "metricPath": "Line.utilization",
+      "value": "95"
+    },
+    {
+      "bindingId": "CONGESTION.CAPACITY.order-changeover",
+      "ruleKey": "C22",
+      "metricPath": "Order.changeoverMin",
+      "value": "120"
+    },
+    {
+      "bindingId": "CONGESTION.MATERIAL.batch-idle",
+      "ruleKey": "C28",
+      "metricPath": "Batch.idleDays",
+      "value": "90"
+    },
+    {
+      "bindingId": "BREAK.MATERIAL.material-gap",
+      "ruleKey": "C06",
+      "metricPath": "MaterialBalance.gapTon",
+      "value": "0"
+    }
+  ]
+}

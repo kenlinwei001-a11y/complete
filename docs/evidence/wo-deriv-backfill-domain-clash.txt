@@ -1,0 +1,56 @@
+金丝雀：登记 valueRef 43 格 / 抽到声明域 38 条（都非空 ⇒ 工具活着）
+
+双所有者格（登记 valueRef ∧ 有入边）                               规格输出实测            声明域  判定
+------------------------------------------------------------------------------------------------------------
+ARInvoice|overduePressure                             [0, 38]     [0, 100.0]  在域内 ✓
+Base|loadIndex                                   [74.18, 552]     [0, 100.0]  ★ 规格输出**越上界** ⇒ 被夹，夹掉的部分无人记账
+Certification|qualificationQueue                    [51, 192]      [0, None]  在域内 ✓
+ChangeoverMatrix|changeoverPressure                 [31, 179]     [0, 100.0]  ★ 规格输出**越上界** ⇒ 被夹，夹掉的部分无人记账
+Customer|receivablePressure                    [6.396, 125.6]     [0, 100.0]  ★ 规格输出**越上界** ⇒ 被夹，夹掉的部分无人记账
+CustomsClearance|clearanceQueueDays                    [3, 3]              —  未声明域（不夹，如实）
+DefectRecord|defectPressure                  [0.0207, 0.3618]     [0, 100.0]  在域内 ✓
+Equipment|equipmentFailure                            [2, 22]     [0, 100.0]  在域内 ✓
+Equipment|loadPressure                           [12.5, 22.4]     [0, 100.0]  在域内 ✓
+FinishedGoodsInventory|coverDays               [1.932, 42.34]              —  未声明域（不夹，如实）
+FinishedGoodsInventory|drawdownPressure        [1.932, 42.34]     [0, 100.0]  在域内 ✓
+IncomingInspection|queueDays                           [1, 4]      [0, None]  在域内 ✓
+InterBaseTransfer|transferPressure                [4.762, 60]     [0, 100.0]  在域内 ✓
+Line|blockedPressure                           [27.72, 182.7]     [0, 100.0]  ★ 规格输出**越上界** ⇒ 被夹，夹掉的部分无人记账
+Line|utilPressure                              [88.02, 95.89]     [0, 100.0]  在域内 ✓
+MaintPlan|windowSqueeze                               [3, 10]     [0, 100.0]  在域内 ✓
+MaterialAlternative|switchPressure                     [1, 3]     [0, 100.0]  在域内 ✓
+MaterialBalance|gapPressure                        [0, 8.994]     [0, 100.0]  在域内 ✓
+MaterialBatch|procurementDelay                       [1, 154]              —  未声明域（不夹，如实）
+MaterialBatch|turnoverPressure                       [0, 121]     [0, 100.0]  ★ 规格输出**越上界** ⇒ 被夹，夹掉的部分无人记账
+Material|priceShock                                    [2, 8]     [0, 100.0]  在域内 ✓
+Material|shortageRisk                            [-161.4, 51]     [0, 100.0]  ★ 规格输出**越下界** ⇒ 被夹
+Model|backlogPriceTop                      [1.442e+04, 2.266e+04]              —  未声明域（不夹，如实）
+Model|backlogQtyTop                         [7624, 2.178e+04]              —  未声明域（不夹，如实）
+Model|costPressure                             [2.465, 3.886]     [0, 100.0]  在域内 ✓
+Model|demandLoad                                 [23.57, 138]     [0, 100.0]  ★ 规格输出**越上界** ⇒ 被夹，夹掉的部分无人记账
+Model|forecastBias                                    [1, 88]  [-100, 100.0]  在域内 ✓
+Model|supplyRisk                             [-29.44, -28.86]     [0, 100.0]  ★ 规格输出**越下界** ⇒ 被夹
+OrderLine|splitPressure                          [11.81, 187]     [0, 100.0]  ★ 规格输出**越上界** ⇒ 被夹，夹掉的部分无人记账
+Order|costPressure                                  [40, 115]     [0, 100.0]  ★ 规格输出**越上界** ⇒ 被夹，夹掉的部分无人记账
+Order|demandPressure                                  [0, 60]     [0, 100.0]  在域内 ✓
+Order|shortageRisk                                    [0, 35]     [0, 100.0]  在域内 ✓
+OverdueRecord|collectionPressure                     [12, 38]     [0, 100.0]  在域内 ✓
+Process|queuePressure                               [88, 100]     [0, 100.0]  在域内 ✓
+PurchaseOrder|expeditePressure                [-32.43, 212.5]     [0, 100.0]  ★ 规格输出**越上界** ⇒ 被夹，夹掉的部分无人记账
+PurchaseOrder|procurementDelay                       [-7, -1]              —  未声明域（不夹，如实）
+QualityLot|inspectBacklog                        [1431, 5674]      [0, None]  在域内 ✓
+Shipment|inboundExpeditePressure                      [2, 16]     [0, 100.0]  在域内 ✓
+Supplier|deliveryDelay                                [1, 10]              —  未声明域（不夹，如实）
+Supplier|procurementDelay                             [-6, 5]              —  未声明域（不夹，如实）
+Supplier|reviewPressure                               [1, 10]     [0, 100.0]  在域内 ✓
+WIPLot|feedPressure                            [111.1, 111.2]     [0, 100.0]  ★ 规格输出**越上界** ⇒ 被夹，夹掉的部分无人记账
+WorkOrder|releasePressure                      [1.001, 15.03]     [0, 100.0]  在域内 ✓
+
+=== 合计 ===
+  双所有者格（实测在世界里的）: 43
+    · 规格输出在声明域内       : 23
+    · ★ 越界（被引擎夹）        : 12
+    · 未声明域（不夹）          : 8  ['CustomsClearance|clearanceQueueDays', 'FinishedGoodsInventory|coverDays', 'MaterialBatch|procurementDelay', 'Model|backlogPriceTop', 'Model|backlogQtyTop', 'PurchaseOrder|procurementDelay', 'Supplier|deliveryDelay', 'Supplier|procurementDelay']
+
+  ⇒ 越界的那些格，源上加多大扰动都会被夹回边界 ⇒ **下游一格不动**。
+     这正是「传导混乱 / 输出与输入无关」的可复现形态（本轮已实测一例：Base.loadIndex 10/13 顶界）。

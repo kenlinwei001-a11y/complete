@@ -1,0 +1,15 @@
+## ③a P3 顶回在 canonical 60d04679e 上的现状（2026-09-20 17:36:59）
+
+### P3-2 A11 章节坐标错引 —— 仍在，未修
+金丝雀（量法自证）：grep -c A11 docs/SYSTEM-ONTOLOGY.md = 4（>0，量法活着）
+错引①：docs/SYSTEM-ONTOLOGY.md:188 仍写「§2.1 A11」
+错引②：apps/datacore/test/seed-demo-propagation.test.ts:1482 仍写「§2.1 A11」（行号从旧树 891 漂到 1482 = 合并增长的位移，内容未动）
+对照正例：apps/datacore/src/app.ts:2243 注释「PRD-ground-truth §4」正确（故 §4 A11 连写零命中，非漏检）
+PRD 真相：docs/PRD-ai-sim-rev2-ground-truth.md:242「## §4 A11 解释切片 ≤20 节点」
+最小修路径不变：两处「§2.1 A11」→「§4 A11」
+
+### P3-1 本体索引过期 —— 仍在且更重
+node scripts/ontology-index.mjs --check RC=1（证据 verify-postmerge-a-ontology-index-check.txt/.rc）
+旧树时差 4 节点（2/E/A11·F2·F3·RealizedOutcome）；canonical 上差 72 节点 + 17 字段变更，covered_lines 3844→4327
+（兄弟分支 shock-monotonic/saturate-exogenous/forecastbias-retire 的回写把缺口拉大，集成方未重生成）
+最小修路径不变：node scripts/ontology-index.mjs 重生成 docs/system-ontology-index.yaml + 提交

@@ -1,0 +1,19 @@
+== ① 从登录走起 ==
+登录落点: http://127.0.0.1:5174/
+== ② 点进「统一推演控制台」（不手敲 URL）==
+入口点击方式: home-card
+== ③ 量测 ==
+{
+  "dataView": "console0828",
+  "rootScroll": 433,
+  "rootClient": 433,
+  "ratio": 1,
+  "docRatio": 1,
+  "winInner": "1680x757"
+}
+真后端自证: 命中 29 条；样例: [
+  '204 http://127.0.0.1:4011/a/v1/auth/refresh',
+  '204 http://127.0.0.1:4011/a/v1/auth/login',
+  '200 http://127.0.0.1:4011/a/v1/auth/login'
+]
+E6 判定: ratio=1.0000 ≤1.15 ? PASS

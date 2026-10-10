@@ -1,0 +1,760 @@
+
+ RUN  v3.2.6 /private/tmp/wt-base-fe/apps/frontend-shell
+
+stderr | test/debattery.order-chain.test.tsx > 去电池锁死 8a · 订单全链分类标签来自 ViewConfig.layout > 问题分类含 ViewConfig 独有标签 → 证明配置驱动（非硬编码）
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+
+ ❯ test/debattery.order-chain.test.tsx (1 test | 1 failed) 16545ms
+   × 去电池锁死 8a · 订单全链分类标签来自 ViewConfig.layout > 问题分类含 ViewConfig 独有标签 → 证明配置驱动（非硬编码） 16539ms
+     → Unable to find an element with the text: 交期·配置X. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_shell_a81771"[39m
+    [36m>[39m
+      [36m<a[39m
+        [33mclass[39m=[32m"_skipToMain_a81771"[39m
+        [33mdata-testid[39m=[32m"skip-to-main"[39m
+        [33mhref[39m=[32m"#main-content"[39m
+      [36m>[39m
+        [0m跳到主内容[0m
+      [36m</a>[39m
+      [36m<header[39m
+        [33mclass[39m=[32m"_topbar_a81771"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_brand_a81771"[39m
+        [36m>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"_logo_a81771"[39m
+          [36m/>[39m
+          [36m<div>[39m
+            [36m<h1>[39m
+              [0m全域数字化智能决策支撑系统[0m
+            [36m</h1>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_tenant_a81771"[39m
+              [33mdata-testid[39m=[32m"tenant-name"[39m
+            [36m>[39m
+              [0m星辰电池制造[0m
+            [36m</span>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_wrap_0a13f0"[39m
+        [36m>[39m
+          [36m<input[39m
+            [33maria-label[39m=[32m"搜索"[39m
+            [33mclass[39m=[32m"_search_0a13f0"[39m
+            [33mdata-testid[39m=[32m"global-search-input"[39m
+            [33mplaceholder[39m=[32m"全局搜索对象…"[39m
+            [33mvalue[39m=[32m""[39m
+          [36m/>[39m
+        [36m</div>[39m
+        [36m<button[39m
+          [33maria-label[39m=[32m"推演历史"[39m
+          [33mclass[39m=[32m"btn sm"[39m
+          [33mdata-testid[39m=[32m"history-clock"[39m
+          [33mstyle[39m=[32m"font-size: 15px; line-height: 1;"[39m
+          [33mtitle[39m=[32m"推演历史"[39m
+        [36m>[39m
+          [0m🕐[0m
+        [36m</button>[39m
+        [36m<span[39m
+          [33mclass[39m=[32m"badge amber"[39m
+          [33mdata-testid[39m=[32m"synthetic-watermark"[39m
+          [33mstyle[39m=[32m"opacity: 1; cursor: help;"[39m
+          [33mtitle[39m=[32m"合成运营态 · generatedFrom: battery-manufacturing / S · seed 42
+回放窗口 2025-07-01 ~ 2026-07-01"[39m
+        [36m>[39m
+          [0m合成数据[0m
+        [36m</span>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_wrap_f37d93"[39m
+        [36m>[39m
+          [36m<button[39m
+            [33maria-label[39m=[32m"数据源健康度"[39m
+            [33mclass[39m=[32m"_btn_f37d93"[39m
+            [33mdata-overall[39m=[32m"DELAYED"[39m
+            [33mdata-testid[39m=[32m"health-badge"[39m
+            [33mtitle[39m=[32m"数据源健康度"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_dot_f37d93 _dotWarn_f37d93"[39m
+              [33mdata-degraded[39m=[32m"true"[39m
+              [33mdata-testid[39m=[32m"health-dot"[39m
+            [36m/>[39m
+            [0m健康度[0m
+          [36m</button>[39m
+        [36m</div>[39m
+        [36m<button[39m
+          [33maria-label[39m=[32m"切换主题（当前 暗色 → 冷蓝）"[39m
+          [33mclass[39m=[32m"btn sm"[39m
+          [33mdata-testid[39m=[32m"theme-toggle"[39m
+          [33mdata-theme-mode[39m=[32m"dark"[39m
+          [33mstyle[39m=[32m"font-size: 15px; line-height: 1;"[39m
+          [33mtitle[39m=[32m"切换主题（当前 暗色 → 冷蓝）"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m🌙[0m
+        [36m</button>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_userMenu_a81771"[39m
+        [36m>[39m
+          [36m<button[39m
+            [33maria-label[39m=[32m"planner"[39m
+            [33mclass[39m=[32m"_userBtn_a81771"[39m
+            [33mdata-testid[39m=[32m"user-menu-btn"[39m
+            [33mtitle[39m=[32m"planner"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"_avatar_a81771"[39m
+            [36m>[39m
+              [0mP[0m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_userName_a81771"[39m
+            [36m>[39m
+              [0mplanner[0m
+            [36m</span>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"font-size: 12px; color: var(--muted2);"[39m
+            [36m>[39m
+              [0m▾[0m
+            [36m</span>[39m
+          [36m</button>[39m
+        [36m</div>[39m
+      [36m</header>[39m
+      [36m<aside[39m
+        [33mclass[39m=[32m"_nav_a81771"[39m
+        [33mdata-testid[39m=[32m"left-nav"[39m
+      [36m>[39m
+        [36m<a[39m
+          [33mclass[39m=[32m"_navItem_a81771 "[39m
+          [33mdata-testid[39m=[32m"nav-scenario-launcher"[39m
+          [33mhref[39m=[32m"/scenarios"[39m
+        [36m>[39m
+          [0m⚡ 场景启动器[0m
+        [36m</a>[39m
+        [36m<nav[39m
+          [33mclass[39m=[32m"_group_a81771"[39m
+          [33mdata-testid[39m=[32m"nav-business"[39m
+        [36m>[39m
+          [36m<a[39m
+            [33mclass[39m=[32m"_navItem_a81771 "[39m
+            [33mhref[39m=[32m"/v/dash"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"_navIcon_a81771"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mheight[39m=[32m"18"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.9"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [33mwidth[39m=[32m"18"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [0m经营驾驶舱[0m
+          [36m</a>[39m
+          [36m<a[39m
+            [33mclass[39m=[32m"_navItem_a81771 "[39m
+            [33mdata-testid[39m=[32m"nav-decision-console"[39m
+            [33mhref[39m=[32m"/v/decision-console"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"_navIcon_a81771"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mheight[39m=[32m"18"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.9"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [33mwidth[39m=[32m"18"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [0m事...
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_shell_a81771"[39m
+    [36m>[39m
+      [36m<a[39m
+        [33mclass[39m=[32m"_skipToMain_a81771"[39m
+        [33mdata-testid[39m=[32m"skip-to-main"[39m
+        [33mhref[39m=[32m"#main-content"[39m
+      [36m>[39m
+        [0m跳到主内容[0m
+      [36m</a>[39m
+      [36m<header[39m
+        [33mclass[39m=[32m"_topbar_a81771"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_brand_a81771"[39m
+        [36m>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"_logo_a81771"[39m
+          [36m/>[39m
+          [36m<div>[39m
+            [36m<h1>[39m
+              [0m全域数字化智能决策支撑系统[0m
+            [36m</h1>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_tenant_a81771"[39m
+              [33mdata-testid[39m=[32m"tenant-name"[39m
+            [36m>[39m
+              [0m星辰电池制造[0m
+            [36m</span>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_wrap_0a13f0"[39m
+        [36m>[39m
+          [36m<input[39m
+            [33maria-label[39m=[32m"搜索"[39m
+            [33mclass[39m=[32m"_search_0a13f0"[39m
+            [33mdata-testid[39m=[32m"global-search-input"[39m
+            [33mplaceholder[39m=[32m"全局搜索对象…"[39m
+            [33mvalue[39m=[32m""[39m
+          [36m/>[39m
+        [36m</div>[39m
+        [36m<button[39m
+          [33maria-label[39m=[32m"推演历史"[39m
+          [33mclass[39m=[32m"btn sm"[39m
+          [33mdata-testid[39m=[32m"history-clock"[39m
+          [33mstyle[39m=[32m"font-size: 15px; line-height: 1;"[39m
+          [33mtitle[39m=[32m"推演历史"[39m
+        [36m>[39m
+          [0m🕐[0m
+        [36m</button>[39m
+        [36m<span[39m
+          [33mclass[39m=[32m"badge amber"[39m
+          [33mdata-testid[39m=[32m"synthetic-watermark"[39m
+          [33mstyle[39m=[32m"opacity: 1; cursor: help;"[39m
+          [33mtitle[39m=[32m"合成运营态 · generatedFrom: battery-manufacturing / S · seed 42
+回放窗口 2025-07-01 ~ 2026-07-01"[39m
+        [36m>[39m
+          [0m合成数据[0m
+        [36m</span>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_wrap_f37d93"[39m
+        [36m>[39m
+          [36m<button[39m
+            [33maria-label[39m=[32m"数据源健康度"[39m
+            [33mclass[39m=[32m"_btn_f37d93"[39m
+            [33mdata-overall[39m=[32m"DELAYED"[39m
+            [33mdata-testid[39m=[32m"health-badge"[39m
+            [33mtitle[39m=[32m"数据源健康度"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_dot_f37d93 _dotWarn_f37d93"[39m
+              [33mdata-degraded[39m=[32m"true"[39m
+              [33mdata-testid[39m=[32m"health-dot"[39m
+            [36m/>[39m
+            [0m健康度[0m
+          [36m</button>[39m
+        [36m</div>[39m
+        [36m<button[39m
+          [33maria-label[39m=[32m"切换主题（当前 暗色 → 冷蓝）"[39m
+          [33mclass[39m=[32m"btn sm"[39m
+          [33mdata-testid[39m=[32m"theme-toggle"[39m
+          [33mdata-theme-mode[39m=[32m"dark"[39m
+          [33mstyle[39m=[32m"font-size: 15px; line-height: 1;"[39m
+          [33mtitle[39m=[32m"切换主题（当前 暗色 → 冷蓝）"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m🌙[0m
+        [36m</button>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_userMenu_a81771"[39m
+        [36m>[39m
+          [36m<button[39m
+            [33maria-label[39m=[32m"planner"[39m
+            [33mclass[39m=[32m"_userBtn_a81771"[39m
+            [33mdata-testid[39m=[32m"user-menu-btn"[39m
+            [33mtitle[39m=[32m"planner"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"_avatar_a81771"[39m
+            [36m>[39m
+              [0mP[0m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_userName_a81771"[39m
+            [36m>[39m
+              [0mplanner[0m
+            [36m</span>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"font-size: 12px; color: var(--muted2);"[39m
+            [36m>[39m
+              [0m▾[0m
+            [36m</span>[39m
+          [36m</button>[39m
+        [36m</div>[39m
+      [36m</header>[39m
+      [36m<aside[39m
+        [33mclass[39m=[32m"_nav_a81771"[39m
+        [33mdata-testid[39m=[32m"left-nav"[39m
+      [36m>[39m
+        [36m<a[39m
+          [33mclass[39m=[32m"_navItem_a81771 "[39m
+          [33mdata-testid[39m=[32m"nav-scenario-launcher"[39m
+          [33mhref[39m=[32m"/scenarios"[39m
+        [36m>[39m
+          [0m⚡ 场景启动器[0m
+        [36m</a>[39m
+        [36m<nav[39m
+          [33mclass[39m=[32m"_group_a81771"[39m
+          [33mdata-testid[39m=[32m"nav-business"[39m
+        [36m>[39m
+          [36m<a[39m
+            [33mclass[39m=[32m"_navItem_a81771 "[39m
+            [33mhref[39m=[32m"/v/dash"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"_navIcon_a81771"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mheight[39m=[32m"18"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.9"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [33mwidth[39m=[32m"18"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [0m经营驾驶舱[0m
+          [36m</a>[39m
+          [36m<a[39m
+            [33mclass[39m=[32m"_navItem_a81771 "[39m
+            [33mdata-testid[39m=[32m"nav-decision-console"[39m
+            [33mhref[39m=[32m"/v/decision-console"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"_navIcon_a81771"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mheight[39m=[32m"18"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.9"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [33mwidth[39m=[32m"18"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [0m事...
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/debattery.order-chain.test.tsx > 去电池锁死 8a · 订单全链分类标签来自 ViewConfig.layout > 问题分类含 ViewConfig 独有标签 → 证明配置驱动（非硬编码）
+TestingLibraryElementError: Unable to find an element with the text: 交期·配置X. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_shell_a81771"[39m
+    [36m>[39m
+      [36m<a[39m
+        [33mclass[39m=[32m"_skipToMain_a81771"[39m
+        [33mdata-testid[39m=[32m"skip-to-main"[39m
+        [33mhref[39m=[32m"#main-content"[39m
+      [36m>[39m
+        [0m跳到主内容[0m
+      [36m</a>[39m
+      [36m<header[39m
+        [33mclass[39m=[32m"_topbar_a81771"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_brand_a81771"[39m
+        [36m>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"_logo_a81771"[39m
+          [36m/>[39m
+          [36m<div>[39m
+            [36m<h1>[39m
+              [0m全域数字化智能决策支撑系统[0m
+            [36m</h1>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_tenant_a81771"[39m
+              [33mdata-testid[39m=[32m"tenant-name"[39m
+            [36m>[39m
+              [0m星辰电池制造[0m
+            [36m</span>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_wrap_0a13f0"[39m
+        [36m>[39m
+          [36m<input[39m
+            [33maria-label[39m=[32m"搜索"[39m
+            [33mclass[39m=[32m"_search_0a13f0"[39m
+            [33mdata-testid[39m=[32m"global-search-input"[39m
+            [33mplaceholder[39m=[32m"全局搜索对象…"[39m
+            [33mvalue[39m=[32m""[39m
+          [36m/>[39m
+        [36m</div>[39m
+        [36m<button[39m
+          [33maria-label[39m=[32m"推演历史"[39m
+          [33mclass[39m=[32m"btn sm"[39m
+          [33mdata-testid[39m=[32m"history-clock"[39m
+          [33mstyle[39m=[32m"font-size: 15px; line-height: 1;"[39m
+          [33mtitle[39m=[32m"推演历史"[39m
+        [36m>[39m
+          [0m🕐[0m
+        [36m</button>[39m
+        [36m<span[39m
+          [33mclass[39m=[32m"badge amber"[39m
+          [33mdata-testid[39m=[32m"synthetic-watermark"[39m
+          [33mstyle[39m=[32m"opacity: 1; cursor: help;"[39m
+          [33mtitle[39m=[32m"合成运营态 · generatedFrom: battery-manufacturing / S · seed 42
+回放窗口 2025-07-01 ~ 2026-07-01"[39m
+        [36m>[39m
+          [0m合成数据[0m
+        [36m</span>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_wrap_f37d93"[39m
+        [36m>[39m
+          [36m<button[39m
+            [33maria-label[39m=[32m"数据源健康度"[39m
+            [33mclass[39m=[32m"_btn_f37d93"[39m
+            [33mdata-overall[39m=[32m"DELAYED"[39m
+            [33mdata-testid[39m=[32m"health-badge"[39m
+            [33mtitle[39m=[32m"数据源健康度"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_dot_f37d93 _dotWarn_f37d93"[39m
+              [33mdata-degraded[39m=[32m"true"[39m
+              [33mdata-testid[39m=[32m"health-dot"[39m
+            [36m/>[39m
+            [0m健康度[0m
+          [36m</button>[39m
+        [36m</div>[39m
+        [36m<button[39m
+          [33maria-label[39m=[32m"切换主题（当前 暗色 → 冷蓝）"[39m
+          [33mclass[39m=[32m"btn sm"[39m
+          [33mdata-testid[39m=[32m"theme-toggle"[39m
+          [33mdata-theme-mode[39m=[32m"dark"[39m
+          [33mstyle[39m=[32m"font-size: 15px; line-height: 1;"[39m
+          [33mtitle[39m=[32m"切换主题（当前 暗色 → 冷蓝）"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m🌙[0m
+        [36m</button>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_userMenu_a81771"[39m
+        [36m>[39m
+          [36m<button[39m
+            [33maria-label[39m=[32m"planner"[39m
+            [33mclass[39m=[32m"_userBtn_a81771"[39m
+            [33mdata-testid[39m=[32m"user-menu-btn"[39m
+            [33mtitle[39m=[32m"planner"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"_avatar_a81771"[39m
+            [36m>[39m
+              [0mP[0m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_userName_a81771"[39m
+            [36m>[39m
+              [0mplanner[0m
+            [36m</span>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"font-size: 12px; color: var(--muted2);"[39m
+            [36m>[39m
+              [0m▾[0m
+            [36m</span>[39m
+          [36m</button>[39m
+        [36m</div>[39m
+      [36m</header>[39m
+      [36m<aside[39m
+        [33mclass[39m=[32m"_nav_a81771"[39m
+        [33mdata-testid[39m=[32m"left-nav"[39m
+      [36m>[39m
+        [36m<a[39m
+          [33mclass[39m=[32m"_navItem_a81771 "[39m
+          [33mdata-testid[39m=[32m"nav-scenario-launcher"[39m
+          [33mhref[39m=[32m"/scenarios"[39m
+        [36m>[39m
+          [0m⚡ 场景启动器[0m
+        [36m</a>[39m
+        [36m<nav[39m
+          [33mclass[39m=[32m"_group_a81771"[39m
+          [33mdata-testid[39m=[32m"nav-business"[39m
+        [36m>[39m
+          [36m<a[39m
+            [33mclass[39m=[32m"_navItem_a81771 "[39m
+            [33mhref[39m=[32m"/v/dash"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"_navIcon_a81771"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mheight[39m=[32m"18"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.9"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [33mwidth[39m=[32m"18"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [0m经营驾驶舱[0m
+          [36m</a>[39m
+          [36m<a[39m
+            [33mclass[39m=[32m"_navItem_a81771 "[39m
+            [33mdata-testid[39m=[32m"nav-decision-console"[39m
+            [33mhref[39m=[32m"/v/decision-console"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"_navIcon_a81771"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mheight[39m=[32m"18"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.9"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [33mwidth[39m=[32m"18"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [0m事...
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_shell_a81771"[39m
+    [36m>[39m
+      [36m<a[39m
+        [33mclass[39m=[32m"_skipToMain_a81771"[39m
+        [33mdata-testid[39m=[32m"skip-to-main"[39m
+        [33mhref[39m=[32m"#main-content"[39m
+      [36m>[39m
+        [0m跳到主内容[0m
+      [36m</a>[39m
+      [36m<header[39m
+        [33mclass[39m=[32m"_topbar_a81771"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_brand_a81771"[39m
+        [36m>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"_logo_a81771"[39m
+          [36m/>[39m
+          [36m<div>[39m
+            [36m<h1>[39m
+              [0m全域数字化智能决策支撑系统[0m
+            [36m</h1>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_tenant_a81771"[39m
+              [33mdata-testid[39m=[32m"tenant-name"[39m
+            [36m>[39m
+              [0m星辰电池制造[0m
+            [36m</span>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_wrap_0a13f0"[39m
+        [36m>[39m
+          [36m<input[39m
+            [33maria-label[39m=[32m"搜索"[39m
+            [33mclass[39m=[32m"_search_0a13f0"[39m
+            [33mdata-testid[39m=[32m"global-search-input"[39m
+            [33mplaceholder[39m=[32m"全局搜索对象…"[39m
+            [33mvalue[39m=[32m""[39m
+          [36m/>[39m
+        [36m</div>[39m
+        [36m<button[39m
+          [33maria-label[39m=[32m"推演历史"[39m
+          [33mclass[39m=[32m"btn sm"[39m
+          [33mdata-testid[39m=[32m"history-clock"[39m
+          [33mstyle[39m=[32m"font-size: 15px; line-height: 1;"[39m
+          [33mtitle[39m=[32m"推演历史"[39m
+        [36m>[39m
+          [0m🕐[0m
+        [36m</button>[39m
+        [36m<span[39m
+          [33mclass[39m=[32m"badge amber"[39m
+          [33mdata-testid[39m=[32m"synthetic-watermark"[39m
+          [33mstyle[39m=[32m"opacity: 1; cursor: help;"[39m
+          [33mtitle[39m=[32m"合成运营态 · generatedFrom: battery-manufacturing / S · seed 42
+回放窗口 2025-07-01 ~ 2026-07-01"[39m
+        [36m>[39m
+          [0m合成数据[0m
+        [36m</span>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_wrap_f37d93"[39m
+        [36m>[39m
+          [36m<button[39m
+            [33maria-label[39m=[32m"数据源健康度"[39m
+            [33mclass[39m=[32m"_btn_f37d93"[39m
+            [33mdata-overall[39m=[32m"DELAYED"[39m
+            [33mdata-testid[39m=[32m"health-badge"[39m
+            [33mtitle[39m=[32m"数据源健康度"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_dot_f37d93 _dotWarn_f37d93"[39m
+              [33mdata-degraded[39m=[32m"true"[39m
+              [33mdata-testid[39m=[32m"health-dot"[39m
+            [36m/>[39m
+            [0m健康度[0m
+          [36m</button>[39m
+        [36m</div>[39m
+        [36m<button[39m
+          [33maria-label[39m=[32m"切换主题（当前 暗色 → 冷蓝）"[39m
+          [33mclass[39m=[32m"btn sm"[39m
+          [33mdata-testid[39m=[32m"theme-toggle"[39m
+          [33mdata-theme-mode[39m=[32m"dark"[39m
+          [33mstyle[39m=[32m"font-size: 15px; line-height: 1;"[39m
+          [33mtitle[39m=[32m"切换主题（当前 暗色 → 冷蓝）"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m🌙[0m
+        [36m</button>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"_userMenu_a81771"[39m
+        [36m>[39m
+          [36m<button[39m
+            [33maria-label[39m=[32m"planner"[39m
+            [33mclass[39m=[32m"_userBtn_a81771"[39m
+            [33mdata-testid[39m=[32m"user-menu-btn"[39m
+            [33mtitle[39m=[32m"planner"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"_avatar_a81771"[39m
+            [36m>[39m
+              [0mP[0m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_userName_a81771"[39m
+            [36m>[39m
+              [0mplanner[0m
+            [36m</span>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"font-size: 12px; color: var(--muted2);"[39m
+            [36m>[39m
+              [0m▾[0m
+            [36m</span>[39m
+          [36m</button>[39m
+        [36m</div>[39m
+      [36m</header>[39m
+      [36m<aside[39m
+        [33mclass[39m=[32m"_nav_a81771"[39m
+        [33mdata-testid[39m=[32m"left-nav"[39m
+      [36m>[39m
+        [36m<a[39m
+          [33mclass[39m=[32m"_navItem_a81771 "[39m
+          [33mdata-testid[39m=[32m"nav-scenario-launcher"[39m
+          [33mhref[39m=[32m"/scenarios"[39m
+        [36m>[39m
+          [0m⚡ 场景启动器[0m
+        [36m</a>[39m
+        [36m<nav[39m
+          [33mclass[39m=[32m"_group_a81771"[39m
+          [33mdata-testid[39m=[32m"nav-business"[39m
+        [36m>[39m
+          [36m<a[39m
+            [33mclass[39m=[32m"_navItem_a81771 "[39m
+            [33mhref[39m=[32m"/v/dash"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"_navIcon_a81771"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mheight[39m=[32m"18"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.9"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [33mwidth[39m=[32m"18"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [0m经营驾驶舱[0m
+          [36m</a>[39m
+          [36m<a[39m
+            [33mclass[39m=[32m"_navItem_a81771 "[39m
+            [33mdata-testid[39m=[32m"nav-decision-console"[39m
+            [33mhref[39m=[32m"/v/decision-console"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"_navIcon_a81771"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mheight[39m=[32m"18"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.9"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [33mwidth[39m=[32m"18"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [0m事...
+ ❯ waitForWrapper ../../../../../Users/apple/deploy/complete/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/wait-for.js:163:27
+ ❯ ../../../../../Users/apple/deploy/complete/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:86:33
+ ❯ test/debattery.order-chain.test.tsx:14:25
+     12|     loginAs("planner");
+     13|     renderApp("/v/order-chain");
+     14|     expect(await screen.findByText("交期·配置X")).toBeInTheDocument();
+       |                         ^
+     15|   });
+     16| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  18:57:05
+   Duration  56.26s (transform 14.61s, setup 22.62s, collect 4.96s, tests 16.55s, environment 7.09s, prepare 1.47s)
+
+undefined
+/private/tmp/wt-base-fe/apps/frontend-shell:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run test/debattery.order-chain.test.tsx --maxWorkers=1
+CANARY_RC=1

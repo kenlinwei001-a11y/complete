@@ -1,0 +1,1334 @@
+HEAD=51a13d002 START=09-28 12:19:52
+cmd: full pack (无参 include · maxWorkers=2 · testTimeout=1500000)
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/apps/datacore
+
+ ✓ test/action-adopt-scheme.seam.test.ts (8 tests) 166958ms
+   ✓ 采纳经营方案 · 审批后真落 scheme_adoptions 台账 + AOP 读端（非假 MO 号） > 头号效果断言：EXECUTED 后回仓储另一条路读，台账字段逐个 = 采纳的那份快照（targetRef 非 MO 形态）  28931ms
+   ✓ 采纳经营方案 · 审批后真落 scheme_adoptions 台账 + AOP 读端（非假 MO 号） > AOP 读端：采纳后 GET /plan/aop?year=2026 带 schemeAdoption（无 tenantId）；未采纳年份（1999）字段缺省  21041ms
+   ✓ 采纳经营方案 · 审批后真落 scheme_adoptions 台账 + AOP 读端（非假 MO 号） > SUPERSEDED 轮换：同年采纳方案乙 → 方案甲置 SUPERSEDED、乙 ACTIVE，台账恰 2 条；AOP 只给乙  16351ms
+   ✓ 采纳经营方案 · 审批后真落 scheme_adoptions 台账 + AOP 读端（非假 MO 号） > 幂等：同一 payload 走两次完整审批链（两张草稿）→ 台账仍 1 条同 adoptionId 覆盖，actionDraftId 更新为第二张  15532ms
+   ✓ 采纳经营方案 · 审批后真落 scheme_adoptions 台账 + AOP 读端（非假 MO 号） > 诚实失败：targets 空壳过不了契约 → EXECUTION_FAILED 含「payload 不合契约」，台账零条（宁可不写不许猜）  27524ms
+   ✓ 采纳经营方案 · 审批后真落 scheme_adoptions 台账 + AOP 读端（非假 MO 号） > 诚实失败（类型变异）：outcome.gm 传字符串 "0.16"（0-1 小数被换成字符串）→ EXECUTION_FAILED，台账零条  35702ms
+   ✓ 采纳经营方案 · 审批后真落 scheme_adoptions 台账 + AOP 读端（非假 MO 号） > 基线未动：采纳后 PLAN_GOAL_TARGETS 相关读端（AOP scenarios/triggers/decomposition + PlanTarget 对象）与采纳前逐字段一致  18411ms
+   ✓ 采纳经营方案 · 审批后真落 scheme_adoptions 台账 + AOP 读端（非假 MO 号） > R9 双实现不漂：pg.ts 的表名与 037 migration 的 CREATE TABLE 逐字相同（memory 单测证明不了这一行）  3457ms
+ ✓ test/audit-timeline.test.ts (9 tests) 234508ms
+   ✓ audit_timeline 每审计项时序（L1 + L6） > L1：按 kind 出 90 天逐日 series + 4 阶段 + 越线日/峰值  29496ms
+   ✓ audit_timeline 每审计项时序（L1 + L6） > L1：不同 kind 出不同曲线（形状 kind 派生）  20550ms
+   ✓ audit_timeline 每审计项时序（L1 + L6） > L6：同 kind 字节一致  16871ms
+   ✓ audit_timeline 每审计项时序（L1 + L6） > L1：plan_audit 每项带 kind（9 种口径之一）  16360ms
+   ✓ audit_timeline 每审计项时序（L1 + L6） > L1：audit_timeline 带当日事件 + 受影响订单（复用 risk 引擎）  26523ms
+   ✓ WO-AUDIT-TIMELINE-LIVESOURCE · 真源接线（产销 LIVE · 其余 MOCK 诚实披露） > A1 接缝：产销 → dataMode LIVE + source 披露 attainment:base + series 为真逐日数据  36924ms
+   ✓ WO-AUDIT-TIMELINE-LIVESOURCE · 真源接线（产销 LIVE · 其余 MOCK 诚实披露） > A2 验收判据：同一真源数据换 kind 名 ⇒ series 逐字节相同（不再由 hashString(kind) 派生）  17706ms
+   ✓ WO-AUDIT-TIMELINE-LIVESOURCE · 真源接线（产销 LIVE · 其余 MOCK 诚实披露） > A3 独立 oracle：series 逐日 = clamp(round(40+(target−当日跨基地均值)×k),40,97)（映射表实参·非引擎自证）  31605ms
+   ✓ WO-AUDIT-TIMELINE-LIVESOURCE · 真源接线（产销 LIVE · 其余 MOCK 诚实披露） > A4 MOCK 半不回退：无真源 kind（毛利）仍 dataMode MOCK + 哈希投影披露 + 无 source 字段  38438ms
+stdout | test/adversary-reaction.seam.test.ts > WO-ADVERSARY-REACTION · 客户会还手（五格对照实验） > §1 开/关对照：同一应对下两组世界态 md5 必须不同（相同 ⇒ 对抗方没接上）
+ADVERSARY_EXP1 on=0ce5528ab396998186d355e6bffa0e5a off=d167c88c34ad83563b1947f3be7d01d0
+
+stdout | test/adversary-reaction.seam.test.ts > WO-ADVERSARY-REACTION · 客户会还手（五格对照实验） > §3 同条数不同金额的两个客户，受同一冲击 ⇒ 还手力度按金额比拉开（不是只看条数）
+ADVERSARY_EXP3 单数=12 | 大户 小鹏汽车(obj_customer_cust_1) 敞口=1186016018 churn=14.002756557767 | 小户 宇通客车(obj_customer_cust_16) 敞口=913442094 churn=10.784599092909 | 敞口比=1.2984030687773407 还手比=1.298403068777399
+
+ ✓ test/action-executor-carriers.seam.test.ts (8 tests) 333823ms
+   ✓ A · 有落点的型：审批后目标属性在仓储里真的变了（T1） > 金丝雀先说话 + 主判据：`对象数据变更`（确知已接）与 `采纳产能保障方案` 走同一套「审批→回读核对」都必须看得见真值变化  132526ms
+   ✓ B · 三种「不工作」可分辨：少发字段 / 引用对象不存在 / 本型没落点（T2·T3） > ★ 主判据：`计划版本变更` 引用一个不存在的 S&OP 版本 → **不得**报「尚未接入真实执行器」（它已接线），必须点名版本解不出  74386ms
+   ✓ B · 三种「不工作」可分辨：少发字段 / 引用对象不存在 / 本型没落点（T2·T3） > 对照组（同一型走通）：`计划版本变更` 指向真版本 → EXECUTED，且 S&OP 版本 inputs 真被 patch 改了  79031ms
+   ✓ B · 三种「不工作」可分辨：少发字段 / 引用对象不存在 / 本型没落点（T2·T3） > 三条文案互不相同：少发字段 ≠ 引用不存在 ≠ 本型没落点（否则审批人分不出该改前端还是改本体）  23251ms
+   ✓ C · 跨租户隔离：另一租户的审批写不到 demo 的对象上（T5） > 租户 t2 用 demo 的 objectId 发杠杆 → 诚实失败，且 demo 的属性逐字节未动  19465ms
+   ✓ D · ActionService 未 setExecutor 时的默认执行器不得是假单号产地（§5.4） > 直接 new ActionService（不 setExecutor）执行一条 APPROVED 草稿 → 必须诚实失败，绝不回 MO-2026-xxxx  4422ms
+   ✓ E · 假单号产地普查：`MockActionExecutor` 不得出现在任何 src 接线上（§5.4） > 主判据：两份 src 的**代码位**里 `new MockActionExecutor()` 出现 0 次  442ms
+ ✓ test/adversary-reaction.seam.test.ts (7 tests) 497297ms
+   ✓ WO-ADVERSARY-REACTION · 客户会还手（五格对照实验） > §5 金丝雀：还手边与其逆边真的在数据里，且我的读数取法抓得住变化  58992ms
+   ✓ WO-ADVERSARY-REACTION · 客户会还手（五格对照实验） > §2 反向对照：对抗方**关闭**时 orderChurn 仍是纯外生根（入度 0），世界态不含任何还手写入  171686ms
+   ✓ WO-ADVERSARY-REACTION · 客户会还手（五格对照实验） > §1 开/关对照：同一应对下两组世界态 md5 必须不同（相同 ⇒ 对抗方没接上）  171423ms
+   ✓ WO-ADVERSARY-REACTION · 客户会还手（五格对照实验） > §3 同条数不同金额的两个客户，受同一冲击 ⇒ 还手力度按金额比拉开（不是只看条数）  22724ms
+   ✓ WO-ADVERSARY-REACTION · 客户会还手（五格对照实验） > §4 确定性：同 seed 同应对重跑两次 ⇒ 世界态逐字节相同  55781ms
+   ✓ WO-ADVERSARY-REACTION · 客户会还手（五格对照实验） > 可披露：命中的规则 key · 系数 · 容忍线 · 还手动作 · 承载条数 · 越线对手数 · **谁选的**，一项不缺  16670ms
+ ✓ test/vle-reference-dualcompute.test.ts (2 tests) 59733ms
+   ✓ VLE · V5 参照实现双算（增量2 · VL2 真有效） > 干净被测：⑤参照双算 PASS（被测 capWanP50/capWanP90 == 独立参照值）  36515ms
+   ✓ VLE · V5 参照实现双算（增量2 · VL2 真有效） > 植入求解器系数 bug（被测 capWanP50 ×0.85，模拟改坏 curveMult）→ ⑤参照双算变红，diff 指出期望/实际/Δ  23199ms
+stdout | test/zz-probe-changeover.test.ts > PROBE > dump changeover lever state
+[PROBE] ChangeoverMatrix query rc= [33m400[39m
+[PROBE] ChangeoverMatrix rows= {"error":{"code":"VALIDATION_ERROR","message":"分页参数 \"limit\" 在本端点不存在，不会生效。本端点分页只认 page + pageSize（pageSize ≤ 500）；要取全部请按响应里的 hasMore / total 逐页翻。","requestId":"req_efx4z7aasnb3ahg0"}}
+
+stdout | test/zz-probe-changeover.test.ts > PROBE > dump changeover lever state
+[PROBE] 换型损失 levers= {"levers":[],"deltas":[],"rows":[],"affectedObjects":0,"count":0,"rootTypes":[]}
+
+ ✓ test/action-capacity-adopt.seam.test.ts (3 tests) 38732ms
+   ✓ 采纳产能保障方案 · 审批后真写回本体属性（非假 MO 号） > 头号效果断言：审批通过后，被拨的 Equipment.oee_current **在仓储里真的变了**  14568ms
+   ✓ 采纳产能保障方案 · 审批后真写回本体属性（非假 MO 号） > 诚实拒绝：杠杆行缺 value → 失败且**不写任何东西**（宁可不写，不许猜一个值）  12272ms
+   ✓ 采纳产能保障方案 · 审批后真写回本体属性（非假 MO 号） > 空 levers → 拒绝空转（不假装已采纳）  11889ms
+stdout | test/zz-probe-changeover.test.ts > PROBE > dump changeover lever state
+[PROBE] ALL levers props= ["Material.leadTime=-210850.575","Process.utilization=47079.365","Process.yield_baseline=45460.915","Process.attendance=44357.6","Equipment.oee_current=26935.455","Equipment.ctSeconds=-24121.82","Process.shifts=21494.015","Material.onHand=719.635","Process.channels=34.22"]
+
+ ✓ test/zz-probe-changeover.test.ts (1 test) 19359ms
+   ✓ PROBE > dump changeover lever state  19352ms
+ ✓ test/solvers.test.ts (13 tests) 381044ms
+   ✓ S1 solvers > V1: capacity_forecast P50 matches the independent S1.2 formula (0.6 cert + 0.72 maint), P90 = P50×0.93  13939ms
+   ✓ S1 solvers > V2: data-health degrade — IoT lag 4.2h → P90 factor 0.90 + degrade note  12298ms
+   ✓ S1 solvers > V3: batch mode — wkEff subtracts logistics days; cumulative per-batch checks; gap = max shortfall  13773ms
+   ✓ S1 solvers > V4: what-if exact formula (cap-aware) and C08 rejection at 25% outsourcing  11419ms
+   ✓ S1 solvers > bottleneck_matrix MOCK formula is exact and primary comes from BN_PRIMARY config  11092ms
+   ✓ S1 solvers > V5: risk_timeline 常州·物料齐套 H=30 — daily curve matches the formula, 14d arrival pulses, crossDay, mitigation −12  11029ms
+   ✓ S1 solvers > V5b: risk_timeline planRows — 每基地主因素首选方案 + 峰值≥90 备份 + 14 天内反提 S&OP（§2.4）  12903ms
+   ✓ S1 solvers > V5c: risk_timeline 事件带 tag/desc/src 可解释文案（§4.6）+ R6 同输入字节一致  44778ms
+   ✓ S1 solvers > affected_orders: window [day−7, day+14], delay estimate, condition filter + nearest-due fallback  78819ms
+   ✓ S1 solvers > affected_orders 无 baseId → 跨基地聚合 VM（summary/rows[seg+risks]/problems）；base 过滤  45851ms
+   ✓ S1 solvers > V6: plan_audit 5H+4M（含外部信号 E01/E03）→ score 0 → 站不住; why carries substituted numbers; fix.patch correct  31232ms
+   ✓ S1 solvers > V7: plan_generate — C violates CAPEX cap, recommend = E on defaults, 5-dim scores exact  38360ms
+   ✓ S1 solvers > capacity_rollup returns 4-level intermediates with formulas and inputs  55383ms
+ ✓ test/adoption-survives.seam.test.ts (7 tests) 425632ms
+   ✓ WO-ADOPTION-SURVIVES-FIX · 采纳记录的存活与「还越不越线」解耦 > ① 前提复现 · **两种消失机制各一条**（派单只写了其中一条，且把另一条的成因说错了）  53935ms
+   ✓ WO-ADOPTION-SURVIVES-FIX · 采纳记录的存活与「还越不越线」解耦 > ② 实验 1 · 卡下榜之后采纳记录仍在，且四项披露齐全 —— **两条消失路各验一遍**  24347ms
+   ✓ WO-ADOPTION-SURVIVES-FIX · 采纳记录的存活与「还越不越线」解耦 > ②b **削峰量必须说实话**：reroute 标称 eff=9，实测只削 <1 点 —— 不许拿标称值冒充效果  94422ms
+   ✓ WO-ADOPTION-SURVIVES-FIX · 采纳记录的存活与「还越不越线」解耦 > ③ 实验 3 · **不许复活告警**：已消解的问题不许回到「当前风险」，board 上每张卡都仍在越线  127460ms
+   ✓ WO-ADOPTION-SURVIVES-FIX · 采纳记录的存活与「还越不越线」解耦 > ④ 实验 2 · 反向对照：debottleneck 那条路的**卡面**逐字段不变，采纳披露键仍是三键  52129ms
+   ✓ WO-ADOPTION-SURVIVES-FIX · 采纳记录的存活与「还越不越线」解耦 > ⑤ 实验 4 · 跨会话可追溯：台账是租户级对象，换一条全新连接照样读得到  46079ms
+   ✓ WO-ADOPTION-SURVIVES-FIX · 采纳记录的存活与「还越不越线」解耦 > ⑥ 诚实位：本窗本来就不越线的 pair 上采纳 ⇒ NO_CROSS_EITHER_WAY，处置不许邀功  26748ms
+ ✓ test/warehouse-custloc.test.ts (4 tests) 151250ms
+   ✓ WO-WAREHOUSE-CUSTLOC · 仓库/客户地点接缝驱动组合测 > SEAM-1 · 每基地成品仓齐（13 基地各 ≥1 FINISHED）+ warehouse_of_base 解析真 Base  26441ms
+   ✓ WO-WAREHOUSE-CUSTLOC · 仓库/客户地点接缝驱动组合测 > SEAM-2 · 库存可挂仓位（Warehouse 对象可被 warehouseId 引用解析·退化断言）  23628ms
+   ✓ WO-WAREHOUSE-CUSTLOC · 仓库/客户地点接缝驱动组合测 > SEAM-3 · 交付读真地点（订单 Customer → custloc_of_customer → CustomerLocation 省市/交付地）  20212ms
+   ✓ WO-WAREHOUSE-CUSTLOC · 仓库/客户地点接缝驱动组合测 > R6 · 同 seed 两跑：warehouseId/locId 集 + 省市字节一致；省市从 BASE_REGISTRY 派生（无内联基地字面量）  80960ms
+ ✓ test/supply-vulnerability.seam.test.ts (8 tests) 227785ms
+   ✓ WO-VULNERABILITY-REI · 供应脆弱度接缝门 > §0 金丝雀：种子里 8 个物料确有 supplierIds，且共 15 条供应关系（不是压扁后的 8 条）  25201ms
+   ✓ WO-VULNERABILITY-REI · 供应脆弱度接缝门 > §1 SUP-001 断供 → 三元正极与磷酸铁锂正极同时受影响（逐物料看永远看不见的相关性）  23183ms
+   ✓ WO-VULNERABILITY-REI · 供应脆弱度接缝门 > §2 反向对照：SUP-002 断供只影响三元正极，且严重度严格低于 SUP-001（有 SUP-001 兜底）  21304ms
+   ✓ WO-VULNERABILITY-REI · 供应脆弱度接缝门 > §3 清单首行是铜箔或铝箔（唯二单点），且与「纯按花费排序」的首行不同  32340ms
+   ✓ WO-VULNERABILITY-REI · 供应脆弱度接缝门 > §4 TTR 语义：有合格备份给天数、无备份给 null，两者不许都落成 0  49526ms
+   ✓ WO-VULNERABILITY-REI · 供应脆弱度接缝门 > §5 同 (industry, scale, seed) 重跑，脆弱清单逐字节一致  29543ms
+   ✓ WO-VULNERABILITY-REI · 供应脆弱度接缝门 > §6 chain_impediments 回包带脆弱清单段，且与独立求解器同口径（不是第二份实现）  24081ms
+   ✓ WO-VULNERABILITY-REI · 供应脆弱度接缝门 > §7 变异反证：给铜箔补一家合格备份 → 它当场不再是单点，清单首行必须换人  22555ms
+ ✓ test/synthetic.test.ts (8 tests) 106480ms
+   ✓ A7 synthetic data > SY1: seed 42 deterministic — validation report passes, rerun is deep-equal  40928ms
+   ✓ A7 synthetic data > EXT_SIG（#11）：外部信号一等对象化 + EXTERNAL 连接器（mock_external）  9872ms
+   ✓ A7 synthetic data > seeds rules C03/C08/C13 with origin SYNTHETIC; C03 blocks at demandDelta > 0.5  8464ms
+   ✓ A7 synthetic data > SY-rules-live: 约束在真实合成数据上真触发（C03/C08/C13 ruleScan violations>0）—— Phase3 修复哑弹规则  9107ms
+   ✓ A7 synthetic data > SY2: cross-module consistency — same numbers come from the same object instance  10984ms
+   ✓ A7 synthetic data > LIVE-DATA: 合成对象经'合成源→RawDataset→物化'落地，数据源可见原始行 + 对象 origin 可溯回（PRD-live-traceable-data §3.1）  12657ms
+   ✓ A7 synthetic data > LINEAGE: 对象 → 原始行 → RawDataset → 连接器 反查（PRD-live-traceable-data §3.2）  13640ms
+   ✓ A7 synthetic data > SY3: unknown industry → LLM-generated template, stored for reuse, full flow runs  825ms
+ ✓ test/replay-ops.test.ts (12 tests) 194592ms
+   ✓ 回放编排器与虚拟操作团队（R1–R13） > R1 正门红线（静态断言） > R1: 每条运营记录回链一次真实 API（review_actions → 真实审批状态机流转）  20565ms
+   ✓ 回放编排器与虚拟操作团队（R1–R13） > R2 任务史可下钻 / R7 权限一致性（ask 经真实 QOS persona JWT） > R2/R7: ask 以 persona 真实身份发起，基地负责人 persona 携带行级 baseScope  16668ms
+   ✓ 回放编排器与虚拟操作团队（R1–R13） > R3 审批叙事（比例 ±5pct + 被拒带意见署名） > R3: review_actions 比例命中 policy；被拒带意见 + 署名虚拟审批人 isVirtual  21030ms
+   ✓ 回放编排器与虚拟操作团队（R1–R13） > R4 S&OP 真流转（五步 + 第⑤决议 + 定稿锁定） > R4: sop_cycle 经五步 API 至 FINAL，定稿后字段锁定（PLAN_LOCKED）  23048ms
+   ✓ 回放编排器与虚拟操作团队（R1–R13） > R6 确定性（同 seed 逐字一致） > R6: 两次回放任务问句/审批决定/决议措辞逐字一致  27617ms
+   ✓ 回放编排器与虚拟操作团队（R1–R13） > R5 校准闭环 / R10 定时预测（M11 配对样本来源） > R5/R10: run_forecast / SCHEDULED_FORECAST 产生 calibrationForecasts（M11 配对样本）  11710ms
+   ✓ 回放编排器与虚拟操作团队（R1–R13） > R9 隔离（真实租户禁挂 playbook / 建虚拟账号） > R9: 真实租户（无 SYNTHETIC origin）建虚拟账号 / 挂 playbook 被拒 403  12033ms
+   ✓ 回放编排器与虚拟操作团队（R1–R13） > R11 S&OP 半自动（自动①–④，⑤保持 IN_REVIEW，无自动定稿） > R11: SOP_AUTO_OPEN 跑①–④后保持 IN_REVIEW；无『自动定稿』路径（静态断言）  8785ms
+   ✓ 回放编排器与虚拟操作团队（R1–R13） > R12 审批催办与升级（autoApprove 默认关） > R12: 超期催办→再超期升级；autoApprove 默认关；开启仅命中白名单 + 全审计  8931ms
+   ✓ 回放编排器与虚拟操作团队（R1–R13） > R13 C 类隔离（真实租户自动提问无入口 / API 直调被拒） > R13: 真实租户 POST /a/v1/ops/auto-ask 被拒；SYNTHETIC 也无直调入口  9844ms
+   ✓ 回放编排器与虚拟操作团队（R1–R13） > R8 性能（剧本全量回放代表性预算） > R8: 365 次 runTick（含真实服务调用）在预算内  34338ms
+ ✓ test/yield-series-source.seam.test.ts (5 tests) 61768ms
+   ✓ WO-YIELD-SERIES-TS-SOURCE · yield_diagnosis 时序真源接缝 > ① 接缝主判据：种已知断点的 90 天 yield:process 时序 ⇒ breakpoint 非 undefined 且指向所种断点附近  17743ms
+   ✓ WO-YIELD-SERIES-TS-SOURCE · yield_diagnosis 时序真源接缝 > ②a 序列不足诚实位：无此工序（series 无法注入）⇒ dataMode:EMPTY + 行内 note 逐字保留  16236ms
+   ✓ WO-YIELD-SERIES-TS-SOURCE · yield_diagnosis 时序真源接缝 > ②b 序列不足诚实位：基地解析不到 ⇒ 不拿全域冒充该基地，保持 EMPTY  16882ms
+   ✓ WO-YIELD-SERIES-TS-SOURCE · yield_diagnosis 时序真源接缝 > ②c 序列不足诚实位：时序子系统无该序列（未播种租户）⇒ EMPTY（非假 LIVE）  612ms
+   ✓ WO-YIELD-SERIES-TS-SOURCE · yield_diagnosis 时序真源接缝 > ③ 加性：调用方直传 series ⇒ 注入不覆盖（直传序列的断点照旧检出）  10291ms
+ ✓ test/sop-actions.test.ts (6 tests) 92578ms
+   ✓ S1.8 sop_balance (V8) > V8: C21 auto-agenda on −11.8% deviation; ④ failure blocks ⑤; FINAL → 409 PLAN_LOCKED  18331ms
+   ✓ 增量 §7.10/§7.12 — plan-versions/current + 定稿走 Action > GET /a/v1/plan-versions/current：无 FINAL 版本 → 基线派生（确定性 plan_audit 输入字段集）  16473ms
+   ✓ 增量 §7.10/§7.12 — plan-versions/current + 定稿走 Action > 定稿走 Action：草稿创建 → 版本待审批；EXECUTED → FINAL；变更走 计划版本变更 Action  16863ms
+   ✓ 增量 §7.10/§7.12 — plan-versions/current + 定稿走 Action > 新增 actionTypes 已种子化（采纳经营方案/定稿月度计划版本/计划版本变更/采纳产能保障方案，旧 key 保留）  10016ms
+   ✓ 增量 §7.10/§7.12 — plan-versions/current + 定稿走 Action > 采纳产能保障方案 · 接受前端动态杠杆 payload（levers）·缺 levers 诚实 400（治 whatIf→levers 漂移）  15768ms
+   ✓ S2 action approval (V9) > V9: full chain — self-approval guard, 2-step approve to EXECUTED (mock adapter), reject path, events, audit  15122ms
+ ✓ test/authz.test.ts (5 tests) 47307ms
+   ✓ A0 IAM + A6 permissions > login → access/refresh pair; refresh issues a new working token; jwks served  2391ms
+   ✓ A0 IAM + A6 permissions > AU1: planner vs base_manager(常州) — different workspace, same query different rows  16151ms
+   ✓ A0 IAM + A6 permissions > authz explain returns matched policies + effective row filter  11047ms
+   ✓ A0 IAM + A6 permissions > tenant isolation: another tenant sees nothing of demo's data  16546ms
+   ✓ A0 IAM + A6 permissions > requests without credentials are rejected with the unified envelope  1146ms
+ ✓ test/a3-slice-library.test.ts (4 tests) 19220ms
+   ✓ A3.2 · 两库端点（真服务） > GET /slices/library?scope=cross|intra|all + POST build 登记为一等切片（进索引）  19183ms
+ ✓ test/attainment-base-daily.test.ts (3 tests) 73318ms
+   ✓ CL.5 · 基地级日达成率序列 attainment:base > seed → attainment:base 基地级日序物化（entityType=Base，逐日点落 ts_points）  20212ms
+   ✓ CL.5 · 基地级日达成率序列 attainment:base > agg-query 取基地级逐日达成率（day grain，桶非空）；原 attainment:line 不破  19160ms
+   ✓ CL.5 · 基地级日达成率序列 attainment:base > R6：同 seed 重跑 → attainment:base 该序列逐日点字节一致  33942ms
+ ✓ test/attribution-routing.test.ts (2 tests) 27981ms
+   ✓ CL.6 · plan_audit 入参兜底（归因直达） > invoke plan_audit 空 args → 自动用当前版本/PlanTarget 基线跑出 H/M/S + verdict（不再因缺入参报错）  15487ms
+   ✓ CL.6 · plan_audit 入参兜底（归因直达） > 显式 args 覆盖兜底：传入部分数值仍以显式为准（兜底只补缺）  12491ms
+ ✓ test/capacity-edge.seam.test.ts (6 tests) 231118ms
+   ✓ WO-CAPACITY-EDGE · has_capacity / consumes_capacity 接缝 > §1 两条边真有实例，且**消耗量真的落在边上**（不是落在工单节点上）  35230ms
+   ✓ WO-CAPACITY-EDGE · has_capacity / consumes_capacity 接缝 > §2 对照实验：同一条产线两个消耗量不同的活动 → 余量必须按消耗量成比例地不同  28381ms
+   ✓ WO-CAPACITY-EDGE · has_capacity / consumes_capacity 接缝 > §3 越界判据：消耗量之和超过产能 → 必须被检出（PASS → BLOCK + 可读违约信息）  19862ms
+   ✓ WO-CAPACITY-EDGE · has_capacity / consumes_capacity 接缝 > §4 变异反证（头号判据）：抹掉边上的量 → 读数当场变，且该边被记进 unpricedEdges  21175ms
+   ✓ WO-CAPACITY-EDGE · has_capacity / consumes_capacity 接缝 > §5 可披露（铁律 1.5 判据二）：单位来自本体、公式与杠杆随结果下发、明写未调用 agent  18068ms
+   ✓ WO-CAPACITY-EDGE · has_capacity / consumes_capacity 接缝 > §6 R6 确定性：同 (battery, S, seed=42) 两次播种，台账逐字节一致  108373ms
+ ✓ test/capacity-page-100pct.test.ts (10 tests) 319313ms
+   ✓ WO-CAPACITY-PAGE-100PCT · 产能推演页 后端接缝 > ① R1：每基地卡的首要风险因子 = 该基地**实测张力最高**的因子（不再全站同一个 瓶颈工序）  15269ms
+   ✓ WO-CAPACITY-PAGE-100PCT · 产能推演页 后端接缝 > ① R1b：看板排序 = 越线日↑ → 实测当前张力↓（最严重的基地不再被字母序挤出 maxCards）  24720ms
+   ✓ WO-CAPACITY-PAGE-100PCT · 产能推演页 后端接缝 > ② R4：base_capacity_outlook 三形态 baseId（obj_base_xinyang / xinyang / 信阳）返回同一份前瞻  35503ms
+   ✓ WO-CAPACITY-PAGE-100PCT · 产能推演页 后端接缝 > ③ 杠杆作用域：不同基地的 scopeObjectIds 必须给出**不同**杠杆，且对象归属该基地（不再一律返回常州）  32750ms
+   ✓ WO-CAPACITY-PAGE-100PCT · 产能推演页 后端接缝 > ③b 杠杆作用域：作用域与认证基地无交集 → 诚实空（绝不回落全域冒充本基地）  21159ms
+   ✓ WO-CAPACITY-PAGE-100PCT · 产能推演页 后端接缝 > ⑫ R7：风险卡的受影响订单与「订单聚合」tab 同口径（整个推演窗口·不再 21 天小窗恒空）  18937ms
+   ✓ WO-CAPACITY-PAGE-100PCT · 产能推演页 后端接缝 > ⑬ 30/60/90 天窗口 chip 对「订单聚合」表**真起作用**（修前写死 180 天·拖窗口屏幕纹丝不动）  21032ms
+   ✓ WO-CAPACITY-PAGE-100PCT · 产能推演页 后端接缝 > ④ gap_attribution：传 BN 因子名（非 CausalFactor）时保住 base 作用域树 + 诚实标 factorApplied=false  120979ms
+   ✓ WO-CAPACITY-PAGE-100PCT · 产能推演页 后端接缝 > ④b gap_attribution：传**真** CausalFactor id 时才走因果域并标 factorApplied=true  28947ms
+stdout | test/action-plan-change-levers.seam.test.ts > 兜底线普查 · 「还剩几型审批通过后什么都不写」由机器数，不由人推算 > 逐型真推过 domainExecutor，落兜底线者必须恰好等于登记在案的那一组
+
+[兜底线普查] 已注册 12 型｜落兜底线 1 型：plan_change
+   进真分支：adopt_mitigation → EXECUTION_FAILED(adopt_mitigation：因素「cf-nonexistent-probe」不在处置方案库（params.risk)
+   进真分支：adopt_sim_option → EXECUTED
+   进真分支：AOP情景拍板 → EXECUTION_FAILED(annual scenario __census_probe__ not found)
+   进真分支：校准参数变更 → EXECUTION_FAILED(calibration proposal not found)
+   进真分支：采纳经营方案 → EXECUTION_FAILED(采纳经营方案：payload 不合契约（pathKey: Invalid input: expected string,)
+   进真分支：定稿月度计划版本 → EXECUTED
+   进真分支：计划版本变更 → EXECUTED
+   进真分支：采纳产能保障方案 → EXECUTION_FAILED(采纳产能保障方案：payload.levers 为空——无可写入的杠杆，拒绝空转（不假装已采纳）)
+   进真分支：采纳产能预测结论 → EXECUTED
+   进真分支：对象数据变更 → EXECUTION_FAILED(object not found: __census_probe__)
+   进真分支：流水线发布物化 → EXECUTION_FAILED(entity node not found: n1)
+
+ ✓ test/adopt-mitigation-dispatch.seam.test.ts (6 tests) 174913ms
+   ✓ SEAM · adopt_mitigation 派单必须是可执行的真单，否则诚实不派 > A·效果层：replay 派出的载荷喂真 risk_timeline → 张力曲线从第 tn 天起真的降（不是「有 planKey 字段」）  38452ms
+   ✓ SEAM · adopt_mitigation 派单必须是可执行的真单，否则诚实不派 > A·链路层：replay 的单真能过 paramsSchema + planner→admin 两步审批链，剩下的唯一失败是执行器欠账  10722ms
+   ✓ SEAM · adopt_mitigation 派单必须是可执行的真单，否则诚实不派 > A·诚实不派：基地不在风险看板上 → 跳过（不派注定失败的草稿）  10110ms
+   ✓ SEAM · adopt_mitigation 派单必须是可执行的真单，否则诚实不派 > B·效果层反证：decision_play 的方案喂真 risk_timeline 必抛（所以派了就是注定失败的草稿）  21107ms
+   ✓ SEAM · adopt_mitigation 派单必须是可执行的真单，否则诚实不派 > B·效果层：commit 不产出注定失败的 adopt_mitigation 草稿，决策轨迹留诚实记录  43382ms
+   ✓ SEAM · adopt_mitigation 派单必须是可执行的真单，否则诚实不派 > B·不是一刀切拒绝：载荷真能解析时同一段代码照样派单（规则使然·非写死不派）  51130ms
+ ✓ test/action-plan-change-levers.seam.test.ts (17 tests) 393584ms
+   ✓ plan_change（非 global-sim）· 按 payload 形态二分：带杠杆真写 / 无杠杆诚实失败 > 金丝雀（先自证检查手法）：`对象数据变更` 走同一套「审批→回读核对」必须看得见真值变化  22238ms
+   ✓ plan_change（非 global-sim）· 按 payload 形态二分：带杠杆真写 / 无杠杆诚实失败 > ★ 主判据：plan_change 带 levers → 审批后 Equipment.oee_current **在仓储里真的变了**  13136ms
+   ✓ plan_change（非 global-sim）· 按 payload 形态二分：带杠杆真写 / 无杠杆诚实失败 > 诚实边界①：sim_sandbox 结论（patch.simulated:true·无杠杆）→ 失败且点名「仿真不得回流真实」，真值零动  9832ms
+   ✓ plan_change（非 global-sim）· 按 payload 形态二分：带杠杆真写 / 无杠杆诚实失败 > 诚实边界②：order-chain 结论的无杠杆形态（「可接」无附加条件 / 生产者反查不到对象）→ 失败且点名「没有 levers 落点」  9523ms
+   ✓ plan_change（非 global-sim）· 按 payload 形态二分：带杠杆真写 / 无杠杆诚实失败 > ★ 主判据③（WO-PLAN-CHANGE-LEVER-MAP）：order-chain 结论带真域映射 levers → Order 属性逐字段真落库 + 派生重算  10282ms
+   ✓ plan_change（非 global-sim）· 按 payload 形态二分：带杠杆真写 / 无杠杆诚实失败 > ★ 主判据④（WO-PLAN-CHANGE-LEVER-MAP）：协调加产 intent:coordinate_capacity 带 levers → Order.outsourceRatio 真落库  16108ms
+   ✓ plan_change（非 global-sim）· 按 payload 形态二分：带杠杆真写 / 无杠杆诚实失败 > 变异反证（摘掉 lever 映射 ⇒ 回到诚实失败）：同一协调加产载荷摘掉 levers → EXECUTION_FAILED 且点名 levers  20547ms
+   ✓ plan_change（非 global-sim）· 按 payload 形态二分：带杠杆真写 / 无杠杆诚实失败 > 原子性：杠杆行缺 value → 拒绝臆造写入，且**一个字节都不写**  26712ms
+   ✓ 兜底线普查 · 「还剩几型审批通过后什么都不写」由机器数，不由人推算 > 逐型真推过 domainExecutor，落兜底线者必须恰好等于登记在案的那一组  42407ms
+   ✓ 采纳经营方案 · 契约拒绝 ⇒ 诚实失败（**拒绝臆造写入**，非法载荷不得进台账） > 契约不过的载荷 → 审批后诚实失败（「payload 不合契约」），且 scheme_adoptions 台账零条  35619ms
+   ✓ 采纳经营方案 · 契约拒绝 ⇒ 诚实失败（**拒绝臆造写入**，非法载荷不得进台账） > 硬约束（业务已裁定·勿改）：采纳动作**绝不覆盖**经营目标基线 —— 真落台账后 plan_generate 输出逐字节相同  57791ms
+   ✓ WO-C0828-P1 · adopt_sim_option 写 Line.utilization 后 utilPressure 同步 > 数据检查：全量 Line 的 utilization 都是数值型（否则派生 evalArithmetic 会归零）  26514ms
+   ✓ WO-C0828-P1 · adopt_sim_option 写 Line.utilization 后 utilPressure 同步 > E3-b′：adopt_sim_option 审批后 Line.utilization 与 utilPressure 都变成拨定值  22201ms
+   ✓ WO-C0828-P1 R3′ · adopt_sim_option 后规格层派生跟随 > E3-b′ 臂①：Material.leadTime → shortageRisk 按 material_shortage_risk 式子跟随  27927ms
+   ✓ WO-C0828-P1 R3′ · adopt_sim_option 后规格层派生跟随 > E3-b′ 臂②：Process.utilization → queuePressure 按 process_queue_pressure 式子跟随  27864ms
+   ✓ WO-C0828-P1 R3′ · adopt_sim_option 后规格层派生跟随 > 规格层聚合 DSL（out(/in(）在运行期诚实跳过、不炸批、不生成新格  24816ms
+ ✓ test/seed-demo-propagation.test.ts (27 tests) 564911ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 种子后 view-config：propagationCount≥2 + stateVars 非空（消空世界）  68599ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 种的规则沿真链路（Order/Model/Base）：发布且 viaLinkKey 是 demo 真链路  2081ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 🔴 方向可达门：每条种子规则的 source─via→target 在**真链路表**上真的走得通（#158 复发闸）  29564ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 🔴 方向可达门的变异反证：喂一条方向写反的规则（#158 原文），门必须判它死  17191ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 确定性 R6：同 SEED_DEMO 重跑规则字节一致（固定 id/系数）  1610ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 幂等：重复播种不增项（固定 id 覆盖）  1053ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > live-fire：种子规则 + 真 Order→Model 链路 → tick 真跨对象传导  28408ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 🔴 效果层 SEAM：供应侧扰动（Supplier.deliveryDelay）跨 3 跳真的传导到 Order.shortageRisk  33673ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 🔴 逐条真触发：54 条规则在真 tick 的 trace 里一条不缺（REQ143 + 档 1/2/3 + 采购根源 3 + 三根源 4 + 设备侧出口 4 + 订单真实字段 3 + 库存环 2 + 物料环 3）  29933ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🐤 金丝雀：端点/链路全合法的边**必须建得出来**（证明这组门不是一律拒绝）  21271ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 端点不存在的边必须 400（link-types 那次 81/133 全放行的复发闸）  36997ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 链路类型不存在的边必须 400  25851ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 方向写反的边必须 400 —— 引擎只沿 from→to 单向走，反向边语法全对但恒贡献 0  30518ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 coefficientRef 解析不到必须 400 —— 否则静默回落内联系数，用户以为改规则生效其实无效  30381ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 PATCH 也走同一道体检：塞非法 coefficientRef 必须 400，而合法系数照常放行  25650ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 体检在 upsert **之前**跑：非法边不许先把同 key 的合法边覆盖掉再报错  16526ms
+   ✓ §5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子） > 🔴 对照实验：同一型号上，BOM 占比不同的两种物料各涨 15 ⇒ 读数必须按占比拉开（修前同为 9.75）  27135ms
+   ✓ §5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子） > 🔴 对照实验：缺料→供应风险 —— BOM 占比不同的物料各涨 15 ⇒ 读数按占比拉开，且 Σ权重≡1 总量不跳  23719ms
+   ✓ §7 WO-WEIGHT-BASIS-FIELD · 按声明字段分摊（真种子） > 种子把 9 条边接到 source_field_share 上了，且各自声明了字段（裁定不改的那条仍是 equal_share）  11586ms
+   ✓ §7 WO-WEIGHT-BASIS-FIELD · 按声明字段分摊（真种子） > 🔴 Σw 逐目标恒 = 1（归一方向被改成 Σ=N 即红 —— §6 判据③b 那次 1.249998→1.571426 的复发闸）  15991ms
+   ✓ §7 WO-WEIGHT-BASIS-FIELD · 按声明字段分摊（真种子） > 🔴 对照实验：同一供应商名下 qty 差 4.09× 的两张采购单各加急 15 ⇒ 读数按 qty 拉开（修前同为 0.555）  21535ms
+   ✓ §7 WO-WEIGHT-BASIS-FIELD · 按声明字段分摊（真种子） > 🔴 field 读不到必须报缺 + 引擎不传导（双向金丝雀；⛔ 不许静默归零或回落等份）  21145ms
+   ✓ §6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算 > 🔴 超预算格子集合 + `Model.demandLoad` 读数必须与在册一致（加边/抬系数即红）  28985ms
+   ✓ M0-A11 解释切片（≤20 节点只读投影 + 覆盖账本） > 真推演 trace ⇒ 截断账本与手算一致；maxNodes 放大 ⇒ 完整（T1+T3）  15429ms
+ ❯ test/dynamic-drill-resolve.seam.test.ts (6 tests | 1 failed) 416070ms
+   ✓ WO-DYNAMIC-DRILL-RESOLVE · DYNAMIC-* 占位查询期解析 SEAM > DR-0 金丝雀 · 数据半：种子里 DYNAMIC-* 仍是占位且自带挑选口径（播种期解析即红）  25267ms
+   × WO-DYNAMIC-DRILL-RESOLVE · DYNAMIC-* 占位查询期解析 SEAM > DR-1 · **对上率**：本次全部落点都能对上因子，且 MaterialBalance 那一族一条不落 216628ms
+     → Test timed out in 180000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   ✓ WO-DYNAMIC-DRILL-RESOLVE · DYNAMIC-* 占位查询期解析 SEAM > DR-2 · **头号判据**：TYPE 档解析出的实例 == 这条落点自己的那一张，且读数与库里真对象逐位相等  129365ms
+   ✓ WO-DYNAMIC-DRILL-RESOLVE · DYNAMIC-* 占位查询期解析 SEAM > DR-3 · **三档禁塌**：EXACT / TYPE / NONE 三态在同一次种子上同时可复现，且 TYPE 不冒充 EXACT  20816ms
+   ✓ WO-DYNAMIC-DRILL-RESOLVE · DYNAMIC-* 占位查询期解析 SEAM > DR-4 · 归因期解析走的是**因子自己声明的 drillPick**（不是候选池首条），且 R6 两跑字节一致  14432ms
+   ✓ WO-DYNAMIC-DRILL-RESOLVE · DYNAMIC-* 占位查询期解析 SEAM > DR-5 · 归因期占位解析**只连坐 demand_attain 一个域**（其余指标域产物逐字节不变的结构理由）  9556ms
+ ✓ test/rules-p3-payload-11solvers.test.ts (13 tests) 112251ms
+   ✓ 规则即引用 P3 · 11 求解器 payload 映射真评估（H5 增量1） > plan_audit C15/C16/C18/C21/C23 全部真评估（不再 NOT_APPLICABLE）  9112ms
+   ✓ 规则即引用 P3 · 11 求解器 payload 映射真评估（H5 增量1） > plan_audit C16 边界翻转：阈值改 >10 后同输入由 WARN → PASS（改规则即改推演）  8890ms
+   ✓ 规则即引用 P3 · 11 求解器 payload 映射真评估（H5 增量1） > plan_audit C16 缺口=0 → PASS（边界另一侧）  12250ms
+   ✓ 规则即引用 P3 · 11 求解器 payload 映射真评估（H5 增量1） > plan_generate C15/C18 真评估（推荐方案毛利/现金垫），C08 诚实 NOT_APPLICABLE  11959ms
+   ✓ 规则即引用 P3 · 11 求解器 payload 映射真评估（H5 增量1） > plan_generate C18 边界翻转：现金垫底线改 >100 后由 PASS → BLOCK（base.cash≈58）  8466ms
+   ✓ 规则即引用 P3 · 11 求解器 payload 映射真评估（H5 增量1） > cert_schedule C26 真评估（并行任务数 vs 工程师组数），C04 诚实 NOT_APPLICABLE  9069ms
+   ✓ 规则即引用 P3 · 11 求解器 payload 映射真评估（H5 增量1） > cert_schedule C26 边界翻转：阈值改 >=1 后并行任务命中 → BLOCK  8132ms
+   ✓ 规则即引用 P3 · 11 求解器 payload 映射真评估（H5 增量1） > outsourcing_split C08 真评估（外协分配/总需求），C31 诚实 NOT_APPLICABLE  7487ms
+   ✓ 规则即引用 P3 · 11 求解器 payload 映射真评估（H5 增量1） > outsourcing_split C08 边界翻转：阈值改 >0.1 后由 PASS → WARN（0.2>0.1）  7511ms
+   ✓ 规则即引用 P3 · 11 求解器 payload 映射真评估（H5 增量1） > capex_scenario C23 真评估（总 CAPEX vs 门槛），C18 诚实 NOT_APPLICABLE  7031ms
+   ✓ 规则即引用 P3 · 11 求解器 payload 映射真评估（H5 增量1） > capex_scenario C23 边界翻转：阈值改 >=5 后总 capex=6 命中 → WARN  6853ms
+   ✓ 规则即引用 P3 · 11 求解器 payload 映射真评估（H5 增量1） > capex_scenario C23 大额 CAPEX 命中：总 capex≥10 → WARN（同尺度真评）  7247ms
+   ✓ 规则即引用 P3 · 11 求解器 payload 映射真评估（H5 增量1） > 诚实边界：口径不符的 6 求解器规则全部 NOT_APPLICABLE（不伪造尺度凑 PASS · 红线 RL5）  8238ms
+ ✓ test/livedin.test.ts (10 tests) 229847ms
+   ✓ 运营态出厂配置（livedIn 回放） > Y2: 同 seed 重放 → history/bundle 全量字节一致（跨进程实例）  103016ms
+   ✓ 运营态出厂配置（livedIn 回放） > Y9: origin 替换 —— 接入一个月 LIVE 实绩，同期覆盖、趋势无缝、水印比例变化  1239ms
+ ✓ test/quote-margin-customer.seam.test.ts (12 tests) 116044ms
+   ✓ WO-QUOTE-MARGIN-CUSTOMER · 客户维接缝（数据归属 × 引擎真 BOM） > 归属册覆盖全部订单客户名，且每条归属两端业态一致（轮转绑定必违反此式）  8472ms
+   ✓ WO-QUOTE-MARGIN-CUSTOMER · 客户维接缝（数据归属 × 引擎真 BOM） > Customer.orderCustNames 与归属册互为反查（客户主数据侧能自证「我在订单上叫什么」）  7210ms
+   ✓ WO-QUOTE-MARGIN-CUSTOMER · 客户维接缝（数据归属 × 引擎真 BOM） > 差分门：20 客户各自的毛利可溯到自己的订单与 BOM，且储能客户 ≠ 乘用车客户  11534ms
+   ✓ WO-QUOTE-MARGIN-CUSTOMER · 客户维接缝（数据归属 × 引擎真 BOM） > 未命中客户 → 400 AMBIGUOUS_SCOPE（不静默落首个客户冒充答案）  7203ms
+   ✓ WO-QUOTE-MARGIN-CUSTOMER · 客户维接缝（数据归属 × 引擎真 BOM） > 点名的客户算不出真 BOM → 400 EMPTY_SCOPE（不回落 Material 前 4 行冒充该客户的成本）  7439ms
+   ✓ WO-QUOTE-MARGIN-CUSTOMER · 客户维接缝（数据归属 × 引擎真 BOM） > 集中度按客户走得通（>0 个集中点），且按型号的金丝雀同时成立（证明不是把工具改宽了）  7399ms
+   ✓ WO-QUOTE-MARGIN-CUSTOMER · 客户维接缝（数据归属 × 引擎真 BOM） > 未指定客户 → scope.mode=ALL（显式全域，非首客户）；直传 bom → scope.mode=EXPLICIT（R6 向后兼容）  11314ms
+   ✓ WO-QUOTE-MARGIN-CUSTOMER · 客户维接缝（数据归属 × 引擎真 BOM） > 订单品牌名 ≡ 客户档案名（单一名册·不再有两套命名需要映射）  13786ms
+   ✓ WO-QUOTE-MARGIN-CUSTOMER · 客户维接缝（数据归属 × 引擎真 BOM） > 指定了该客户没下过的型号 → 明示 modelMatched:false + 单价来源（不静默丢弃实参·G-ARG-DROP-SEAM）  7792ms
+   ✓ WO-QUOTE-MARGIN-CUSTOMER · 客户维接缝（数据归属 × 引擎真 BOM） > scope.unitBasis 把「价按套 / BOM 按台」的口径差写在输出里（G-QUOTE-BOM-PRICE-UNIT-SCALE）  7877ms
+   ✓ WO-QUOTE-MARGIN-CUSTOMER · 客户维接缝（数据归属 × 引擎真 BOM） > 真 BOM 金值：4680-NCM=632.835 / 方形-LFP=540.2012（Σ 单台用量×现价×(1+损耗)，含正极）  10309ms
+   ✓ WO-QUOTE-MARGIN-CUSTOMER · 客户维接缝（数据归属 × 引擎真 BOM） > R6：同 (industry, scale, seed) 两次种子 → 归属边与 quote_margin 输出逐字节一致  15686ms
+ ✓ test/chain-loss-session-overlay.seam.test.ts (9 tests) 85068ms
+   ✓ WO-DRILL-VERDICT-BACKEND · 根因链 × 推演会话接缝 > ① 金丝雀：换一个 so，矩阵回包必须变（证本文件的读数取法有鉴别力）  12434ms
+   ✓ WO-DRILL-VERDICT-BACKEND · 根因链 × 推演会话接缝 > ② 反向对照：不传 sessionId 连跑两次逐字节相同，且 simContext 整块缺席（R6 + 向后兼容）  9254ms
+   ✓ WO-DRILL-VERDICT-BACKEND · 根因链 × 推演会话接缝 > ②b 形状契约：无会话时顶层 key 恒 == SOLVER_OUTPUT_SHAPES；simContext 是**条件字段**故意不登记  9105ms
+   ✓ WO-DRILL-VERDICT-BACKEND · 根因链 × 推演会话接缝 > ③ 正向对照：天数族叠加后，该段天数 == 字段真值换算 + 状态量（按可预言的量变，不是「变了就算过」）  7395ms
+   ✓ WO-DRILL-VERDICT-BACKEND · 根因链 × 推演会话接缝 > ④ 量纲纪律：0–100 压力族一天都不叠，且必须被 excluded 点名为 NOT_DAY_UNIT  8238ms
+   ✓ WO-DRILL-VERDICT-BACKEND · 根因链 × 推演会话接缝 > ⑤ 排除理由不许说谎：天数族挂错承载物 ⇒ OTHER_CARRIER，不是 NOT_DAY_UNIT  8363ms
+   ✓ WO-DRILL-VERDICT-BACKEND · 根因链 × 推演会话接缝 > ⑥ 矩阵端点同样进会话上下文：列天数按可预言的量变，且 simContext 逐条披露  10163ms
+   ✓ WO-DRILL-VERDICT-BACKEND · 根因链 × 推演会话接缝 > ⑦ R2：不存在的会话 404，绝不静默退化成「不叠加」  9574ms
+   ✓ WO-DRILL-VERDICT-BACKEND · 根因链 × 推演会话接缝 > ⑧ 下钻端点：传 sessionId 后子因天数按可预言的量变  10522ms
+ ✓ test/rules-expr-params.seam.test.ts (13 tests) 66204ms
+   ✓ WO-RULE-EXPR-PARAMS · 接缝：只改 params → 判定维与数据维同时跟着变 > SEAM-1 · C18 现金底线：expression 逐字节未变，只把 params.cashFloor 50→70 → 规则判定 PASS→BLOCK 且 solver_params 两处口径同步  10790ms
+   ✓ WO-RULE-EXPR-PARAMS · 接缝：只改 params → 判定维与数据维同时跟着变 > SEAM-2 · C08 外协红线三跳：只改 params.outsourceRatioMax → 规则判定翻转 + what-if 拒绝翻转 + 用户可见文案里的百分数跟着变  9823ms
+   ✓ WO-RULE-EXPR-PARAMS · 接缝：只改 params → 判定维与数据维同时跟着变 > SEAM-3 · C09/C21 同形：只改 params 即改判定（证明这是机制而非给某条规则打的补丁）  8542ms
+   ✓ WO-RULE-EXPR-PARAMS · 诚实缺席（不静默兜底） > 引用了未声明的命名阈值 → 创建即 400 拒绝（而不是让它以哑弹形态发布）  7548ms
+   ✓ WO-RULE-EXPR-PARAMS · 诚实缺席（不静默兜底） > params.<名> 不会静默回退到载荷同名字段（那是「看着合理的默认值」式兜底）  512ms
+   ✓ WO-RULE-EXPR-PARAMS · 诚实缺席（不静默兜底） > dry-run 提供 params 时正常求值（编辑器「测试」按钮与生产判定同一套解析）  560ms
+   ✓ WO-RULES-DSL-FAMILY · 阈值不得退回字面量（运行期反向闸） > 被绑定的阈值型 param 已声明、expression 却写字面量 → 创建即 400 拒绝  7783ms
+   ✓ WO-RULES-DSL-FAMILY · 阈值不得退回字面量（运行期反向闸） > 同一条规则改用引用式 → 照常放行（闸咬的是分叉，不是「不许编辑 C18」）  7151ms
+   ✓ WO-RULES-DSL-FAMILY · 阈值不得退回字面量（运行期反向闸） > 系数型 param（C04 认证系数）不被强制引用 —— 一刀切会逼出一个假阈值  7231ms
+   ✓ WO-RULES-DSL-FAMILY · 阈值不得退回字面量（运行期反向闸） > 未绑定的规则把阈值写在 expression 里 → 放行（那是单源，没有第二份）  6253ms
+ ✓ test/m11-calibration.test.ts (16 tests) 168440ms
+   ✓ M11 校准引擎（PRD-addendum-m11-calibration C1–C9） > C1: 窗口未过期/源延迟时不配对；过期且健康后配对；error/ape 与手算一致；一个预测只配对一次  22013ms
+   ✓ M11 校准引擎（PRD-addendum-m11-calibration C1–C9） > C3: 仅爬坡偏差的合成历史 → ≥80% 偏差归因到爬坡系数；提案变幅被 clip ±10%  7568ms
+   ✓ M11 校准引擎（PRD-addendum-m11-calibration C1–C9） > C5: 构造'改了也不准'的样本 → NO_IMPROVEMENT、零提案  7005ms
+   ✓ M11 校准引擎（PRD-addendum-m11-calibration C1–C9） > C6: 批准 → 参数版本+1 且后续求解用新值；回滚恢复上一版本；runWithParams 复现旧版本  9086ms
+   ✓ M11 校准引擎（PRD-addendum-m11-calibration C1–C9） > C6b: autoApply 开关仅放行方法 A 且小变幅（方法 B 胜出时仍走审批）  17749ms
+   ✓ M11 校准引擎（PRD-addendum-m11-calibration C1–C9） > C7: 同窗多提案只放行改善最大者（其余 CASCADE_HOLD）；同参数一周内二次提案 FREQUENCY_LIMIT  11630ms
+   ✓ M11 校准引擎（PRD-addendum-m11-calibration C1–C9） > C8: APPLIED 14（模拟）日后 realizedMape 回写提案与历史（预言 vs 实现）  8440ms
+   ✓ M11 校准引擎（PRD-addendum-m11-calibration C1–C9） > C9: tick 良率下滑 → C12 → 方法A提案(含回测证据) → 批准 → 继续 tick → MAPE 收敛且报告可见全链  46111ms
+   ✓ M0-F1 RealizedOutcome 配对键（T4） > T4①③ file_upload 真传 CSV ⇒ 实料落库可追回 syncJobId · 配对前后 paired 两数都动  6637ms
+   ✓ M0-F1 RealizedOutcome 配对键（T4） > T4② provenance 残缺 ⇒ 400 并点名缺哪个字段；mock_* 申报期即拒  535ms
+   ✓ M0-F2 欠账计 GET /a/v1/calibration/debt（T1+T3） > T1① 无实料 ⇒ paired:0 · expected.minPaired:N · coveragePct:0 · 🐤 forecasts>0  7164ms
+   ✓ M0-F2 欠账计 GET /a/v1/calibration/debt（T1+T3） > T1②+T3 录 M 条配对 ⇒ 三数同步变 · 账龄随钟 +1（正控）· 墙钟未来账龄钳 0（反证）  10007ms
+   ✓ M0-F3 实料闸（T2 变异反证） > T2① paired=0 ⇒ 四项全拒且各自披露（点名能力 + 欠 N 对）· assertGateOpen 409  7422ms
+   ✓ M0-F3 实料闸（T2 变异反证） > T2② paired≥minPaired ⇒ 四项全放行 · 🐤 反向：闸读数与 debt 同源（不是第二套真相）  6978ms
+stdout | test/sandbox-d4-aggregates.seam.test.ts > WO-SANDBOX-D4 ① OTD 批次准时率（口径 CUSTOMER_REQUEST·由 risk_timeline 真输出驱动） > SEAM-1 改真产能颗粒 Line.utilization → 越线日真变 → 准时率真变（0% → 12.5% → 87.5%）
+[SANDBOX-D4 SEAM-1] 高 util=92 crossDay=1 rate=0% | 中 util=45 crossDay=16 rate=13.64% | 低 util=1 crossDay=32 rate=50%（窗内 44 单·dueDay∈[3,73]·最松档口径 late 5/27）
+
+ ✓ test/empty-tenant-bootstrap.test.ts (2 tests) 203070ms
+   ✓ CL.4 · 空租户冷启动引导（POST /a/v1/bootstrap） > 空租户 → 7 步全通 → currentPlanVersion=FINAL（plan_audit 有料）  101266ms
+   ✓ CL.4 · 空租户冷启动引导（POST /a/v1/bootstrap） > 幂等可重入：重跑不重复污染（PlanTarget 跳过重合成、版本已 FINAL 跳过定稿）  101801ms
+ ✓ test/sandbox-d4-aggregates.seam.test.ts (11 tests) 84695ms
+   ✓ WO-SANDBOX-D4 ① OTD 批次准时率（口径 CUSTOMER_REQUEST·由 risk_timeline 真输出驱动） > SEAM-1 改真产能颗粒 Line.utilization → 越线日真变 → 准时率真变（0% → 12.5% → 87.5%）  10608ms
+   ✓ WO-SANDBOX-D4 ① OTD 批次准时率（口径 CUSTOMER_REQUEST·由 risk_timeline 真输出驱动） > SEAM-2 口径就是那个差额：87.5% 里唯一迟到的单，迟到只因按「客户要求交期」判（earlyDue D+11 ≠ 合同交期 D+25）  7632ms
+   ✓ WO-SANDBOX-D4 ① OTD 批次准时率（口径 CUSTOMER_REQUEST·由 risk_timeline 真输出驱动） > SEAM-3 独立复算（oracle 镜像）：拿求解器真输出的 affectedOrders + Order 对象自己重算一遍，与 otd 逐字段相等  8029ms
+   ✓ WO-SANDBOX-D4 ① OTD 批次准时率（口径 CUSTOMER_REQUEST·由 risk_timeline 真输出驱动） > EMPTY 诚实：窗口内无订单的基地 → dataMode=EMPTY 且 rate=null（不回落 0%）；顶层 otdBatch 按 so 去重不重复计数  7661ms
+   ✓ WO-SANDBOX-D4 ① OTD 批次准时率（口径 CUSTOMER_REQUEST·由 risk_timeline 真输出驱动） > R6：同输入重跑，otd 逐字节一致  6884ms
+   ✓ WO-SANDBOX-D4 ② 库存 地点×时间序列（由 inventory_optimize 真输出驱动） > SEAM-4 时间轴由真对象驱动：Material.onHand/dailyUse 逐日消耗 + PurchaseOrder 到货日曲线真抬头  6790ms
+   ✓ WO-SANDBOX-D4 ② 库存 地点×时间序列（由 inventory_optimize 真输出驱动） > SEAM-5 改真库存颗粒 Material.onHand → 投影曲线与欠储首日真变（红咬：写死曲线则纹丝不动）  7384ms
+   ✓ WO-SANDBOX-D4 ② 库存 地点×时间序列（由 inventory_optimize 真输出驱动） > 地点轴诚实 EMPTY：物料无地点属性 → locations/cells 恒空 + missingInputs 点名到属性（不以全网合计冒充地点）  7699ms
+   ✓ WO-SANDBOX-D4 ③ 全链经营现金流（由 capex_scenario × credit_exposure 两个真求解器驱动） > SEAM-6 两侧都真出了数，依然 EMPTY 不相加；两侧「不可相加」登记逐字节一致（同一实现）  7249ms
+   ✓ WO-SANDBOX-D4 ③ 全链经营现金流（由 capex_scenario × credit_exposure 两个真求解器驱动） > EMPTY 的依据必须站得住：收现腿在数据上确实没有时间轴（ARInvoice 无开票/到期/回款日 · FinanceAccount 无期次）  8009ms
+   ✓ WO-SANDBOX-D4 ③ 全链经营现金流（由 capex_scenario × credit_exposure 两个真求解器驱动） > R6：capex_scenario 同输入重跑，chainCashflow 逐字节一致  6735ms
+ ✓ test/column-security.test.ts (9 tests) 69464ms
+   ✓ A6 列级（属性级）Security · WO-69 P1 > S1 受限角色查询对象：unitPrice 键**不存在**（不是 null），admin 仍看得到  9456ms
+   ✓ A6 列级（属性级）Security · WO-69 P1 > S1b 聚合/图遍历不是列级安全的绕行口  7964ms
+   ✓ A6 列级（属性级）Security · WO-69 P1 > S2 受限角色写 unitPrice → 403 PROPERTY_FORBIDDEN，且值未落库  6900ms
+   ✓ A6 列级（属性级）Security · WO-69 P1 > S2b 受限角色写**可写**属性照常放行（列级不是把整个对象锁死）  6509ms
+   ✓ A6 列级（属性级）Security · WO-69 P1 > S3 求解器上下文同受列级约束：quote_margin 以受限角色跑，unitPrice 真没进 context  8059ms
+   ✓ A6 列级（属性级）Security · WO-69 P1 > S4 未配 propertyPolicy 的策略行为不变：admin 旁路 + 无策略 default-allow + 既有角色不受影响  8905ms
+   ✓ A6 列级（属性级）Security · WO-69 P1 > 多角色：受限角色 + 未受限角色 = 并集（宽者胜），加角色不会让人看得更少  7499ms
+   ✓ A6 列级（属性级）Security · WO-69 P1 > S3b：受列级约束的角色调求解器 → 403 SOLVER_COLUMN_RESTRICTED（拒绝·不产出任何数字）  7358ms
+   ✓ A6 列级（属性级）Security · WO-69 P1 > S3b 零回归：admin 与无列级策略角色不受守卫影响（S4 硬底线·逐字节现行为）  6793ms
+ ✓ test/decision-kernel-c1.test.ts (8 tests) 111720ms
+   ✓ WO-C1 · L2 决策内核（Decision·根因→方案→选定→落 Action） > C1+C8 端到端：POST /decisions(201·PROPOSED) → GET → POST /commit(COMMITTED·可执行才派单)·全非 404  15293ms
+   ✓ WO-C1 · L2 决策内核（Decision·根因→方案→选定→落 Action） > C3 派单纪律（门不绕 + 不派废单）：commit 不留任何注定失败的 adopt_mitigation 草稿  13779ms
+   ✓ WO-C1 · L2 决策内核（Decision·根因→方案→选定→落 Action） > C2 Decision 从真推演派生：改根因颗粒(BackupSupplierPool.certWeeks) → 重建 → optionsRef 内容变(非写死)  14727ms
+   ✓ WO-C1 · L2 决策内核（Decision·根因→方案→选定→落 Action） > C4 状态机：PROPOSED→COMMITTED 合法；重复 commit → 409（非法转移）  14340ms
+   ✓ WO-C1 · L2 决策内核（Decision·根因→方案→选定→落 Action） > C5 溯源(R13)：trace 有 root_cause/options/chosen 步·commit 后补 action 步·各带 refId  13254ms
+   ✓ WO-C1 · L2 决策内核（Decision·根因→方案→选定→落 Action） > C6 R2 跨租户 404：他租户查不到 demo 的 Decision  12272ms
+   ✓ WO-C1 · L2 决策内核（Decision·根因→方案→选定→落 Action） > C7 R6 确定性：同输入 + 同 generatedAt 两建 Decision deep-equal（id 派生·无随机）  15150ms
+   ✓ WO-C1 · L2 决策内核（Decision·根因→方案→选定→落 Action） > 拒幽灵方案：chosenOptionIds 含非本次推演方案 → 400  12900ms
+ ✓ test/sandbox-g1-seam.test.ts (14 tests) 90750ms
+   ✓ G1-2 · SEAM 命门：改种出来的 Cadence ⇒ propagateTick 的放行形状真的因它而变 > 闸门相位来自**对象库那一行**：第一次放行的 tick == nextGateTick(0, gate(该行))，之前恒 0  2761ms
+   ✓ G1-2 · SEAM 命门：改种出来的 Cadence ⇒ propagateTick 的放行形状真的因它而变 > **只改数据**（everyDays 6→3、规则一字不动）⇒ 放行次数真的变多，且公倍数点上总量守恒  28730ms
+   ✓ G1-2 · SEAM 命门：改种出来的 Cadence ⇒ propagateTick 的放行形状真的因它而变 > 把该行改成诚实缺席（dataMode≠SYNTHETIC）⇒ 声明它的规则**不传导**且响应显式报缺，绝不按'随到随办'跑  3987ms
+   ✓ G1-3 · 跨消费方口径自洽：E1 摊成的环节天数 == 契约唯一公式 expectedCadenceWaitDays(库里那一行) > E1 每个 cadence 段都能在对象库找到同 nodeId 的行，days 逐值 == everyDays/2  329ms
+   ✓ G1-3 · 跨消费方口径自洽：E1 摊成的环节天数 == 契约唯一公式 expectedCadenceWaitDays(库里那一行) > 改落库的 everyDays ⇒ E1 摊的天数**跟着变**（证明 E1 是运行时读对象，不是种子期烤死的常数）  963ms
+   ✓ G1-5 · 作用域真收窄：给 businessTypes / baseIds ⇒ 结果真变小且是子集 > affected_orders：给 businessTypes ⇒ 严格变小 + 是全量子集 + 零跨细分泄漏 + 回带 scope  314ms
+   ✓ G1-5 · 作用域真收窄：给 businessTypes / baseIds ⇒ 结果真变小且是子集 > chain_impediments：给 baseIds ⇒ 真收窄；给 businessTypes ⇒ **显式拒绝**而不是静默返全域  13306ms
+   ✓ G1-6 · 卡点/堵点/断点三类互斥可判，裁决线来自规则而非代码常数 > 三类都判得出来；每条 evidence 指得出 ruleKey + 阈值出处；同一 locus 不出两类  6134ms
+   ✓ G1-6 · 卡点/堵点/断点三类互斥可判，裁决线来自规则而非代码常数 > 裁决线是**规则里的红线**：改 C05 的红线 ⇒ 卡点条数真的跟着翻（改规则即改推演）  15124ms
+   ✓ G1-7 · R6 确定性（合并态） > chain_loss_attribution / chain_impediments / affected_orders 连跑两次逐字节一致  10178ms
+   ✓ G1-8 · 合并态下「诚实缺席」的理由仍为真（双向棘轮 · 本门首跑即抓出两条真实存量） > E1 声称无承载的结构性缺口，其承载物在对象库里的实况必须与清单逐条对上  327ms
+ ✓ test/sim-drill.seam.test.ts (22 tests) 179342ms
+   ✓ WO-SIM-DRILL-P12 · 推演演习接缝 > ① 11 类事件**全部**有世界态落点，且每个落点在真规则表上**真有出边**（落在叶子上比不落更糟）  11018ms
+   ✓ WO-SIM-DRILL-P12 · 推演演习接缝 > ② 端到端：SO-3391 提前 10 天 ⇒ 求解器真被调 + 屏上给出被挤占订单号与代价数字  31200ms
+   ✓ WO-SIM-DRILL-P12 · 推演演习接缝 > ② 事件驱动的结论**只在给了事件时**出现（scanOnly 不调求解器）  16298ms
+   ✓ WO-SIM-DRILL-P12 · 推演演习接缝 > ③ 推演 N 天 ⇒ ceil(N/tickDays) 个 tick，且天口径随会话走  17624ms
+   ✓ WO-SIM-DRILL-P12 · 推演演习接缝 > ③ tickDays 从 SimSession 透到**下游四页的消费面**（会话列表投影）  14145ms
+   ✓ WO-SIM-DRILL-P12 · 推演演习接缝 > ④ 诚实位：sop_reschedule 无 dataMode 字段 ⇒ 归一成 UNDECLARED，不冒充 LIVE  31301ms
+   ✓ WO-SIM-DRILL-P12 · 推演演习接缝 > ⑦ R6：同输入重跑，结论逐字节一致  43527ms
+   ✓ WO-SIM-DRILL-P12 · 推演演习接缝 > ⑦ R4-sim：演习是只读的 —— 世界线 curTick 一格不动  14080ms
+ ✓ test/sandbox-chain-scope.seam.test.ts (11 tests) 117872ms
+   ✓ WO-SANDBOX-E2 · SEAM 命门：选储能推演 → 结果只含储能订单，不泄漏其他细分（G-SEG-ATTR-CROSS-SEGMENT 同类事故） > affected_orders 聚合：24 张全细分 → 9 张全储能；乘用车/商用车一张不漏进来；problems 根因链也不泄漏  16862ms
+   ✓ WO-SANDBOX-E2 · SEAM 命门：选储能推演 → 结果只含储能订单，不泄漏其他细分（G-SEG-ATTR-CROSS-SEGMENT 同类事故） > 逐单类求解器（order_fullchain / atp_check）：缺省选单也在作用域内挑，不再恒落全集首单  10165ms
+   ✓ WO-SANDBOX-E2 · 三维可组合（业务线 ⊕ 基地 ⊕ 型号 三个条件都生效·SEAM-ARG-DROP 丢参史） > 三维同给 → 结果 = 三者交集，且严格小于任一单维（「只生效最后一个」当场红）  7399ms
+   ✓ WO-SANDBOX-E2 · 三维可组合（业务线 ⊕ 基地 ⊕ 型号 三个条件都生效·SEAM-ARG-DROP 丢参史） > 基地维复用既有归一单源 normalizeBaseRef：obj_base_<中文名> / 中文名 / baseId 三形态同一结果（没另造一套归一）  13763ms
+   ✓ WO-SANDBOX-E2 · 诚实缺席（静默返回全集是最危险的一种：用户以为筛了、其实没筛） > 不存在的业务线 → 400 诚实报错并列出合法值，绝不静默回落全集  15181ms
+   ✓ WO-SANDBOX-E2 · 诚实缺席（静默返回全集是最危险的一种：用户以为筛了、其实没筛） > 合法但作用域内无订单 → 诚实空（0 行），不是静默全集  13989ms
+   ✓ WO-SANDBOX-E2 · 诚实缺席（静默返回全集是最危险的一种：用户以为筛了、其实没筛） > 逐单类：点名的单不在作用域 → 400 明说被哪一维挡住；作用域内无单 → 404 诚实空，都不回落作用域外的单  7401ms
+   ✓ WO-SANDBOX-E2 · 诚实缺席（静默返回全集是最危险的一种：用户以为筛了、其实没筛） > 既有 portfolio 挂载点的静默全集也堵上：businessTypes 非法值不再被 filter 光后退回全世界重解  7406ms
+   ✓ WO-SANDBOX-E2 · R6 确定性 + 向后兼容 > 同输入两跑字节一致（affected_orders / order_fullchain / atp_check 三处作用域路径）  7820ms
+   ✓ WO-SANDBOX-E2 · R6 确定性 + 向后兼容 > 未限定 / 空数组（前端未勾选）→ 与上线前逐字节一致，且不回带 scope  8965ms
+   ✓ WO-SANDBOX-E2 · R6 确定性 + 向后兼容 > 非数组写法诚实拒绝（不吞成「没传」→ 那又是一次静默全集）  8906ms
+stdout | test/prov-drillfield-truth.test.ts > WO-R13-DRILLFIELD · 溯源口径通用判据（标签所指字段 → 回的值真出自该字段·无静默跳过） > gap_attribution 全部 8 条路径 + supply_demand_gap_attribution：每个 provenance 非 SINGLE 即 AGGREGATE，两类都被断言，无第三类
+[PROV-CANARY] pathsWithProv=8 single={"gap_attribution":85,"supply_demand_gap_attribution":3} aggregate={"gap_attribution":24,"supply_demand_gap_attribution":4} typeFields=23
+
+stdout | test/prov-drillfield-truth.test.ts > WO-R13-DRILLFIELD · 溯源口径通用判据（标签所指字段 → 回的值真出自该字段·无静默跳过） > supply_demand_gap_attribution 结构漂移支路（seg_drift·默认种子里恒 0 → 必须造数才走得到）同样逐叶对拍
+[PROV-CANARY-DRIFT] single={"supply_demand_gap_attribution":6} aggregate={"supply_demand_gap_attribution":4} typeFields=DemandSegment.tgt,DemandSegment.demandWanPerYearP50,Order.qty,Equipment.oee_current,MaterialBalance.gapTon,Line.capacityDaily
+
+ ❯ test/prov-drillfield-truth.test.ts (10 tests | 2 failed) 2983247ms
+   ✓ WO-PROV-DRILLFIELD · gap_attribution provenance 口径真值门（R13·标签所指字段真值 == 回的值） > 口径锚（数据半）：`Order.value` = qty×unitPrice = **元**，与万元归因权重 orderVal 恰差 1e4  13618ms
+   ✓ WO-PROV-DRILLFIELD · gap_attribution provenance 口径真值门（R13·标签所指字段真值 == 回的值） > 效果层①（全局路）：每个可解析下钻叶的 drillValue == 该对象该字段真值（订单叶 ≥5·非空洞）  10718ms
+   ✓ WO-PROV-DRILLFIELD · gap_attribution provenance 口径真值门（R13·标签所指字段真值 == 回的值） > 效果层②（基地作用域路 + 敞口路）：scoped/exposure 两条支路逐叶同样对拍真值  9552ms
+   ✓ WO-PROV-DRILLFIELD · gap_attribution provenance 口径真值门（R13·标签所指字段真值 == 回的值） > 效果层③（前端显示这一跳）：ProvenanceDag / DashboardView 渲染出的那个数 == DB 里 Order.value 真值  8016ms
+   ✓ WO-PROV-DRILLFIELD · gap_attribution provenance 口径真值门（R13·标签所指字段真值 == 回的值） > 接缝（数据半×引擎半）：改订单颗粒 → 重跑派生 → drillValue 跟着 `Order.value` 一起变，且再次逐叶相等  9048ms
+   ✓ WO-PROV-DRILLFIELD · gap_attribution provenance 口径真值门（R13·标签所指字段真值 == 回的值） > R6 确定性：两跑 gap_attribution 字节一致（本单只改展示口径·不引入非确定性）  8789ms
+   ✓ WO-R13-DRILLFIELD · 溯源口径通用判据（标签所指字段 → 回的值真出自该字段·无静默跳过） > gap_attribution 全部 8 条路径 + supply_demand_gap_attribution：每个 provenance 非 SINGLE 即 AGGREGATE，两类都被断言，无第三类  14184ms
+   ✓ WO-R13-DRILLFIELD · 溯源口径通用判据（标签所指字段 → 回的值真出自该字段·无静默跳过） > supply_demand_gap_attribution 结构漂移支路（seg_drift·默认种子里恒 0 → 必须造数才走得到）同样逐叶对拍  7185ms
+   × WO-R13-DRILLFIELD · 溯源口径通用判据（标签所指字段 → 回的值真出自该字段·无静默跳过） > 下游 id 拼装回归：真正拼 `obj_<type>_<drillId>` 的那条消费路必须逐叶解析得开 1845103ms
+     → Test timed out in 300000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   × WO-R13-DRILLFIELD · 溯源口径通用判据（标签所指字段 → 回的值真出自该字段·无静默跳过） > 路径表完整性锚：supply_demand_gap_attribution **不消费任何入参** → 故上表只列 1 条；哪天接了 args 这条必红 1057026ms
+     → Test timed out in 300000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ test/turn-loop.seam.test.ts (11 tests | 1 failed) 4233431ms
+   ✓ WO-TURN-LOOP · 回合推进对求解器可见（接缝） > 🐤 金丝雀：扰动幅度不同 ⇒ 轨迹必须不同（否则量法坏了，下面结论一律不许信）  29285ms
+   ✓ WO-TURN-LOOP · 回合推进对求解器可见（接缝） > 🔴 SEAM：tick×3 后求解器给出 4 拍轨迹，前两拍与无扰动对照臂逐字节相同（两跳链的到达延迟 = 回合语义）  18127ms
+   ✓ WO-TURN-LOOP · 回合推进对求解器可见（接缝） > 🔴 SEAM：同样三次扰动换先后顺序 ⇒ 结果必须不同（相同则说明回合没接上，只是快照重算）  24051ms
+   × WO-TURN-LOOP · 回合推进对求解器可见（接缝） > ⚖️ 边界：两条 delay0 可加扰动换顺序 ⇒ 结果相同（顺序要有意义，路径上必须有记忆） 1834092ms
+     → Test timed out in 1500000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   ✓ WO-TURN-LOOP · 回合推进对求解器可见（接缝） > 🔒 R6：同扰动同顺序重跑 ⇒ 除 worldId/summary 外逐字节相同（回合不许引入随机性）  1088435ms
+   ✓ WO-TURN-LOOP · 回合推进对求解器可见（接缝） > 🔁 反向对照：tick×0 ⇒ 单帧世界 direction=UNKNOWN / delta=null，既有 pressures 不受影响  11800ms
+   ✓ WO-TURN-LOOP · 回合推进对求解器可见（接缝） > 📏 窗口：tick×5 + turnWindow=3 ⇒ 只回 3 拍且 truncated=true（不假装看全了）  1134387ms
+   ✓ WO-TURN-LOOP · 回合推进对求解器可见（接缝） > 🧮 纯函数：单点轨迹 ⇒ UNKNOWN/null；空轨迹 ⇒ 全空（回合量确实来自序列，不是现算） 2ms
+   ✓ WO-TURN-LOOP · 回合推进对求解器可见（接缝） > 🕳 读取器：无世界线 ⇒ frames 空 + note 点明「读不到历史」（不与「历史为空」混为一谈）  8993ms
+   ✓ WO-TURN-LOOP · 回合推进对求解器可见（接缝） > 🐤 反向金丝雀：set(tick0 起点值) ⇒ 与不扰动臂逐字节相同；set(0) ⇒ 必须不同（幅度 0 ≠ 没扰动）  28579ms
+   ✓ WO-TURN-LOOP · 回合推进对求解器可见（接缝） > 📈 单调：delta 扰动阶梯 0→+1000 ⇒ 聚合读数与单对象读数都严格递增（源涨⇒下游涨）  55672ms
+ ✓ test/planviews.test.ts (12 tests) 1228931ms
+   ✓ 剩余视图增量 · 计划域（§7.14/§7.15） > F21/AOP: 三情景（基准已拍板）+ C18/C23 走规则引擎 + 已触发挂牌行 + 年→季→月分解  1123380ms
+   ✓ 剩余视图增量 · 计划域（§7.14/§7.15） > F21/同源勾稽: 分解季度值 === S&OP 平衡台目标线（同一 PlanTarget 对象，targetRef 一致）  10236ms
+   ✓ 剩余视图增量 · 计划域（§7.14/§7.15） > 触发判定后端驱动：RULE_SCAN 式扫描把 MONITORING 翻为 TRIGGERED（前端只读）  9331ms
+   ✓ 剩余视图增量 · 计划域（§7.14/§7.15） > F21/拍板情景：AOP情景拍板 Action（EXECUTED 后才落库），act.aop-finalize 已注册  6573ms
+   ✓ 剩余视图增量 · 计划域（§7.14/§7.15） > F22/quarterly: 缺口三档（红>4/黄>0/绿≤0）、需求=分解×滚动修正、长协 −8% 行带 baseId  8768ms
+   ✓ 剩余视图增量 · 计划域（§7.14/§7.15） > Entitlement: view.annual-scenario 关闭 → /plan/aop 404 FEATURE_NOT_FOUND（先于 authz）  10971ms
+   ✓ 剩余视图增量 · 计划域（§7.14/§7.15） > F23/§S1.5: affected_orders problems[] 确定性归并 + 逐单 4 层根因链（既有字段不变）  13481ms
+   ✓ 剩余视图增量 · 计划域（§7.14/§7.15） > F27/§7.20: mapping 行按数据域分组排序、血缘 fieldCount 正确、含求解器/Agent 行  10537ms
+   ✓ 剩余视图增量 · 计划域（§7.14/§7.15） > order §4.5-D: affected_orders 聚合明细按交期升序（最早到期最先看）  8522ms
+   ✓ 剩余视图增量 · 计划域（§7.14/§7.15） > §4.5-③: mapping/registries 四注册表段（关系类型←本体 / 规则←规则库 / Action·事件←静态种子）  8565ms
+   ✓ 剩余视图增量 · 计划域（§7.14/§7.15） > F25/§7.18: 图谱边带 kind；八视角 ViewConfig 下发；学习闭环 nodeFilter.ids 全部存在  9445ms
+   ✓ 剩余视图增量 · 计划域（§7.14/§7.15） > F25/修订点4: 新 feature key 全部可解析；关闭 view.geo-map / 单视角后从 workspace 消失  9102ms
+ ✓ test/rule-scope-drop.seam.test.ts (8 tests) 66881ms
+   ✓ WO-RULE-SCOPE-DROP · 规则作用域命名漂移（静默丢弃 → 诚实拒绝） > SEAM-1 · C28 在 MaterialBatch 的真实例上**真评估出判定**（不是断言 scope 字符串）  26570ms
+   ✓ WO-RULE-SCOPE-DROP · 规则作用域命名漂移（静默丢弃 → 诚实拒绝） > SEAM-2 · scope 写了不存在的类型键 ⇒ **必须产生可观察信号**（不是静默通过）  14906ms
+   ✓ WO-RULE-SCOPE-DROP · 规则作用域命名漂移（静默丢弃 → 诚实拒绝） > SEAM-3 · 修完之后：种子里剩下的未解析作用域**全是范畴错误**，无一条是「打错名」  9740ms
+   ✓ WO-RULE-SCOPE-DROP · 规则作用域命名漂移（静默丢弃 → 诚实拒绝） > SEAM-4 · 三条改名后真挂上本体图谱（C26→Certification / C27→LongTermAgreement / C28→MaterialBatch）  7606ms
+   ✓ WO-RULE-SCOPE-DROP · 规则作用域命名漂移（静默丢弃 → 诚实拒绝） > SEAM-8 · WO §4 核对：ChangeoverMatrix 真名是 minutes，因子⑤ 的 changeoverMin 在对象上恒不存在  8049ms
+ ✓ test/factor-scope-singlesource.seam.test.ts (10 tests) 124513ms
+   ✓ WO-FACTOR-SCOPE-SINGLESOURCE · 因子作用域单源 SEAM > ① 单源：availableFactors 全是真 CausalFactor.factorId，且与 BN 张力词表**零交集**（chip 不再传中文因子名）  14349ms
+   ✓ WO-FACTOR-SCOPE-SINGLESOURCE · 因子作用域单源 SEAM > ② 接缝驱动（头号判据）：真因子 id → 树**与 base-only 不同**，且多出的节点下钻到本基地真对象真字段  11736ms
+   ✓ WO-FACTOR-SCOPE-SINGLESOURCE · 因子作用域单源 SEAM > ②b 换一个因子 → 树又不同（7 个按钮不再逐字节相同 —— 仓主实测的那个症状）  12917ms
+   ✓ WO-FACTOR-SCOPE-SINGLESOURCE · 因子作用域单源 SEAM > ③ per-base：同一因子在不同基地 → 下钻到**不同**对象（R1「8/8 卡全同」老病不复发）  9364ms
+   ✓ WO-FACTOR-SCOPE-SINGLESOURCE · 因子作用域单源 SEAM > ④ 反向：传 BN 中文因子名（不在册）→ factorApplied=false + 基地树保住 + note 说得出是哪个词  8606ms
+   ✓ WO-FACTOR-SCOPE-SINGLESOURCE · 因子作用域单源 SEAM > ④b 反向：产能因子不给 baseId → 据实说「需 scope.baseId」，不假装细分  8243ms
+   ✓ WO-FACTOR-SCOPE-SINGLESOURCE · 因子作用域单源 SEAM > ⑤ 数据缺席据实不下发：眉山无「换型损失」承载对象（EquipmentDowntime reason=换型 实测 0 条）→ 不出现在 chip 候选里  10366ms
+   ✓ WO-FACTOR-SCOPE-SINGLESOURCE · 因子作用域单源 SEAM > ⑥ caused_by：物料齐套 → 正极粉短缺 → …（真边真节点·非编造）；其余产能因子诚实无边  15893ms
+   ✓ WO-FACTOR-SCOPE-SINGLESOURCE · 因子作用域单源 SEAM > ⑧ 数值不退化：每个因子的细分层既不整层恒 0，也不把整个基地缺口独吞（单对象归一退化门）  16574ms
+   ✓ WO-FACTOR-SCOPE-SINGLESOURCE · 因子作用域单源 SEAM > ⑦ R6 确定性：同 seed 两次调用逐字节一致  16451ms
+ ✓ test/chain-impediment-seam.test.ts (19 tests) 244282ms
+   ✓ WO-SANDBOX-E3 · 阻滞点判定 SEAM（规则半 × 引擎半 · 改阈值即改推演） > BASE · 真种子上三类都判得出来，且每条阻滞点的阈值都指得出出处（R13）  24775ms
+   ✓ WO-SANDBOX-E3 · 阻滞点判定 SEAM（规则半 × 引擎半 · 改阈值即改推演） > SEAM-1 · 断点·数据：只改 C09 的 params.staleHours（纯 param，一个字的 expression 都不动）→ 数据断从 0 条变成真出条  24161ms
+   ✓ WO-SANDBOX-E3 · 阻滞点判定 SEAM（规则半 × 引擎半 · 改阈值即改推演） > SEAM-2 · 堵点：把 C28 的呆滞天数搬进 params 再改它 → 堵点条数与 severity 真的跟着走  21728ms
+   ✓ WO-SANDBOX-E3 · 阻滞点判定 SEAM（规则半 × 引擎半 · 改阈值即改推演） > SEAM-3 · 卡点·利用率红线：把 C05 的红线搬进 params 再压低 → 卡点条数真的暴涨（且红线同时是三类互斥的裁决线）  24924ms
+   ✓ WO-SANDBOX-E3 · 阻滞点判定 SEAM（规则半 × 引擎半 · 改阈值即改推演） > SEAM-4 · 卡点·硬容量夹定：C02 阈值从「对象字段」搬到 params 并抬高 → 化成/老化工序真的被判成卡点（D3 数据半 × E3 引擎半）  16730ms
+   ✓ WO-SANDBOX-E3 · 阻滞点判定 SEAM（规则半 × 引擎半 · 改阈值即改推演） > HONEST-1 · 规则退役 → 该判据诚实落 UNKNOWN 并说明原因，绝不退回默认阈值继续判  14630ms
+   ✓ WO-SANDBOX-E3 · 阻滞点判定 SEAM（规则半 × 引擎半 · 改阈值即改推演） > HONEST-2 · 判不出来的判据全在 unresolved 里说清「为什么」（换型无对象承载 / 时间断无规则承载）  11538ms
+   ✓ WO-SANDBOX-E3 · 阻滞点判定 SEAM（规则半 × 引擎半 · 改阈值即改推演） > R6 · 同输入连跑两次字节一致（scanId/排序/severity 全稳）  21301ms
+   ✓ WO-SANDBOX-E3 · 阻滞点判定 SEAM（规则半 × 引擎半 · 改阈值即改推演） > R-ARG-FIDELITY · scope.baseIds 真过滤；modelIds 仍显式拒绝；businessTypes 放行但筛不动的地方必须出声  30424ms
+   ✓ WO-IMP-CARRIER · 阻滞点承载对象 SEAM（它到底卡住了哪些订单） > ① 重复计数自证 · 逐条承载订单**去重后**不得超过可阻塞订单簿（按基地 join 会当场爆掉这条）  11679ms
+   ✓ WO-IMP-CARRIER · 阻滞点承载对象 SEAM（它到底卡住了哪些订单） > ② 遍历是**沿本体的边**走的，不是按基地 join（path 逐跳可核对）  11141ms
+   ✓ WO-IMP-CARRIER · 阻滞点承载对象 SEAM（它到底卡住了哪些订单） > ③ 对照实验 · 超阈幅度相近但承载量差一个量级 ⇒ severity 必须拉开（第二因子真的进了公式）  11952ms
+   ✓ WO-IMP-CARRIER · 阻滞点承载对象 SEAM（它到底卡住了哪些订单） > ④ R6 · 承载对象判不出来时 severity 退回单因子口径，且不带该字段（既有回包逐字节不变）  19277ms
+stdout | test/decision-info-seam.test.ts > WO-DECISION-INFO · 决策三块（影响面 / 不作为后果 / 方案代价）接缝 > ① 影响面真接：风险卡点名到订单/客户/金额；改 Order.qty 真颗粒 → 敞口金额与订单量**真变**
+① 影响面：常州 25单/9客户/33.3869亿 → 改 SO-3402.qty ×3 后 188299套/39.7748亿
+
+stdout | test/decision-info-seam.test.ts > WO-DECISION-INFO · 决策三块（影响面 / 不作为后果 / 方案代价）接缝 > ② 零敞口是**显式态**且排序降级；把窗外订单挪进窗 → 翻 OK 且 rank 真的往前跳
+② 零敞口：江门 rank 8(EMPTY·窗外最近 SO-3458 D+32) → 交期进窗后 rank 7(OK·1单/3.0488亿)
+
+stdout | test/decision-info-seam.test.ts > WO-DECISION-INFO · 决策三块（影响面 / 不作为后果 / 方案代价）接缝 > ③ 不作为后果：catchUp 真派生（随 Order.qty 变）· 逐单延误标 ESTIMATED · 违约金**恒 EMPTY**（规则库无承载）
+③ 不作为：缺口 152927套 ÷ 空闲日产能 211.2 = 724.09天 · 最坏延误 4天(估算) · 违约金 EMPTY(Order.latePenaltyRatePerDay/Customer.contractPenaltyRate/RuleEntry(交付延误罚则).params) → 改 qty 后 181963套/861.57天
+
+stdout | test/decision-info-seam.test.ts > WO-DECISION-INFO · 决策三块（影响面 / 不作为后果 / 方案代价）接缝 > ④ 方案对比：A/B/C 三个可比方案；A ≡ 既有贪心 steps（对拍）；跨基地方案**点名**被挤订单与延后天数
+④ 方案：触发缺口 152927套（第1天）· 3 个可比方案：A=收窄152927/残留0 · B=收窄152927/残留0 · C=收窄152927/残留0 · 残留最小=A
+  A 挤占 SO-900134(信阳·低·挤5834·延34.32天)、SO-900353(江门·低·挤4808·延22.99天)、SO-900209(成都·低·挤3232·延12.83天)、SO-900374(眉山·低·挤4442·延21.37天)、SO-900056(枣庄·低·挤5281·延31.55天)、SO-900401(合肥·低·挤3817·延19.49天)、SO-900485(扬州·低·挤4746·延31.98天)、SO-900233(枣庄·低·挤7639·延45.63天)、SO-900248(厦门·低·挤5308·延26.02天)、SO-900362(信阳·低·挤4911·延28.89天)、SO-900479(信阳·低·挤3139·延18.46天)、SO-3529(扬州·中·挤5646·延38.05天)、SO-900157(邯郸·中·挤5137·延35.67天)、SO-3470(信阳·中·挤4033·延23.72天)、SO-900436(枣庄·中·挤3243·延19.37天)、SO-3431(武汉·中·挤8872·延48.75天)、SO-900325(信阳·中·挤1473·延8.66天)、SO-900415(武汉·中·挤7550·延41.48天)、SO-900406(信阳·中·挤2074.96·延12.21天)
+  改 SO-900134.qty 后 → SO-900134(挤1459)、SO-900353(挤4808)、SO-900209(挤3232)、SO-900374(挤4442)、SO-900056(挤5281)、SO-900401(挤3817)、SO-900485(挤4746)、SO-900233(挤7639)、SO-900248(挤5308)、SO-900362(挤4911)、SO-900479(挤3139)、SO-3529(挤5646)、SO-900157(挤5137)、SO-3470(挤4033)、SO-900436(挤3243)、SO-3431(挤8872)、SO-900325(挤1473)、SO-900415(挤7550)、SO-900406(挤5039)、SO-900427(挤919)、SO-900487(挤491.96)
+
+ ✓ test/impediment-options-seam.test.ts (9 tests) 122732ms
+   ✓ WO-SANDBOX-S3-ENUM · 阻滞点 → 候选对策枚举 SEAM（真种子 → 扫描 → 候选 → 逐条溯源） > S3-1 · 端到端：真种子跑一次扫描，阻滞点真长出候选，且每条候选形状/归属/溯源三样齐备  13616ms
+   ✓ WO-SANDBOX-S3-ENUM · 阻滞点 → 候选对策枚举 SEAM（真种子 → 扫描 → 候选 → 逐条溯源） > S3-2 · 零写死：每条候选的**落点值**与**目标档位**都能在真数据/真规则里指出出处（有步长常数即红）  16841ms
+   ✓ WO-SANDBOX-S3-ENUM · 阻滞点 → 候选对策枚举 SEAM（真种子 → 扫描 → 候选 → 逐条溯源） > S3-3 · 候选 id 单源：逐条可由 contracts 构造函数从候选**自身字段**重建，且全局唯一  10527ms
+   ✓ WO-SANDBOX-S3-ENUM · 阻滞点 → 候选对策枚举 SEAM（真种子 → 扫描 → 候选 → 逐条溯源） > S3-4 · 反向 · 诚实空集：确实没有对策的阻滞点 → 空候选 + 定性 NONE + 说清缺哪一维，且不报错  11808ms
+   ✓ WO-SANDBOX-S3-ENUM · 阻滞点 → 候选对策枚举 SEAM（真种子 → 扫描 → 候选 → 逐条溯源） > S3-4b · 反向 · 空集的理由必须分清「够不着」与「够着了但没传导」，且台账数与逐点账对得上  12947ms
+   ✓ WO-SANDBOX-S3-ENUM · 阻滞点 → 候选对策枚举 SEAM（真种子 → 扫描 → 候选 → 逐条溯源） > S3-4c · NONE 必须带三选一定性，且「不进产能公式」这一类要顶得住独立复算  16358ms
+   ✓ WO-SANDBOX-S3-ENUM · 阻滞点 → 候选对策枚举 SEAM（真种子 → 扫描 → 候选 → 逐条溯源） > S3-5 · 「算不了」≠「没有」：同一份数据只拧算力旋钮 → 同一批阻滞点从 NONE 翻成 UNAVAILABLE  10777ms
+   ✓ WO-SANDBOX-S3-ENUM · 阻滞点 → 候选对策枚举 SEAM（真种子 → 扫描 → 候选 → 逐条溯源） > S3-6 · 规则半 × 枚举半：只改 C05 红线（一行代码不动）→ 新出的卡点真长出候选，且阈值档位跟着走  16099ms
+   ✓ WO-SANDBOX-S3-ENUM · 阻滞点 → 候选对策枚举 SEAM（真种子 → 扫描 → 候选 → 逐条溯源） > S3-7 · R6 确定性：同输入连跑两次，候选（含 id / 排序 / 各维数值）逐字节一致  13743ms
+stdout | test/decision-info-seam.test.ts > WO-DECISION-INFO · 决策三块（影响面 / 不作为后果 / 方案代价）接缝 > ⑤ 去魔数：跨基地/外协步的日期由 InterBaseTransfer.transitDays / Supplier.leadTime 真派生 —— 改真字段则真变
+⑤ 去魔数：跨基地 d4(lead 3·XFER-changzhou-chengdu-4680-NCM) / 外协 d13(lead 12·SUP-015)；改 transitDays+9 → d13；改 leadTime+11 → d24；踢出合格 → 出处 SUP-002
+
+ ✓ test/decision-info-seam.test.ts (9 tests) 82139ms
+   ✓ WO-DECISION-INFO · 决策三块（影响面 / 不作为后果 / 方案代价）接缝 > ① 影响面真接：风险卡点名到订单/客户/金额；改 Order.qty 真颗粒 → 敞口金额与订单量**真变**  10017ms
+   ✓ WO-DECISION-INFO · 决策三块（影响面 / 不作为后果 / 方案代价）接缝 > ② 零敞口是**显式态**且排序降级；把窗外订单挪进窗 → 翻 OK 且 rank 真的往前跳  22336ms
+   ✓ WO-DECISION-INFO · 决策三块（影响面 / 不作为后果 / 方案代价）接缝 > ③ 不作为后果：catchUp 真派生（随 Order.qty 变）· 逐单延误标 ESTIMATED · 违约金**恒 EMPTY**（规则库无承载）  7262ms
+   ✓ WO-DECISION-INFO · 决策三块（影响面 / 不作为后果 / 方案代价）接缝 > ④ 方案对比：A/B/C 三个可比方案；A ≡ 既有贪心 steps（对拍）；跨基地方案**点名**被挤订单与延后天数  8698ms
+   ✓ WO-DECISION-INFO · 决策三块（影响面 / 不作为后果 / 方案代价）接缝 > ⑤ 去魔数：跨基地/外协步的日期由 InterBaseTransfer.transitDays / Supplier.leadTime 真派生 —— 改真字段则真变  24308ms
+   ✓ WO-DECISION-INFO · 决策三块（影响面 / 不作为后果 / 方案代价）接缝 > ⑦ R6 确定性：同输入两跑逐字节一致（三块输出全含在内）  922ms
+ ✓ test/process-flow-time.seam.test.ts (11 tests) 61824ms
+   ✓ WO-FLOWTIME · 流程实例反推（接缝驱动） > ① 从真种子反推出流程实例，每条能溯回具体源单据 id + 字段 + 原值  9252ms
+   ✓ WO-FLOWTIME · 流程实例反推（接缝驱动） > ② 反推值与实测值结构性可辨：origin 恒 DERIVED_FROM_DOCUMENT，MEASURED 今天 0 条  7999ms
+   ✓ WO-FLOWTIME · 流程实例反推（接缝驱动） > ③b 有实测就不许用计划值：凡单据同时有 plannedX/actualX，规则必须取 actualX（变异反证逼出来的门）  6946ms
+   ✓ WO-FLOWTIME · 流程实例反推（接缝驱动） > ④ 两向都真实：得出的有天数与责任方，不出的有 kind/reason/probe  7580ms
+   ✓ WO-FLOWTIME · 流程实例反推（接缝驱动） > ⑤ process_flow_time 真跑：给出站间时长、瓶颈站、卡顿站与卡在谁那里  7266ms
+   ✓ WO-FLOWTIME · 流程实例反推（接缝驱动） > ⑥ R6：两跑逐字节一致；asOf 由数据派生不是 wall-clock  7695ms
+   ✓ WO-FLOWTIME · 流程实例反推（接缝驱动） > ⑦ 端点两向 + 404 + 跨租户为空  7538ms
+   ✓ WO-FLOWTIME · 流程实例反推（接缝驱动） > ⑨ 本体登记：描述非空 + carries 链路与规则表的承载类型集合逐字相等  613ms
+   ✓ WO-FLOWTIME · 流程实例反推（接缝驱动） > ⑩ 反推产出真 emit 两个事件，且事件名与订阅表逐字一致  6907ms
+ ✓ test/portfolio.test.ts (10 tests) 72667ms
+   ✓ WO-PORTFOLIO-OPTIMAL · portfolio 默认门（守恒 + 方案 + 冻结·mock optimizer） > SEAM 层1：全订单联合解 → capacityLedger 每格 allocated ≤ cap（共享产能守恒·reconciled）  8841ms
+   ✓ WO-PORTFOLIO-OPTIMAL · portfolio 默认门（守恒 + 方案 + 冻结·mock optimizer） > ≥2 方案量化利弊：scenarios ≥2 且各 objectiveValues 真漂移（改目标→分配真变·非贴标签）  7531ms
+   ✓ WO-PORTFOLIO-OPTIMAL · portfolio 默认门（守恒 + 方案 + 冻结·mock optimizer） > 冻结子集：frozenOrderIds 项标 frozen、不入 served/displaced、其产能被预扣（R13 透明）  7148ms
+   ✓ WO-PORTFOLIO-OPTIMAL · portfolio 默认门（守恒 + 方案 + 冻结·mock optimizer） > release 模式：frozenCapacityMode=release → 被冻单产能不预扣（净 cap ≥ reserve 模式·看极限方案）  6956ms
+   ✓ WO-PORTFOLIO-OPTIMAL · portfolio 默认门（守恒 + 方案 + 冻结·mock optimizer） > orderIds 子集：只传部分订单 → 只这些进决策集（其余不出现在 occupancy/displaced）  7751ms
+   ✓ WO-PORTFOLIO-OPTIMAL · portfolio 默认门（守恒 + 方案 + 冻结·mock optimizer） > R6 确定性：同参数两跑 deep-equal（禁 Date.now·时间锚 forecastStart）  6654ms
+   ✓ WO-PORTFOLIO-OPTIMAL · portfolio 默认门（守恒 + 方案 + 冻结·mock optimizer） > 未兜底 opt 模型仍显式报错不兜底（同 opt 族·不静默假绿）  6781ms
+   ✓ WO-MEMSIM-OPTIMIZER · portfolio 内存态默认门（无 sidecar·InProc 兜底·守恒） > 默认 InProc → 真出可行解·FEASIBLE/optimal:false·capacityLedger 守恒（reconciled）  7456ms
+   ✓ WO-PORTFOLIO-FG-INVENTORY-OBJ · 最少成品库存目标维度（默认 InProc·真降压库） > 头号判据：min_fg_inventory.fgInventory < max_ontime.fgInventory（真把生产贴向交期·灭假维度）  6429ms
+   ✓ WO-PORTFOLIO-FG-INVENTORY-OBJ · 最少成品库存目标维度（默认 InProc·真降压库） > R6：min_fg_inventory 同参两跑 fgInventory + 分配字节一致（稳定序·无 Date.now/random）  7112ms
+ ✓ test/relation-edit-gaps.seam.test.ts (7 tests) 1860379ms
+   ✓ WO-RELATION-EDIT-GAPS · 接缝：关系的改/建/停/启四条写路 > ③ key 字符集：脏 key 四条全 400 且各自说中文；合法 key 与存量大驼峰后缀 key 仍 201（金丝雀）  8206ms
+   ✓ WO-RELATION-EDIT-GAPS · 接缝：关系的改/建/停/启四条写路 > ② 同 key 不许掉包端点（含掉头）；换 key 的反向边仍 201（金丝雀，存量 36 对反向不许误伤）  8486ms
+   ✓ WO-RELATION-EDIT-GAPS · 接缝：关系的改/建/停/启四条写路 > ① 改：基数与实现属性可改，回读即新值、version 递增；实现属性随边下发（前端预填靠它）  6741ms
+   ✓ WO-RELATION-EDIT-GAPS · 接缝：关系的改/建/停/启四条写路 > ④ 停用 ⇄ 启用可逆（四个读数）；已下线不许拨回，且本就启用的再启用也 409  7352ms
+   ✓ WO-MAPPING-WHITELIST · 接缝：关系编辑器保存一次，物化声明不许被抹掉 > §0 读路发的字段集 == 契约字段集（两份手抄清单一漂移就红）  770383ms
+   ✓ WO-MAPPING-WHITELIST · 接缝：关系编辑器保存一次，物化声明不许被抹掉 > §1 往返：原样保存一次，落盘声明的 hash 必须逐字节相同（9 个字段全覆盖）  9402ms
+   ✓ WO-MAPPING-WHITELIST · 接缝：关系编辑器保存一次，物化声明不许被抹掉 > §2 反向对照：垃圾字段走同一条路必须被丢掉（白名单不是全放行）  1049743ms
+ ✓ test/option-pricing.test.ts (25 tests) 57ms
+ ✓ test/ontology-governance.test.ts (20 tests) 3090801ms
+   ✓ 治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系 > G1: 建模建议含 domain；unassigned 发布被阻断，归域后通过  1277ms
+   ✓ 治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系 > G1: 建模 suggestion 携带 domain，unassigned 阻断发布  729ms
+   ✓ 治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系 > G2: 关闭 domain.finance → 该域类型在图谱/搜索/聚合整体不可见  10075ms
+   ✓ 治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系 > G3: 对 PUBLISHED type_key 重命名请求 → 拒绝并提示弃用流程  7345ms
+   ✓ 治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系 > G4: DEPRECATED 后新引用被拒、既有调用带警告；references>0 时 RETIRE 被拒列清单  767462ms
+   ✓ 治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系 > G5: 删除被 slice 引用的 linkKey → publish-request 创建阻断（force 通过）  11612ms
+   ✓ 治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系 > G6: 本体发布跑全部 slice contractFixture；破坏 fixture 被拦截  1056351ms
+   ✓ 治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系 > G7: 搜索命中 searchable 属性；czmgr 行级过滤后搜不到其他基地  12188ms
+   ✓ 治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系 > G8: 按 pos 分组 avg 结果与手算一致；count/sum/min/max；fn 作用非 number → 400  1086498ms
+   ✓ 治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系 > G9: 邻接区按 linkKey 分组正确；limit 生效  24332ms
+   ✓ 治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系 > G10: object-type 未知单位被拒；KPI/属性带单位元数据  12430ms
+   ✓ 治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系 > §7.1: 域 owner 会签状态机（非 owner 403 / 全 APPROVE → APPROVED / REJECT → REJECTED）  9200ms
+   ✓ 治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系 > WO-SIGNOFF-CHAIN 接缝：会签链走得完 + 裸路由绕不过 > ① 无主域不再把链卡死：catalog_admin 兜底签 → 全域 APPROVE → 自动发布  12557ms
+   ✓ 治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系 > WO-SIGNOFF-CHAIN 接缝：会签链走得完 + 裸路由绕不过 > ② REJECT 必填 comment：不带 400 / 带了 → REJECTED  12753ms
+   ✓ 治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系 > WO-SIGNOFF-CHAIN 接缝：会签链走得完 + 裸路由绕不过 > ③ 裸路由绕不过会签：未决 → 拒且说清还差几条；REJECTED → 拒；APPROVED → 放行  15790ms
+   ✓ 治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系 > WO-SIGNOFF-CHAIN 接缝：会签链走得完 + 裸路由绕不过 > ④ 不误伤内部路：种子/建模/管道走服务方法直发，闸只拦 HTTP  12889ms
+   ✓ 治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系 > WO-SIGNOFF-CHAIN 接缝：会签链走得完 + 裸路由绕不过 > ⑤ 正常路：钉 vN 签满 → 实际发出的就是 vN（两个数必须相等）  11167ms
+   ✓ 治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系 > WO-SIGNOFF-CHAIN 接缝：会签链走得完 + 裸路由绕不过 > ⑥ 冲突路：破窗抢先占掉钉的那个版本 → 签满后必须被拒，且不许静默改发别的号  9102ms
+   ✓ 治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系 > WO-SIGNOFF-CHAIN 接缝：会签链走得完 + 裸路由绕不过 > ⑦ 被拒后那条 APPROVED 不许被裸路由捡去发下一个号（背书天然一次性）  8682ms
+   ✓ 治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系 > §7.4: 引用反查 references API 返回 slice/derivation 引用  8337ms
+ ❯ test/vle.test.ts (5 tests | 1 failed) 1241495ms
+   × 闭环验证引擎 VLE（VL1/VL3/VL6/VL8） > VL1: SMOKE 全绿基线 —— 七段断言通过、三覆盖率、工程验证度 1105213ms
+     → Test timed out in 120000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   ✓ 闭环验证引擎 VLE（VL1/VL3/VL6/VL8） > VL3: 注入悬挂引用故障 → 引用完整性断言变红，报告 pass=false（diff 指出首个悬挂）  38816ms
+   ✓ 闭环验证引擎 VLE（VL1/VL3/VL6/VL8） > VL6/隔离: run 用一次性验证租户，演示租户数据不受影响；报告落在调用方租户  43882ms
+   ✓ 闭环验证引擎 VLE（VL1/VL3/VL6/VL8） > VL8/确定性: 同 seed 两次 run 报告断言结果一致  32791ms
+   ✓ 闭环验证引擎 VLE（VL1/VL3/VL6/VL8） > endpoint: POST /a/v1/validation/runs (admin) → 201 报告；planner → 403；历史可列  20788ms
+ ✓ test/caplive-truechain.test.ts (5 tests) 60421ms
+   ✓ WO-CAPLIVE-TRUECHAIN · 产能活台拨杆走真产能链（generic_inference grain+apply → byProcessModel·SEAM） > ① 真链活：grain='process-model' + 拖低 Process.yield_baseline → byProcessModel 真降（deltas 非空·capGain<0·dataMode LIVE）  14460ms
+   ✓ WO-CAPLIVE-TRUECHAIN · 产能活台拨杆走真产能链（generic_inference grain+apply → byProcessModel·SEAM） > ② 对照·无 grain 仍诚实空：同 apply 去掉 grain → dataMode:EMPTY（yield_baseline 死叶·hollow 诚实化不回归·非路由半）  14333ms
+   ✓ WO-CAPLIVE-TRUECHAIN · 产能活台拨杆走真产能链（generic_inference grain+apply → byProcessModel·SEAM） > ③ 非重言：override 设回当前真值 → deltas 空·dataMode:EMPTY（改真才变·不臆造）  11885ms
+   ✓ WO-CAPLIVE-TRUECHAIN · 产能活台拨杆走真产能链（generic_inference grain+apply → byProcessModel·SEAM） > ④ 落点真判别：改一个不在产能链的属性 → dataMode:EMPTY（证 apply 落点真判别·非恒 LIVE·KILL-MOCK-RED）  9938ms
+   ✓ WO-CAPLIVE-TRUECHAIN · 产能活台拨杆走真产能链（generic_inference grain+apply → byProcessModel·SEAM） > R6 确定性：真链同输入两跑字节一致  9787ms
+ ✓ test/chain-loss-matrix.seam.test.ts (6 tests) 54739ms
+   ✓ WO-SIM-BE-MATRIX · 环节 × 基地 损失矩阵（POST /a/v1/sim/chain-loss-matrix） > ① 端点真调：逐基地列和 == 该基地全链非增值天数，且逐列 Σpct == 100  10755ms
+   ✓ WO-SIM-BE-MATRIX · 环节 × 基地 损失矩阵（POST /a/v1/sim/chain-loss-matrix） > ② 无 Order 的基地：该列 null + reason，**不是 0**  10053ms
+   ✓ WO-SIM-BE-MATRIX · 环节 × 基地 损失矩阵（POST /a/v1/sim/chain-loss-matrix） > ③ 对拍：矩阵在一维求解器同一锚点基地那一列，与一维输出逐环节相等（且两侧都守恒）  8836ms
+   ✓ WO-SIM-BE-MATRIX · 环节 × 基地 损失矩阵（POST /a/v1/sim/chain-loss-matrix） > ④ 基地这一维是真的：同一张订单的两列，锚到的老化工序必须不同  8215ms
+   ✓ WO-SIM-BE-MATRIX · 环节 × 基地 损失矩阵（POST /a/v1/sim/chain-loss-matrix） > ④b 租户隔离：别的租户拿不到本租户的矩阵（404/403，且不回本租户任何数据）  9239ms
+   ✓ WO-SIM-BE-MATRIX · 环节 × 基地 损失矩阵（POST /a/v1/sim/chain-loss-matrix） > ④c 不存在的锚点订单 → 404（不静默返回一张空矩阵）  7636ms
+ ✓ test/gap-attribution.test.ts (17 tests) 159797ms
+   ✓ WO-CEO-2 · gap_attribution 深度反向归因引擎 > C1 勾稽：每层 Σ子贡献 + residual == 父gap（浮点 ≤1e-4）  13258ms
+   ✓ WO-CEO-2 · gap_attribution 深度反向归因引擎 > C2 因果遍历：从物料短缺沿 caused_by 溯到地缘/决策终点（真边序列·非硬编码）  11568ms
+   ✓ WO-CEO-2 · gap_attribution 深度反向归因引擎 > C3 深度到叶：≥18 叶子原子因素，跨 ≥3 基地  10132ms
+   ✓ WO-CEO-2 · gap_attribution 深度反向归因引擎 > C4 叶级真值：每叶下钻到源对象真值字段（drillType/drillField/drillValue 齐·非叙事常数）  8922ms
+   ✓ WO-CEO-2 · gap_attribution 深度反向归因引擎 > C7 R6 确定性：同 gap 两跑归因结果字节一致（deep-equal）  9441ms
+   ✓ WO-CEO-2 · gap_attribution 深度反向归因引擎 > C5 颗粒铁律①：改一张受影响订单金额（qty）→ 该订单叶贡献变（前后 diff·不变即写死作假）  9914ms
+   ✓ WO-CEO-2 · gap_attribution 深度反向归因引擎 > C5 颗粒铁律②：改上游供应商实际供货量 → 上游减供因果叶贡献变  9938ms
+   ✓ WO-CEO-2 · gap_attribution 深度反向归因引擎 > C5 颗粒铁律③：改矿价涨幅 → 地缘/矿价因果叶贡献变  8192ms
+   ✓ WO-CEO-2 · gap_attribution 深度反向归因引擎 > C10 归因系数配置化：发布 gap_attribution_coeffs 规则改 params → 分摊结果随之变（≠正向 what-if）  10022ms
+   ✓ WO-CEO-2 · gap_attribution 深度反向归因引擎 > V1·零缺口短路边界：actual>=target 时返回 noGap=true 与空归因  6705ms
+   ✓ WO-CEO-2 · gap_attribution 深度反向归因引擎 > V2·MetricCausalBinding：按 metricKey 选择优先因果根并多假设分配  8043ms
+   ✓ WO-CEO-2 · gap_attribution 深度反向归因引擎 > V2·严重度分级：归因节点与结果均带 severityKind  8011ms
+   ✓ WO-CEO-DATA-2 · 每指标多假设因果域 > D1·每指标因果因素对象存在且 drillType/drillId/drillField/isRoot 正确  7542ms
+   ✓ WO-CEO-DATA-2 · 每指标多假设因果域 > D2·每因素下钻到真实对象与字段（占位在查询期解析·非播种期冻结）  8115ms
+   ✓ WO-CEO-DATA-2 · 每指标多假设因果域 > D3·cf-capacity-short 的占位在**查询期**绑到真实 Equipment（且是当时 oee_current 真最差的那台）  7275ms
+   ✓ WO-CEO-DATA-2 · 每指标多假设因果域 > D4·每指标 caused_by 边真实物化  8676ms
+   ✓ WO-CEO-DATA-2 · 每指标多假设因果域 > D5·R6 确定性：同 seed 两次合成因果域字节一致  14032ms
+ ✓ test/process-inspect.seam.test.ts (9 tests) 72518ms
+   ✓ WO-V4-INSPECT · 流程节点检视投影 > ① 存在的流程：契约通过 · 承载类型 present · 属性/派生/一跳关系/十六层都算了出来  9475ms
+   ✓ WO-V4-INSPECT · 流程节点检视投影 > ② 承载类型解析不到 ⇒ absent + 说明缺在哪一环，HTTP 200（不是 500、也不是 404）  7385ms
+   ✓ WO-V4-INSPECT · 流程节点检视投影 > ③ 不下发运行态：runtime.available 恒 false + 三条答不了的问题 + 工期口径写明是标准工期  7196ms
+   ✓ WO-V4-INSPECT · 流程节点检视投影 > ④ 同承载物流程：先从真种子现算出确有共用的承载物，再断言反查非空（不写死 key，避免空断言）  7899ms
+   ✓ WO-V4-INSPECT · 流程节点检视投影 > ⑤ 一跳关系沿 OntologyLink 带方向与基数；对端类型不存在时计数为 null 而不是 0  9448ms
+   ✓ WO-V4-INSPECT · 流程节点检视投影 > ⑥ PRD §4.1 杠杆→域映射：一跳查表零手抄，且落点解析结果与 LEVER_PROP_META 同源  8458ms
+   ✓ WO-V4-INSPECT · 流程节点检视投影 > ⑦ 死杠杆闭环（SEAM）：LEVER_PROP_META 每条落点都要在**真跑过种子的本体**里解析得到  7016ms
+   ✓ WO-V4-INSPECT · 流程节点检视投影 > ⑧ R6 确定性 + R2 租户：同 key 连查两次字节一致；换租户查同一 key ⇒ 404  8534ms
+   ✓ WO-V4-INSPECT · 流程节点检视投影 > ⑨ 流程 key 不存在 ⇒ 404（与「承载物不存在 ⇒ 200+absent」严格分开，两者处置不同）  7098ms
+ ✓ test/order-journey-locus.seam.test.ts (5 tests) 98482ms
+   ✓ WO-ORDER-JOURNEY · decision_play 落点挂载点 SEAM > OJ-0 金丝雀 · 上游真产出阻滞点，且本次 locus 里真的同时有 MaterialBatch 与 Base（否则下面全是空跑）  13234ms
+   ✓ WO-ORDER-JOURNEY · decision_play 落点挂载点 SEAM > OJ-1 · **可回退性**：不传 locus 时输出与今天逐字节相同（连 locusPlay 这个键都不加）  33395ms
+   ✓ WO-ORDER-JOURNEY · decision_play 落点挂载点 SEAM > OJ-2 · 落点候选真来自枚举器（有候选的那条 locus 上，candidateTotal 与阻滞点回包一致）  20770ms
+   ✓ WO-ORDER-JOURNEY · decision_play 落点挂载点 SEAM > OJ-3 · **对上率**：MaterialBatch 落点对到本单补的 cf-batch-idle，且精度是 TYPE（不许冒充 EXACT）  19162ms
+   ✓ WO-ORDER-JOURNEY · decision_play 落点挂载点 SEAM > OJ-4 · 对不上时**诚实空**：造一个库里没有的 drillType，必须 NO_FACTOR，绝不回落默认根因  11917ms
+ ✓ test/supply-demand-gap-attribution.test.ts (14 tests) 135870ms
+   ✓ WO-CEO-Q7 · supply_demand_gap_attribution 供需失衡双向归因 > C1 双向归因：输出含 demandSide/supplySide 两支 + 各自叶表 + residual  8166ms
+   ✓ WO-CEO-Q7 · supply_demand_gap_attribution 供需失衡双向归因 > C2 勾稽：需求端贡献 + 供给端贡献 + residual == 总缺口（浮点≤1e-4·亲验）  7870ms
+   ✓ WO-CEO-Q7 · supply_demand_gap_attribution 供需失衡双向归因 > WO-Q7-RECONCILED-ROBUST C1：需求虚高 7 叶（p50×5+5000）→ reconciled=true·端内Σ叶==端贡献（治舍入伪影·red-bite）  7424ms
+   ✓ WO-CEO-Q7 · supply_demand_gap_attribution 供需失衡双向归因 > C3 颗粒铁律①（需求）：改一个 DemandSegment.demandWanPerYearP50 → 需求端占比变（前后 diff）  8484ms
+   ✓ WO-CEO-Q7 · supply_demand_gap_attribution 供需失衡双向归因 > C4 颗粒铁律②（供给）：改一台 Equipment.oee_current → 供给端占比变  15440ms
+   ✓ WO-CEO-Q7 · supply_demand_gap_attribution 供需失衡双向归因 > C5 叶级真值：每叶 drillType/drillField/drillValue 齐（非叙事常数）  14589ms
+   ✓ WO-CEO-Q7 · supply_demand_gap_attribution 供需失衡双向归因 > C6 双向敏感：需求虚高 vs 供给不足 → 两侧占比明显不同（引擎真分·非固定五五开）  21237ms
+   ✓ WO-CEO-Q7 · supply_demand_gap_attribution 供需失衡双向归因 > C7 R6 确定性：同版本两跑 deep-equal  10799ms
+   ✓ WO-CEO-Q7 · supply_demand_gap_attribution 供需失衡双向归因 > C8 端到端：solver.invoke 一次真输出（双向归因 JSON·summary 含需求端/供给端）  8463ms
+   ✓ WO-METRICKEY-EMPTY-PROMISE · metricKey 空头支票（声明面 ⊗ 回包面接缝） > ①声明面：目录/注册表都不再声明 metricKey（含金丝雀——扫描器确实能看见真的 argHint）  516ms
+   ✓ WO-METRICKEY-EMPTY-PROMISE · metricKey 空头支票（声明面 ⊗ 回包面接缝） > ②回包面：传 metricKey → 200 且回包**点名**说它没生效（不静默吞·理由里给替代正门）  6919ms
+   ✓ WO-METRICKEY-EMPTY-PROMISE · metricKey 空头支票（声明面 ⊗ 回包面接缝） > ③不传 → ignoredArgs 为空数组（『没什么可忽略』≠『我没查』）  11015ms
+   ✓ WO-METRICKEY-EMPTY-PROMISE · metricKey 空头支票（声明面 ⊗ 回包面接缝） > ④没有第二条口径：传 metricKey 与不传，**归因数值部分逐字节相同**（撤承诺 ≠ 偷换成另一个静默口径）  8641ms
+   ✓ WO-METRICKEY-EMPTY-PROMISE · metricKey 空头支票（声明面 ⊗ 回包面接缝） > ⑤R6 确定性：带同一组入参两跑 deep-equal（回执不引入时钟/随机/枚举序抖动）  6298ms
+ ✓ test/decision-causal-graph.test.ts (16 tests) 55860ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · A 沙盘源（Cause/Impact 真值抽取） > A0 暗发 entitlement（R3 先于 authz）：未开的租户 → 两条路由全 404 FEATURE_NOT_FOUND  976ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · A 沙盘源（Cause/Impact 真值抽取） > A1+A2 判据①【改因真的改果】：扰动 100→200，c1@t3 由 20→40，对照链 e1 逐字节不变  643ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · A 沙盘源（Cause/Impact 真值抽取） > A3 判据②【每条边可溯】：每条传导边指回具体 PropagationRule.key，扰动边指回 perturbation:<id>  679ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · A 沙盘源（Cause/Impact 真值抽取） > A4 判据④【诚实降级】：沙盘上没有的三段带出 missing+needs，不是安静的空数组  494ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · A 沙盘源（Cause/Impact 真值抽取） > A5 R2 跨租户 404 + R6 确定性（同一 session 两次取图逐字节一致·无时钟无随机）  746ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · A 沙盘源（Cause/Impact 真值抽取） > A6 边级诚实缺口：路由施加的扰动（startTick=当前 tick）在 trace 上无痕 → 出 CAUSE 节点、不出边、caveats 说明为什么  520ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · A 沙盘源（Cause/Impact 真值抽取） > A7 持续扰动跨多 tick：值延续边把链接上 —— 末端节点仍在可达集内（真跑撞出来的断链回归）  637ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · A 沙盘源（Cause/Impact 真值抽取） > A8 连通性自检写进返回体：延迟规则造成的断点被机器数出来（不靠人读图去发现）  586ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · M 变异反证（判据必须能红） > M1 恒返回空图 → 判据①【改因改果】变红（正例同一支断言，绿的那支必须在这里抛）  703ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · M 变异反证（判据必须能红） > M2 节点数值恒定 → 判据①变红（幅度翻倍但末端节点纹丝不动 ⇒ 因果被掐断）  572ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · M 变异反证（判据必须能红） > M3 抹掉边的 producedBy → 判据②【每条边可溯】变红  616ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · M 变异反证（判据必须能红） > M4 契约门变异：空段不给 missing/needs → schema 当场抛（诚实缺席不是靠自觉）  584ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · B 台账源（Decision → 五段全覆盖） > B1 五段接线：根因 → 指标缺口 → 决策 → 方案；★「为什么这个决策被触发」那条边带得出触发量  12528ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · B 台账源（Decision → 五段全覆盖） > B2 ★预言不许冒充实测：closesGap 挂在 ACTION 节点上，RESULT 段仍是 NOT_YET_REALIZED  12586ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · B 台账源（Decision → 五段全覆盖） > B3 实测回填后 RESULT 段真的长出来（同一条决策，改的只是 outcome）  11149ms
+   ✓ WO-DECISION-CAUSAL-GRAPH · B 台账源（Decision → 五段全覆盖） > B4 R2 跨租户 404 + R6 确定性（同一决策两次取图逐字节一致）  11832ms
+ ✓ test/decision-outcome.test.ts (5 tests) 83428ms
+   ✓ WO-LEARNING-LOOP-FEEDBACK · 决策成效反馈闭环（Decision.outcome·学习权重） > C1+C2+C3+C4 端到端：commit → POST /outcome(实测注入) → REALIZED·effectivenessPct 真算·decision.realized 事件  15292ms
+   ✓ WO-LEARNING-LOOP-FEEDBACK · 决策成效反馈闭环（Decision.outcome·学习权重） > C5 学习真变（命门）：两方案不同实测效果 → 权重归集反映差异（高效方案权重高）+ GET /decision-outcome-stats  20431ms
+   ✓ WO-LEARNING-LOOP-FEEDBACK · 决策成效反馈闭环（Decision.outcome·学习权重） > C6 状态机：非 COMMITTED 记 outcome → 409（PROPOSED 未定）+ 重复 outcome → 409（已 REALIZED）  12602ms
+   ✓ WO-LEARNING-LOOP-FEEDBACK · 决策成效反馈闭环（Decision.outcome·学习权重） > C6 R2 跨租户 404：他租户记 outcome 查不到本租户 Decision  11340ms
+   ✓ WO-LEARNING-LOOP-FEEDBACK · 决策成效反馈闭环（Decision.outcome·学习权重） > C7 R6：同输入+同 realizedAt 两跑 outcome deep-equal + aggregateOutcomeStats 纯函数确定性  23759ms
+ ✓ test/chain-loss-money.seam.test.ts (7 tests) 45869ms
+   ✓ WO-LOSS-ATTRIB-MONEY · 损失归因的金额口径与基地维 > ① 回包里真有元金额（金丝雀：同一回包的 days 必须也 > 0，否则是测试坏了）  9266ms
+   ✓ WO-LOSS-ATTRIB-MONEY · 损失归因的金额口径与基地维 > ② 基地维是真的：敞口最大/最小两列，同一环节金额不同，且比值 == 敞口之比  7583ms
+   ✓ WO-LOSS-ATTRIB-MONEY · 损失归因的金额口径与基地维 > ③ 反向对照：同一列内 days 相同的两个环节，金额必须仍然相同（不是噪声）  7405ms
+   ✓ WO-LOSS-ATTRIB-MONEY · 损失归因的金额口径与基地维 > ④ 对得上账：逐列 Σ 金额 == 敞口；Σ各列敞口 ÷ 订单簿 == 显式返回的重复计入倍率  6918ms
+   ✓ WO-LOSS-ATTRIB-MONEY · 损失归因的金额口径与基地维 > ⑤ 诚实缺席 + R6：敞口与锚点单无关；同参数二次调用逐字段一致  7949ms
+   ✓ WO-LOSS-ATTRIB-MONEY · 损失归因的金额口径与基地维 > ⑦ 敞口是**在手**口径：已交付单一分钱都不进，且与 order-status 单一出处同源  6730ms
+ ✓ test/revenue-reconcile.seam.test.ts (6 tests) 36385ms
+   ✓ WO-REVENUE-RECONCILE · 四个营收的口径对账 > §1 ①601.5 与 ②700 之间**有桥**：两者共用同一个需求加权单价 P̄，比值 = 供给量÷需求量  8274ms
+   ✓ WO-REVENUE-RECONCILE · 四个营收的口径对账 > §2 ②的『实际』是**成交侧真值**：由订单簿计划年窗逐位重算，且不再与需求预测/target 同值  7020ms
+   ✓ WO-REVENUE-RECONCILE · 四个营收的口径对账 > §3 ③订单簿是**真实算**：Σvalue 逐位 == Σ(qty×unitPrice)，且不等于 ①②  6687ms
+   ✓ WO-REVENUE-RECONCILE · 四个营收的口径对账 > §4 ★对照实验（兼金丝雀）：查询期删订单 → 达成率必须按可预言的量掉，①计划口径必须逐字节不动  7202ms
+   ✓ WO-REVENUE-RECONCILE · 四个营收的口径对账 > §4b ★对照实验（合成期）：换一副订单簿重新生成 → ②必须跟着动，①与预算三行必须逐字节不动  485ms
+   ✓ WO-REVENUE-RECONCILE · 四个营收的口径对账 > §5 口径必须写在屏上：并排的营收族卡片都得带 caption（数字没错时，缺的就是这一行）  6708ms
+ ✓ test/enterprise-state.seam.test.ts (16 tests) 107521ms
+   ✓ WO-ENTERPRISE-STATE · 企业状态快照（接缝：对象库→捕获→仓储→路由） > ①a 捕获真数据：快照里的数字与测试自己从对象库数出来的**逐一相等**（不是「有这个字段」）  8948ms
+   ✓ WO-ENTERPRISE-STATE · 企业状态快照（接缝：对象库→捕获→仓储→路由） > ①a2 覆盖面可核对：指标条数 == 本体推得的应有条数（少一条 = 某个类型/属性被悄悄漏掉）  7753ms
+   ✓ WO-ENTERPRISE-STATE · 企业状态快照（接缝：对象库→捕获→仓储→路由） > ①b 分组键来自**租户本体的 domain**，不是代码枚举（R14 零业务常数）  6944ms
+   ✓ WO-ENTERPRISE-STATE · 企业状态快照（接缝：对象库→捕获→仓储→路由） > ①c 诚实空：数不出来的指标是 value:null + reason，**不是 0**（0 = 真数出来是 0）  7280ms
+   ✓ WO-ENTERPRISE-STATE · 企业状态快照（接缝：对象库→捕获→仓储→路由） > ②a R6 确定性：同 (tenant, world, 逻辑时刻) 重复捕获 → **逐字节一致** 且只有一行  7508ms
+   ✓ WO-ENTERPRISE-STATE · 企业状态快照（接缝：对象库→捕获→仓储→路由） > ②b capturedAt 是**逻辑时钟**：doc 里零 wall-clock；推进模拟时钟 → 新快照新 tick，两份共存  10545ms
+   ✓ WO-ENTERPRISE-STATE · 企业状态快照（接缝：对象库→捕获→仓储→路由） > ②c 没有逻辑时钟就 409 明说，**绝不 fallback 到 wall-clock**  843ms
+   ✓ WO-ENTERPRISE-STATE · 企业状态快照（接缝：对象库→捕获→仓储→路由） > ③a 世界隔离反证：fork 进仿真世界后，真实世界那一行**逐字节不变**  7364ms
+   ✓ WO-ENTERPRISE-STATE · 企业状态快照（接缝：对象库→捕获→仓储→路由） > ③b fork 回真实世界被拒（400）· fork 进不存在的世界 404 · 捕获到不存在的世界 404  7088ms
+   ✓ WO-ENTERPRISE-STATE · 企业状态快照（接缝：对象库→捕获→仓储→路由） > ③c 仿真世界现场捕获（非 fork）也落在自己那一行，真实世界不受影响  7852ms
+   ✓ WO-ENTERPRISE-STATE · 企业状态快照（接缝：对象库→捕获→仓储→路由） > ④ R2 跨租户：另一个租户读不到（404），也不会在自己的列表里看到  7266ms
+   ✓ WO-ENTERPRISE-STATE · 企业状态快照（接缝：对象库→捕获→仓储→路由） > ⑤ latest 诚实空：没快照时返回 state:null + reason，**不偷偷现场捕获一份**  7104ms
+   ✓ WO-ENTERPRISE-STATE · 企业状态快照（接缝：对象库→捕获→仓储→路由） > ⑥ diff 口径单源：`/diff` 与契约纯函数 `diffEnterpriseStates` 逐字节同结果（StateDelta 将来复用同一份）  13253ms
+   ✓ WO-ENTERPRISE-STATE · 企业状态快照（接缝：对象库→捕获→仓储→路由） > ⑦ D-29 事件：捕获发 `enterprise_state.snapshotted`，fork 发 `enterprise_state.forked`  6697ms
+   ✓ WO-ENTERPRISE-STATE · 企业状态快照（接缝：对象库→捕获→仓储→路由） > ⑧ R9 双实现不漂：pg.ts 的表名与 030 migration 的 CREATE TABLE 逐字相同（memory 单测证明不了这一行）  1046ms
+ ✓ test/rule-scope-triad.seam.test.ts (6 tests) 169356ms
+   ✓ WO-RULE-SCOPE-TRIAD · ② C31 承载类型补建（NO_CARRIER → 真评估） > TRIAD-1 · C31 在真外协批次上**真评估出 BLOCK 判定**（头号判据：不是断言类型存在）  90367ms
+   ✓ WO-RULE-SCOPE-TRIAD · ② C31 承载类型补建（NO_CARRIER → 真评估） > TRIAD-2 · C31 不再发 scope_unresolved；剩余信号恰好是 C10 的两条（且仍无 RENAME_CANDIDATE）  29148ms
+   ✓ WO-RULE-SCOPE-TRIAD · ② C31 承载类型补建（NO_CARRIER → 真评估） > TRIAD-3 · C31 挂上本体图谱 Outsource 节点，且 material_has_outsource 边真实落库  20844ms
+   ✓ WO-RULE-SCOPE-TRIAD · ③ C10 范畴错误裁决（改名一律是错的） > TRIAD-4 · C10 引用的字段**本身无承载**（金丝雀守否定结论）+ 信号继续保持可观察  14194ms
+   ✓ WO-RULE-SCOPE-TRIAD · 机制抗复发（金丝雀与主逻辑共用同一份实现） > TRIAD-6 · 机器判据对**活本体**：Outsource 不再咬、写错的键照样咬  14729ms
+ ✓ test/decision-play.test.ts (7 tests) 250569ms
+   ✓ WO-CEO-3 · decision_play 决策推演引擎 > C1 多方案：一根因产 ≥3 DecisionOption，每个标 sourceKind + 可溯 provenance  11488ms
+   ✓ WO-CEO-3 · decision_play 决策推演引擎 > C4 触发真 fire：评估信号真值→满足阈值则 fire（锂价涨幅/现价越阈·汇率未越不 fire）  9593ms
+   ✓ WO-CEO-3 · decision_play 决策推演引擎 > C3 触发可配置：发布 trigger_thresholds 规则改阈值(12→20) → 该触发 fire 翻转（阈值来自 rule.params）  11762ms
+   ✓ WO-CEO-3 · decision_play 决策推演引擎 > C6 颗粒铁律①：改 BackupSupplierPool.certWeeks → 缩短认证方案 closesGap 变（方案分从真对象派生）  120741ms
+   ✓ WO-CEO-3 · decision_play 决策推演引擎 > C6 颗粒铁律②/C2 比对真算：改 LongTermAgreement 实际交付(缺口) → 方案分 + 收窄随之变  31896ms
+   ✓ WO-CEO-3 · decision_play 决策推演引擎 > C5 收窄真算：0<收窄<100·与组合补缺口自洽·且改物料缺口颗粒→收窄随之变（非写死常数）  29851ms
+   ✓ WO-CEO-3 · decision_play 决策推演引擎 > C7 R6 确定性：同根因两跑 deep-equal（方案+矩阵+触发+组合字节一致）  35230ms
+ ✓ test/capacity-subweek-window.test.ts (5 tests) 108267ms
+   ✓ WO-SCENARIO-INPUT-PHASE0 收口 · 亚周窗口（1天 ≠ 1周） > 头号效果断言：weeks=1/7（1天）与 weeks=1（1周）结果**必须不同**（相同即痛点未修）  33301ms
+   ✓ WO-SCENARIO-INPUT-PHASE0 收口 · 亚周窗口（1天 ≠ 1周） > R6 不回归：整数窗口 windowScale 恒 1 → 与既有实测锚一致（weeks=1→1.9642·weeks=6→12.3016）  12620ms
+   ✓ WO-SCENARIO-INPUT-PHASE0 收口 · 亚周窗口（1天 ≠ 1周） > 下界诚实：weeks=0 / 负数 / 缺省 → 夹到最小 1 天（1/7 周），不产生 0 产能或 NaN  21676ms
+   ✓ WO-SCENARIO-INPUT-PHASE0 收口 · 亚周窗口（1天 ≠ 1周） > 非整数多周：1.5 周落在 1 周与 2 周之间（旧 floor 会把它砍成 1 周）  24456ms
+   ✓ WO-SCENARIO-INPUT-PHASE0 收口 · 亚周窗口（1天 ≠ 1周） > R6 确定性：同 weeks 两跑字节一致（含小数窗口）  16206ms
+ ✓ test/rules-param-binding.test.ts (12 tests) 131232ms
+   ✓ 规则即引用 P4 · 改规则即改推演（数值维·效果层） > SEAM-1 · 改 C09 数据健康阈值（规则编辑路径）→ capacity_forecast 的 P90 数值真的变（不改一行代码）  17202ms
+   ✓ 规则即引用 P4 · 改规则即改推演（数值维·效果层） > SEAM-2 · 改 C09 降级系数 degradedFactor → P90 按新系数走（阈值与系数两个 param 各自独立生效）  16813ms
+   ✓ 规则即引用 P4 · 改规则即改推演（数值维·效果层） > SEAM-3 · 改 C04 认证降额系数 → 认证中产线的产能贡献真的变（P50 数值下降）  20745ms
+   ✓ 规则即引用 P4 · 改规则即改推演（数值维·效果层） > SEAM-4 · 改 C21 产销偏差阈值 → S&OP 步骤 2 的越线判定（flagged/议题）真的翻转  26197ms
+   ✓ 规则即引用 P4 · 改规则即改推演（数值维·效果层） > SEAM-5 · 改 C18 现金垫底线 → plan_generate 的硬约束结论（hardViol/问题清单）真的变  18094ms
+   ✓ 规则即引用 P4 · 单源不并存（同值副本已清） > 种子期零写入：规则与 solver_params 本就同源同值 → 发布不空转参数版本（R6 字节一致不破）  14632ms
+   ✓ 规则即引用 P4 · 单源不并存（同值副本已清） > 未绑定的规则发布不碰 solver_params（作用域最小化）  17538ms
+ ✓ test/finance-worldstate.seam.test.ts (12 tests) 236184ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 金丝雀：链路/种子/求解器三样都在（任一不在 ⇒ 后面的『没变化』读不出是坏了还是真没变）  26673ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 头号判据 · SEAM：真扰动 → 真 tick → 金额**真的变了**，且方向与压力一致  21965ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 现金半同样真的动：应收压力 → 应收投影↑ / 逾期压力 → 逾期敞口↑（逐张发票用真 amount）  16855ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 反向判据 · R6 确定性：不施加任何扰动 ⇒ 两次调用**逐字节相同**  14551ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 R6 跨 tick 也确定：同一个 tick 上重复跑字节一致，且 tick 推进后金额单调不回头  18502ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 口径常驻：basis / chain / provenance 三样一起下发（缺一样这个金额就不可复核）  24393ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 诚实缺席：世界态为空 ⇒ available:false + 原因（**不给一个不动的 0**）  23344ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 回落分支真被驱动：tick 态行缺失 ⇒ 读 baseSnapshot 并据实标 BASE_SNAPSHOT（不是默默当空世界）  15519ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > R2 隔离 + 入参纪律：别人的世界 404；不给 worldId 显式 400（不静默回落到本体真值口径）  14558ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 本体签名实跑比对：真读到的类型/属性都在 SOLVER_ONTOLOGY_SIGNATURES 声明内（漏声明即红）  17501ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 分层不重复：`finance_pnl` 保持「本体真值口径」（施加扰动它照样不动，这是它的正确行为）  24978ms
+   ✓ WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影 > 🔴 SEAM：贵料 vs 边角料涨同样的价 —— 下游压力之比 == 两者在该型号 BOM 里的成本之比  17334ms
+ ✓ test/objects-total-truthful.seam.test.ts (11 tests) 185095ms
+   ✓ GET /a/v1/objects · total 说真话 + 分页能穿越硬顶 > 头号判据：total = 独立口径真值，且**不等于**硬顶；第 1000 行之后能翻到  22946ms
+   ✓ GET /a/v1/objects · total 说真话 + 分页能穿越硬顶 > 金丝雀：<1000 行的类型本来就对，改动不许把它们弄错  13400ms
+   ✓ GET /a/v1/objects · total 说真话 + 分页能穿越硬顶 > 列筛选后的 total 也必须是「筛完的总行数」，不是「本页取回多少」  12643ms
+   ✓ GET /a/v1/objects · 无法识别的查询参数不许静默吞掉 > `limit` 这类**分页别名**必须 400 点名，不许静默生效也不许只回 warning  11605ms
+   ✓ GET /a/v1/objects · 无法识别的查询参数不许静默吞掉 > 分页参数的**值**不许静默改写：page/pageSize 非法即 400  13528ms
+   ✓ GET /a/v1/objects · 无法识别的查询参数不许静默吞掉 > pageSize 超上限：夹到 500 但必须**说出来**，且回显的是生效值  16852ms
+   ✓ GET /a/v1/objects · 无法识别的查询参数不许静默吞掉 > 未知（非分页）参数回 warning；合法参数（含 f_<属性名>）不许误报  20167ms
+   ✓ GET /a/v1/objects · 截断信号 hasMore（不许让调用方自己算那道算术） > hasMore 逐页走完必须恰好在最后一页转 false，且 ③ 累计 = ④ 真值  22078ms
+   ✓ GET /a/v1/objects · 不传分页 = 静默截断；全量翻页算法必须仍等于全量口径 > 头号判据：真实条数 > 默认页长时，全量翻页读数 = 全量口径，而不传分页的读数不是  13200ms
+   ✓ GET /a/v1/objects · 不传分页 = 静默截断；全量翻页算法必须仍等于全量口径 > 变异反证：页长改小，不传分页的读数跟着变小，而全量翻页读数纹丝不动  21379ms
+   ✓ POST /a/v1/objects/query · 截断必须可察觉 > 裸数组旁边必须给出 total（全量口径）与 truncated；data 形状不许变  17262ms
+ ✓ test/metric-series.seam.test.ts (12 tests) 204529ms
+   ✓ WO-SIM-BE-SERIES · 指标时序（基线线 + 扰动后线 + 环节分段） > 🔴 SEAM：扰动 startTick=3 ⇒ 全部指标在 tick<3 逐点相等，loadIndex 在 tick3 才由衰减线跳到扰动线  21734ms
+   ✓ WO-SIM-BE-SERIES · 指标时序（基线线 + 扰动后线 + 环节分段） > 🔴 SEAM：DELETE 掉扰动 ⇒ 每个指标的 baseline 与 actual 逐点重合，excludedPerturbationIds 清空  27252ms
+   ✓ WO-SIM-BE-SERIES · 指标时序（基线线 + 扰动后线 + 环节分段） > 🔴 缺格 ⇒ null（不是 0、不是插值）；to 超出 curTick ⇒ 收敛并亮 clamped，不补未来格  35811ms
+   ✓ WO-SIM-BE-SERIES · 指标时序（基线线 + 扰动后线 + 环节分段） > 🔴 R6：同 (session, from, to) 连跑三次，响应体逐字节相同（回包零 wall-clock 字段）  27885ms
+   ✓ WO-SIM-BE-SERIES · 指标时序（基线线 + 扰动后线 + 环节分段） > 🔴 变异反证的常驻替身：基线必须来自**本会话自己的 tick0 行**，另起会话/换种子即红  18623ms
+   ✓ WO-SIM-BE-SERIES · 指标时序（基线线 + 扰动后线 + 环节分段） > 🔴 R3：sim.propagation 关掉 ⇒ 本路由 404 FEATURE_NOT_FOUND；R2：别租户 404  25243ms
+   ✓ WO-SIM-SERIES-SCALE · 指标时序规模闸（生产量级世界·11,348 对象是真实测得的量级） > 🔴 SEAM：生产量级世界（10,000 对象 × 2 变量 = 20,000 条目录）下**不传 limit** ⇒ 回包 ≤ 硬上限，且 totalMetrics 如实等于全量  6205ms
+   ✓ WO-SIM-SERIES-SCALE · 指标时序规模闸（生产量级世界·11,348 对象是真实测得的量级） > 🔴 limit 要多少都压到硬上限（appliedLimit 亮出来，不是静默给全量）；limit 小于默认值时如实生效  7465ms
+   ✓ WO-SIM-SERIES-SCALE · 指标时序规模闸（生产量级世界·11,348 对象是真实测得的量级） > 🔴 order=magnitude ⇒ 回的正是被扰动打过的那三条，且按 |actual末 − baseline首| 降序（20/15/10）  8169ms
+   ✓ WO-SIM-SERIES-SCALE · 指标时序规模闸（生产量级世界·11,348 对象是真实测得的量级） > 🔴 objectIds / stateVars 是白名单不是排除表：totalMetrics 反映筛后的全量；名单落空 ⇒ 0 条且 truncated=false  10597ms
+   ✓ WO-SIM-SERIES-SCALE · 指标时序规模闸（生产量级世界·11,348 对象是真实测得的量级） > 🔴 R6：同 (session, limit, order) 连跑三次逐字节一致；幅度并列的那一大批按 key 升序（tiebreaker 稳定）  8746ms
+   ✓ WO-SIM-SERIES-SCALE · 指标时序规模闸（生产量级世界·11,348 对象是真实测得的量级） > 🔴 零扰动世界（全体幅度并列为 0，= 种子世界的实际形态）⇒ magnitude 档必须逐条等于 key 档，且两次重跑不跳序  6775ms
+stdout | test/adversary-adopt-mitigation.test.ts > ADVERSARY · WO-ADOPT-MITIGATION 证伪 > A · counterfactual_timeline：采纳 A 后再问 B 的反事实 → baseline 已含 A 的削减，peakCut 语义崩坏
+ADV_A strong=debottleneck(eff=13,tn=6) weak=reroute(eff=9,tn=3)
+ADV_A before.peakCut=6.8066 after.peakCut=1
+ADV_A after.summary=如不解决「江门·瓶颈工序」：峰值 92 → 处置后 91（削 1）、越线日推迟 0 天
+
+stdout | test/adversary-adopt-mitigation.test.ts > ADVERSARY · WO-ADOPT-MITIGATION 证伪 > C · 同 (base,factor) 两个方案并发执行 → ACTIVE 条数
+ADV_C objs=2 active=1 keys=["reroute"]
+
+stdout | test/adversary-adopt-mitigation.test.ts > ADVERSARY · WO-ADOPT-MITIGATION 证伪 > D · 两条 ACTIVE 直写 → riskTimeline 不抛错、按 objectId 末条胜、且是确定性的
+ADV_D a=debottleneck b=reroute winner={"planKey":"reroute","eff":9,"tn":3}
+
+ ✓ test/record-materialize.test.ts (12 tests) 172295ms
+   ✓ record-materialize · HTTP 真链路（灌真颗粒→驾驶舱读真值） > ⑤ 真链路：upload 真财务 CSV → materialize FinancePlan(replace) → 对象真化 + finance_pnl 读真值  22142ms
+   ✓ record-materialize · HTTP 真链路（灌真颗粒→驾驶舱读真值） > ⑧ 铁律 · 改颗粒→聚合必变：换一条真源毛利行 → finance_pnl 毛利率随之变（只生成颗粒·聚合求解器算）  20741ms
+   ✓ record-materialize · HTTP 真链路（灌真颗粒→驾驶舱读真值） > ⑥ KILL-MOCK-RED：合成源数据集 → materialize 硬拒（合成不冒充真值）  21617ms
+   ✓ record-materialize · HTTP 真链路（灌真颗粒→驾驶舱读真值） > ⑦ dryRun 不落库 + 非 admin 403  22165ms
+   ✓ record-materialize · WO-CEO-DATA-2 内置模板（engine-read 类型） > CompetitorPrice 模板：仅传 templateKey 即可物化（列→属性按模板映射）  31700ms
+   ✓ record-materialize · WO-CEO-DATA-2 内置模板（engine-read 类型） > PipelineOpportunity 模板：templateKey 与显式 columnMapping 叠加（显式优先）  26799ms
+   ✓ record-materialize · WO-CEO-DATA-2 内置模板（engine-read 类型） > 模板请求必须至少提供 templateKey 或 columnMapping（全空 400）  26939ms
+stdout | test/adversary-adopt-mitigation.test.ts > ADVERSARY · WO-ADOPT-MITIGATION 证伪 > E · RiskTimelineOutputSchema.parse（前端 RiskBoardView 的必经之路）是否保留 card.adoptedMitigation
+ADV_E parsedCardKeys=["base","baseId","factor","dataMode","currentTightness","provenanceSynthetic","peak","crossDay","series","factorSeries","events","affectedOrders","otd","allFactors","adoptedMitigation","exposure","doNothing"]
+
+ ✓ test/adversary-adopt-mitigation.test.ts (8 tests | 1 skipped) 220890ms
+   ✓ ADVERSARY · WO-ADOPT-MITIGATION 证伪 > A · counterfactual_timeline：采纳 A 后再问 B 的反事实 → baseline 已含 A 的削减，peakCut 语义崩坏  30246ms
+   ✓ ADVERSARY · WO-ADOPT-MITIGATION 证伪 > C · 同 (base,factor) 两个方案并发执行 → ACTIVE 条数  35599ms
+   ✓ ADVERSARY · WO-ADOPT-MITIGATION 证伪 > D · 两条 ACTIVE 直写 → riskTimeline 不抛错、按 objectId 末条胜、且是确定性的  30899ms
+   ✓ ADVERSARY · WO-ADOPT-MITIGATION 证伪 > E · RiskTimelineOutputSchema.parse（前端 RiskBoardView 的必经之路）是否保留 card.adoptedMitigation  28924ms
+   ✓ ADVERSARY · WO-ADOPT-MITIGATION 证伪 > F · 已有 ACTIVE 时 planKey 解不出 → 旧 ACTIVE 必须原封不动（不许被半路撤销）  38043ms
+   ✓ ADVERSARY · WO-ADOPT-MITIGATION 证伪 > G · 非 ADOPTION_AWARE 求解器的 ctx.adoptedMitigations 恒空（按需加载真按需）  24162ms
+   ✓ ADVERSARY · WO-ADOPT-MITIGATION 证伪 > H · decision kernel commit 出的 adopt_mitigation 草稿，审批后能否真写  32986ms
+ ✓ test/planviews-c2c3.test.ts (6 tests) 132398ms
+   ✓ C2 · 季度滚动供给口径（三来源合并 + 长协 supply_risk） > supply 含已批准产能项目增量×ramp（与 C1 同源）—— 投产季出现「产能增量…已批准项目爬坡投产」事件  40805ms
+   ✓ C2 · 季度滚动供给口径（三来源合并 + 长协 supply_risk） > supply 含 S&OP 决议增量：定稿一个 FINAL 版本后，其月份所属季出现「S&OP 决议增量」事件且供给增加  24994ms
+   ✓ C2 · 季度滚动供给口径（三来源合并 + 长协 supply_risk） > 长协偏差 |dev|>5% → scanSupplyRisk 发 supply_risk 事件（关联到货间隙/baseId）  13686ms
+   ✓ C3 · S&OP 第④步财务整合口径 > 毛利率_roll 细分加权口径：Σ(量×价×毛利率)÷Σ(量×价)  15296ms
+   ✓ C3 · S&OP 第④步财务整合口径 > 现金垫 = 13 周滚动 min（期初 + Σ回款 − Σ付款 − ΣCAPEX）  18747ms
+   ✓ C3 · S&OP 第④步财务整合口径 > ④门禁两分支：毛利<预算−0.5pct 警示进⑤议程；现金垫<C18 底线阻断进入⑤  18864ms
+ ✓ test/capacity-threshold.test.ts (5 tests) 73318ms
+   ✓ WO-DIALOGUE-Q1Q2 · capacity_forecast(mode:'threshold') 反向阈值口径 > Q1: thresholdQty = round(P90 − baselineDemand) 增量余量（非 raw P90）+ 单位万套 + summary 透明列三值  23149ms
+   ✓ WO-DIALOGUE-Q1Q2 · capacity_forecast(mode:'threshold') 反向阈值口径 > 前向 forecast 不回归：无 mode → 前向输出（effectiveDemand/gapPct·无 thresholdQty/mode）  13289ms
+   ✓ WO-DIALOGUE-Q1Q2 · bottleneck_matrix 限域引擎半（Q2） > Q2: baseIds:['xinyang'] → 仅信阳一行（非全部基地）  18961ms
+   ✓ WO-DIALOGUE-Q1Q2 · bottleneck_matrix 限域引擎半（Q2） > Q2 对照：无 baseIds → 全部基地（>1 行）——证 baseIds 是真限域开关（非无效参数）  17791ms
+ ✓ test/xservice-smoke.test.ts (6 tests) 21751ms
+   ✓ 跨服务真实联调冒烟 — 真实 AgentCore HTTP 客户端 ↔ 真实 DataCore > G-2 守护：affected_orders 跨真实 DataCore 返回 rows + count（种子 plan 渲染依赖）  565ms
+   ✓ 跨服务真实联调冒烟 — 真实 AgentCore HTTP 客户端 ↔ 真实 DataCore > capacity_forecast 跨服务可解析并产出 capWanP50（万套/窗口）  375ms
+ ✓ test/sim-order-real-fields.seam.test.ts (6 tests) 153051ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ①正向 measuredCells = 在手订单数 × 3，且两边**各自独立**算一遍再比  18742ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ①反向 把某张单的 qty 删掉 ⇒ 该格退回哈希、measuredCells 减 1（只测正向不算）  16943ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ② 改真值 ⇒ 下游读数必须跟着变：把一张单的价格 ×1.5，重跑同一套推演  30145ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ③ 两张金额差一个量级的真订单，同一个扰动 ⇒ 下游读数必须拉开  24866ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ④ R6：同 (industry, scale, seed) 重跑，世界态逐字节一致  44776ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ⑤ 接缝：真值必须**出现在传导结果里**，且 max 语义不随拍数漂（不是纯积分器）  17541ms
+ ✓ test/data-categories.test.ts (7 tests) 132484ms
+   ✓ 数据接入分类（数据接入控制台） > 分类把全部出厂对象类型恰好归入一类（合并完整、无重复、无遗漏）  19652ms
+   ✓ 数据接入分类（数据接入控制台） > GET /a/v1/data-categories：列出分类 + 有效模式 + 各类型上传列  22158ms
+   ✓ 数据接入分类（数据接入控制台） > GET /a/v1/data-categories/:key/template：模版字段可看 + ?format=csv 可下载  20676ms
+   ✓ 数据接入分类（数据接入控制台） > PUT /a/v1/data-categories/:key/mode：设置接入方式可持久化 + 反映到列表；非法模式拒；非 admin 拒  16404ms
+   ✓ 数据接入分类（数据接入控制台） > PUT /a/v1/data-categories/:key/template：上传 CSV 列替换模版（非写死）→ GET 返回自定义列 + CSV 下载；复位回派生  16041ms
+   ✓ 数据接入分类（数据接入控制台） > 模式与模版覆盖互不冲掉（读改写保留另一字段）  15478ms
+   ✓ 数据接入分类（数据接入控制台） > GET /a/v1/field-coverage：返回切片字段覆盖 + 分类归并报告（诚实数字）  22071ms
+ ✓ test/sim-root-triad.seam.test.ts (5 tests) 264991ms
+   ✓ WO-SIM-ROOT-TRIAD · 三个根源扰动因素（SEAM：种子数据 × 传导引擎） > §0 🐤 恒等式金丝雀：源码抽取器 === grep 口径 === 路由下发条数（三者不等即『工具坏了』）  19181ms
+   ✓ WO-SIM-ROOT-TRIAD · 三个根源扰动因素（SEAM：种子数据 × 传导引擎） > §1 🔴 入度臂：三个新量纲入度 = 0（现算·非硬编码名单），且 demandPressure 由 0 → ≥1（降级）  17898ms
+   ✓ WO-SIM-ROOT-TRIAD · 三个根源扰动因素（SEAM：种子数据 × 传导引擎） > §1b 🔴 中文名：三个根源在**真接口**里都拿得到人话名（下拉里没名字 = 用户挑不出来）  14656ms
+   ✓ WO-SIM-ROOT-TRIAD · 三个根源扰动因素（SEAM：种子数据 × 传导引擎） > §2 🔴 落点臂：三个根源在真种子世界态里**真带上**，且全距 > 0（不是 0 占位）  12915ms
+   ✓ WO-SIM-ROOT-TRIAD · 三个根源扰动因素（SEAM：种子数据 × 传导引擎） > §3 🔴 传导臂：每个根源抬高 D ⇒ 1 跳目标 Δ 同号·非零·不超过 N×系数×D，远端下游按预期方向动  200333ms
+ ✓ test/action-adopt-mitigation.seam.test.ts (7 tests) 177213ms
+   ✓ adopt_mitigation · 采纳后风险曲线**真的**下降（效果层） > 头号效果断言：采纳后第 tn 天及之后逐日降约 eff，第 tn 天之前逐字节不变  30168ms
+   ✓ adopt_mitigation · 采纳后风险曲线**真的**下降（效果层） > 未采纳的 (base,factor) 逐字节不变：同基地另一因素的曲线不动，另一基地整张卡不动  50222ms
+   ✓ adopt_mitigation · 采纳后风险曲线**真的**下降（效果层） > R6 向后兼容硬锚：无任何采纳记录时 risk_timeline 输出与**采纳功能上线前**逐字节一致  23711ms
+   ✓ adopt_mitigation · 采纳后风险曲线**真的**下降（效果层） > 诚实拒绝：planKey 解不出方案 → EXECUTION_FAILED 且**没有写入任何 AdoptedMitigation**  13208ms
+   ✓ adopt_mitigation · 采纳后风险曲线**真的**下降（效果层） > 诚实拒绝：factor 不在方案库 / base 解析不出 → 失败且不落库  12631ms
+   ✓ adopt_mitigation · 采纳后风险曲线**真的**下降（效果层） > 单源不并存：改采同因素的另一方案 → 旧条 REVOKED、至多一条 ACTIVE，曲线按新方案走  22785ms
+   ✓ adopt_mitigation · 采纳后风险曲线**真的**下降（效果层） > ACTIVE 记录残缺（eff/tn 被改坏）→ 报错，不按缺省值静默消解（③ 拒绝 > 静默错数）  24481ms
+ ✓ test/dash-onhand-orders.seam.test.ts (5 tests) 161747ms
+   ✓ WO-DASH-ONHAND · 驾驶舱「在手订单」口径接缝 > SEAM-1 数据半：订单簿三态构成来自契约 orderStatusTargets（无第二份比例）  30511ms
+   ✓ WO-DASH-ONHAND · 驾驶舱「在手订单」口径接缝 > SEAM-2 ★取数半：卡片下发的 query 真跑出来 == 未完成态计数，且 ≠ 全簿  35445ms
+   ✓ WO-DASH-ONHAND · 驾驶舱「在手订单」口径接缝 > SEAM-3 口径必须写在屏上：卡片带 caption，且 filter 取自契约状态集  34061ms
+   ✓ WO-DASH-ONHAND · 驾驶舱「在手订单」口径接缝 > SEAM-4 ★对照实验（兼金丝雀）：一张在制单改判已完成 → 卡片恰好 −1，全簿不变  31789ms
+   ✓ WO-DASH-ONHAND · 驾驶舱「在手订单」口径接缝 > SEAM-5 台账半：affected_orders 回带交期窗口，且其行是在手单的子集（127 ⊂ 150）  29920ms
+ ✓ test/simclock.test.ts (4 tests) 466795ms
+   ✓ A8.6 synthetic timeseries + simulation clock > T6: 90d history is deterministic per seed; maint-week dip aligns with the MaintPlan object  148490ms
+   ✓ A8.6 synthetic timeseries + simulation clock > T7: tick runs the full chain, replays identically, and reset returns to t0  47497ms
+   ✓ A8.6 synthetic timeseries + simulation clock > T8: scenario script — tick3 iot_delay → P90 0.93→0.90; tick5 shipment_delay → extra arrival pulse; tick8 yield_drop → C05  217481ms
+   ✓ A8.6 synthetic timeseries + simulation clock > T9: forecast deviation accumulates across ticks → C12 SUSTAIN hit → calibration.required event  53312ms
+ ✓ test/change-impact-preview.seam.test.ts (21 tests) 180772ms
+   ✓ WO-CHANGE-IMPACT-PREVIEW · 接线 > feature 关 ⇒ 404 FEATURE_NOT_FOUND（Entitlement 先于 authz）  4779ms
+   ✓ WO-CHANGE-IMPACT-PREVIEW · 预览与实际一致（传导族 · 真跑 propagateTick 差分） > 预览 recompute 集合 === 真跑 N tick 后实际变值的对象.状态变量集合  62880ms
+   ✓ WO-CHANGE-IMPACT-PREVIEW · 预览与实际一致（传导族 · 真跑 propagateTick 差分） > 多跳正确：3 跳真链（Order→Model→Base→Line）逐跳列出且跳数标对  53028ms
+   ✓ WO-CHANGE-IMPACT-PREVIEW · 预览与实际一致（派生族 · 真跑 runDerivations 差分） > 预览 rederive 集合 === 改 Order.qty 后 runDerivations 实际变值的 对象.派生属性 集合  58267ms
+   ✓ WO-CHANGE-IMPACT-PREVIEW · 对抗审查 REAL-BUG 复发闸 > REAL-BUG-装配器：非 ACTIVE 类型的对象也在预览世界里（传导图物化不过滤 status）  1784ms
+ ❯ test/vle-acceptance.test.ts (4 tests | 2 failed) 305612ms
+   × VLE 验收补齐 · VL2/VL4/VL5/VL7 > VL2 植入计算 bug（broken_aggregate）→ 独立参照比对处变红，报告 pass=false 127588ms
+     → Test timed out in 120000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   ✓ VLE 验收补齐 · VL2/VL4/VL5/VL7 > VL4 闭环收敛：注入偏差→提案(simulatedMapeAfter<mapeBefore)→批准应用→后续求解用新参数  43537ms
+   × VLE 验收补齐 · VL2/VL4/VL5/VL7 > VL5 混沌恢复：扰动运行(注入故障)不污染后续——一次性验证租户隔离 → 重跑回到基线 134474ms
+     → Test timed out in 120000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   ✓ VLE 验收补齐 · VL2/VL4/VL5/VL7 > VL7 静态独立性：VLE 参照预言机不 import 被测求解器（不可用被测算被测） 8ms
+ ✓ test/procurement-leg-seam.test.ts (5 tests) 289507ms
+   ✓ WO-SANDBOX-D2 · SEAM：缺料订单 → 按责任方分解的最早齐套日（数据半 × 引擎半） > ① 四段齐全、四个不同责任方、每段天数反查真对象对得上；总耗时==四段之和  47328ms
+   ✓ WO-SANDBOX-D2 · SEAM：缺料订单 → 按责任方分解的最早齐套日（数据半 × 引擎半） > ② 三态诚实：境内直供 → 清关 NOT_APPLICABLE（真值 0，有据可依），不是 EMPTY 也不是假的 0  81314ms
+   ✓ WO-SANDBOX-D2 · SEAM：缺料订单 → 按责任方分解的最早齐套日（数据半 × 引擎半） > ③ 取不到真值一律 EMPTY：无据物料 → 四段全 null，整单最早齐套日诚实缺席（不拿已知段之和冒充）  56879ms
+   ✓ WO-SANDBOX-D2 · SEAM：缺料订单 → 按责任方分解的最早齐套日（数据半 × 引擎半） > ④ minOrderQty / onTimeRate 真接线（此前 solvers/ 零消费方）：MOQ 抬高采购量、准时率产出期望滑期  32095ms
+   ✓ WO-SANDBOX-D2 · SEAM：缺料订单 → 按责任方分解的最早齐套日（数据半 × 引擎半） > ⑤ R6 确定性：同 seed 重跑，采购段四段分解逐字节一致  71885ms
+ ✓ test/features.test.ts (6 tests) 298763ms
+   ✓ Feature entitlement backend (E) > registry + resolution: battery defaults all-on; tenant override narrows; ETag on GET  81343ms
+   ✓ Feature entitlement backend (E) > E1/middleware: tenant-disabled feature → solver endpoint 404 FEATURE_NOT_FOUND (before authz)  49950ms
+   ✓ Feature entitlement backend (E) > E6: role narrowing only — enabling beyond the tenant set → 422 ROLE_CANNOT_EXCEED_TENANT  29937ms
+   ✓ Feature entitlement backend (E) > E4: parent off cascades children off (view.project-sim → whatif)  35546ms
+   ✓ Feature entitlement backend (E) > E5/workspace: features + configVersion in workspace; navigation/views filtered server-side  29611ms
+   ✓ Feature entitlement backend (E) > E7: synthetic generation skips view seeds bound to disabled features  72212ms
+ ✓ test/cockpit-rootcause.test.ts (4 tests) 248320ms
+   ✓ cockpit P2 · 根因归因 DAG（L6 + L1 + R2） > L6 确定性：generateBattery 同 seed Metric/RootCauseChain 字节级一致 + KPI 与 P1 数据交叉一致  2637ms
+   ✓ cockpit P2 · 根因归因 DAG（L6 + L1 + R2） > L1：合成 → plan_rootcause 求解器产出多根 DAG（KPI→因子→证据，边权重=活数据贡献占比）  56635ms
+   ✓ cockpit P2 · 根因归因 DAG（L6 + L1 + R2） > L1：指定 kpiCategory 只归因该类 KPI（profit）  86365ms
+   ✓ cockpit P2 · 根因归因 DAG（L6 + L1 + R2） > R2：另一租户无这些绿地对象（隔离）  102645ms
+ ✓ test/edge-active-counterfactual.test.ts (7 tests) 469949ms
+   ✓ WO-ACTIVE-EDGE-UX · 会话级反事实（关掉一条传导边 → 结果真的变） > 🔴 SEAM：屏蔽 demo_base_load_to_line_util ⇒ Line.utilPressure 由 10 变 0（方向↓·量级 20×0.5）  79103ms
+   ✓ WO-ACTIVE-EDGE-UX · 会话级反事实（关掉一条传导边 → 结果真的变） > 🔴 SEAM：POST …/counterfactual 同时给出基线与反事实，diff 方向 down、量级 10  96484ms
+   ✓ WO-ACTIVE-EDGE-UX · 会话级反事实（关掉一条传导边 → 结果真的变） > 🔴 SEAM：对照跑前后，会话行 + 全部 tick 行逐字节相同（putTickState/putSession 一次都不调）  171161ms
+   ✓ WO-ACTIVE-EDGE-UX · 会话级反事实（关掉一条传导边 → 结果真的变） > 🔴 未知 ruleKey ⇒ 400 UNKNOWN_PROPAGATION_RULE_KEY（两条路由都咬）  72798ms
+   ✓ WO-ACTIVE-EDGE-UX · 会话级反事实（关掉一条传导边 → 结果真的变） > 🔴 R3：sim.propagation 关掉 ⇒ 两条新路由都 404 FEATURE_NOT_FOUND  50364ms
+ ✓ test/spine.test.ts (9 tests) 343679ms
+   ✓ SPINE · 目标-指标-责任骨架（L6 + L1 + R2） > L6 确定性：generateBattery 同 seed metrics/ksfs/principals 字节级一致 + Metric 归挂 KSF/责任人  3711ms
+   ✓ SPINE · 目标-指标-责任骨架（L6 + L1 + R2） > L1：KSF/Metric/Principal 真物化 + 骨架链路（metric_affects_ksf / metric_ownedby）  66026ms
+   ✓ SPINE · 目标-指标-责任骨架（L6 + L1 + R2） > WO-CEO-1a：顶层目标(营收/毛利/份额/现金)已升一等 Metric（target/actual/floorVal/越线 齐备，year 级）  48455ms
+   ✓ SPINE · 目标-指标-责任骨架（L6 + L1 + R2） > R-一致（Gap④ 杀漂移）：Metric.target/floorVal 全部取自 GOAL_REGISTRY 单一来源，毛利率底线不再漂移  53653ms
+   ✓ SPINE · 目标-指标-责任骨架（L6 + L1 + R2） > L1：metric_rollup 输出 Metric[] + delta/miss（actual<floor 越线，对齐目标树）  38047ms
+   ✓ SPINE · 目标-指标-责任骨架（L6 + L1 + R2） > L1：level 过滤（op 6 项 / year 4 项顶层目标真对象，非系数编造）  41533ms
+   ✓ SPINE · 目标-指标-责任骨架（L6 + L1 + R2） > SPINE.2 责任闭环：目标树→责任人（plantarget_ownedby）+ Metric 血缘可溯到数据源（R13）  38658ms
+   ✓ SPINE · 目标-指标-责任骨架（L6 + L1 + R2） > SPINE.2 事件：指标快照回采发 metric.snapshot_recorded（每指标）+ 越线发 metric.breached  18506ms
+   ✓ SPINE · 目标-指标-责任骨架（L6 + L1 + R2） > R2：另一租户无 Metric/KSF/Principal（隔离）  35044ms
+ ✓ test/rules-p3-payload.test.ts (8 tests) 284769ms
+   ✓ 规则即引用 P3-b · 求解器输出→规则 payload 映射真评估 > quote_margin C15/C24：毛利率 < 底线 → BLOCK；高于底线 → PASS（比率口径，边界翻转）  62838ms
+   ✓ 规则即引用 P3-b · 求解器输出→规则 payload 映射真评估 > credit_exposure C13/C32：creditUsedRatio>1 BLOCK & 逾期>30天 BLOCK；边界翻转  42505ms
+   ✓ 规则即引用 P3-b · 求解器输出→规则 payload 映射真评估 > carbon_footprint C33：目的地EU且碳足迹超阈 → BLOCK；非EU或达标 → PASS（IMPLIES）  51255ms
+   ✓ 规则即引用 P3-b · 求解器输出→规则 payload 映射真评估 > kit_readiness C06/C16：存在物料缺口 → WARN；齐套 → PASS  28565ms
+   ✓ 规则即引用 P3-b · 求解器输出→规则 payload 映射真评估 > lta_gap C16：现货缺口>0 → WARN；长协覆盖足额 → PASS  25027ms
+   ✓ 规则即引用 P3-b · 求解器输出→规则 payload 映射真评估 > inventory_optimize C16：欠储 underQty>0 → WARN；水位充足 → PASS  35030ms
+   ✓ 规则即引用 P3-b · 求解器输出→规则 payload 映射真评估 > changeover_sequence C22：单步换型>120 → WARN；皆≤120 → PASS（边界翻转）  22022ms
+   ✓ 规则即引用 P3-b · 求解器输出→规则 payload 映射真评估 > 诚实边界：无法映射口径的规则仍落 NOT_APPLICABLE（不冒充 PASS）  17516ms
+ ✓ test/sim-real-cells.seam.test.ts (20 tests) 139068ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂2 量纲：全扫 STATE_VAR_DOMAINS 已声明域的变量逐个不越域；无域族归档「刻意无上界」  1718ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > ⓐ 引擎归属：derivationSpecs 清成 0 条 ⇒ 25 个 targetProp 全部消失（证明是引擎②算的）  37573ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂3 敏感性：Customer.receivables ×2 ⇒ receivablePressure 精确 ×2（线性式）  5017ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂3 敏感性：Equipment.health_score ↓10 ⇒ equipmentFailure 精确 ↑10（反向线性）  8482ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂4 反向：拿掉 Line.max_capacity_day ⇒ blockedPressure 退回（COALESCE 兜 0，非写死常数）  7169ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂5 变异反证：把 equipmentFailure 的『100 −』改成『100 +』⇒ 臂1 锚定断言当场红  48363ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > R6 确定性：同 (seed=42) 重铺世界 ⇒ measuredCells / totalCells 逐字节一致  2197ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > §3 绑定判据：valueRef 指向不存在的 specKey ⇒ 播种当场抛错变红（⛔ 不静默回落哈希）  1319ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > §退役 · `model_forecast_bias` 与它的 valueRef 登记必须同时不存在（残留任一处即红）  1200ms
+ ✓ test/linktype-computed-edge.seam.test.ts (7 tests) 224796ms
+   ✓ WO-COMPUTED-EDGE · 接缝：算端点 / anchor 谓词 / 叉积 —— 声明 × 物化 × 检索 > §0 金丝雀 + §1 算端点：修前 0 条 → 修后连得出，且回执带键分布  38028ms
+   ✓ WO-COMPUTED-EDGE · 接缝：算端点 / anchor 谓词 / 叉积 —— 声明 × 物化 × 检索 > §2 反向对照：改被表达式读的那一列 ⇒ 该行的边必须换端点，改回来必须复现  27137ms
+   ✓ WO-COMPUTED-EDGE · 接缝：算端点 / anchor 谓词 / 叉积 —— 声明 × 物化 × 检索 > §3 叉积：限界证据（候选 → 边）+ 超预算一条都不许写  48738ms
+   ✓ WO-COMPUTED-EDGE · 接缝：算端点 / anchor 谓词 / 叉积 —— 声明 × 物化 × 检索 > §4 anchor 侧谓词：同一份数据，有/无 viaWhereTo 必须分叉  27922ms
+   ✓ WO-COMPUTED-EDGE · 接缝：算端点 / anchor 谓词 / 叉积 —— 声明 × 物化 × 检索 > §5 多态目标拆边：EXC_SOURCE_LINKS 与 batteryLinkTypes() 五条声明逐条对齐 + 检索真能取到  22327ms
+   ✓ WO-COMPUTED-EDGE · 接缝：算端点 / anchor 谓词 / 叉积 —— 声明 × 物化 × 检索 > §7 BOM 口径归一：捷径边 == BOM 四跳链的物料集，且正逆两向严格互逆  26639ms
+   ✓ WO-COMPUTED-EDGE · 接缝：算端点 / anchor 谓词 / 叉积 —— 声明 × 物化 × 检索 > §6 写入期校验：三类会静默变成死边的写法必须 400 且说人话  33999ms
+ ✓ test/ceo-data2-seam.test.ts (11 tests) 321408ms
+   ✓ WO-CEO-DATA-2 × WO-CEO-2-v2 · 接缝门 > DATA-2 因果因素注册表包含多指标域，且每个 factor 都物化为 CausalFactor 对象  53772ms
+   ✓ WO-CEO-DATA-2 × WO-CEO-2-v2 · 接缝门 > metric-aware 归因：为 seg_attain_ess 发布 MetricCausalBinding → gap_attribution 只选绑定根并多假设分配  31772ms
+   ✓ WO-CEO-DATA-2 × WO-CEO-2-v2 · 接缝门 > metric-aware 归因：market_share 沿 caused_by 走到 cf-competitor-price 等商业根因  37952ms
+   ✓ WO-CEO-DATA-2 × WO-CEO-2-v2 · 接缝门 > SEAM-GATE·C5 命脉：4 未达成指标各归自己因果域根（绝不回落 cathode 供应链）  14030ms
+   ✓ WO-CEO-DATA-2 × WO-CEO-2-v2 · 接缝门 > SEAM-GATE·WO-TIER3：gross_profit 落毛利桥量/价/成本三真叶（GrossMarginBridge.impactYi）· C5 改颗粒归因变 · 不回落 cathode  33777ms
+   ✓ WO-CEO-DATA-2 × WO-CEO-2-v2 · 接缝门 > SEAM-GATE·WO-TIER3 加固：cash 现金域 cf-ar-aging 下钻 amount（非恒 0）· 改颗粒归因变  50795ms
+   ✓ WO-CEO-DATA-2 × WO-CEO-2-v2 · 接缝门 > metric-aware 归因：market_share 发布 MetricCausalBinding → 只选绑定根并多假设分配  19086ms
+   ✓ WO-CEO-DATA-2 × WO-CEO-2-v2 · 接缝门 > DATA-2 原子数据集端点产出 6 指标，且指标 key 与 CausalFactor.metricKey 可对应  851ms
+   ✓ WO-CEO-DATA-2 × WO-CEO-2-v2 · 接缝门 > SEAM D1×E1：scope.baseId=jiangmen → 江门专属树·L2 设备OEE 瓶颈叶非空(drillValue=真 oee_current)·勾稽·可溯  18708ms
+   ✓ WO-CEO-DATA-2 × WO-CEO-2-v2 · 接缝门 > SEAM D2：scope.baseId '江门' 与 'jiangmen' 返回字节同一棵树（基地键归一 id↔中文生效）  32907ms
+   ✓ WO-CEO-DATA-2 × WO-CEO-2-v2 · 接缝门 > SEAM 兼容：无 scope = 现全局行为不回归（全基地 L1·jiangmen 只是其中一节点·带 baseId/displayName）  27721ms
+ ✓ test/chain-scan-honesty.test.ts (4 tests) 121579ms
+   ✓ WO-SANDBOX-A2 · 全链扫描零写死（运行态溯源 · PRD-sandbox-redesign §9 A2 后半句） > SCAN-1 · A2-a 无未申报的数：每条阻滞点的 threshold 都能在 thresholds[] 里找到申报条目  38369ms
+   ✓ WO-SANDBOX-A2 · 全链扫描零写死（运行态溯源 · PRD-sandbox-redesign §9 A2 后半句） > SCAN-2 · A2-c 溯源可达：申报的 ruleKey/ruleParamKey 在**运行期真发布的规则**里真存在  40534ms
+   ✓ WO-SANDBOX-A2 · 全链扫描零写死（运行态溯源 · PRD-sandbox-redesign §9 A2 后半句） > SCAN-3 · A2「抽 5 个数字逐个溯源」：抽样的 severity 必须能由 metricValue/threshold 重算出来  21840ms
+   ✓ WO-SANDBOX-A2 · 全链扫描零写死（运行态溯源 · PRD-sandbox-redesign §9 A2 后半句） > SCAN-4 · 诚实缺席：判不出来的判据必须进 unresolved 并写清为什么，不许消失  20831ms
+ ✓ test/opt-whatif-base-cost.seam.test.ts (6 tests) 139763ms
+   ✓ WO-OPT-WHATIF-DATA · Base 选址成本 → optimize_whatif 真装配真重解（SEAM） > ① 头号接缝：真 demo 数据 → 装配不报缺 open_cost → 扰动后**最优设施真切换**（handan→changzhou·Δ≠0）  28788ms
+   ✓ WO-OPT-WHATIF-DATA · Base 选址成本 → optimize_whatif 真装配真重解（SEAM） > ② 变异反证的对偶（诚实报缺仍在）：同一租户抹掉 Base 的成本字段 → 立刻回到 open_cost 报缺  25081ms
+   ✓ WO-OPT-WHATIF-DATA · Base 选址成本 → optimize_whatif 真装配真重解（SEAM） > ③ R6：同 seed 同扰动两跑字节一致（含新加的两个派生成本）  41125ms
+   ✓ WO-OPT-WHATIF-DATA · Base 选址成本 → optimize_whatif 真装配真重解（SEAM） > ④ 成本值真由已有量派生（规模 + 地理），不是随机数：openCost 随 gwh/lines 单调、serveCost 随网络距离  15687ms
+   ✓ WO-OPT-WHATIF-DATA · Base 选址成本 → optimize_whatif 真装配真重解（SEAM） > ⑤ 原 tripwire 已转正（缺口闭合·WO-OPT-WHATIF-CLOSE 收编）：生产实况下 client 角色不再落到零实例类型  14112ms
+   ✓ WO-OPT-WHATIF-DATA · Base 选址成本 → optimize_whatif 真装配真重解（SEAM） > ⑥ REST 入口同形（AgentCore OBO 实打的那条路）：/a/v1/solvers/optimize_whatif/invoke 装配不报缺  14919ms
+stdout | test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 🔴 头号判据 · 对照实验：三个接线求解器 —— 同 (args,scope) 扰动前 vs 扰动+tick4 后，回包必须**真的不同**
+[contrast] solver=risk_timeline before=9955e80d89b917b8 after=b14ae2eb73ccff6c equal=false
+
+stdout | test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 🔴 头号判据 · 对照实验：三个接线求解器 —— 同 (args,scope) 扰动前 vs 扰动+tick4 后，回包必须**真的不同**
+[contrast] solver=capacity_forecast before=a82680210c017607 after=779f2d87ae531e79 equal=false
+
+stdout | test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 🔴 头号判据 · 对照实验：三个接线求解器 —— 同 (args,scope) 扰动前 vs 扰动+tick4 后，回包必须**真的不同**
+[contrast] solver=affected_orders before=699eb1d8ab60295c after=bc67a25181a1600e equal=false
+
+stdout | test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > R6 兼容：不传 worldId ⇒ 无 worldState 键且两跑逐字节相同；零压力世界 ⇒ 剥披露键后与真值口径逐字节相同
+[r6-truth] solver=risk_timeline truth=ed27635d15a275f3
+
+stdout | test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > R6 兼容：不传 worldId ⇒ 无 worldState 键且两跑逐字节相同；零压力世界 ⇒ 剥披露键后与真值口径逐字节相同
+[r6-truth] solver=capacity_forecast truth=9f6c0730efaf1bf2
+
+ ✓ test/process-hard-capacity.seam.test.ts (3 tests) 120051ms
+   ✓ WO-SANDBOX-D3 · 工序硬容量（化成柜位）→ bottleneck_matrix 判定接缝 > SEAM 命门：改柜位数 → bottleneck_matrix 判定真的变（binding/缺口/张力，且既有因子「瓶颈工序」跟着动）  18167ms
+   ✓ WO-SANDBOX-D3 · 工序硬容量（化成柜位）→ bottleneck_matrix 判定接缝 > 诚实缺不兜底：删 requiredThroughput / 删柜位数 / 缺参 → EMPTY + 原因（绝不给默认柜位数）  50150ms
+   ✓ WO-SANDBOX-D3 · 工序硬容量（化成柜位）→ bottleneck_matrix 判定接缝 > R6 确定性：同 (industry=battery, scale, seed=42) 两跑 —— 工序硬容量字段与判定逐字节一致  51729ms
+stdout | test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > R6 兼容：不传 worldId ⇒ 无 worldState 键且两跑逐字节相同；零压力世界 ⇒ 剥披露键后与真值口径逐字节相同
+[r6-truth] solver=affected_orders truth=833984e5c03574b3
+
+ ✓ test/interbase-transfer.test.ts (5 tests) 135112ms
+   ✓ WO-INTERBASE-TRANSFER · 跨基地调拨一等对象（字符串杠杆→可查/可溯/可推演·R13） > SEAM-1 推演读真 Transfer：种常州→成都在途调拨(qty=Q,transitDays=D) → 成都入向运力投影读到真 Q/D（非字符串「跨基地借调」）  15110ms
+   ✓ WO-INTERBASE-TRANSFER · 跨基地调拨一等对象（字符串杠杆→可查/可溯/可推演·R13） > SEAM-2 改 Transfer→推演变（红咬）：qty Q→Q' 且 status IN_TRANSIT→CANCELLED → 成都入向运力随之变（不变即证读硬编码非真对象）  12820ms
+   ✓ WO-INTERBASE-TRANSFER · 跨基地调拨一等对象（字符串杠杆→可查/可溯/可推演·R13） > 可查可溯：GET /a/v1/objects?type=InterBaseTransfer 见真调拨行；transfer_from_base/to_base 边下钻到 BASE_REGISTRY 真 Base 对象  13350ms
+   ✓ WO-INTERBASE-TRANSFER · 跨基地调拨一等对象（字符串杠杆→可查/可溯/可推演·R13） > R6 双跑：同 seed 重跑 → transferId 集 + qty 字节一致（独立哈希子流·无 random/时钟）  50152ms
+   ✓ WO-INTERBASE-TRANSFER · 跨基地调拨一等对象（字符串杠杆→可查/可溯/可推演·R13） > 派生：etaDay = dispatchDay + transitDays（derivedProperties 管线算·确定性），etaDate 为其 ISO 展示  43674ms
+ ✓ test/worldstate-surface.seam.test.ts (8 tests) 250302ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 金丝雀：种子/传导规则/求解器注册/白名单表四样都在（任一不在 ⇒ 后面读不出坏了还是真没变）  31152ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 🔴 头号判据 · 对照实验：三个接线求解器 —— 同 (args,scope) 扰动前 vs 扰动+tick4 后，回包必须**真的不同**  41409ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > R6 兼容：不传 worldId ⇒ 无 worldState 键且两跑逐字节相同；零压力世界 ⇒ 剥披露键后与真值口径逐字节相同  37467ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 闸① 白名单外：capacity_rollup 传 worldId（含幽灵 id）⇒ 机制够不着它（无 worldState 键·与真值口径逐字节相同）  18096ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 闸③ 不静默回落：幽灵 worldId ⇒ 404；跨租户 worldId ⇒ 404；空串 worldId ⇒ 400（金丝雀：同 key 真世界 200）  15012ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 空世界诚实：worldObjects=0 + note 明说「未发生世界隔离」，数值仍给且等于真值口径  16139ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 披露块可复核：sessionId/tick/source/divisor/rules/applied/unconsumed/agentInvolved 齐全，demandLoad 诚实进 unconsumed  26162ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 世界内 R6：同 (worldId, tick) 两跑逐字节相同（含 worldState 披露键）  64831ms
+ ✓ test/process-tick-coverage.seam.test.ts (7 tests) 336826ms
+   ✓ WO-PROCESS-TICK-COVERAGE · 第五档流程画布的节拍覆盖面（SEAM·守 G-PROCESS-TICK-COVERAGE） > §A1 🐤 恒等式金丝雀：种子抽取器抽全了（抽出条数 === 原文声明行数），不等即『工具坏了』  776ms
+   ✓ WO-PROCESS-TICK-COVERAGE · 第五档流程画布的节拍覆盖面（SEAM·守 G-PROCESS-TICK-COVERAGE） > §B1 🔴 覆盖率现算：29/65 随节拍变 · 0 无承载对象 · 36 本层不随节拍变（三档合计 = 65）  61553ms
+   ✓ WO-PROCESS-TICK-COVERAGE · 第五档流程画布的节拍覆盖面（SEAM·守 G-PROCESS-TICK-COVERAGE） > §B2 🔴 反面判据（红线 1）：D01 经营规划 与 D02 外部信号**整域**必须是「本层不随节拍变」  112992ms
+   ✓ WO-PROCESS-TICK-COVERAGE · 第五档流程画布的节拍覆盖面（SEAM·守 G-PROCESS-TICK-COVERAGE） > §C 🔴 接缝：真 tick ⇒ 29 个点亮承载物读数**全部**真变 · 36 条黑档读数**真的一动不动**  92554ms
+   ✓ WO-PROCESS-TICK-COVERAGE · 第五档流程画布的节拍覆盖面（SEAM·守 G-PROCESS-TICK-COVERAGE） > §D 🔴 变异反证：抽掉执行链头一条边的**实例**（Line→WorkOrder），D07 那一串必须整条塌掉  68930ms
+ ✓ test/tr-dataflow.test.ts (7 tests) 476881ms
+   ✓ 数据流闭环轨迹 TR1–TR8 > TR1 上传订单 CSV → 落地 RawDataset 下游可见；合成订单 → 推演(affected_orders)命中  60321ms
+   ✓ 数据流闭环轨迹 TR1–TR8 > TR2 规则发布 → 推演被该规则拦截（评估命中违规）  83529ms
+   ✓ 数据流闭环轨迹 TR1–TR8 > TR4 采纳→Action 审批→写回→对象数字变化且可溯源(origin=MANUAL)  85751ms
+   ✓ 数据流闭环轨迹 TR1–TR8 > TR5 模拟时钟 tick → 全链重算，下游有变化（不重登）  96606ms
+   ✓ 数据流闭环轨迹 TR1–TR8 > TR6 学习环：注入偏差→校准提案→批准→历史可见(越用越准回路)  49744ms
+   ✓ 数据流闭环轨迹 TR1–TR8 > TR7 权限联动：base_manager(常州) 查询 ⊆ admin 全量，过滤一致贯穿全链  51374ms
+   ✓ 数据流闭环轨迹 TR1–TR8 > TR8 一键合成 → 多模块有数据且同一事实跨视图相等(VLE 不变量：聚合==明细求和)  49548ms
+ ✓ test/capex.test.ts (9 tests) 123197ms
+   ✓ C1 · capex_scenario 求解器端点 + AOP 接线 > /a/v1/solvers/capex_scenario/invoke 确定性：同输入同输出  44852ms
+   ✓ C1 · capex_scenario 求解器端点 + AOP 接线 > 病态输入经端点 → 422 IRR_DIVERGED（不死循环）  27513ms
+   ✓ C1 · capex_scenario 求解器端点 + AOP 接线 > AOP 接线：scenarios[].capexScenario 真实产出 + C23 由 IRR/util24 驱动 + finance.irr 为组合 IRR  50622ms
+stdout | test/ontology-signature.seam.test.ts > WO-69 P2 · Function 本体签名 > S5 实跑比对：每个已签名求解器真读到的类型/属性都在声明内（漏声明即红）
+[S5] 保守多声明（本次实跑未触及·非红）：
+  gap_attribution({"metricKey":"market_share"}): ARAging
+  gap_attribution({"metricKey":"market_share"}): BackupSupplierPool
+  gap_attribution({"metricKey":"market_share"}): CommodityPriceTrend
+  gap_attribution({"metricKey":"market_share"}): Customer
+  gap_attribution({"metricKey":"market_share"}): DecisionGap
+  gap_attribution({"metricKey":"market_share"}): DSO
+  gap_attribution({"metricKey":"market_share"}): Equipment
+  gap_attribution({"metricKey":"market_share"}): EquipmentDowntime
+  gap_attribution({"metricKey":"market_share"}): ExternalSignal
+  gap_attribution({"metricKey":"market_share"}): GrossMarginBridge
+  gap_attribution({"metricKey":"market_share"}): Line
+  gap_attribution({"metricKey":"market_share"}): LongTermAgreement
+  gap_attribution({"metricKey":"market_share"}): MaterialBalance
+  gap_attribution({"metricKey":"market_share"}): MaterialBatch
+  gap_attribution({"metricKey":"market_share"}): Order
+  gap_attribution({"metricKey":"market_share"}): PipelineOpportunity
+  gap_attribution({"metricKey":"market_share"}): PriceRealization
+  gap_attribution({"metricKey":"market_share"}): Process
+  gap_attribution({"metricKey":"market_share"}): Shipment
+  gap_attribution({"metricKey":"market_share"}): Supplier
+  gap_attribution({"metricKey":"gross_margin"}): ARAging
+  gap_attribution({"metricKey":"gross_margin"}): BackupSupplierPool
+  gap_attribution({"metricKey":"gross_margin"}): BidRecord
+  gap_attribution({"metricKey":"gross_margin"}): CommodityPriceTrend
+  gap_attribution({"metricKey":"gross_margin"}): CompetitorPrice
+  gap_attribution({"metricKey":"gross_margin"}): CompetitorShare
+  gap_attribution({"metricKey":"gross_margin"}): DecisionGap
+  gap_attribution({"metricKey":"gross_margin"}): DSO
+  gap_attribution({"metricKey":"gross_margin"}): Equipment
+  gap_attribution({"metricKey":"gross_margin"}): EquipmentDowntime
+  gap_attribution({"metricKey":"gross_margin"}): ExternalSignal
+  gap_attribution({"metricKey":"gross_margin"}): GrossMarginBridge
+  gap_attribution({"metricKey":"gross_margin"}): Line
+  gap_attribution({"metricKey":"gross_margin"}): LongTermAgreement
+  gap_attribution({"metricKey":"gross_margin"}): MaterialBalance
+  gap_attribution({"metricKey":"gross_margin"}): MaterialBatch
+  gap_attribution({"metricKey":"gross_margin"}): Order
+  gap_attribution({"metricKey":"gross_margin"}): OverdueRecord
+  gap_attribution({"metricKey":"gross_margin"}): Process
+  gap_attribution({"metricKey":"gross_margin"}): Shipment
+  gap_attribution({"metricKey":"gross_margin"}): Supplier
+  plan_rootcause({}): MaterialBalance
+  capacity_forecast({"modelId":"4680-NCM","qty":1000,"weeks":6}): Material
+  risk_timeline({"days":30}): Material
+  counterfactual_timeline({"days":30}): Material
+  quote_margin({}): Customer
+
+ ✓ test/base-outlook.test.ts (8 tests) 363217ms
+   ✓ WO-B / F1 · base_capacity_outlook 每基地前瞻产能推演 > SEAM 头号：changzhou → 三档 horizon(30/60/90) × 四线齐(可用/在产/未来单/预测)+缺口标记+每线 provenance(R13)+P1 逐日 rationale  63210ms
+   ✓ WO-B / F1 · base_capacity_outlook 每基地前瞻产能推演 > SEAM 改颗粒：Order.due 移出 30 天窗 → futureOrders(30) 真降（前瞻非写死·随交期真变）  48989ms
+   ✓ WO-B / F1 · base_capacity_outlook 每基地前瞻产能推演 > SEAM 改颗粒：DemandSegment.demandWanPerYearP50 上调 → salesForecast 真升（销售预测线随预测真变）  45015ms
+   ✓ WO-B / F1 · base_capacity_outlook 每基地前瞻产能推演 > WO-UNCERTAINTY-INPUTS 对照实验：P90×1.5（P50/P10 不动）→ 保守读数升、**基准读数逐位不变**  26813ms
+   ✓ WO-B / F1 · base_capacity_outlook 每基地前瞻产能推演 > R6 确定性 + 基地名归一：同输入字节级一致；baseId「合肥」与「hefei」返回同基地（forecastStart 锚·无时钟）  42276ms
+   ✓ WO-B / F1 · base_capacity_outlook 每基地前瞻产能推演 > SEAM 块D：changzhou byModel 每 model p50@30/60/90 与 capacity_forecast 该基地 P50 同源勾稽 + mainBn 跨求解器一致  52694ms
+   ✓ WO-B / F1 · base_capacity_outlook 每基地前瞻产能推演 > SEAM 块D 改颗粒：改 capacity_forecast 输入（changzhou Process.yield）→ byModel p50 真变（非写死·勾稽咬合）  60500ms
+   ✓ WO-B / F1 · base_capacity_outlook 每基地前瞻产能推演 > 块D 向后兼容 + R6：byModel 为纯加字段（per-base 四线/dayPlan 零改）·同输入 byModel 字节级一致  23714ms
+ ✓ test/decision-play-options.seam.test.ts (6 tests) 264419ms
+   ✓ WO-DECISION-PLAY-OPTIONS · decision_play ⋈ enumerateImpedimentOptions 接缝 > S1 换 metricKey ⇒ 方案集合真的变（修前三条恒定·任何指标一模一样）  35553ms
+   ✓ WO-DECISION-PLAY-OPTIONS · decision_play ⋈ enumerateImpedimentOptions 接缝 > S2 方案里的依据能回指枚举器：candidateId 由 contracts 单源公式从候选自身字段反算得出  24084ms
+   ✓ WO-DECISION-PLAY-OPTIONS · decision_play ⋈ enumerateImpedimentOptions 接缝 > S2' 枚举器是**同一个符号**：直调零阻滞点必须诚实空（导入不报错 ≠ 它还活着）  18367ms
+   ✓ WO-DECISION-PLAY-OPTIONS · decision_play ⋈ enumerateImpedimentOptions 接缝 > S3 诚实边界：接不上就空 + 机器可读理由，绝不拿无关方案填满（金丝雀：同代码在 ess 上有方案）  18614ms
+   ✓ WO-DECISION-PLAY-OPTIONS · decision_play ⋈ enumerateImpedimentOptions 接缝 > S4 R6 确定性：同 metricKey 两跑逐字节一致（方案 + 候选 + join 路径全部）  21942ms
+   ✓ WO-DECISION-PLAY-OPTIONS · decision_play ⋈ enumerateImpedimentOptions 接缝 > S5 改真颗粒 ⇒ 接上的候选跟着变（证候选是真试算出来的，不是贴上去的常量）  70541ms
+ ✓ test/ontology-signature.seam.test.ts (11 tests) 461060ms
+   ✓ WO-69 P2 · Function 本体签名 > S5 实跑比对：每个已签名求解器真读到的类型/属性都在声明内（漏声明即红）  76074ms
+   ✓ WO-69 P2 · Function 本体签名 > S5 比对逻辑有牙（自证非空转）：拿一份删掉真读属性的假声明去比，必判违规  20852ms
+   ✓ WO-69 P2 · Function 本体签名 > S6 不许自造命名：签名里的 typeKey / propKey / linkKey 全部能在已发布本体解析  65787ms
+   ✓ WO-69 P2 · Function 本体签名 > S7-narrow (a) 受限调用者 × 不读受限类型的求解器 → 200 真数字（P1 粗守卫下这里是 403）  55179ms
+   ✓ WO-69 P2 · Function 本体签名 > S7-narrow (b) 受限调用者 × 真读受限列的求解器 → 仍 403 SOLVER_COLUMN_RESTRICTED（绝不出错数字）  51095ms
+   ✓ WO-69 P2 · Function 本体签名 > S7-narrow (c) **无签名 = 读取面未知 → 拒**（未知 ≠ 安全；这条塌了整个收窄就是放水）  27141ms
+   ✓ WO-69 P2 · Function 本体签名 > S7-narrow (d) 属性级精度：禁的列**不在**求解器读取面 → 放行；禁的列**在**读取面 → 拒  41319ms
+   ✓ WO-69 P2 · Function 本体签名 > S7-narrow (e) 声明读取面里有**整型不可读**的类型 → 拒（不许拿空集/原始数据算出个数来）  40755ms
+   ✓ WO-69 P2 · Function 本体签名 > S8-compat admin / 无列级约束调用者 → 逐字节现行为（收窄不许把 admin 卷进来）  26127ms
+   ✓ WO-69 P2 · Function 本体签名 > S8-compat 无任何列级策略的租户 → 未签名求解器照常可用（守卫不越界）  33840ms
+   ✓ WO-69 P2 · Function 本体签名 > 目录投影：solverRegistry 附带 ontologySignature（DRIL inputSpec 的唯一派生源）  22881ms
+ ✓ test/statevar-display-name.seam.test.ts (6 tests) 197508ms
+   ✓ WO-STATEVAR-DISPLAYNAME · 状态变量中文名经接口真下发（SEAM） > ① GET /sim/view-config 的 stateVarNames 带中文名（真种子真链路，不是读源码常量）  31985ms
+   ✓ WO-STATEVAR-DISPLAYNAME · 状态变量中文名经接口真下发（SEAM） > ② 两条路同源：propagation-rules 与 view-config 的字典逐字节相同（不许各写一份映射）  25891ms
+   ✓ WO-STATEVAR-DISPLAYNAME · 状态变量中文名经接口真下发（SEAM） > ③ 诚实缺席：未登记的变量**不出现在字典里**（不是 null/空串/回填裸键）  40053ms
+   ✓ WO-STATEVAR-DISPLAYNAME · 状态变量中文名经接口真下发（SEAM） > ④ 覆盖金丝雀：种子声明的**每一个**状态变量都已登记中文名（加边忘了配名 ⇒ 这里当场红）  40241ms
+   ✓ WO-STATEVAR-DISPLAYNAME · 状态变量中文名经接口真下发（SEAM） > ⑤ 变异反证：响应值逐条 === 单源表的值 ⇒ 改表里一个词，接口跟着变  22473ms
+   ✓ WO-STATEVAR-DISPLAYNAME · 状态变量中文名经接口真下发（SEAM） > ⑥ 状态变量与本体属性同名时：必须真有值 + 量纲唯一 + 中文名带单位（原「一律不许同名」已按本段理由收窄）  36858ms
+ ✓ test/a6-cross-segment-contention.seam.test.ts (7 tests) 405665ms
+   ✓ WO-A6-CONTENTION · 跨业务线争用 SEAM（PRD §9 A6） > CONTENTION-1 · 种子→引擎→判定→输出整条：真种子上判得出跨业务线争用，且每条都指得出「保谁·凭什么」  47547ms
+   ✓ WO-A6-CONTENTION · 跨业务线争用 SEAM（PRD §9 A6） > CONTENTION-2 · A6 的核法：改 `SEG_REGISTRY` 一个值 → 「保谁」的结论真跟着翻（不改一行代码）  59517ms
+   ✓ WO-A6-CONTENTION · 跨业务线争用 SEAM（PRD §9 A6） > CONTENTION-3 · 「无争用」必须是**显式结论**：≥2 业务线但不越线 ⇒ NO_CONTENTION；单业务线压满 ⇒ 不许冒充争用  40295ms
+   ✓ WO-A6-CONTENTION · 跨业务线争用 SEAM（PRD §9 A6） > CONTENTION-4 · 规则半 × 引擎半：走真发布路径改 C34 的表达式 → 判定跟着变（引擎里一个业务阈值都没有）  66570ms
+   ✓ WO-A6-CONTENTION · 跨业务线争用 SEAM（PRD §9 A6） > CONTENTION-5 · scope.businessTypes 放行后：承载业务线的**真裁**，不承载的**诚实报 UNKNOWN**（绝不静默退回全域）  73239ms
+   ✓ WO-A6-CONTENTION · 跨业务线争用 SEAM（PRD §9 A6） > CONTENTION-7 · seg 维**真裁**：逐条业务线驱动，选谁结果就得不同（`toContain` 在全域超集上恒真，故这里用等号）  74814ms
+   ✓ WO-A6-CONTENTION · 跨业务线争用 SEAM（PRD §9 A6） > CONTENTION-6 · 组装层单一实现 + R6 确定性：DSL 的 SUM/COUNT 与引擎读数是**同一个数**，两次扫描字节一致  43574ms
+ ✓ test/decision-play-lta-evidence.seam.test.ts (7 tests) 105645ms
+   ✓ WO-LTA-EVIDENCE-CONFLICT · 同一根因树上「哪份长协是证据」只许有一个答案 > L1 金丝雀：本次推演里**确实有**长协落点、也**确实有**引用长协的方案（否则下面全是空真）  11450ms
+   ✓ WO-LTA-EVIDENCE-CONFLICT · 同一根因树上「哪份长协是证据」只许有一个答案 > L2 核心：所有引用长协的方案指向**同一份**，且就是归因树锚定的那一份（期望值现算·不写死 id）  13574ms
+   ✓ WO-LTA-EVIDENCE-CONFLICT · 同一根因树上「哪份长协是证据」只许有一个答案 > L3 依据强度：长协方案不再是 TYPE«同类型不同实例»，一律 OBJECT（修前 opt-lta-clause 是 TYPE）  8785ms
+   ✓ WO-LTA-EVIDENCE-CONFLICT · 同一根因树上「哪份长协是证据」只许有一个答案 > L4 证据对象 ⟷ 证据读数同源：drillValue 是**那一份**长协自己的数，不是全体合计  9727ms
+   ✓ WO-LTA-EVIDENCE-CONFLICT · 同一根因树上「哪份长协是证据」只许有一个答案 > L5 解析路径可核对：basis 里写明证据长协是**怎么选出来的**（不是'恰好排第一'）  7133ms
+   ✓ WO-LTA-EVIDENCE-CONFLICT · 同一根因树上「哪份长协是证据」只许有一个答案 > L6 换根因树 ⇒ 结论跟着换（不是把 lta-lfp-cylk 写死在另一个地方）  5480ms
+   ✓ WO-LTA-EVIDENCE-CONFLICT · 同一根因树上「哪份长协是证据」只许有一个答案 > L7 R6 确定性：同输入两跑，长协证据逐字节一致  17457ms
+ ✓ test/inproc-optimizer.test.ts (7 tests) 156553ms
+   ✓ WO-MEMSIM-OPTIMIZER · SEAM 内存模式确定性兜底（默认 InProc·无 sidecar 真出解） > 默认 InProc（不 setOptimizer）→ portfolio 真出可行解·FEASIBLE/optimal:false·守恒·非静默  36979ms
+   ✓ WO-MEMSIM-OPTIMIZER · SEAM 内存模式确定性兜底（默认 InProc·无 sidecar 真出解） > 被挤项溯源正确（provenance.drillId == orderId·R13 不劣化）  33996ms
+   ✓ WO-MEMSIM-OPTIMIZER · SEAM 内存模式确定性兜底（默认 InProc·无 sidecar 真出解） > 端到端：改 objective → 两方案各自 objectiveValues 真算（非贴标签·4 项齐）  30664ms
+   ✓ WO-MEMSIM-OPTIMIZER · SEAM 内存模式确定性兜底（默认 InProc·无 sidecar 真出解） > R6 确定性：默认 InProc 同参数两跑 deep-equal（贪心稳定序·无 Date.now/random）  30326ms
+   ✓ WO-MEMSIM-OPTIMIZER · SEAM 内存模式确定性兜底（默认 InProc·无 sidecar 真出解） > 未兜底模型仍诚实「未接入」（默认 InProc 不假装 multi_objective 能用·KILL-MOCK-RED）  24545ms
+ ✓ test/slice-order-fulfillment.test.ts (10 tests) 448256ms
+   ✓ 跨 6 域切片 order_fulfillment_360 > SL1: 合成即落库，首单全链可达 product/factory/process/equip/supply/commercial 六域  37274ms
+   ✓ 跨 6 域切片 order_fulfillment_360 > SL2: 同 seed 重跑 → 节点/边集合字节级一致（确定性）  64980ms
+   ✓ 跨 6 域切片 order_fulfillment_360 > SL3: A6 行级过滤 —— base_manager:常州 只见常州可达子树（其余基地分支被剪枝）  31870ms
+   ✓ 跨 6 域切片 order_fulfillment_360 > SL4: 切片契约 fixture 通过（slice-contracts/run 全绿）  31438ms
+   ✓ 跨 8 域切片 order_to_cash_720 / enterprise_360 > SL5: order_to_cash_720 首单可达 10 域（+财务+计划，Phase7A plan↔product 连边）  27263ms
+   ✓ 跨 8 域切片 order_to_cash_720 / enterprise_360 > SL6: enterprise_360 首单最大广度可达 8 域 + 认证/能耗/换型/细分/检修节点  53459ms
+   ✓ 跨 8 域切片 order_to_cash_720 / enterprise_360 > SL7: 两条 8 域切片契约 fixture 通过  90527ms
+   ✓ 跨 8 域切片 order_to_cash_720 / enterprise_360 > SL8: supply/commercial 域已注册 + 新跨域边经切片可遍历（scenario→plan 边落库）  49034ms
+   ✓ 跨 8 域切片 order_to_cash_720 / enterprise_360 > SL9: Agent/Workflow 旧端点 /a/v1/slices/:key/resolve fall-through 到 SliceSpec 引擎（P0-a 修复）  37609ms
+   ✓ 跨 8 域切片 order_to_cash_720 / enterprise_360 > SL10: aop_scenario_chain 以 AnnualScenario 为根可达 plan+finance(修复 plan 子图 Order 根够不到)  24788ms
+ ❯ test/scale-baseline.test.ts (2 tests | 2 failed) 315819ms
+   × E12 · 10⁴ 订单规模基线 > XL 合成（10000 订单）端到端完成，对象量达标，全链路在性能预算内 121904ms
+     → expected 5382 to be less than 5000
+   × E12 · 10⁴ 订单规模基线 > XL 确定性：同 seed 重跑订单数与首单一致（规模下仍字节级可复现） 193898ms
+     → Test timed out in 180000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ✓ test/datamode-provenance.test.ts (4 tests) 96477ms
+   ✓ WO-DATAMODE-UNIFY-PROVENANCE · 合成不冒充实测（两正交维·provenance 维） > ① A 路合成世界（origin SYNTHETIC）：capacity 逐行 + risk 卡 provenanceSynthetic=true（不冒充实测）  22405ms
+   ✓ WO-DATAMODE-UNIFY-PROVENANCE · 合成不冒充实测（两正交维·provenance 维） > ② measurement 维与 provenance 维正交：合成派生真字段 → 存在 live=true 的行，但 provenance 仍标合成  18035ms
+   ✓ WO-DATAMODE-UNIFY-PROVENANCE · 合成不冒充实测（两正交维·provenance 维） > ③ 唯一真相谓词：MATERIALIZED-from-synthetic 判合成·真导入判非合成（红咬·honest inverse）  23171ms
+   ✓ WO-DATAMODE-UNIFY-PROVENANCE · 合成不冒充实测（两正交维·provenance 维） > ④ R6 确定性：同 seed 两跑 provenanceSynthetic 分类字节一致（无时钟/随机）  32863ms
+ ✓ test/object-constraint-refs.seam.test.ts (8 tests) 121516ms
+   ✓ WO-CONSTRAINT-REFS · 对象约束 = 对规则库的引用（写入→存储→求解器读取 全链） > ① 存得住：配 1 条 → 回读 1 条（修前是 201 但整键被 zod 静默 strip 掉 ⇒ 回读 0 条）  20500ms
+   ✓ WO-CONSTRAINT-REFS · 对象约束 = 对规则库的引用（写入→存储→求解器读取 全链） > ② 引用不存在的规则 / 不存在的属性 → 400（不许静默收下：静默丢弃比报错危险得多）  20675ms
+   ✓ WO-CONSTRAINT-REFS · 对象约束 = 对规则库的引用（写入→存储→求解器读取 全链） > ③ 求解器读得到对象上挂的约束：挂之前 4 条、挂之后 5 条，且新增那条点名取证对象  18725ms
+   ✓ WO-CONSTRAINT-REFS · 对象约束 = 对规则库的引用（写入→存储→求解器读取 全链） > ④ 对照实验：只换引用的规则（阈值 96 → 95），同一求解器同一入参的结论 PASS → BLOCK  13760ms
+   ✓ WO-CONSTRAINT-REFS · 对象约束 = 对规则库的引用（写入→存储→求解器读取 全链） > ⑤ 全称约束取『最可能违规的那个实例』：上限型必须取 max，取平均会把超限稀释成 PASS  10242ms
+   ✓ WO-CONSTRAINT-REFS · 对象约束 = 对规则库的引用（写入→存储→求解器读取 全链） > ⑤b 非数字属性（日期/文本）上选实例必须**按值**比，不许塌给 id 字典序  9888ms
+   ✓ WO-CONSTRAINT-REFS · 对象约束 = 对规则库的引用（写入→存储→求解器读取 全链） > ⑥ 规则挂上之后被下线 → 诚实标 NOT_APPLICABLE 点名断链（不静默跳过）  13108ms
+   ✓ WO-CONSTRAINT-REFS · 对象约束 = 对规则库的引用（写入→存储→求解器读取 全链） > ⑦ 向后兼容（R6）：一条约束都没配时，求解器输出与本单上线前逐字节一致  14611ms
+stdout | test/gap-normalize.test.ts > PROBE · WO-GAP-NORMALIZE 五格对照实验 > EXP1 · 相对缺口排序：给出越线集的相对缺口表 + 新第一名
+=== EXP1 越线集 ===
+  kpi-revenue      裸差=284.4000 亿   相对缺口=0.4063
+  kpi-seg-ess      裸差=27.8000 %   相对缺口=0.2780
+  kpi-attain       裸差=9.2000 %   相对缺口=0.0920
+
+stdout | test/gap-normalize.test.ts > PROBE · WO-GAP-NORMALIZE 五格对照实验 > EXP1 · 相对缺口排序：给出越线集的相对缺口表 + 新第一名
+=== EXP1 修后缺省根 === {"key":"revenue","name":"营收","unit":"亿","target":700,"actual":415.6,"gap":284.4} 相对缺口= 0.4063
+
+stdout | test/gap-normalize.test.ts > PROBE · WO-GAP-NORMALIZE 五格对照实验 > EXP2 · 反向对照：营收 actual 还原成 700（不越线）⇒ 缺省根必须回到 kpi-seg-ess
+=== EXP2 === 营收 actual 415.6 ⇒ 根=revenue ；营收 actual 700 ⇒ 根=seg_attain_ess
+
+ ✓ test/sim-node-detail-fields.seam.test.ts (6 tests) 85050ms
+   ✓ WO-SIM-NODEDETAIL-FIELDS · 种子/本体 → node-detail 回包 接缝 > ① 型号 / 两个耗时口径是真值，且逐条能在对象库里独立找回（不是端点自证）  12295ms
+   ✓ WO-SIM-NODEDETAIL-FIELDS · 种子/本体 → node-detail 回包 接缝 > ② 影响级本体零承载 ⇒ 逐批恒 null，且缺席理由是冻结枚举里的码而非人话串  13899ms
+   ✓ WO-SIM-NODEDETAIL-FIELDS · 种子/本体 → node-detail 回包 接缝 > ③ 每一个非 null 的业务量都能追到出处：证据三元组回仓储逐位对拍  16229ms
+   ✓ WO-SIM-NODEDETAIL-FIELDS · 种子/本体 → node-detail 回包 接缝 > ④ as-of 戳 = A8 模拟时钟；删掉时钟记录 ⇒ dwellDays 诚实变 null 而 elapsedDays 纹丝不动  17519ms
+   ✓ WO-SIM-NODEDETAIL-FIELDS · 种子/本体 → node-detail 回包 接缝 > ⑤ 不答的量逐条登记（纯呈现 / 别处已答 / 本体没有三码分开），且一个都没被顺手编出来  12331ms
+   ✓ WO-SIM-NODEDETAIL-FIELDS · 种子/本体 → node-detail 回包 接缝 > ⑥ 同 (seed, 会话, 节点) 两跑逐字节一致：新增字段没把 wall-clock 或随机漏进来  12757ms
+stdout | test/gap-normalize.test.ts > PROBE · WO-GAP-NORMALIZE 五格对照实验 > EXP3 · 量纲不变性：营收改记「万元」(×1e4) / 「万亿」(÷1e4) ⇒ 缺省根必须不变
+=== EXP3 量纲不变性 ===
+  修前（裸差）  亿:revenue | 万元(×1e4):revenue | 万亿(÷1e4):seg_attain_ess
+  修后（相对）  亿:revenue | 万元(×1e4):revenue | 万亿(÷1e4):revenue
+
+stdout | test/gap-normalize.test.ts > PROBE · WO-GAP-NORMALIZE 五格对照实验 > EXP5 · 金丝雀：拿一个确定会变的输入跑一遍，缺省根必须变（证明量法有鉴别力）
+=== EXP5 金丝雀 === 改前根=revenue ；储能 actual 72.2→10 后根=seg_attain_ess
+
+stdout | test/gap-normalize.test.ts > PROBE · WO-GAP-NORMALIZE 五格对照实验 > 病② · scope.baseId 不再被专属域吞掉（5 个 metricKey 全回显 + 出 base 树）
+  metricKey=revenue          scope.baseId=jiangmen L1=[base:jiangmen]
+
+stdout | test/gap-normalize.test.ts > PROBE · WO-GAP-NORMALIZE 五格对照实验 > 病② · scope.baseId 不再被专属域吞掉（5 个 metricKey 全回显 + 出 base 树）
+  metricKey=cash             scope.baseId=jiangmen L1=[base:jiangmen]
+
+stdout | test/gap-normalize.test.ts > PROBE · WO-GAP-NORMALIZE 五格对照实验 > 病② · scope.baseId 不再被专属域吞掉（5 个 metricKey 全回显 + 出 base 树）
+  metricKey=demand_attain    scope.baseId=jiangmen L1=[base:jiangmen]
+
+stdout | test/gap-normalize.test.ts > PROBE · WO-GAP-NORMALIZE 五格对照实验 > 病② · scope.baseId 不再被专属域吞掉（5 个 metricKey 全回显 + 出 base 树）
+  metricKey=seg_attain_ess   scope.baseId=jiangmen L1=[base:jiangmen]
+
+stdout | test/gap-normalize.test.ts > PROBE · WO-GAP-NORMALIZE 五格对照实验 > 病② · scope.baseId 不再被专属域吞掉（5 个 metricKey 全回显 + 出 base 树）
+  metricKey=market_share     scope.baseId=jiangmen L1=[base:jiangmen]
+
+stdout | test/gap-normalize.test.ts > PROBE · WO-GAP-NORMALIZE 五格对照实验 > 病② 回归护栏 · 不给 scope.baseId 时域路由逐字节不变（R6）
+  metricKey=revenue          (无 scope) L1=[metricgap:revenue] scope=undefined
+
+stdout | test/gap-normalize.test.ts > PROBE · WO-GAP-NORMALIZE 五格对照实验 > 病② 回归护栏 · 不给 scope.baseId 时域路由逐字节不变（R6）
+  metricKey=cash             (无 scope) L1=[metricgap:cash] scope=undefined
+
+stdout | test/gap-normalize.test.ts > PROBE · WO-GAP-NORMALIZE 五格对照实验 > 病② 回归护栏 · 不给 scope.baseId 时域路由逐字节不变（R6）
+  metricKey=demand_attain    (无 scope) L1=[metricgap:demand_attain] scope=undefined
+
+stdout | test/gap-normalize.test.ts > PROBE · WO-GAP-NORMALIZE 五格对照实验 > 病② 回归护栏 · 不给 scope.baseId 时域路由逐字节不变（R6）
+  metricKey=market_share     (无 scope) L1=[share:share-ess,share:share-global] scope=undefined
+
+ ✓ test/gap-normalize.test.ts (6 tests) 164066ms
+   ✓ PROBE · WO-GAP-NORMALIZE 五格对照实验 > EXP1 · 相对缺口排序：给出越线集的相对缺口表 + 新第一名  15188ms
+   ✓ PROBE · WO-GAP-NORMALIZE 五格对照实验 > EXP2 · 反向对照：营收 actual 还原成 700（不越线）⇒ 缺省根必须回到 kpi-seg-ess  11621ms
+   ✓ PROBE · WO-GAP-NORMALIZE 五格对照实验 > EXP3 · 量纲不变性：营收改记「万元」(×1e4) / 「万亿」(÷1e4) ⇒ 缺省根必须不变  67472ms
+   ✓ PROBE · WO-GAP-NORMALIZE 五格对照实验 > EXP5 · 金丝雀：拿一个确定会变的输入跑一遍，缺省根必须变（证明量法有鉴别力）  27974ms
+   ✓ PROBE · WO-GAP-NORMALIZE 五格对照实验 > 病② · scope.baseId 不再被专属域吞掉（5 个 metricKey 全回显 + 出 base 树）  27089ms
+   ✓ PROBE · WO-GAP-NORMALIZE 五格对照实验 > 病② 回归护栏 · 不给 scope.baseId 时域路由逐字节不变（R6）  14716ms
+ ✓ test/sim-root-procurement.seam.test.ts (6 tests) 166396ms
+   ✓ WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SEAM） > ① 入度臂：procurementDelay 入度=0（根源）· 出度>0（真能推动东西）· shortageRisk 入度>0（是果不是源）  11830ms
+   ✓ WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SEAM） > ② 落点臂：三类采购台账在 world.state 里真带 procurementDelay 且值非空（不是只在对象属性上有）  21735ms
+   ✓ WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SEAM） > ③ 传导臂：给采购单打一条扰动 → propagateTick → 该物料 shortageRisk 按系数真的抬起来（方向+量级）  37673ms
+   ✓ WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SEAM） > ③b 传导臂 · 另两类台账（批次 / 供应商）延一拍到达，同样把 shortageRisk 抬起来  29707ms
+   ✓ WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SEAM） > ④ 全链臂（真 HTTP · 从真种子世界态出发）：采购到货延迟 → 物料短缺 → 型号缺料 → 订单缺口，四跳全程真的分叉  24507ms
+   ✓ WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SEAM） > ⑤ 确定性 R6：同 seed 重种，procurementDelay 的落点与一拍传导结果字节级一致  40918ms
+ ✓ test/process-instance-merge.seam.test.ts (6 tests) 70523ms
+   ✓ WO-R9-PROCESS-MERGE · 两份 ProcessInstance 合并后的接缝 > ① 同一 (租户,P##,承载对象) 两个产地各写一行 ⇒ 两行并存，谁都没被静默覆盖  16109ms
+   ✓ WO-R9-PROCESS-MERGE · 两份 ProcessInstance 合并后的接缝 > ② waitStateOrigin 真的按产地分流：反推=DEFINITION_TEMPLATE，运行时=TASK_GATE（且带 waitRef）  24316ms
+   ✓ WO-R9-PROCESS-MERGE · 两份 ProcessInstance 合并后的接缝 > ③ /process-instances/stuck 只答 MANAGED，但把反推侧卡着的条数如实报出来（derivedStuckCount）  18029ms
+   ✓ WO-R9-PROCESS-MERGE · 两份 ProcessInstance 合并后的接缝 > ⑥ ② 的三条诚实位在合并后逐条仍在（9/65 可反推 · 三类栽点 · impact-analysis 未接线）  11826ms
+ ✓ test/sop-reschedule.test.ts (6 tests) 74812ms
+   ✓ WO-SOP-RESCHEDULE · sop_reschedule 产销重排推演 > SEAM 头号：SO-3402 提前(advancePct 0.2) → feasible + 挤占 SO-3415(中优最该让) + 跨≥2基地拆产 + cost.total>0 + 勾稽全ok + 每值可溯  18244ms
+   ✓ WO-SOP-RESCHEDULE · sop_reschedule 产销重排推演 > 颗粒铁律：改 Line.capacityDaily（产能砍半）→ 被挤单/残余缺口真变（非写死）  11349ms
+   ✓ WO-SOP-RESCHEDULE · sop_reschedule 产销重排推演 > 目标切换：objective=min_changeover → 挤占排序变（引擎真按目标分·非固定）  10889ms
+   ✓ WO-SOP-RESCHEDULE · sop_reschedule 产销重排推演 > R6 确定性：同参数两跑 deep-equal（禁 Date.now·时间锚 forecastStart）  9306ms
+   ✓ WO-SOP-RESCHEDULE · sop_reschedule 产销重排推演 > 入参校验：缺 targetOrderId → VALIDATION_ERROR；不存在订单 → NOT_FOUND（不静默假绿）  10395ms
+   ✓ WO-SOP-RESCHEDULE · sop_reschedule 产销重排推演 > newDueDate 显式交期：daysAvail 按锚点真算（advancePct 之外的入口）  14622ms
+ ✓ test/cockpit-order-fullchain.test.ts (3 tests) 60490ms
+   ✓ cockpit P4 / order · 订单全链推演（L1 + L6） > L1：首单三判 + 统一结论 + 9 节点业务建模链 DAG  24687ms
+   ✓ cockpit P4 / order · 订单全链推演（L1 + L6） > L1：指定 so 推演该单  18092ms
+   ✓ cockpit P4 / order · 订单全链推演（L1 + L6） > L6：同 so 字节一致  17699ms
+ ✓ test/chain-loss-attribution.test.ts (10 tests) 173483ms
+   ✓ WO-SANDBOX-E1 · 环节级损失归因（chain_loss_attribution） > SEAM 守恒：全链非增值环节 pctOfChainLoss 之和 == 100 ±0.1，且增值段不进分母（错分母必须明显偏离 → 门有牙）  10905ms
+   ✓ WO-SANDBOX-E1 · 环节级损失归因（chain_loss_attribution） > 输出形状 = S0 冻结契约（nodes 过 ChainNodeSchema strict / attribution 过 LossAttributionSchema strict）  10257ms
+   ✓ WO-SANDBOX-E1 · 环节级损失归因（chain_loss_attribution） > 溯源对拍：每条 evidence 的 drillType.drillId.drillField 回仓储捞真值 == drillValue（逐位相等），且 days == 换算(drillValue)  13983ms
+   ✓ WO-SANDBOX-E1 · 环节级损失归因（chain_loss_attribution） > 溯源对拍（接缝驱动）：改仓储里的颗粒 → drillValue 与 days 与该环节的 pctOfChainLoss 一起变，且再次逐位相等、Σ 仍 == 100  23736ms
+   ✓ WO-SANDBOX-E1 · 环节级损失归因（chain_loss_attribution） > SEAM（后端半）：注册表新增的 12 个节点，**活跑的求解器**里逐个有节点或 EMPTY 行；前端 fixture 不是编的  21520ms
+   ✓ WO-SANDBOX-E1 · 环节级损失归因（chain_loss_attribution） > 诚实缺席（本体无承载）：返工 / 三处节拍 / 新增 10 节点 一律 EMPTY + 原因 + 取证，且不出现在链上  17165ms
+   ✓ WO-SANDBOX-E1 · 环节级损失归因（chain_loss_attribution） > 诚实缺席（承载对象被删）：删掉锚点客户 → 账期段从「60 天」变成 EMPTY(NO_INSTANCE)，不是变成 0；Σ 仍 == 100  18622ms
+   ✓ WO-SANDBOX-E1 · 环节级损失归因（chain_loss_attribution） > R6 确定性：同 (seed=42, 场景, 参数版本) 两跑字节一致；显式 args.so 与缺省锚点一致  19062ms
+   ✓ WO-SANDBOX-E1 · 环节级损失归因（chain_loss_attribution） > 注册即更：SOLVER_KEYS / 目录 / 输出形状 三处登记齐（漏一处即前端或 Agent 侧断线）  19655ms
+   ✓ WO-SANDBOX-E1 · 环节级损失归因（chain_loss_attribution） > 锚点不存在 → 诚实报错（不静默回落到别的订单）  18569ms
+ ✓ test/risk-perfactor-series.test.ts (2 tests) 59540ms
+   ✓ WO-risk-perfactor-series · 逐因素真逐日序列（reuse tensionSeries·由实测当前张力起锚） > 每因素有真逐日 series + 恒等锚 + 真派生 + day-0 reconcile 当前张力 + 非持平  23584ms
+   ✓ WO-risk-perfactor-series · 逐因素真逐日序列（reuse tensionSeries·由实测当前张力起锚） > R6 确定性：同 seed 两跑 factorSeries 字节一致（无随机/时钟）  35953ms
+ ✓ test/schema-display-name.seam.test.ts (6 tests) 88822ms
+   ✓ WO-SCHEMA-ZH · 属性中文业务名经接口真下发（SEAM） > ① GET /a/v1/ontology/object-types 响应里带 displayName（用户原话点名的 Material.leadTime 等）  19849ms
+   ✓ WO-SCHEMA-ZH · 属性中文业务名经接口真下发（SEAM） > ② 诚实回落：未登记中文名的属性**不带** displayName 键（不是 null/空串），下游回落 propKey  18158ms
+   ✓ WO-SCHEMA-ZH · 属性中文业务名经接口真下发（SEAM） > ③ 单源收敛：求解器杠杆标签「类型·属性」的属性段 === PropertyDef.displayName（同属性只有一份中文名）  18816ms
+   ✓ WO-SCHEMA-ZH · 属性中文业务名经接口真下发（SEAM） > ④ propKey 零改 + 展示名表键形合法：只加展示层，不动接线名  16234ms
+   ✓ WO-SCHEMA-ZH · 属性中文业务名经接口真下发（SEAM） > ⑤ type-semantics（喂 B 侧 LLM 的口径投影）同样带中文名，缺则整键不下发  15728ms
+ ✓ test/procurement-legs-navreach.seam.test.ts (7 tests) 59883ms
+   ✓ WO-R9-NAVREACH · §A 派单链路（从真 HTTP 出发·摘掉 manifest 那行即红） > A1 · 出厂种子后 GET /a/v1/me/workspace 真下发 procurement-legs（views + navigation + features 三者齐）  19265ms
+   ✓ WO-R9-NAVREACH · §A 派单链路（从真 HTTP 出发·摘掉 manifest 那行即红） > A5 · base_manager 也拿得到（采购分解正是基地经理该看的页 —— 不因升核心而漏角色）  23344ms
+   ✓ WO-R9-NAVREACH · §B R3「功能关闭 = 不存在」（404 不是 403） > B1 · view.procurement-legs 关 → workspace 既不下发视图也不下发导航（前端据此 404）  17254ms
+ ✓ test/genspec-extended.test.ts (8 tests) 162382ms
+   ✓ E6b · GenSpec 扩展：13 求解器所需对象数据（确定性 + 戏剧点植入） > 合成作业生成扩展对象类型（§7 计数）  19794ms
+   ✓ E6b · GenSpec 扩展：13 求解器所需对象数据（确定性 + 戏剧点植入） > 戏剧点植入：宇通客车 逾期 38 天 / ≥6 批呆滞>90日 / 2 单 PO 延迟  17321ms
+   ✓ E6b · GenSpec 扩展：13 求解器所需对象数据（确定性 + 戏剧点植入） > 确定性：同 seed 重跑，扩展数据字节级一致  33020ms
+   ✓ E6b · 求解器从对象数据自动出结果（presetContext 槽位即可，无需手传 args） > credit_exposure {custName:宇通客车} → 从 Customer/ARInvoice 推导 → 逾期冻结  15843ms
+   ✓ E6b · 求解器从对象数据自动出结果（presetContext 槽位即可，无需手传 args） > inventory_optimize {} → 从 Material/MaterialBatch 推导 → 呆滞清单非空  17447ms
+   ✓ E6b · 求解器从对象数据自动出结果（presetContext 槽位即可，无需手传 args） > cert_schedule {} → 从 Certification 推导 → 排期非空且受 C26 约束  23622ms
+   ✓ E6b · 求解器从对象数据自动出结果（presetContext 槽位即可，无需手传 args） > carbon_footprint {modelId,baseName} → 从 Material/EnergyMeter 推导 → 出总值与判定  18655ms
+   ✓ E6b · 求解器从对象数据自动出结果（presetContext 槽位即可，无需手传 args） > kit_readiness {} → 从 Order/Material 推导 → 逐单齐套率出结果  16676ms
+ ✓ test/cockpit-counterfactual.test.ts (3 tests) 49563ms
+   ✓ cockpit P4 · 反事实双轨推演（L1 + L6） > L1：双轨序列 + 差值（处置后峰值≤baseline，越线日推迟≥0）  18766ms
+   ✓ cockpit P4 · 反事实双轨推演（L1 + L6） > L1：缺 base/factor → 自动取峰值最高风险卡推演  16206ms
+   ✓ cockpit P4 · 反事实双轨推演（L1 + L6） > L6：同 base/factor/mitigation 字节一致  14582ms
+ ✓ test/ext-signal-references.test.ts (6 tests) 73905ms
+   ✓ WO-EXT-SIGNAL-DETAIL CI-b · 外部信号溯源闭环端点 > C6 反查真值：li_carbonate_price → cf-geopolitical（drillField/drillValue 真·provenanceSynthetic 标灰）  19057ms
+   ✓ WO-EXT-SIGNAL-DETAIL CI-b · 外部信号溯源闭环端点 > C6 caused_by 因果链非空（信息全貌·果→因）  14781ms
+   ✓ WO-EXT-SIGNAL-DETAIL CI-b · 外部信号溯源闭环端点 > C5 metric 归因诚实 pending（boundMetricKeys 未种·不编五五开）  10433ms
+   ✓ WO-EXT-SIGNAL-DETAIL CI-b · 外部信号溯源闭环端点 > C5 诚实空：无因果引用的信号 → hasReferences=false + note（不伪造）  9076ms
+   ✓ WO-EXT-SIGNAL-DETAIL CI-b · 外部信号溯源闭环端点 > C6 R6 确定性：两跑字节一致  10479ms
+   ✓ WO-EXT-SIGNAL-DETAIL CI-b · 外部信号溯源闭环端点 > 未知信号 → 404  10057ms
+ ✓ test/workspace-sim-console.seam.test.ts (12 tests) 81554ms
+   ✓ WO-SIM-BE-VIEWKEY · §A 派单链路（从真 HTTP 出发·摘掉任一环即红） > A1 · admin 拉 workspace ⇒ 四个 renderer 全在，且键值与 registry.ts 逐字一致  10287ms
+   ✓ WO-SIM-BE-VIEWKEY · §A 派单链路（从真 HTTP 出发·摘掉任一环即红） > A2 · options 里不许硬编 sessionId（会话是运行期的，写进配置就成死值）  9342ms
+   ✓ WO-SIM-BE-VIEWKEY · §B R3「功能关闭 = 不存在」（不出现，不是出现但点不开） > B1 · sim.sandbox 关 → 四个视图一个都不出现（views / navigation / features 三处同时消失）  10441ms
+   ✓ WO-SIM-BE-VIEWKEY · §C 角色口径（照抄沙盘家族既有那条，不自定） > C1 · admin / planner / base_manager 三个角色都拿得到四个视图  10375ms
+   ✓ WO-SIM-BE-VIEWKEY · §C 角色口径（照抄沙盘家族既有那条，不自定） > C2 · 对照：base_manager 仍拿不到显式排除的 global-sim（证明「排除」这件事真的在生效）  9872ms
+   ✓ WO-SIM-NAV-GROUP · §D 导航文案不重名（后端 label × 前端 route label 的接缝） > D1 · 变异反证：把一条**屏上真可见**的后端条目标题换成 route 侧的「推演沙盘」，重名探测器必须当场报出来  9970ms
+   ✓ WO-SIM-NAV-GROUP · §D 导航文案不重名（后端 label × 前端 route label 的接缝） > D2 · 真断言：沙盘开着（默认）时侧栏可见的条目文案**两两不重名**  11125ms
+   ✓ WO-SIM-NAV-GROUP · §D 导航文案不重名（后端 label × 前端 route label 的接缝） > D3 · 定点：sim-console 的下发标题不再是「推演沙盘」，且与任何内联 route label 都不相等  10106ms
+ ✓ test/order-dependent-pick.seam.test.ts (9 tests) 112445ms
+   ✓ WO-ORDER-DEPENDENT-PICK · 「取数组第一条」一律换成「按判据选」 > B1·L0 金丝雀：demand_attain 确实走域路由、树上确实有入口节点与因果层（否则下面全是空真）  12654ms
+   ✓ WO-ORDER-DEPENDENT-PICK · 「取数组第一条」一律换成「按判据选」 > B1·L1 孤点探针：塞一个**字母序更靠前**、但因果图上一步也走不出去的非根因子 ⇒ 归因逐字节不变  10755ms
+   ✓ WO-ORDER-DEPENDENT-PICK · 「取数组第一条」一律换成「按判据选」 > B1·L2 中段探针：塞一个字母序更靠前、但**被入口指着**（域内入度>0）的因子 ⇒ 它是果不是因，当不了入口  11544ms
+   ✓ WO-ORDER-DEPENDENT-PICK · 「取数组第一条」一律换成「按判据选」 > B1·L3 真并列 ⇒ fail-loud：两个平行入口时报错并点名，绝不替数据掷骰子挑一个  10844ms
+   ✓ WO-ORDER-DEPENDENT-PICK · 「取数组第一条」一律换成「按判据选」 > C1·L0 金丝雀：本次推演树上确实有 BackupSupplierPool 落点，且确实有引用它的方案  16133ms
+   ✓ WO-ORDER-DEPENDENT-PICK · 「取数组第一条」一律换成「按判据选」 > C1·L1 存储顺序扰动：多一个正极备份池并把它排到最前 ⇒ 方案证据仍锚在树上那一个（现算·不写死 id）  15497ms
+   ✓ WO-ORDER-DEPENDENT-PICK · 「取数组第一条」一律换成「按判据选」 > A·L1 order_fullchain 齐套判：注入同分候选后**打乱存储顺序重放**，结论逐字节不变  10693ms
+   ✓ WO-ORDER-DEPENDENT-PICK · 「取数组第一条」一律换成「按判据选」 > A·L2 占位在种子期**原样落库**，解析发生在查询期（合并 WO-DYNAMIC-DRILL-RESOLVE 后的新不变量）  10794ms
+   ✓ WO-ORDER-DEPENDENT-PICK · 「取数组第一条」一律换成「按判据选」 > R6 确定性：以上全部扰动之后，同输入两跑仍逐字节一致  13526ms
+ ✓ test/linktype-materialize-3ext.seam.test.ts (5 tests) 67237ms
+   ✓ WO-MATERIALIZE-3EXT · 接缝：三类新映射 × 多跳检索 > 桶② anchorProperty：外键对到**非主键列**——修前 0 条，修后连出边，锚点改回主键即消失  14965ms
+   ✓ WO-MATERIALIZE-3EXT · 接缝：三类新映射 × 多跳检索 > 桶⑤ viaMultiValue：一个型号可产 N 个基地 ⇒ 必须是 N 条边，不是 1 条  13214ms
+   ✓ WO-MATERIALIZE-3EXT · 接缝：三类新映射 × 多跳检索 > 桶① viaBridge：桥实体投影成边，且**桥的 props 随边带过去**（不带 = 认证状态整个丢失）  12685ms
+   ✓ WO-MATERIALIZE-3EXT · 接缝：三类新映射 × 多跳检索 > 变异反证：三类的打错字 / 缺前提 / 机制冲突一律 400，且不留半条记录  11240ms
+   ✓ WO-MATERIALIZE-3EXT · 接缝：三类新映射 × 多跳检索 > R6 确定性 + 出厂边零回归：重建不翻倍，且绝不误删手写的出厂实例边  15119ms
+ ✓ test/action-adopt-hypothesis.seam.test.ts (4 tests) 53899ms
+   ✓ what-if 采纳假设 → 对象数据变更 · 审批后真写回（换一条路读回·非 create 自证） > 头号效果断言：EXECUTED 后回 GET /a/v1/objects 读，那个属性真的等于采纳的假设值（且仍是 number）  17160ms
+   ✓ what-if 采纳假设 → 对象数据变更 · 审批后真写回（换一条路读回·非 create 自证） > 审批前真值一个字节不动：建了草稿但没批 ⇒ 回读仍是旧值（R4：写入经审批，不是经点击）  13009ms
+   ✓ what-if 采纳假设 → 对象数据变更 · 审批后真写回（换一条路读回·非 create 自证） > 诚实拒绝：paramsSchema 必填的 reason 缺失 → 提交即被挡，真值一字节不写  11855ms
+   ✓ what-if 采纳假设 → 对象数据变更 · 审批后真写回（换一条路读回·非 create 自证） > 对象不存在 → 诚实失败（EXECUTION_FAILED），不许把值写到猜的对象上  11868ms
+stdout | test/sim-seed-world.seam.test.ts > WO-SIM-SEED-WORLD · 种子世界接缝 > ⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身
+[SIM-SEED-WORLD ⑤b] 白名单对象=223 每对象最多7格 ⇒ 批大小=71 批数=4（上限=500）
+
+ ✓ test/slice-governance-full.test.ts (5 tests) 122895ms
+   ✓ WO-SLICE-GOVERNANCE-FULL · 无契约推进为契约（deriveSliceFixture） > 单：无契约切片 → derive-fixture 从真实子图派生 baseline，写回 spec 且真跑契约自洽通过  25143ms
+   ✓ WO-SLICE-GOVERNANCE-FULL · 无契约推进为契约（deriveSliceFixture） > R6 确定性：同切片重复 derive 字节级一致（同名替换，不累积）  13653ms
+   ✓ WO-SLICE-GOVERNANCE-FULL · 无契约推进为契约（deriveSliceFixture） > 空 resolve（0 节点）→ 诚实 skip 不伪造（KILL-MOCK）  10813ms
+   ✓ WO-SLICE-GOVERNANCE-FULL · 无契约推进为契约（deriveSliceFixture） > 批：derive-fixtures 只补无契约切片，空 resolve 进 skipped、非空进 promoted  62385ms
+   ✓ WO-SLICE-GOVERNANCE-FULL · 无契约推进为契约（deriveSliceFixture） > 非 admin（planner）推进被拒 403；R2：切片不存在 → 404，跨租户不可见  10896ms
+stdout | test/sim-seed-world.seam.test.ts > WO-SIM-SEED-WORLD · 种子世界接缝 > ⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身
+[SIM-SEED-WORLD ⑤b] 合并后 1173 格（一次发完会是 1173>500 ⇒ truncated:true，这就是本条曾经的红）
+
+ ✓ test/sim-seed-world.seam.test.ts (4 tests) 86148ms
+   ✓ WO-SIM-SEED-WORLD · 种子世界接缝 > ① 播种 → GET /a/v1/sim/sessions 里有一条 RUNNING(curTick≥1)、baseSnapshot 非空；② tick 态落盘且真动过；③ 幂等  24193ms
+   ✓ WO-SIM-SEED-WORLD · 种子世界接缝 > ⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身  34904ms
+   ✓ WO-SIM-SEED-WORLD · 种子世界接缝 > ⑥ 确定性（R6）：同一份世界重播一遍，选出来的落点与幅度**逐字节一致**  26429ms
+   ✓ WO-SIM-SEED-WORLD · 种子世界接缝 > ④ 诚实缺席：零传导规则/零物化对象的租户**不建空世界**（空 baseSnapshot 的 RUNNING = 另一种占位）  617ms
+ ✓ test/risk-tension-clamp.test.ts (3 tests) 28664ms
+   ✓ risk_timeline · 顶端饱和保序（不同因子/不同日不得同落一个值） > ① 逐日不恒等 · ② 三因子不同值 · ④ 不越上限（真求解器·信阳）  10920ms
+   ✓ risk_timeline · 顶端饱和保序（不同因子/不同日不得同落一个值） > ⑤ R6 确定性：同入参两跑字节一致（无随机 / 无时钟）  17737ms
+ ✓ test/rules-as-references.test.ts (3 tests) 16124ms
+   ✓ 规则即引用 P1 · 13 条规则一等化 + 引用闭合 > 13 条曾未定义规则均落库为 PUBLISHED + 命名阈值落 params（求解器 P2 可读）  6084ms
+   ✓ 规则即引用 P1 · 13 条规则一等化 + 引用闭合 > 引用闭合：SOLVER_RULE_REFS 全部 ⊆ 已发布规则（无悬空引用 → 不再'未找到定义'）  5198ms
+   ✓ 规则即引用 P1 · 13 条规则一等化 + 引用闭合 > 13 条 expression 全部合法 DSL（可发布、dry-run 不报语法错）  4840ms
+ ✓ test/sim-sessions-projection.seam.test.ts (6 tests) 28305ms
+   ✓ WO-SIM-SESSIONS-PROJECTION 件一 · 列表投影 > ① 列表回包不含世界内容、带规模摘要；② 回包体积不随世界规模长；③ 建会话 201 与 GET :id 照旧含 baseSnapshot  926ms
+   ✓ WO-SIM-SESSIONS-PROJECTION 件一 · 列表投影 > ④ GET /a/v1/sim/sessions/:id 的 R2/R3：别租户 404、功能关闭 404  526ms
+   ✓ WO-SIM-SESSIONS-PROJECTION 件二 · 播种原子性（判据落在「播完了」不是「有东西」） > ① 播完 → 有完成标记；② 打断到一半 → 重启检测到「不完整」并补齐（不是静默走开）；③ 补齐后世界真能用  11256ms
+   ✓ WO-SIM-SESSIONS-PROJECTION 件二 · 播种原子性（判据落在「播完了」不是「有东西」） > ④ 存量兼容：完成标记引入之前播下的世界（RUNNING@tick≥N 但无标记）只回填标记，**不重播**  7547ms
+   ✓ WO-SIM-SESSIONS-PROJECTION 件二 · 播种原子性（判据落在「播完了」不是「有东西」） > ⑤ 用户在种子世界上多推了几拍 ⇒ 仍判已播完（判据用 `>=` 不是 `===`，否则会把「用过」读成「没播完」）  8043ms
+stdout | test/linktype-predicate-edge.seam.test.ts > WO-PREDICATE-EDGE · 接缝：谓词声明 × 求值 × 检索 > §3 反向对照：属性变了边必须跟着变（边不随属性变 = 没真求值）
+[WO-PREDICATE-EDGE 反向对照] 改前=8 改后=7
+
+ ✓ test/gsim-action-loop.test.ts (3 tests) 41781ms
+   ✓ WO-GSIM-5-ACTION · 洞察→行动写回·闭决策环（SEAM-GATE） > SEAM 头号：端到端基线真变（采纳→PROVISIONAL Action→审批→执行→回灌→下一轮 portfolio 真变）  6795ms
+   ✓ WO-GSIM-5-ACTION · 洞察→行动写回·闭决策环（SEAM-GATE） > SEAM 幂等：同方案两次采纳 → 只 1 个 Action + 1 组物化（第二次不重复）  8383ms
+   ✓ WO-GSIM-5-ACTION · 洞察→行动写回·闭决策环（SEAM-GATE） > SEAM R6 + tenant：同 payload 两跑生成物字节一致；跨租户不可见/不可批（404）  26601ms
+ ✓ test/linktype-predicate-edge.seam.test.ts (5 tests) 46067ms
+   ✓ WO-PREDICATE-EDGE · 接缝：谓词声明 × 求值 × 检索 > §1 金丝雀 + 修前：不给 viaProperty ⇒ 检索 0 条  10865ms
+   ✓ WO-PREDICATE-EDGE · 接缝：谓词声明 × 求值 × 检索 > §2 对照实验：把危害注入成真的，谓词必须挡住那条脏边  10621ms
+   ✓ WO-PREDICATE-EDGE · 接缝：谓词声明 × 求值 × 检索 > §3 反向对照：属性变了边必须跟着变（边不随属性变 = 没真求值）  9848ms
+   ✓ WO-PREDICATE-EDGE · 接缝：谓词声明 × 求值 × 检索 > §4 确定性（R6）：同一份数据求值两次，边集合逐字节一致  6623ms
+   ✓ WO-PREDICATE-EDGE · 接缝：谓词声明 × 求值 × 检索 > §5 写入校验：会变成哑弹边的写法一律 400 + 错误信封，不许静默收下  8098ms
+stdout | test/synth-validation-lite.test.ts > WO-SYNTH-VALIDATION-LITE · SEAM 五条 > #2 LITE 明显更快（宽松阈值·证真省大头非空跑）
+[SEAM#2] FULL=8108ms LITE=1968ms ratio=0.243
+
+ ✓ test/plan-drill-levels.test.ts (3 tests) 27216ms
+   ✓ WO-CEO-1a item4 · plan_rootcause 真 level（假周期已删） > level=year 返回真顶层目标 Metric（无 -year 后缀、无系数；营收=订单簿成交侧真值，非 op×1.04）  9765ms
+   ✓ WO-CEO-1a item4 · plan_rootcause 真 level（假周期已删） > level=month/quarter 诚实空（假周期系数已删，无真对象即空，绝不编造）  9416ms
+   ✓ WO-CEO-1a item4 · plan_rootcause 真 level（假周期已删） > 默认 / level=op 只读 6 个真运营指标（3 运营 + 3 细分，op 级）+ 确定性  8007ms
+stdout | test/process-instance-wire.seam.test.ts > WO-PROCESS-INSTANCE-WIRE 接缝① · 界面那条链逐跳真跑（含承载对象取数） > 每条有模板的流程：模板→真承载对象→建实例→读回，步数逐条对得回模板
+
+[WO-PROCESS-INSTANCE-WIRE] 界面链路逐条实测（7 条有模板的流程）：
+  P25 carrier=EngineeringChange 模板2步 对象9条 POST=200 读回2步 ✅
+  P34 carrier=CustomsClearance 模板2步 对象1条 POST=200 读回2步 ✅
+  P35 carrier=IncomingInspection 模板2步 对象20条 POST=200 读回2步 ✅
+  P41 carrier=InterBaseTransfer 模板3步 对象17条 POST=200 读回3步 ✅
+  P42 carrier=WorkOrder 模板2步 对象20条 POST=200 读回2步 ✅
+  P43 carrier=WIPLot 模板2步 对象20条 POST=200 读回2步 ✅
+  P51 carrier=MaintenanceOrder 模板2步 对象20条 POST=200 读回2步 ✅
+
+ ✓ test/synth-validation-lite.test.ts (5 tests) 124607ms
+   ✓ WO-SYNTH-VALIDATION-LITE · SEAM 五条 > #1 核心：FULL 与 LITE 生成图逐字节一致，差异**仅限** TS 聚合物化属性；LITE 无 TS、FULL 有 TS（真跳）  11020ms
+   ✓ WO-SYNTH-VALIDATION-LITE · SEAM 五条 > #2 LITE 明显更快（宽松阈值·证真省大头非空跑）  10247ms
+   ✓ WO-SYNTH-VALIDATION-LITE · SEAM 五条 > #3 反陷阱：determinismCheck 仍两次独立真跑（探针计 LITE runJob==2 且两个不同 tenantId）  17656ms
+   ✓ WO-SYNTH-VALIDATION-LITE · SEAM 五条 > #4 cloneTenant 字节一致：fingerprint(clone(x)) === fingerprint(x)  17990ms
+   ✓ WO-SYNTH-VALIDATION-LITE · SEAM 五条 > #5 R6 不破：LITE 同 seed 两跑对象指纹一致（确定性不受跳 TS 影响）  67690ms
+ ✓ test/process-instance-wire.seam.test.ts (3 tests) 83389ms
+   ✓ WO-PROCESS-INSTANCE-WIRE 接缝① · 界面那条链逐跳真跑（含承载对象取数） > 每条有模板的流程：模板→真承载对象→建实例→读回，步数逐条对得回模板  69381ms
+   ✓ WO-PROCESS-INSTANCE-WIRE 接缝② · 变异反证 > 模板少喂一步 ⇒ 读回的步数与模板不符（证明断言咬的是模板，不是「建成功了」）  10060ms
+   ✓ WO-PROCESS-INSTANCE-WIRE 接缝② · 变异反证 > 承载对象取数这一跳真的会拦人：类型不存在时返回空 ⇒ 界面据此不给按钮  3942ms

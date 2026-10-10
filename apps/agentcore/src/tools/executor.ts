@@ -1,4 +1,8 @@
-import { AggregateRequestSchema, ErrorCodes, parseMcpToolFullName, QueryTimeseriesAggInputSchema, type SkillDefinition } from "@platform/contracts";
+import { AggregateRequestSchema, ErrorCodes, parseMcpToolFullName, parseSolverMcpToolName, QueryTimeseriesAggInputSchema, type SkillDefinition } from "@platform/contracts";
+import { parseOntologyMcpToolName } from "./ontology-mcp.js";
+import { parseRulesMcpToolName } from "../mcp/rules-mcp.js";
+// WO-BUILTIN-TO-DSH · 内置工具（BUILTIN）MCP 面：全名 → 裸名的**身份归一**（不搬执行体）。
+import { parseBuiltinMcpToolName } from "../mcp/builtin-mcp.js";
 import { newId } from "../ids.js";
 import { SKILL_RESOURCE_TEXT_LIMIT } from "../agent/context.js";
 import type { Metrics } from "../metrics.js";
@@ -7,7 +11,8 @@ import { byteLength, digest, redact } from "../util/redact.js";
 import { cosine, pseudoEmbed } from "../util/embedding.js";
 import { BudgetTracker } from "./budget.js";
 import { builtinTool } from "./registry.js";
-import { DataCoreUnavailableError, type DataCoreClient, type ToolAuthCtx } from "./clients.js";
+import { DataCoreHttpError, DataCoreRequestCancelledError, DataCoreUnavailableError, type DataCoreClient, type ToolAuthCtx } from "./clients.js";
+import { shapeSliceReceipt } from "./slice-receipt.js";
 import type { McpClientPort } from "../mcp/types.js";
 import type { SkillResourceReader } from "./skill-resources.js";
 
@@ -19,6 +24,12 @@ export interface ToolRunResult {
   toolCallId: string;
   outcome: "OK" | "DENIED" | "ERROR" | "BUDGET_EXCEEDED";
   durationMs: number;
+  /**
+   * WO-LOOP-CONTROL-P2 · Retry Manager（PRD §3.2·机制 #4）：仅 ERROR 回执置位——**瞬时/传输层错**（DataCore 不可达、
+   * MCP 传输层抖动）标 `true` → 循环侧可**有界重试**（成功则不入停滞计数）；**确定性错**（校验/逻辑/未知工具·TOOL_ERROR）
+   * 标 `false`（保守·不重试·立即入停滞）。缺省 undefined = 不重试 = 现行为字节兼容（R6·纯分类无 Date.now/随机）。
+   */
+  retryable?: boolean;
 }
 
 export interface ExecutorOptions {
@@ -28,7 +39,22 @@ export interface ExecutorOptions {
   budget?: BudgetTracker;
   /** Agent scopeDeclaration.toolNames — calls outside it are rejected regardless of user perms. */
   scopeToolNames?: string[];
+  /**
+   * WO-FIVE-ROLE-AI-EMPLOYEE P1 · Agent scopeDeclaration.objectTypes 强制（**opt-in**，仅 Coordinator 角色扇出置）——
+   * 对象读取工具（query_objects/get_object/aggregate_objects）的 objectType 不在此集内即 DENIED（AGENT_SCOPE_VIOLATION）。
+   * 未设（既有全部调用路径）= 不强制 → 字节兼容零回归。让"供应链只能查 Material、生产只能查 Line"成真隔离（越界拒）。
+   */
+  scopeObjectTypes?: string[];
 }
+
+/** 对象读取工具集：其 input.objectType/typeKey 受 scopeObjectTypes 约束（越界拒）。 */
+const OBJECT_SCOPED_TOOLS = new Set(["query_objects", "get_object", "aggregate_objects"]);
+
+/**
+ * WO-Phase4：探索类（"盲扫"）工具集——消耗 budget.maxDiscoverCalls 专用配额（与通用 tool 预算正交）。
+ * 真开放 residual 题最多允许 N 次盲扫（默认 residual=1），超即 BUDGET_EXCEEDED 并置 budget.exhausted → loop 硬预算降级。
+ */
+const DISCOVER_TOOLS = new Set(["discover", "search_experience", "query_system_ontology", "retrieve_knowledge"]);
 
 export interface ExecutorDeps {
   dataCore: DataCoreClient;
@@ -37,6 +63,11 @@ export interface ExecutorDeps {
   metrics: Metrics;
   /** 增量 §3：read_skill_resource 的附件内容读取端口（缺省 → 仅返回元信息）。 */
   skillResources?: SkillResourceReader;
+  /** WO-DRIL-P2 · retrieve_knowledge 的检索端口（缺省 → 工具降级返回空结果·fail-open 不崩）。 */
+  retrieveResources?: (
+    ctx: ToolAuthCtx,
+    req: import("@platform/contracts").ResourceSearchRequest,
+  ) => Promise<import("@platform/contracts").ResourceSearchResponse>;
 }
 
 const OUTPUT_LIMIT = 64 * 1024;
@@ -99,14 +130,49 @@ export class GuardedToolExecutor {
        * 此处不再重复消耗（{ok:false} 直接回 BUDGET_EXCEEDED）。
        */
       budgetDecision?: { ok: true } | { ok: false; reason: string };
+      /** 约束执行层 stage3②：声明此工具输出应符合的本体对象类型 → 运行时强制校验,不符拒（信任边界）。 */
+      expectsObjectType?: string;
     },
   ): Promise<ToolRunResult> {
     const started = Date.now();
-    const binding = options?.binding ?? { kind: "BUILTIN" as const };
+    let binding = options?.binding ?? { kind: "BUILTIN" as const };
 
     // 0) agent scopeDeclaration gate (platform PRD §6.3 Q2 — independent of user perms)
     if (this.opts.scopeToolNames && !this.opts.scopeToolNames.includes(toolName)) {
       return this.finish(toolName, input, { error: ErrorCodes.AGENT_SCOPE_VIOLATION }, "DENIED", started, false);
+    }
+    // 0.05) WO-BUILTIN-TO-DSH · 内置工具（BUILTIN）MCP 全名 → **裸名归一**（`mcp__builtin__X` → `X`）。
+    //
+    // 位置是**刻意的**：紧跟在工具 scope 门（第 0 步）之后、对象域门（第 0.1 步）之前。
+    //  · 在 scope 门之后 —— 那道门按增量 §4.2 用**调用原名**（MCP 面 = 全名）校验，
+    //    `scopeDeclaration.toolNames` 记的也是全名；在这里换名不会削弱它（越界工具照样在
+    //    上面被拒，且拒的时候审计名仍是它自己那个全名）。
+    //  · 在对象域门之前 —— 那道门判的是「这是不是读对象的那族工具」（`OBJECT_SCOPED_TOOLS`
+    //    按**工具身份**匹配）。迁移换的是**载体**（hostTools 反向工具 → MCP wire），不是身份；
+    //    若在它之后再归一，`mcp__builtin__query_objects` 不匹配集合 ⇒ 域外对象**从这道门
+    //    底下溜过去**（原生臂、DSH 臂双双失守，因为两臂都落到本方法）。
+    //  · 在这之后的整条链（IAM 裁决名、预算成本档、探索配额、READ 记忆化、dispatch 分发、
+    //    审计行名）读到的都是**裸名** —— 与迁移前逐键相同（「换载体不改行为」的单变量判据）。
+    // binding 必须跟着归一：不归 ⇒ 被派进 McpRuntime（平台内置 stdio server 默认禁用）⇒ 一次都执行不到。
+    const builtinRaw = parseBuiltinMcpToolName(toolName);
+    if (builtinRaw) {
+      toolName = builtinRaw;
+      binding = { kind: "BUILTIN" as const };
+    }
+    // 0.1) WO-FIVE-ROLE P1 · 对象类型 scope 门（opt-in·仅 Coordinator 角色扇出）：读对象工具的 objectType 越界即 DENIED。
+    if (this.opts.scopeObjectTypes && OBJECT_SCOPED_TOOLS.has(toolName)) {
+      const inObj = (input ?? {}) as Record<string, unknown>;
+      const requested = String(inObj.objectType ?? inObj.typeKey ?? "");
+      if (requested && !this.opts.scopeObjectTypes.includes(requested)) {
+        return this.finish(
+          toolName,
+          input,
+          { error: ErrorCodes.AGENT_SCOPE_VIOLATION, objectType: requested, allowed: this.opts.scopeObjectTypes },
+          "DENIED",
+          started,
+          false,
+        );
+      }
     }
 
     // 0.5) OBO token about to expire (<60s) → refuse to start new tool calls (platform PRD §11)
@@ -114,6 +180,72 @@ export class GuardedToolExecutor {
     if (exp !== undefined && exp * 1000 - Date.now() < 60_000) {
       this.deps.metrics.oboDenied.inc();
       return this.finish(toolName, input, { error: "OBO_TOKEN_EXPIRING" }, "DENIED", started, false);
+    }
+
+    // A1 求解器 MCP 工具：mcp__solvers__{key} → 复用既有 invoke_solver 执行路径（OBO 到 DataCore，零重写）。
+    // scope 门已用原名校验，此处归一到 invoke_solver 供下游分发；审计名亦记为 invoke_solver。
+    const solverKeyFromMcp = parseSolverMcpToolName(toolName);
+    if (solverKeyFromMcp) {
+      const inp = (input ?? {}) as Record<string, unknown>;
+      // ⚠ 入参形态必须认**声明面真正宣告的那一种**（WO-SOLVERS-MCP-REAL 修）：
+      // `mcp__solvers__{key}` 的 inputSchema 是 `solverInputSchema(key)` —— **扁平**求解器入参
+      // （如 capacity_forecast 的 {modelId, demandDelta, weeks}），模型照它传参。
+      // 这条 ref 被真的接上 MCP 面之前（DSH 臂原先无 server 可挂 ⇒ 工具对模型不可达），
+      // 下面的 `inp.args` 永远读不到东西 —— 一旦可达，扁平入参会被静默读成 `{}`：
+      // 求解器收到空参数、返回一个"参数错误"或默认口径的结果，而屏上看起来「调用成功了」。
+      // 故此处两种形态都收：既有的 `{args:{...}}`（BUILTIN 口径 / 老调用方）优先，
+      // 否则把**除 solverKey 外的顶层键**当作扁平求解器入参（= 声明面口径）。
+      const wrapped = inp.args;
+      const flat: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(inp)) if (k !== "solverKey" && k !== "args") flat[k] = v;
+      toolName = "invoke_solver";
+      input = {
+        solverKey: solverKeyFromMcp,
+        args: wrapped && typeof wrapped === "object" ? (wrapped as Record<string, unknown>) : flat,
+      };
+      // ⚠️ binding 必须**跟着一起归一**（WO-DSH-ARM-FAILURE-VISIBLE 实测补）。
+      //
+      // 今天的行为是 X：本 shim 只把 `toolName` 归一成 `invoke_solver`，**不动 binding**。原生臂
+      //   （`agent/loop.ts` 对 MCP 绑定工具传 `binding={kind:"MCP"}`）于是把它派进 `McpRuntime`
+      //   （当一条 MCP wire 调用发出去），而平台内置 stdio server 默认禁用
+      //   （`MCP_STDIO_ENABLED` 未设 ⇒ `validateStdioTransport` 当场拒）——实测报文：
+      //   `{"error":"TOOL_ERROR","message":"stdio 启动被拒：stdio 传输默认禁用：需部署方设置
+      //     MCP_STDIO_ENABLED=1 与 MCP_STDIO_COMMAND_ALLOWLIST"}`
+      //   ⇒ 原生臂里 `mcp__solvers__{key}` **一次都执行不到** `dataCore.solver.invoke`
+      //   （活服务实测：0-1ms ERROR + DataCore 零请求；同一批里 `mcp__ontology__resolve_slice`
+      //   却是 OK 126ms —— 差别就是本体 shim 显式归了 binding）。
+      // 应该是 Y：与下方本体 shim 同一条理由、同一个写法 —— **执行落点是本 executor 的 BUILTIN 分发**，
+      //   MCP 面只是它的协议门。DSH 臂逐字节不变（反向通道端点不传 binding ⇒ 缺省本就 BUILTIN）。
+      binding = { kind: "BUILTIN" as const };
+    }
+
+    // WO-DSH-RESOURCE-REACH · 本体切片 MCP 工具：mcp__ontology__{plan_slice|resolve_slice} →
+    // 归一回既有 BUILTIN 执行路径（同形于上方 solvers shim·零重写）。原生臂与 DSH 臂**同**走这里：
+    // DSH 臂的 MCP server 也把调用转回本执行体（dsh-runtime/ontology-mcp-server.ts → 宿主
+    // /b/v1/dsh/tool-execute → 本 run 的同一只 executor），故两臂同源（接缝 C 组咬这条）。
+    // 入参**不做形状改名**——本体两件的 MCP 入参与 BUILTIN 入参逐键同名（同源于 registry.ts）。
+    // ⚠ 每次调用是**单条 MCP 路**：可执行性由本条归一兑现，而不是让 `binding.kind === "MCP"` 去走
+    //    McpRuntime —— 那条路对平台内置 server 是死路（MCP_STDIO_ENABLED 缺省关，真连必失败），
+    //    且会更糟：一旦有人在 engine 的 hostTools 过滤里把它算成 BUILTIN，同一个公开名
+    //    `mcp__ontology__*` 会**同时**被 mcp-client 与反向工具注册（子进程注册冲突 ⇒ 该 server 工具全丢）。
+    //    故 binding 仍留在 MCP（供 hostTools 过滤排除、供 Phase6C router 归类），**执行**在此归一到 BUILTIN。
+    //    收敛论证见报告③：唯一可执行落点是本 executor 的 BUILTIN 分发，MCP 面只是它的协议门。
+    const ontologyRaw = parseOntologyMcpToolName(toolName);
+    if (ontologyRaw) {
+      toolName = ontologyRaw;
+      binding = { kind: "BUILTIN" as const };
+    }
+
+    // WO-AGENT-CONFIG-TO-DSH · 规则 MCP 工具：mcp__rules__evaluate_rules → 归一回既有
+    // `case "evaluate_rules"` 执行路径（同形于上方 solvers / ontology 两条 shim·零重写）。
+    // 原生臂与 DSH 臂**同**走这里：DSH 臂的 MCP server 也把调用转回本执行体
+    // （dsh-runtime/rules-mcp-server.ts → 宿主 /b/v1/dsh/tool-execute → 本 run 的同一只 executor）。
+    // 入参**不做形状改名**——`evaluate_rules` 的 MCP 入参与 BUILTIN 入参逐键同名（同源于 registry.ts）。
+    // binding 必须跟着归一：不归 ⇒ 被派进 McpRuntime（平台内置 stdio server 默认禁用）⇒ 一次都执行不到。
+    const rulesRaw = parseRulesMcpToolName(toolName);
+    if (rulesRaw) {
+      toolName = rulesRaw;
+      binding = { kind: "BUILTIN" as const };
     }
 
     // 1) coarse-grained IAM check
@@ -130,10 +262,24 @@ export class GuardedToolExecutor {
         );
       }
     } catch (err) {
-      return this.finish(toolName, input, wrapError(err), "ERROR", started, false);
+      return this.finish(toolName, input, wrapError(err), "ERROR", started, false, classifyRetryable(err, binding));
+    }
+
+    // 2.0) WO-Phase4：探索类工具专用配额（discover/search_experience/query_system_ontology）——与通用 tool 预算正交，
+    // 串行/并行轮均在此消耗（确定性 R6）。超 maxDiscoverCalls → BUDGET_EXCEEDED + 置 budget.exhausted（loop 下轮降级）。
+    if (this.opts.budget && DISCOVER_TOOLS.has(toolName)) {
+      const d = this.opts.budget.tryConsumeDiscover();
+      if (!d.ok) {
+        return this.finish(toolName, input, { error: "BUDGET_EXCEEDED", reason: d.reason }, "BUDGET_EXCEEDED", started, false);
+      }
     }
 
     // 2) budget (path B only)；并行轮由循环侧预计数（budgetDecision 传入）
+    //
+    // WO-DSH-ARM-GAPS · 本次调用**自己**扣掉的 EXPENSIVE 名额是否可退 —— 只在本分支置位，
+    // 并行轮（budgetDecision 传入）的扣费发生在循环侧，不在本函数的退还面内（且 EXPENSIVE 工具带副作用，
+    // 永不进 allRead 并行轮，见 loop.ts 的 allRead 判据）。退费判据见下方 catch。
+    let chargedExpensive = false;
     if (options?.budgetDecision) {
       if (!options.budgetDecision.ok) {
         return this.finish(
@@ -151,6 +297,7 @@ export class GuardedToolExecutor {
       if (!ok.ok) {
         return this.finish(toolName, input, { error: "BUDGET_EXCEEDED", reason: ok.reason }, "BUDGET_EXCEEDED", started, false);
       }
+      chargedExpensive = cost === "EXPENSIVE";
     }
 
     // 3) client call — #6 任务内 READ 结果记忆化（仅 BUILTIN READ；COMPUTE/写/MCP 不缓存，
@@ -163,10 +310,26 @@ export class GuardedToolExecutor {
     }
     try {
       const payload = await withTimeout(this.dispatch(toolName, input, binding), options?.timeoutMs, toolName);
+      // stage3②：声明了 expectsObjectType → 工具输出按本体对象类型 schema/值域强制校验,不符拒（DENIED）。
+      if (options?.expectsObjectType) {
+        const p = payload as { rows?: unknown; data?: unknown };
+        const rowsRaw = Array.isArray(p?.rows) ? p.rows : Array.isArray(p?.data) ? p.data : Array.isArray(payload) ? payload : [];
+        const rows = (rowsRaw as unknown[]).filter((r): r is Record<string, unknown> => typeof r === "object" && r !== null);
+        if (rows.length > 0) {
+          const vr = await this.deps.dataCore.ontology.validateOutput(this.opts.ctx, options.expectsObjectType, rows);
+          if (!vr.ok) {
+            return this.finish(toolName, input, { error: "ONTOLOGY_VALIDATION_FAILED", objectType: options.expectsObjectType, violations: vr.violations }, "DENIED", started, false);
+          }
+        }
+      }
       if (cacheable) this.readCache.set(ckey, payload);
       return this.finish(toolName, input, payload, "OK", started, true);
     } catch (err) {
-      return this.finish(toolName, input, wrapError(err), "ERROR", started, false);
+      // WO-DSH-ARM-GAPS · 退费：这次 EXPENSIVE 调用若被**求解器服务当场拒绝**（4xx），
+      // 说明求解器一次都没执行 ⇒ 退还它刚吃掉的那个名额（判据与实测账见 budget.ts refundExpensive）。
+      // 只在本 catch（= dispatch 抛出，即工具真的没跑成）退；IAM 段的 catch 在扣费之前，不退也无从退。
+      if (chargedExpensive && rejectedBeforeExecution(err)) this.opts.budget?.refundExpensive();
+      return this.finish(toolName, input, wrapError(err), "ERROR", started, false, classifyRetryable(err, binding));
     }
   }
 
@@ -184,23 +347,123 @@ export class GuardedToolExecutor {
     switch (toolName) {
       case "discover": {
         const kind = String(args.kind);
-        if (kind !== "slices" && kind !== "solvers" && kind !== "mcp_tools") {
-          return { error: "kind must be slices|solvers|mcp_tools" };
+        if (kind !== "object_types" && kind !== "slices" && kind !== "solvers" && kind !== "mcp_tools") {
+          return { error: "kind must be object_types|slices|solvers|mcp_tools" };
+        }
+        if (kind === "object_types") {
+          // CL.3：列本租户真实已发布对象类型名（agent 照真名查不再猜）。
+          const q = args.query ? String(args.query).toLowerCase() : undefined;
+          const types = await this.deps.dataCore.ontology.listObjectTypes(ctx);
+          const items = q ? types.filter((t) => t.key.toLowerCase().includes(q) || t.label.includes(String(args.query))) : types;
+          return { items, hint: "用 query_objects 时 objectType 必须是上列真实 key（区分大小写）；勿猜英文名。" };
         }
         if (kind === "mcp_tools") {
           // §2 MCP 按需加载目录：当前部署未启用 >24 工具按需加载模式 → 空目录
           return { items: [] };
         }
+        // WO-DRIL-P4 · discover(solvers|slices) **先查 Resource Registry**（P2 混合检索·五级标签+语义+确定性加权排序·
+        // entitlement 已在 registry 内前置过滤 R3），有结果即用其排序（比 keyword 目录更准）；无端口/空结果/异常 →
+        // fall back 既有 CatalogService.discover（additive·fail-open·返回形状与 catalog 一致 {items:[{key,name,description,argHints,domain}]}）。
+        if (this.deps.retrieveResources && (kind === "solvers" || kind === "slices")) {
+          try {
+            const drilKind = kind === "solvers" ? "solver" : "slice";
+            const res = await this.deps.retrieveResources(ctx, {
+              query: args.query ? String(args.query) : "",
+              kinds: [drilKind],
+              maxResults: 50,
+              minScore: 0, // 发现语义=枚举可选项（非精度检索）→ 门槛 0·由排序定优先级
+            } as import("@platform/contracts").ResourceSearchRequest);
+            if (res.results.length > 0) {
+              return {
+                items: res.results.map((r) => ({
+                  key: r.resource.key,
+                  name: r.resource.label,
+                  description: r.resource.description,
+                  argHints: r.resource.argHints ?? {},
+                  ...(r.resource.domain ? { domain: r.resource.domain } : {}),
+                })),
+                source: "dril-registry",
+              };
+            }
+          } catch {
+            /* fail-open → 落既有 catalog.discover */
+          }
+        }
         return this.deps.dataCore.catalog.discover(ctx, kind, args.query ? String(args.query) : undefined);
       }
-      case "resolve_slice":
-        return this.deps.dataCore.ontology.resolveSlice(
+      // WO-DRIL-P2 · DRIL 混合检索：一次跨 7+ 类资源按 NL 选型（fail-open：无端口 → 空结果不崩）。
+      case "retrieve_knowledge": {
+        if (!this.deps.retrieveResources) return { results: [], explanation: "资源检索未启用（无 registry 端口）。" };
+        const maxResults = args.maxResults === undefined ? 8 : Math.min(Number(args.maxResults), 50);
+        const req = {
+          query: String(args.query ?? ""),
+          maxResults,
+          minScore: 0.2,
+          ...(Array.isArray(args.kinds) ? { kinds: args.kinds.map(String) } : {}),
+        } as import("@platform/contracts").ResourceSearchRequest;
+        const res = await this.deps.retrieveResources(ctx, req);
+        // 收敛回执：只留 kind/key/label/score/scoreBreakdown（不回灌全 resource 体·省 token）。
+        return {
+          results: res.results.map((r) => ({
+            kind: r.resource.kind,
+            key: r.resource.key,
+            label: r.resource.label,
+            description: r.resource.description,
+            score: r.score,
+            scoreBreakdown: r.scoreBreakdown,
+          })),
+          explanation: res.explanation,
+        };
+      }
+      case "resolve_slice": {
+        const res = await this.deps.dataCore.ontology.resolveSlice(
           ctx,
           String(args.sliceKey),
           (args.args ?? {}) as Record<string, unknown>,
         );
-      case "query_objects":
-        return this.deps.dataCore.ontology.queryObjects(
+        // WO-SLICE-CONSUMPTION-20260912（前置 C1）：大图形切片收敛回执——全类型×跳数计数 +
+        // 根全量 + 每类型锚点样本；小图形/遗留定制形透传。求解器内部路径不经此处，零影响（AC10 兜）。
+        return shapeSliceReceipt(String(args.sliceKey), res);
+      }
+      case "plan_slice": {
+        const req: {
+          rootType: string;
+          targets: string[];
+          maxHops: number;
+          question?: string;
+        } = {
+          rootType: String(args.rootType),
+          targets: Array.isArray(args.targets) ? args.targets.map(String) : [],
+          maxHops: args.maxHops === undefined ? 6 : Number(args.maxHops),
+        };
+        if (args.question !== undefined) req.question = String(args.question);
+        const res = await this.deps.dataCore.ontology.planSlice(ctx, req);
+        if (!res.ok) return res;
+        // A3-SUITE-2：新规划的切片必须登记为一等 SliceSpec，后续 resolve_slice 才能消费。
+        if (!res.plan.reused) {
+          const spec = {
+            root: { typeKey: res.plan.rootType, selector: {} as Record<string, unknown> },
+            paths: res.plan.paths.map((p) =>
+              p.hops.map((h) => ({ linkKey: h.linkKey, direction: h.direction as "out" | "in" }))
+            ),
+          };
+          await this.deps.dataCore.ontology.putSliceSpec(ctx, res.plan.sliceKey, spec);
+        }
+        return {
+          planned: true,
+          reused: res.plan.reused,
+          sliceKey: res.plan.sliceKey,
+          rootType: res.plan.rootType,
+          spannedDomains: res.plan.spannedDomains,
+          pathCount: res.plan.paths.length,
+          plan: res.plan,
+        };
+      }
+      case "query_objects": {
+        // CL.3：未知 typeKey → 结构化 UNKNOWN_TYPE + did-you-mean（不静默返空，agent 据此改名重查）。
+        const dym = await this.unknownTypeGuard(ctx, String(args.objectType));
+        if (dym) return dym;
+        const res = await this.deps.dataCore.ontology.queryObjects(
           ctx,
           String(args.objectType),
           (args.filter ?? {}) as Record<string, unknown>,
@@ -208,21 +471,102 @@ export class GuardedToolExecutor {
           // 并发一致性 §13.1：任务内首读捕获 taskEpoch，后续读复用 → 任务级快照一致（近似 MVCC）
           await this.taskSnapshotEpoch(ctx),
         );
-      case "get_object":
+        /**
+         * CL.3：类型存在但 0 实例 → 区分"空 vs 不存在"，提示先引导（接 bootstrap/gap-fill），
+         * 不让 agent 误判无数据。
+         *
+         * ⚠ WO-PAGING-SILENT-TRUNCATION-SCAN 实测订正：这一行原先读的是 `res.data.total` ——
+         * 而 `POST /a/v1/objects/query` 的 `data` 是**裸数组**，数组上没有 `total` 属性，
+         * 于是这个判断**恒为 undefined、这条分支一次都没进过**（假绿第 N 形态：接了线，读错字段）。
+         * `total` 现在是 payload 的**同级**字段。
+         */
+        const total = res?.total;
+        if (total === 0) return { ...res, empty: true, hint: `对象类型 ${String(args.objectType)} 存在但 0 实例：可能租户未引导，请先 run_synthetic/bootstrap 合成计划域，而非判定"无数据"。` };
+        /**
+         * 截断必须让 agent 看见：此前回包只有裸数组，`Order` 真值 500 而这里给 100 行，
+         * agent 无从分辨「一共 100 张」和「给你看了 100 张」—— 它会拿 100 当分母作答。
+         */
+        if (res?.truncated) {
+          return {
+            ...res,
+            hint: `只返回了前 ${(res.data as unknown[]).length} 行，${String(args.objectType)} 符合条件的共 ${String(total)} 行。这是上下文预算截断，不是全部数据：需要总量/合计/占比时改用 aggregate_objects（服务端全量聚合），不要拿这 ${(res.data as unknown[]).length} 行当分母。`,
+          };
+        }
+        return res;
+      }
+      case "get_object": {
+        const dym = await this.unknownTypeGuard(ctx, String(args.objectType));
+        if (dym) return dym;
         return this.deps.dataCore.ontology.getObject(ctx, String(args.objectType), String(args.objectId));
+      }
+      // Dogfooding P3：问运行中的系统自己（受 DataCore MetaAccessPolicy 白名单门控,OBO 透传）。
+      case "query_system_ontology":
+        return this.deps.dataCore.ontology.queryMetaOntology(ctx);
+      case "get_breakpoint":
+        return this.deps.dataCore.ontology.getMetaBreakpoint(ctx, String(args.id));
+      case "impact_of":
+        return this.deps.dataCore.ontology.metaImpact(ctx, String(args.node));
       case "aggregate_objects":
         // 治理增量 §3.6 / G8：contracts IO 强校验，聚合下推（避免拉全量行）。
         return this.deps.dataCore.ontology.aggregateObjects(ctx, AggregateRequestSchema.parse(input));
       case "invoke_solver":
         return this.deps.dataCore.solver.invoke(ctx, String(args.solverKey), (args.args ?? {}) as Record<string, unknown>);
+      // WO-Phase3-B §3.2：本体遍历查询 → 复用 DataCore ontology_query 求解器（OBO 透传·零重写）。
+      case "query_ontology":
+        return this.deps.dataCore.solver.invoke(ctx, "ontology_query", (args ?? {}) as Record<string, unknown>);
       case "evaluate_rules":
         return this.deps.dataCore.rules.evaluate(
           ctx,
           args.ruleIds as string[] | "ALL_APPLICABLE",
           args.payload,
         );
+      // CL.2 合规数据生成：触发确定性合成/建域（**触发合成 ≠ 伪造**），落未审核态（PROVISIONAL）。
+      // 回执只含元信息 + provisional 标记；业务数字由 agent 后续 query_* 读回真实物化值（铁律自洽）。
+      case "fill_data": {
+        const r = await this.deps.dataCore.ontology.fillData(ctx, {
+          typeKey: String(args.typeKey),
+          fields: (args.fields ?? []) as string[],
+          ...(args.rows === undefined ? {} : { rows: Number(args.rows) }),
+          ...(args.seed === undefined ? {} : { seed: Number(args.seed) }),
+        });
+        return { ...r, provisional: true, _note: "未审核合成数据（PROVISIONAL）：业务数字请用 query_objects 读回真实物化值；转正经 create_action_draft 走审批。" };
+      }
+      case "run_synthetic": {
+        const r = await this.deps.dataCore.datagen.runSynthetic(ctx, {
+          industry: String(args.industry),
+          scale: String(args.scale),
+          ...(args.seed === undefined ? {} : { seed: Number(args.seed) }),
+          ...(args.livedIn === undefined ? {} : { livedIn: Boolean(args.livedIn) }),
+        });
+        return { ...r, provisional: true, _note: "未审核合成数据（PROVISIONAL）：业务数字请用 query_objects/query_timeseries_agg 读回真实物化值；答案须标注'基于本轮合成的未审核数据'。" };
+      }
+      case "build_domain": {
+        const r = await this.deps.dataCore.datagen.buildDomain(ctx, {
+          story: String(args.story),
+          ...(args.seed === undefined ? {} : { seed: Number(args.seed) }),
+        });
+        return { ...r, provisional: true, _note: "未审核建域（PROVISIONAL）：建出对象/规则/求解器骨架；读回/推演用 query_objects/invoke_solver；转正走 R4。" };
+      }
       case "create_action_draft":
         return this.deps.dataCore.action.createDraft(ctx, String(args.actionType), args.payload ?? args);
+      // 增量4 §5：AI 推演指挥台 —— OBO 到 DataCore /a/v1/sim/*（透传用户 JWT）。
+      // R4：sim tick/act 模拟态不写真值（DataCore 保证）；回执只含会话态元信息，不绕审批。
+      case "sim_init":
+        return this.deps.dataCore.sim.init(ctx, {
+          ...(args.baseSnapshot !== undefined ? { baseSnapshot: args.baseSnapshot as Record<string, unknown> } : {}),
+          ...(args.scope !== undefined ? { scope: args.scope as Record<string, unknown> } : {}),
+        });
+      case "sim_tick":
+        return this.deps.dataCore.sim.tick(ctx, String(args.sessionId ?? ""), args.n === undefined ? 1 : Number(args.n));
+      case "sim_world":
+        return this.deps.dataCore.sim.world(ctx, String(args.sessionId ?? ""));
+      case "sim_certify":
+        return this.deps.dataCore.sim.certify(
+          ctx,
+          String(args.sessionId ?? ""),
+          args.scope === undefined ? undefined : String(args.scope),
+          args.target === undefined ? undefined : String(args.target),
+        );
       case "search_knowledge":
         return this.deps.dataCore.kb.search(ctx, {
           query: String(args.query),
@@ -236,9 +580,59 @@ export class GuardedToolExecutor {
         return this.readSkillResource(String(args.skillId ?? ""), String(args.resourceName ?? ""));
       case "search_experience":
         return this.searchExperience(String(args.query ?? ""), args.topK === undefined ? 3 : Math.min(Math.max(1, Number(args.topK)), 10));
+      // 自成长发动机 A4：成长工单施工面（厂商中立，R2 租户隔离）。
+      case "discover_growth_tickets":
+        return this.discoverGrowthTickets(ctx.tenantId, args.status ? String(args.status) : undefined);
+      case "claim_growth_ticket":
+        return this.transitionGrowthTicket(ctx, String(args.ticketId ?? ""), "IN_PROGRESS", args.assignee ? String(args.assignee) : ctx.userId);
+      case "submit_growth_ticket":
+        return this.transitionGrowthTicket(ctx, String(args.ticketId ?? ""), "IN_REVIEW");
       default:
         throw new Error(`unknown tool: ${toolName}`);
     }
+  }
+
+  /**
+   * CL.3：未知对象类型守卫——typeKey 不在本租户已发布类型集 → 返结构化 UNKNOWN_TYPE +
+   * validTypes + did-you-mean（最近编辑距离），而非静默返空。命中真实类型 → 返 undefined（放行）。
+   * R6 确定性（编辑距离纯函数）；类型清单经 listObjectTypeKeys（OBO，R2 隔离）。
+   */
+  private async unknownTypeGuard(ctx: ToolAuthCtx, typeKey: string): Promise<{ error: string; validTypes: string[]; suggestion?: string } | undefined> {
+    let valid: string[];
+    try {
+      valid = await this.deps.dataCore.ontology.listObjectTypeKeys(ctx);
+    } catch {
+      return undefined; // 类型清单不可达时不拦（退化为既有行为），避免误伤
+    }
+    if (valid.length === 0 || valid.includes(typeKey)) return undefined;
+    const suggestion = nearestType(typeKey, valid);
+    return {
+      error: "UNKNOWN_TYPE",
+      validTypes: valid,
+      ...(suggestion ? { suggestion } : {}),
+    };
+  }
+
+  /** A4：列出成长工单（R2 租户隔离；按 status 过滤）。施工 agent 据此知道要建什么、骨架到哪。 */
+  private async discoverGrowthTickets(tenantId: string, status?: string): Promise<unknown> {
+    const all = await this.deps.repos.growthTickets.listByTenant(tenantId);
+    const items = status ? all.filter((t) => t.status === status) : all;
+    return {
+      items: items.map((t) => ({
+        id: t.id, fromQuestion: t.fromQuestion, gapCode: t.gapCode, status: t.status,
+        ioContract: t.ioContract, ontologyRefs: t.ontologyRefs, acceptance: t.acceptance,
+        scaffoldedDrafts: t.scaffoldedDrafts ?? [], assignee: t.assignee,
+      })),
+    };
+  }
+
+  /** A4：成长工单状态流转（claim→IN_PROGRESS / submit→IN_REVIEW）；不存在→错误，R2 隔离。 */
+  private async transitionGrowthTicket(ctx: { tenantId: string }, ticketId: string, to: "IN_PROGRESS" | "IN_REVIEW", assignee?: string): Promise<unknown> {
+    const tk = (await this.deps.repos.growthTickets.listByTenant(ctx.tenantId)).find((t) => t.id === ticketId);
+    if (!tk) return { error: `TICKET_NOT_FOUND: ${ticketId}` };
+    const updated = { ...tk, status: to, ...(assignee ? { assignee } : {}) };
+    await this.deps.repos.growthTickets.upsert(updated);
+    return { id: updated.id, status: updated.status, assignee: updated.assignee };
   }
 
   /**
@@ -317,6 +711,8 @@ export class GuardedToolExecutor {
     outcome: ToolRunResult["outcome"],
     started: number,
     ok: boolean,
+    /** WO-LOOP-CONTROL-P2 · Retry Manager：ERROR 回执的瞬时/确定性分类（仅 ERROR 传入·缺省 undefined=不重试=现行为）。 */
+    retryable?: boolean,
   ): Promise<ToolRunResult> {
     const durationMs = Date.now() - started;
     const toolCallId = newId("tc");
@@ -335,11 +731,74 @@ export class GuardedToolExecutor {
     };
     await this.deps.repos.toolCalls.insert(row);
     this.deps.metrics.toolCalls.inc({ tool: toolName, outcome });
-    return { ok, payload, toolCallId, outcome, durationMs };
+    return { ok, payload, toolCallId, outcome, durationMs, ...(retryable !== undefined ? { retryable } : {}) };
   }
 }
 
+/**
+ * WO-LOOP-CONTROL-P2 · Retry Manager 错误分类（PRD §3.2·纯函数 R6·无 Date.now/随机）：区分**瞬时/传输层错**（可重试）
+ * 与**确定性错**（不可重试）。传输层 = DataCore 不可达（`DataCoreUnavailableError`）或 MCP 传输/协议抖动（binding=MCP 的
+ * 抛错）——重试大概率恢复；确定性错（zod 校验失败、未知工具、逻辑 TOOL_ERROR）重试无益 → false（保守·不放大预算）。
+ * DENIED/BUDGET/ONTOLOGY_VALIDATION 等非 ERROR 出口本就不经此（各有既有分支·不重试）。
+ */
+export function classifyRetryable(err: unknown, binding: ToolBinding): boolean {
+  if (err instanceof DataCoreUnavailableError) return true; // 传输层不可达·瞬时
+  if (binding.kind === "MCP") return true; // MCP 传输/协议抖动·瞬时（EXTERNAL 传输层错）
+  return false; // 确定性错（校验/逻辑/未知工具）·不重试·字节兼容缺省
+}
+
+/**
+ * WO-DSH-ARM-GAPS · **「这次求解器调用确实没跑」的判据 —— 退费的唯一入口**（不许在别处重复实现，
+ * 抄第二份即两个真相源，改一处另一处照旧）。
+ *
+ * 分界线是「**服务端回话了吗、回的什么**」，不是「跑没跑成功」：
+ *
+ * | 错误 | statusCode | 求解器执行了吗 | 退费 |
+ * |---|---|---|---|
+ * | `DataCoreHttpError` 4xx（入参不合 / 求解器不存在） | 400/404/422 | **没有** —— 请求被当场拒 | ✅ |
+ * | `DataCoreRequestCancelledError`（上游超时 / 客户端断开） | 499 | **可能跑了** | ⛔ 不退（可能真烧了算力） |
+ * | `DataCoreHttpError` 5xx | 500+ | **可能跑了**（跑到一半崩） | ⛔ 不退（保守） |
+ * | `DataCoreUnavailableError`（连不上） | — | 没有，但也没证据 | ⛔ 不退（保守） |
+ *
+ * ⚠️ **499 那一行是必须先判的**：`DataCoreRequestCancelledError extends DataCoreHttpError` 且
+ * statusCode=499 **< 500**，若只写 `statusCode < 500` 会把「上游超时、算力可能已经烧掉」的那一档
+ * 误判成「没跑」。形态：
+ * > **「我用『状态码小于 500』当作『这次调用没被执行』的证据，而前者并不度量后者
+ * > —— 499 是个小于 500 的『已执行但被中断』。」**
+ */
+export function rejectedBeforeExecution(err: unknown): boolean {
+  if (err instanceof DataCoreRequestCancelledError) return false;
+  return err instanceof DataCoreHttpError && err.statusCode < 500;
+}
+
 /** #6 稳定参数键：键名排序后序列化，使 {a,b} 与 {b,a} 命中同一缓存。 */
+/** CL.3：did-you-mean —— 在候选类型里找与 typeKey 最近的（不区分大小写的 Levenshtein），过远则不建议。 */
+function nearestType(typeKey: string, candidates: string[]): string | undefined {
+  const lev = (a: string, b: string): number => {
+    const m = a.length, n = b.length;
+    const dp = Array.from({ length: m + 1 }, (_, i) => i);
+    for (let j = 1; j <= n; j++) {
+      let prev = dp[0]!;
+      dp[0] = j;
+      for (let i = 1; i <= m; i++) {
+        const tmp = dp[i]!;
+        dp[i] = a[i - 1] === b[j - 1] ? prev : 1 + Math.min(prev, dp[i]!, dp[i - 1]!);
+        prev = tmp;
+      }
+    }
+    return dp[m]!;
+  };
+  const lk = typeKey.toLowerCase();
+  let best: string | undefined;
+  let bestD = Infinity;
+  for (const c of candidates) {
+    const d = lev(lk, c.toLowerCase());
+    if (d < bestD) { bestD = d; best = c; }
+  }
+  // 过远（超过类型名长度一半）不建议，避免误导
+  return best !== undefined && bestD <= Math.max(2, Math.ceil(typeKey.length / 2)) ? best : undefined;
+}
+
 function canonicalArgs(input: unknown): string {
   const norm = (v: unknown): unknown => {
     if (Array.isArray(v)) return v.map(norm);

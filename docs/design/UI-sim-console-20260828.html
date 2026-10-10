@@ -1,0 +1,680 @@
+<title>推演与对策控制台</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+
+<style>
+/* ══ 令牌全部取自 apps/frontend-shell/src/styles/tokens.css 的在册令牌 ══
+   青蓝磨砂主题：bg 最深 < panel2 导航/内嵌 < panel 抬升卡。
+   文字色一律用 -txt 族（--X 保持填充/描边职能）。
+   ⚠ 最小字号 12px —— 门 check-text-legibility 判据：10px 中文在本调色板内无解。 */
+:root{
+  --bg:#223251; --bg2:#283a5c; --panel:#2c3d5e;
+  --panel-glass:rgba(255,255,255,.06); --panel2:#1c2942;
+  --line:rgba(226,235,245,.08); --line2:rgba(226,235,245,.14);
+  --txt:#e9eef5; --muted:#ced7e1; --muted2:#bbc5ce;
+  --accent:#4c90f0; --accent-solid:#115dc9; --on-accent:#fff;
+  --accent-txt:#a2c6f7; --ok-txt:#91d2a0; --warn-txt:#eabd5d; --danger-txt:#f0b4b8;
+  --c-factory:#5e8fe8; --c-product:#36bfa5; --c-process:#dd9551;
+  --c-equip:#9d8bf0; --c-quality:#62be77; --c-capacity:#43b7d7; --c-forecast:#d2b04c;
+  --c-process-txt:#e9bb8f; --c-capacity-txt:#80cfe4; --c-quality-txt:#91d2a0;
+  --font-sans:"Inter","Segoe UI",system-ui,"PingFang SC","Microsoft YaHei",sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--txt);
+  font-family:var(--font-sans);font-size:13px;line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+
+/* ── 磨砂玻璃卡（global.css .panel 原样）── */
+.panel{
+  background:var(--panel-glass);border:1px solid var(--line2);border-radius:12px;
+  padding:14px 16px;backdrop-filter:blur(16px) saturate(1.2);-webkit-backdrop-filter:blur(16px) saturate(1.2);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 8px 24px rgba(0,0,0,.2);
+}
+.btn{
+  display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;
+  border:1px solid var(--line2);background:rgba(226,235,245,.05);color:var(--txt);
+  font-size:12.5px;transition:.15s;font-family:inherit;cursor:pointer;
+}
+.btn:hover{border-color:var(--accent)}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn-primary{background:var(--accent-solid);border-color:var(--accent-solid);color:var(--on-accent);font-weight:600}
+.btn-primary:hover{filter:brightness(1.12);border-color:var(--accent)}
+input{
+  font-family:inherit;background:var(--bg2);border:1px solid var(--line2);color:var(--txt);
+  border-radius:7px;padding:3px 7px;font-size:12.5px;outline:none;font-variant-numeric:tabular-nums;
+}
+input:focus{border-color:var(--accent)}
+
+/* ── 顶栏 ── */
+.top{
+  background:var(--panel2);border-bottom:1px solid var(--line);
+  padding:0 20px;height:50px;display:flex;align-items:center;gap:16px;
+  position:sticky;top:0;z-index:30;
+}
+.top .ttl{font-size:14px;font-weight:600;letter-spacing:.01em}
+.top .crumb{font-size:12px;color:var(--muted)}
+.top .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+.tag{
+  border:1px solid var(--line2);border-radius:7px;padding:3px 9px;
+  font-size:12px;color:var(--muted);background:rgba(226,235,245,.04);
+}
+
+.shell{display:grid;grid-template-columns:300px 1fr;min-height:calc(100vh - 50px)}
+@media(max-width:900px){.shell{grid-template-columns:1fr}}
+
+/* ── 左栏 = 区① ── */
+.rail{
+  background:var(--panel2);border-right:1px solid var(--line);
+  padding:16px 14px 28px;display:flex;flex-direction:column;gap:14px;
+  position:sticky;top:50px;align-self:start;max-height:calc(100vh - 50px);overflow-y:auto;
+}
+@media(max-width:900px){.rail{position:static;max-height:none;border-right:none;border-bottom:1px solid var(--line)}}
+.ztag{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);font-weight:500}
+.zn{
+  width:17px;height:17px;border-radius:50%;background:var(--accent-solid);color:var(--on-accent);
+  display:grid;place-items:center;font-size:11px;font-weight:700;font-family:var(--font-mono);flex:none;
+}
+.rail h2{font-size:14px;margin:0;font-weight:600;line-height:1.5}
+
+.added{display:flex;flex-direction:column;gap:6px}
+.ev{
+  display:flex;align-items:center;gap:6px;font-size:12.5px;
+  background:rgba(76,144,240,.12);border:1px solid var(--accent);
+  border-radius:8px;padding:7px 9px;
+}
+.ev b{font-weight:600;color:var(--accent-txt)}
+.ev input{width:40px;text-align:right}
+.ev .x{
+  margin-left:auto;background:none;border:none;color:var(--muted2);
+  cursor:pointer;font-size:13px;line-height:1;padding:2px 3px;font-family:inherit;
+}
+.ev .x:hover{color:var(--danger-txt)}
+.cnt{font-size:12px;color:var(--muted2);margin:0}
+
+.grp{border-top:1px solid var(--line);padding-top:11px;display:flex;flex-direction:column;gap:2px}
+.grp .lbl{font-size:12px;color:var(--muted2);margin-bottom:5px;font-weight:500}
+.t{
+  display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:7px;font-size:12.5px;
+  color:var(--muted);cursor:pointer;border:1px solid transparent;background:none;
+  font-family:inherit;text-align:left;width:100%;transition:.15s;
+}
+.t:hover,.t:focus-visible{background:rgba(226,235,245,.05);border-color:var(--line2);color:var(--txt);outline:none}
+.t .sel{color:var(--muted2);font-size:12px;margin-left:auto}
+.t .plus{color:var(--accent-txt);font-weight:700;flex:none}
+.t.new{border-color:rgba(210,176,76,.4);background:rgba(210,176,76,.09)}
+.t.new .plus{color:var(--warn-txt)}
+.t.open{background:rgba(76,144,240,.14);border-color:var(--accent);color:var(--txt)}
+
+/* 就地展开的下一级 —— 不跳页、不弹窗 */
+.expand{
+  border:1px solid var(--accent);border-top:none;border-radius:0 0 8px 8px;
+  background:rgba(76,144,240,.07);padding:10px 10px 9px;margin:-3px 0 4px;
+  display:flex;flex-direction:column;gap:7px;
+}
+.fld{display:flex;align-items:center;gap:8px;font-size:12.5px}
+.fl{color:var(--muted2);min-width:52px;flex:none}
+.expand select{
+  flex:1;min-width:0;font-family:inherit;background:var(--bg2);border:1px solid var(--line2);
+  color:var(--txt);border-radius:7px;padding:5px 7px;font-size:12.5px;outline:none;
+}
+.expand select:focus{border-color:var(--accent)}
+.inline{display:flex;align-items:center;gap:5px;color:var(--muted)}
+.inline input{width:62px;text-align:right}
+.more{font-size:12px;color:var(--muted2);border-top:1px solid var(--line);padding-top:6px}
+.more summary{cursor:pointer;list-style:none;color:var(--accent-txt);padding:1px 0}
+.more summary::before{content:"▸ "}
+.more[open] summary::before{content:"▾ "}
+.more .fld{margin-top:6px}
+.acts{display:flex;gap:6px;margin-top:2px}
+.btn.sm{padding:5px 12px;font-size:12px}
+
+.go{
+  background:var(--accent-solid);color:var(--on-accent);border:1px solid var(--accent-solid);
+  border-radius:8px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;
+  font-family:inherit;letter-spacing:.08em;transition:.15s;
+}
+.go:hover{filter:brightness(1.12)}
+.go:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.railfoot{font-size:12px;color:var(--muted2);border-top:1px solid var(--line);padding-top:10px;line-height:1.7}
+.railfoot a{color:var(--accent-txt);text-decoration:none;border-bottom:1px solid rgba(162,198,247,.35)}
+.railfoot a:hover{border-bottom-color:var(--accent-txt)}
+.railfoot b{color:var(--muted);font-weight:600}
+
+/* ── 主区 ── */
+.main{padding:20px 22px 64px;display:flex;flex-direction:column;gap:18px;min-width:0}
+@media(max-width:640px){.main{padding:16px 14px 40px}}
+.hd{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.hd h3{margin:0;font-size:13.5px;font-weight:600}
+.hd .r{margin-left:auto;font-size:12px;color:var(--muted2)}
+
+/* 诚实位记号 */
+.est{
+  display:inline-block;font-size:12px;padding:0 5px;border-radius:5px;
+  background:rgba(210,176,76,.16);color:var(--warn-txt);margin-left:5px;font-weight:500;
+}
+.nocalc{color:var(--muted2);text-decoration:line-through;text-decoration-thickness:1px}
+
+/* 区② */
+.run{
+  display:flex;align-items:center;gap:11px;font-size:12.5px;color:var(--muted);
+  background:rgba(76,144,240,.10);border:1px solid var(--line2);border-radius:12px;padding:11px 15px;
+}
+.bar{flex:1;height:4px;background:rgba(226,235,245,.10);border-radius:99px;overflow:hidden;max-width:260px}
+.bar i{display:block;height:100%;width:62%;background:var(--accent);border-radius:99px}
+
+/* 区③ 钱 */
+.money{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0 14px}
+.money .row{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;justify-content:center}
+.money .lab{font-size:13px;color:var(--muted)}
+.money .from{font-size:19px;color:var(--muted2);font-family:var(--font-mono)}
+.money .arw{color:var(--muted2)}
+.money .to{font-size:42px;font-weight:700;color:var(--danger-txt);line-height:1.15;font-family:var(--font-mono);letter-spacing:-.01em}
+.money .dlt{font-size:14px;color:var(--danger-txt);font-family:var(--font-mono)}
+.brk{
+  border-top:1px solid var(--line);margin-top:12px;padding-top:12px;
+  display:grid;grid-template-columns:1fr auto;gap:5px 20px;
+  max-width:400px;margin-left:auto;margin-right:auto;font-size:12.5px;
+}
+.brk .k{color:var(--muted)}
+.brk .v{text-align:right;font-family:var(--font-mono)}
+.why{text-align:center;margin:13px 0 0;font-size:12.5px;color:var(--muted)}
+.why b{color:var(--txt);font-weight:600}
+.recon{
+  display:block;margin:8px auto 0;background:none;border:none;cursor:pointer;
+  font-family:inherit;font-size:12px;color:var(--accent-txt);
+  border-bottom:1px solid rgba(162,198,247,.35);padding:0 0 1px;
+}
+.recon:hover{border-bottom-color:var(--accent-txt)}
+
+/* 客户与订单 */
+.cust{display:grid;grid-template-columns:1.55fr 1fr;gap:18px}
+@media(max-width:840px){.cust{grid-template-columns:1fr}}
+.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.tbl th{
+  text-align:left;font-weight:500;color:var(--muted2);font-size:12px;
+  padding:0 8px 6px;border-bottom:1px solid var(--line2);white-space:nowrap;
+}
+.tbl td{padding:6px 8px;border-bottom:1px solid var(--line);color:var(--muted)}
+.tbl tbody tr:last-child td{border-bottom:none}
+.tbl tbody tr:hover td{background:rgba(226,235,245,.04)}
+.tbl td:first-child{color:var(--txt)}
+.tbl .n{text-align:right;font-family:var(--font-mono);white-space:nowrap}
+.bar-c{position:relative}
+.bar-c span{
+  position:absolute;left:8px;right:8px;bottom:2px;height:2px;background:rgba(94,143,232,.25);border-radius:2px;
+}
+.bar-c span::after{content:"";position:absolute;left:0;top:0;bottom:0;width:var(--w);background:var(--c-factory);border-radius:2px}
+.pill{display:inline-block;font-size:12px;padding:1px 7px;border-radius:6px;white-space:nowrap}
+.pill.w{background:rgba(210,176,76,.16);color:var(--warn-txt)}
+.pill.d{background:rgba(240,180,184,.14);color:var(--danger-txt)}
+.tiny{font-size:12px;color:var(--muted2);margin:9px 0 0;line-height:1.65}
+.tiny b{color:var(--danger-txt);font-weight:600}
+.stat{display:flex;gap:8px;margin-bottom:12px}
+.stat .s{
+  flex:1;border:1px solid var(--line2);border-radius:8px;padding:9px 10px;
+  background:rgba(226,235,245,.04);display:flex;flex-direction:column;gap:1px;
+}
+.stat .v{font-size:20px;font-weight:700;font-family:var(--font-mono);line-height:1.2}
+.stat .k{font-size:12px;color:var(--muted2)}
+.stat .pct{font-size:12px;color:var(--c-capacity-txt)}
+.risk{border:1px solid var(--line2);border-radius:8px;padding:11px 12px;background:rgba(240,180,184,.06)}
+.risk .rl{font-size:12px;color:var(--muted2);margin-bottom:7px}
+.risk ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.risk li{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--muted)}
+.risk .late{color:var(--danger-txt);font-weight:600}
+
+/* 区④ 卡点 */
+.imp{display:grid;grid-template-columns:1.3fr 1fr;gap:16px}
+@media(max-width:760px){.imp{grid-template-columns:1fr}}
+h4{margin:0 0 9px;font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:7px;color:var(--muted)}
+.dot{width:7px;height:7px;border-radius:50%;flex:none}
+.fix{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.fix li{
+  border:1px solid var(--line2);border-radius:8px;padding:8px 11px;font-size:12.5px;
+  display:flex;align-items:center;gap:9px;cursor:pointer;background:rgba(226,235,245,.04);transition:.15s;
+}
+.fix li:hover{border-color:var(--accent);background:rgba(76,144,240,.09)}
+.fix li .n{margin-left:auto;font-size:12px;color:var(--accent-txt);white-space:nowrap}
+.watch{border:1px solid var(--line2);border-radius:8px;padding:11px 12px;background:rgba(226,235,245,.04);font-size:12.5px;color:var(--muted)}
+.watch b{color:var(--danger-txt);font-weight:600}
+.watch a{color:var(--muted2);font-size:12px;text-decoration:none;border-bottom:1px solid var(--line2)}
+
+.tl{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}
+.tl .lbl{font-size:12.5px;font-weight:600;margin-bottom:14px;color:var(--muted)}
+.tlwrap{overflow-x:auto;padding-bottom:4px}
+.track{position:relative;min-width:660px;height:94px}
+.track .ln{position:absolute;top:15px;left:0;right:0;height:1px;background:var(--line2)}
+.pt{position:absolute;top:0;transform:translateX(-50%);text-align:center;width:88px}
+.pt .m{width:9px;height:9px;border-radius:50%;background:var(--c-people,#dd7e9e);margin:11px auto 0;box-shadow:0 0 0 3px var(--bg)}
+.pt.first .m{background:var(--c-forecast);width:13px;height:13px;margin-top:9px}
+.pt .d{font-family:var(--font-mono);font-size:12px;color:var(--muted2);margin-top:5px}
+.pt .w{font-size:12px;color:var(--muted);line-height:1.4;margin-top:1px}
+.tlnote{margin:10px 0 0;font-size:12.5px;color:var(--warn-txt)}
+
+/* 区⑤ 对策看板 */
+.mwrap{overflow-x:auto}
+table.board{border-collapse:collapse;width:100%;min-width:760px;font-size:12.5px}
+table.board th{
+  text-align:right;font-weight:500;color:var(--muted2);font-size:12px;
+  padding:0 9px 7px;border-bottom:1px solid var(--line2);white-space:nowrap;
+}
+table.board th:first-child{text-align:left}
+table.board td{padding:7px 9px;border-bottom:1px solid var(--line);color:var(--muted);white-space:nowrap}
+table.board td:first-child{color:var(--txt);font-weight:500}
+table.board tbody tr:last-child td{border-bottom:none}
+table.board tbody tr:hover td{background:rgba(226,235,245,.05)}
+table.board tr.sel td{background:rgba(76,144,240,.12)}
+table.board tr.sel td:first-child::before{content:"▸ ";color:var(--accent-txt)}
+table.board tr.dim td{color:var(--muted2)}
+table.board .n{text-align:right;font-family:var(--font-mono)}
+table.board .na{color:var(--muted2);font-family:var(--font-sans)}
+table.board .g{color:var(--ok-txt)} table.board .y{color:var(--warn-txt)} table.board .r{color:var(--danger-txt)}
+.sv{display:inline-block;min-width:34px;text-align:right;position:relative;padding-bottom:3px;color:var(--warn-txt)}
+.sv.r{color:var(--danger-txt)}
+.sv sup{font-size:9px;opacity:.75;font-family:var(--font-sans);margin-left:1px}
+.sv::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;border-radius:2px;
+  background:linear-gradient(to right,currentColor var(--w),rgba(226,235,245,.10) var(--w))}
+.bnote{
+  display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;border-top:1px solid var(--line);
+  padding-top:11px;font-size:12.5px;color:var(--muted);line-height:1.7;
+}
+.bnote b{color:var(--txt);font-weight:600}
+.bn-l{flex:1;min-width:280px}
+.bn-r{display:flex;flex-direction:column;gap:2px;border-left:1px solid var(--line2);padding-left:16px;min-width:230px}
+.bn-r .k{font-size:12px;color:var(--muted2)}
+.bn-r .v{font-weight:600;color:var(--txt)}
+.bn-r .k2{font-size:12px;color:var(--muted2)}
+
+/* 区⑤b 方案 */
+.sortbar{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted2);margin-bottom:11px}
+.sortbar .nr{margin-left:auto}
+.opts{display:grid;grid-template-columns:repeat(3,1fr) 1.1fr;gap:12px}
+@media(max-width:980px){.opts{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){.opts{grid-template-columns:1fr}}
+.opt{
+  border:1px solid var(--line2);border-radius:12px;padding:13px 13px 12px;
+  display:flex;flex-direction:column;gap:11px;background:rgba(226,235,245,.04);
+}
+.opt.none{border:1px solid var(--danger-txt);background:rgba(240,180,184,.07);box-shadow:inset 0 0 0 1px rgba(240,180,184,.18)}
+.opt h5{margin:0;font-size:14px;font-weight:600}
+.dims{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:12.5px}
+.dims .k{color:var(--muted2)}
+.dims .v{text-align:right;font-weight:600;font-family:var(--font-mono)}
+.dims .v.hi{color:var(--danger-txt)} .dims .v.mid{color:var(--warn-txt)} .dims .v.lo{color:var(--ok-txt)}
+.dims .v.na{color:var(--muted2);font-weight:400}
+.saves{border-top:1px solid var(--line);padding-top:9px;font-size:12px;color:var(--muted);flex:1}
+.saves .st{font-size:12px;color:var(--muted2);margin-bottom:5px;display:block}
+.saves ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.saves li{display:flex;gap:8px;justify-content:space-between;font-family:var(--font-mono);font-size:12px}
+.saves li .late{color:var(--danger-txt)}
+.tot{border-top:1px solid var(--line2);margin-top:8px;padding-top:8px;font-size:12.5px;line-height:1.7}
+.tot .big{font-size:18px;font-weight:700;color:var(--danger-txt);font-family:var(--font-mono)}
+.tot b{color:var(--txt);font-family:var(--font-mono)}
+.pick{width:100%;justify-content:center}
+.note{
+  margin:14px 0 0;font-size:12px;color:var(--muted2);line-height:1.7;
+  border-top:1px solid var(--line);padding-top:11px;
+}
+.pgfoot{font-size:12px;color:var(--muted2);line-height:1.8;margin:4px 0 0}
+</style>
+
+<div class="top">
+  <span class="ttl">推演与对策</span>
+  <span class="crumb">常州 · 全网 · 往后 30 天</span>
+  <span class="right">
+    <span class="tag mono">订单 500</span>
+    <span class="tag mono">客户 20</span>
+    <span class="tag">上次这条推演 · 已恢复</span>
+  </span>
+</div>
+
+<div class="shell">
+
+  <!-- ══ 区① 输入 ══ -->
+  <aside class="rail">
+    <div class="ztag"><span class="zn">1</span>加几件事</div>
+    <h2>加一件或几件事，我算给你看</h2>
+
+    <div class="added">
+      <div class="ev">正极材料 <b>涨价</b> <input value="20" aria-label="涨价百分比"> % <button class="x" aria-label="删除">✕</button></div>
+      <div class="ev">常州 <b>停线</b> <input value="2" aria-label="停线天数"> 天 <button class="x" aria-label="删除">✕</button></div>
+    </div>
+    <p class="cnt">已经加了 2 件事</p>
+
+    <div class="grp">
+      <span class="lbl">还能加</span>
+      <button class="t new"><span>原材料涨价</span><span class="sel">碳酸锂 96,000 元/吨</span><span class="plus">＋</span></button>
+      <button class="t new"><span>批次不良 / 召回</span><span class="sel">不良率 · 批次</span><span class="plus">＋</span></button>
+      <button class="t open"><span>临时插单</span><span class="sel">万套 / 型号</span><span class="plus">－</span></button>
+      <div class="expand">
+        <div class="fld">
+          <span class="fl">谁</span>
+          <select><option>广汽埃安 · 223 张 · 131.76 亿</option><option>小鹏汽车 · 90 张</option><option>国家电网 · 22 张</option><option>南方电网 · 21 张</option><option>宇通客车 · 18 张</option><option>…共 20 家</option></select>
+        </div>
+        <div class="fld">
+          <span class="fl">什么型号</span>
+          <select><option>方形-NCM · 乘用车</option><option>4680-NCM · 乘用车</option><option>方形-LFP · 储能</option><option>4680-LFP · 储能</option><option>2170-NCM · 乘用车</option><option>圆柱-LFP · 储能</option></select>
+        </div>
+        <div class="fld">
+          <span class="fl">加多少</span>
+          <span class="inline"><input value="1" aria-label="数量"> 万套</span>
+        </div>
+        <details class="more">
+          <summary>什么时候开始 · 持续多久</summary>
+          <div class="fld"><span class="fl">从第</span><span class="inline"><input value="1" aria-label="起始天"> 天起</span></div>
+          <div class="fld"><span class="fl">持续</span><span class="inline"><input value="" placeholder="留空=一直" aria-label="持续天数"> 天</span></div>
+        </details>
+        <div class="acts">
+          <button class="btn btn-primary sm">加进去</button>
+          <button class="btn sm">取消</button>
+        </div>
+      </div>
+      <button class="t"><span>订单改交期</span><span class="sel">提前几天</span><span class="plus">＋</span></button>
+      <button class="t"><span>订单取消</span><span class="sel">选订单</span><span class="plus">＋</span></button>
+      <button class="t"><span>物料到货延迟</span><span class="sel">延几天</span><span class="plus">＋</span></button>
+      <button class="t"><span>物料短缺</span><span class="sel">缺多少</span><span class="plus">＋</span></button>
+      <button class="t"><span>设备故障</span><span class="sel">停几天</span><span class="plus">＋</span></button>
+      <button class="t"><span>产能损失</span><span class="sel">损失 %</span><span class="plus">＋</span></button>
+      <button class="t"><span>改交付地点</span><span class="sel">新地点</span><span class="plus">＋</span></button>
+      <button class="t"><span>订单改价</span><span class="sel">价格变动</span><span class="plus">＋</span></button>
+      <button class="t"><span>预测偏差</span><span class="sel">偏差 % / 型号</span><span class="plus">＋</span></button>
+    </div>
+
+    <button class="go">算 一 下</button>
+
+    <div class="railfoot">
+      整屏最亮的只有这一个按钮 —— 它自己把施加、推进、出钱、出卡点、出方案全走完。
+      <br><br>
+      主线只放这 <b>12 件你会开口问的事</b>，落点只在 <b>65 个叫得出名字的实体</b>里选
+      （13 基地 / 20 客户 / 15 供应商 / 8 物料 / 6 型号 / 3 需求段）。<br>
+      其余 12,675 个对象只在<b>结果里</b>出现，不进选择器 —— 它们是传播介质，不是控制面板。
+      <a href="#">专家模式 ▸</a>
+    </div>
+  </aside>
+
+  <main class="main">
+
+    <!-- ══ 区② ══ -->
+    <div class="run">
+      <span class="zn">2</span>
+      正在算未来 30 天…
+      <span class="bar"><i></i></span>
+      <span class="mono" style="color:var(--muted2);font-size:12px">通常 2.5 秒</span>
+    </div>
+
+    <!-- ══ 区③ 钱 ══ -->
+    <section class="panel">
+      <div class="hd">
+        <span class="ztag"><span class="zn">3</span>钱上差多少</span>
+        <h3>这两件事凑一块，往后 30 天</h3>
+        <span class="r">和下面的卡点、方案读的是同一次结果</span>
+      </div>
+      <div class="money">
+        <div class="row">
+          <span class="lab">毛利</span>
+          <span class="from">118.9 亿</span>
+          <span class="arw">→</span>
+          <span class="to">62.4 亿</span>
+          <span class="dlt">少 56.5 亿<span class="est">估</span></span>
+        </div>
+      </div>
+      <div class="brk">
+        <span class="k">多花的成本</span><span class="v">+ 41.2 亿<span class="est">估</span></span>
+        <span class="k">少收的钱</span><span class="v nocalc">这次算不出来</span>
+        <span class="k">压住的应收</span><span class="v">+ 15.3 亿<span class="est">估</span></span>
+      </div>
+      <p class="why">主要是<b>常州停线那两天</b></p>
+      <button class="recon">这几个数加起来对得上账 ▸</button>
+    </section>
+
+    <!-- ══ 客户与订单：这 56.5 亿落在谁头上 ══ -->
+    <section class="panel">
+      <div class="hd">
+        <span class="ztag"><span class="zn">3</span>落在谁头上</span>
+        <h3>客户与订单</h3>
+        <span class="r">订单簿 427.11 亿 · 20 家客户 · 500 张</span>
+      </div>
+
+      <div class="cust">
+        <div>
+          <h4><span class="dot" style="background:var(--c-factory)"></span>敞口最大的 6 家 · 占订单簿</h4>
+          <table class="tbl">
+            <thead><tr><th>客户</th><th class="n">张数</th><th class="n">金额</th><th class="n">占比</th><th class="n">应收</th><th>状态</th></tr></thead>
+            <tbody>
+              <tr><td>广汽埃安</td><td class="n">223</td><td class="n">131.76 亿</td><td class="n bar-c"><span style="--w:30.8%"></span>30.8%</td><td class="n">7,530</td><td><span class="pill w">单点依赖</span></td></tr>
+              <tr><td>小鹏汽车</td><td class="n">90</td><td class="n">50.76 亿</td><td class="n bar-c"><span style="--w:11.9%"></span>11.9%</td><td class="n">—</td><td></td></tr>
+              <tr><td>国家电网</td><td class="n">22</td><td class="n">50.50 亿</td><td class="n bar-c"><span style="--w:11.8%"></span>11.8%</td><td class="n">6,929</td><td></td></tr>
+              <tr><td>南方电网</td><td class="n">21</td><td class="n">49.91 亿</td><td class="n bar-c"><span style="--w:11.7%"></span>11.7%</td><td class="n">—</td><td></td></tr>
+              <tr><td>宇通客车</td><td class="n">18</td><td class="n">41.15 亿</td><td class="n bar-c"><span style="--w:9.6%"></span>9.6%</td><td class="n">6,404</td><td><span class="pill d">逾期 38 天</span></td></tr>
+              <tr><td>合创汽车</td><td class="n">11</td><td class="n">6.93 亿</td><td class="n bar-c"><span style="--w:1.6%"></span>1.6%</td><td class="n" style="color:var(--danger-txt)">7,916</td><td><span class="pill d">超额度 26%</span></td></tr>
+            </tbody>
+          </table>
+          <p class="tiny">应收单位万元。<b>合创汽车应收 7,916 已超信用额度 6,303</b> —— 再接单要先过信用。</p>
+        </div>
+
+        <div>
+          <h4><span class="dot" style="background:var(--c-capacity)"></span>500 张单在哪一段</h4>
+          <div class="stat">
+            <div class="s"><span class="v mono">350</span><span class="k">已完成</span><span class="pct mono">70%</span></div>
+            <div class="s"><span class="v mono">100</span><span class="k">在产</span><span class="pct mono">20%</span></div>
+            <div class="s"><span class="v mono">50</span><span class="k">已下待排产</span><span class="pct mono">10%</span></div>
+          </div>
+          <div class="risk">
+            <div class="rl">这次扰动波及</div>
+            <ul>
+              <li><span>会晚的单</span><span class="late mono">53 张</span></li>
+              <li><span>准时的单</span><span class="late mono">0 张</span></li>
+              <li><span>涉及客户</span><span class="mono">16 / 20 家</span></li>
+              <li><span>合计敞口</span><span class="late mono">63.16 亿</span></li>
+            </ul>
+            <p class="tiny" style="margin:8px 0 0">按订单去重。各基地敞口相加会重复计跨基地的单，差 1.4 倍。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ 区④ 卡点 ══ -->
+    <section class="panel">
+      <div class="hd">
+        <span class="ztag"><span class="zn">4</span>哪儿会出事</span>
+        <h3>全流程卡点与堵点</h3>
+        <span class="r">扫了 18 类判据</span>
+      </div>
+      <div class="imp">
+        <div>
+          <h4><span class="dot" style="background:var(--accent)"></span>能动的 4 处</h4>
+          <ul class="fix">
+            <li>金华分切线排太满<span class="n">4 种改法 ▸</span></li>
+            <li>磷酸铁锂躺了 109 天<span class="n">2 种改法 ▸</span></li>
+            <li>自贡分容线利用率贴红线<span class="n">4 种改法 ▸</span></li>
+            <li>枣庄产能超红线<span class="n">4 种改法 ▸</span></li>
+          </ul>
+        </div>
+        <div>
+          <h4><span class="dot" style="background:var(--c-forecast)"></span>只能盯着的 14 处</h4>
+          <div class="watch">
+            最严重的是<b>枣庄（产能超红线 317%）</b>与<b>常州（110%）</b>，今天没有对策。
+            <div style="color:var(--muted2);margin-top:5px">两条严重度已封顶，排名不再有区分度。</div>
+            <div style="margin-top:8px"><a href="#">看全部 14 处 ▸</a></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tl">
+        <div class="lbl">这 30 天，事情按这个顺序发生</div>
+        <div class="tlwrap">
+          <div class="track">
+            <div class="ln"></div>
+            <div class="pt first" style="left:6%"><div class="m"></div><div class="d">第 2 天</div><div class="w">安全库存跌破<br>齐套 79%</div></div>
+            <div class="pt" style="left:26%"><div class="m"></div><div class="d">第 8 天</div><div class="w">广汽 7,259 套<br>晚 4 天</div></div>
+            <div class="pt" style="left:44%"><div class="m"></div><div class="d">第 14 天</div><div class="w">长安 14,518 套<br>晚 3 天</div></div>
+            <div class="pt" style="left:62%"><div class="m"></div><div class="d">第 21 天</div><div class="w">东风<br>晚 4 天</div></div>
+            <div class="pt" style="left:79%"><div class="m"></div><div class="d">第 26 天</div><div class="w">南网<br>晚 2 天</div></div>
+            <div class="pt" style="left:94%"><div class="m"></div><div class="d">第 30 天</div><div class="w">…共 53 张</div></div>
+          </div>
+        </div>
+        <p class="tlnote">最早第 2 天就要出事 —— 这 30 天里 53 张单全部逾期，准时 0 张。</p>
+      </div>
+    </section>
+
+    <!-- ══ 区⑤ 对策总览看板 ══ -->
+    <section class="panel">
+      <div class="hd">
+        <span class="ztag"><span class="zn">5</span>一共有哪些对策</span>
+        <h3>对策看板 · 18 处卡点</h3>
+        <span class="r">按〔不做的代价〕排序 ▾　系统不给推荐</span>
+      </div>
+      <div class="mwrap">
+        <table class="board">
+          <thead><tr>
+            <th>卡在哪</th><th class="n">严重度</th><th class="n">改法</th>
+            <th class="n">最快见效</th><th class="n">最低代价</th><th class="n">不做的话</th><th></th>
+          </tr></thead>
+          <tbody>
+            <tr class="sel"><td>金华分切线排太满</td><td class="n"><span class="sv" style="--w:62%">62</span></td>
+              <td class="n">4 种</td><td class="n g">1 天</td><td class="n y">中</td><td class="n r">63.16 亿 · 53 张</td>
+              <td class="n"><button class="btn sm">看四栏 ▸</button></td></tr>
+            <tr><td>磷酸铁锂躺了 109 天</td><td class="n"><span class="sv" style="--w:48%">48</span></td>
+              <td class="n">2 种</td><td class="n g">2 天</td><td class="n g">低</td><td class="n y">占用 6,300 万</td>
+              <td class="n"><button class="btn sm">看四栏 ▸</button></td></tr>
+            <tr><td>自贡分容线贴红线</td><td class="n"><span class="sv" style="--w:41%">41</span></td>
+              <td class="n">4 种</td><td class="n y">3 天</td><td class="n y">中</td><td class="n y">无缓冲 · 再来一单就断</td>
+              <td class="n"><button class="btn sm">看四栏 ▸</button></td></tr>
+            <tr><td>枣庄产能超红线</td><td class="n"><span class="sv r" style="--w:100%">100<sup>封顶</sup></span></td>
+              <td class="n">4 种</td><td class="n y">4 天</td><td class="n r">高</td><td class="n r">超红线 317%</td>
+              <td class="n"><button class="btn sm">看四栏 ▸</button></td></tr>
+            <tr class="dim"><td>常州产能超红线</td><td class="n"><span class="sv r" style="--w:100%">100<sup>封顶</sup></span></td>
+              <td class="n na">0 种</td><td class="n na">——</td><td class="n na">——</td><td class="n r">超红线 110%</td>
+              <td class="n na">没有对策</td></tr>
+            <tr class="dim"><td>电芯壳体缺口</td><td class="n"><span class="sv" style="--w:37%">37</span></td>
+              <td class="n na">0 种</td><td class="n na">——</td><td class="n na">——</td><td class="n y">覆盖 5 天</td>
+              <td class="n na">没有对策</td></tr>
+            <tr class="dim"><td class="na" colspan="6">…另外 12 处只能盯着（枚举已跑完，有效候选 0 个 —— 不足 2 个构不成对比，诚实不下发）</td><td></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="bnote">
+        <div class="bn-l">
+          <b>4 处能动 · 14 处只能盯着。</b>
+          能动的那 4 处合起来最快 1 天见效，代价最低「中」；
+          剩下 14 处今天一条对策也给不出 —— <b>这本身是结论，不是页面没加载出来。</b>
+        </div>
+        <div class="bn-r">
+          <span class="k">严重度前两名反而无解</span>
+          <span class="v">枣庄 / 常州 <span class="pill d">已封顶 100</span></span>
+          <span class="k2">两条越线太多、排名失去区分度，需重标红线</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ 区⑤b 四栏细节 ══ -->
+    <section class="panel">
+      <div class="hd">
+        <span class="ztag"><span class="zn">5</span>有几条路</span>
+        <h3>金华分切线排太满 · 4 种改法</h3>
+        <span class="r">这几套打法是要补回上面那 56.5 亿的</span>
+      </div>
+      <div class="sortbar">
+        <span>按〔多久见效〕排序 ▾</span>
+        <span class="nr">系统不给推荐 —— 排序可换，选择是你的</span>
+      </div>
+      <div class="opts">
+
+        <div class="opt">
+          <h5>空运补料</h5>
+          <div class="dims">
+            <span class="k">多久见效</span><span class="v">1 天</span>
+            <span class="k">代价</span><span class="v hi">极高</span>
+            <span class="k">风险</span><span class="v lo">低</span>
+          </div>
+          <div class="saves">
+            <span class="st">保住这几张单</span>
+            <ul>
+              <li><span>广汽</span><span>7,259 套</span></li>
+              <li><span>长安</span><span>14,518 套</span></li>
+              <li><span style="color:var(--muted2)">…共 7 张</span><span></span></li>
+            </ul>
+          </div>
+          <button class="btn btn-primary pick">就这么办</button>
+        </div>
+
+        <div class="opt">
+          <h5>提前备料</h5>
+          <div class="dims">
+            <span class="k">多久见效</span><span class="v">2 天</span>
+            <span class="k">代价</span><span class="v mid">中</span>
+            <span class="k">风险</span><span class="v lo">低</span>
+          </div>
+          <div class="saves">
+            <span class="st">保住这几张单</span>
+            <ul>
+              <li><span>广汽</span><span>7,259 套</span></li>
+              <li><span>长安</span><span>14,518 套</span></li>
+              <li><span style="color:var(--muted2)">…共 7 张</span><span></span></li>
+            </ul>
+          </div>
+          <button class="btn btn-primary pick">就这么办</button>
+        </div>
+
+        <div class="opt">
+          <h5>备选供应商切换</h5>
+          <div class="dims">
+            <span class="k">多久见效</span><span class="v">5 天</span>
+            <span class="k">代价</span><span class="v hi">高</span>
+            <span class="k">风险</span><span class="v mid">中</span>
+          </div>
+          <div class="saves">
+            <span class="st">保住这几张单</span>
+            <ul>
+              <li><span style="color:var(--muted2)">第 2 天那张</span><span class="late">来不及</span></li>
+              <li><span style="color:var(--muted2)">只保住后面 6 张</span><span></span></li>
+            </ul>
+          </div>
+          <button class="btn btn-primary pick">就这么办</button>
+        </div>
+
+        <div class="opt none">
+          <h5>什么都不做</h5>
+          <div class="dims">
+            <span class="k">多久见效</span><span class="v na">——</span>
+            <span class="k">代价</span><span class="v na">见下</span>
+            <span class="k">风险</span><span class="v na">——</span>
+          </div>
+          <div class="saves">
+            <span class="st">这几张单会晚</span>
+            <ul>
+              <li><span>广汽 第 8 天</span><span class="late">晚 4 天</span></li>
+              <li><span>长安 第 14 天</span><span class="late">晚 3 天</span></li>
+              <li><span>东风 第 21 天</span><span class="late">晚 4 天</span></li>
+              <li><span>南网 第 26 天</span><span class="late">晚 2 天</span></li>
+              <li><span style="color:var(--muted2)">…共 53 张</span><span></span></li>
+            </ul>
+            <div class="tot">
+              合计敞口 <span class="big">63.16 亿</span><br>
+              常州靠自己消化要 <b>740 天</b><br>
+              <span style="color:var(--muted2)">对一个 30 天的窗口 = 靠自己好不了</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+      <p class="note">
+        第四栏没有按钮 —— 什么都不做不需要按钮，它是默认发生的。
+        它存在的理由：没有它，前三栏的代价看起来都是净支出；有了它，「空运补料·代价极高」才有参照。
+      </p>
+    </section>
+
+    <p class="pgfoot">
+      〔估〕= 推演投影，不是实测。<span class="nocalc">删除线</span> = 这次没算，不是 0，也不是「无变化」。
+      公式、口径、机器编号、规则码全部收在第二层（点开才看）。<br>
+      样式令牌全部取自 <span class="mono">styles/tokens.css</span> 在册令牌（青蓝磨砂 · <span class="mono">--panel-glass</span> 磨砂卡 · <span class="mono">-txt</span> 文字色族）；
+      最小字号 12px —— 门 <span class="mono">check-text-legibility</span> 判据：10px 中文在本调色板内无解。<br>
+      数字取自扩容后实测（订单 500 / 客户 20 / 对象 12,740）。毛利那三个数今天引擎有已知缺陷，按「这次算不出来」降级上线。
+    </p>
+
+  </main>
+</div>

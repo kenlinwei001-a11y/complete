@@ -1,0 +1,113 @@
+npm warn Unknown env config "side-effects-cache". This will stop working in the next major version of npm.
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/agent-a131af6714dde2bca/apps/agentcore
+
+stdout | test/dsh-builtin-mcp.seam.test.ts > WO-BUILTIN-TO-DSH · C 组：内置工具面三面同改 + 只剩一条授予路 > C3b Phase6C 收窄豁免（原生臂真跑）：内置工具面不参与 top-k，其余 MCP 面照旧收窄到 8
+
+  ── C3b 原生臂模型面 · MCP 工具（10 件）──
+  mcp__builtin__query_objects
+  mcp__ontology__plan_slice
+  mcp__ontology__resolve_slice
+  mcp__solvers__affected_orders
+  mcp__solvers__base_capacity_outlook
+  mcp__solvers__decision_play
+  mcp__solvers__gap_attribution
+  mcp__solvers__generic_inference
+  mcp__solvers__supply_demand_gap_attribution
+  mcp__workflow__capacity_check
+
+
+  ── C3b 原生臂模型面 · MCP 工具（10 件）──
+  mcp__builtin__query_objects
+  mcp__ontology__plan_slice
+  mcp__ontology__resolve_slice
+  mcp__solvers__affected_orders
+  mcp__solvers__base_capacity_outlook
+  mcp__solvers__decision_play
+  mcp__solvers__gap_attribution
+  mcp__solvers__generic_inference
+  mcp__solvers__supply_demand_gap_attribution
+  mcp__workflow__capacity_check
+  （授予求解器 16 件 → 可见 6 件 ⇒ top-k 真在跑）
+
+
+stdout | test/dsh-builtin-mcp.seam.test.ts > WO-BUILTIN-TO-DSH · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E1 迁后（DSH 原生 MCP）：模型面有 mcp__builtin__query_objects ∧ 真调 ∧ 数据面真查 ∧ 审计行（裸名）
+
+  ── E1 迁后臂 · DSH 模型面（首轮）──
+  final_answer :: 终止工具：当你已收集到足够事实时调用，输出结构化回答 blocks 与 provenance。回答中的每个业务数字必须用 ⟦ref:N⟧ 标
+  get_object :: 按类型与 ID 获取单个本体对象。当已知对象 ID 需要详情时调用。
+  mcp__builtin__query_objects :: [MCP·内置] 按对象类型与过滤条件查询本体对象列表。当需要原始业务对象（基地/型号/订单等）数据时调用。limit 上限 200。
+  mcp__ontology__plan_slice :: [MCP·本体] 动态规划一个本体切片。当用户问题需要跨越多个对象类型（如订单→基地→物料→客户）且预置切片不满足时调用；返回的 slice
+  mcp__ontology__resolve_slice :: [MCP·本体] 解析一个预定义的本体切片（子图）。当需要某型号的可产基地网络或某基地的风险画像等预定义视图时调用。
+  mcp__rules__evaluate_rules :: [MCP·规则] 按规则库评估给定 payload 是否违反业务规则（C01–C23）。在给出结论或生成草稿前调用。
+  mcp__solvers__affected_orders :: [MCP·求解器] 给定扰动，返回受影响订单清单（problems/rootChain）。
+  mcp__solvers__atp_check :: [MCP·求解器] 对一张销售订单净读对象图三源供给——成品现货(FinishedGoodsInventory.qtyOnHand)/在制未
+  mcp__solvers__base_capacity_outlook :: [MCP·求解器] 给定基地，按 30/60/90 天窗口前瞻推演四线对比：可用产能(Σ Line.capacityDaily×(1−uti
+  mcp__solvers__bottleneck_matrix :: [MCP·求解器] 按基地×工序输出瓶颈强度矩阵，定位约束工序。
+  mcp__solvers__capacity_forecast :: [MCP·求解器] 给定型号/数量/周数，推演产能满足度（P50/P90、缺口率、主瓶颈）。
+  mcp__solvers__credit_exposure :: [MCP·求解器] 敞口=应收+在产；可用额与逾期判定（C32）。
+  mcp__solvers__decision_play :: [MCP·求解器] 对某根因(gap_attribution 产物)生成≥3 个决策方案(读真供应链对象·各维度真算:补缺口/代价/周期/风
+  mcp__solvers__finance_pnl :: [MCP·求解器] 读 FinancePlan+DemandSegment 出收入/销售成本/毛利 预算vs滚动vs差异 + 毛利率行 + 
+  mcp__solvers__gap_attribution :: [MCP·求解器] 总目标缺口(Metric.target−Metric.actual)→沿本体反向多跳结构分摊(gap 单位·每层 Σ子+
+  mcp__solvers__generic_inference :: [MCP·求解器] 对任意已发布本体套假设源属性值、前向重算下游派生链，返回 before/after deltas（不落库、确定性）。回答
+  mcp__solvers__kit_readiness :: [MCP·求解器] 逐单算齐套率（含在途按 ETA），输出缺料与建议。
+  mcp__solvers__metric_rollup :: [MCP·求解器] 从对象库读 Metric 一等对象，对齐目标树(PlanTarget) target 算 delta/miss，输出 M
+  mcp__solvers__mrp_netting :: [MCP·求解器] 读 MaterialBalance 出物料净需求/长协覆盖/现货缺口/最早齐套表（C06 齐套口径）。S&OP 供应评审
+  mcp__solvers__risk_timeline :: [MCP·求解器] 按日推演风险时序（越线点/根因链）。
+  mcp__solvers__supply_demand_gap_attribution :: [MCP·求解器] 产销缺口(SopVersionRow Σmax(0,demand−supply))→双向分摊到需求端(预测偏差 Σ|P5
+  mcp__solvers__yield_diagnosis :: [MCP·求解器] 2σ 滑窗突变检测 + 根因候选按时间贴近度排序。
+  mcp__workflow__capacity_check :: [MCP·工作流] 产能校核流程（这是一个多步流程，将按声明式步骤执行并返回结果）型号需求增量可行性校核（resolve → solve →
+  query_timeseries_agg :: 时序聚合查询：按 seriesKey/实体/时间窗/粒度返回聚合桶（如设备日 OEE、产线实绩）。仅返回聚合值，绝不返回原始时序行；窗口超过
+  search_experience :: 经验记忆库检索：按自然语言问题检索历史任务沉淀的案例（问句+解法+结果）。在选择分析路径前调用，可借鉴过往有效解法；结果仅供参考，业务数字仍
+  search_knowledge :: 知识库语义检索：按自然语言问题检索已同步的文档分块（SOP/工艺文件/物流说明等）。命中可作为回答的 KB_CHUNK 溯源。topK ≤ 
+  skill :: Load the full instructions for an available skill. Call this with the 
+  ── 审计行 ──
+  ["query_objects/OK"]
+  ── 回执原文 ──
+  <tool_data tool_call_id="tc_01M4FMZ4G0GBY6BMD3XK4BTYVJ">{"data":{"items":[],"total":0},"total":0,"truncated":false,"snapshotVersion":"ont-snap-001@1","empty":true,"hint":"对象类型 Order 存在但 0 实例：可能租户未引导，请先 run_synthetic/bootstrap 合成计划域，而非判定\"无数据\"。"}</tool_data>
+
+
+stdout | test/dsh-builtin-mcp.seam.test.ts > WO-BUILTIN-TO-DSH · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E2 迁前（对照臂·同一 query）：能力在反向工具面（裸名）∧ DSH 侧零内置工具 server ∧ 同一执行体同一行审计名
+
+  ── 判据① 迁前/迁后 run 记录对照（同一条 query · 同一个 agent agt_seed_analyst）──
+  载体（模型面名）  迁前=query_objects  迁后=mcp__builtin__query_objects   ← 唯一变的一格
+  审计行名          迁前=query_objects  迁后=query_objects
+  outcome           迁前=OK  迁后=OK
+  实参              {"objectType":"Order","filter":{"baseId":"base-cz"},"limit":5}
+                    byteEqual=true
+  审计回执(前 200)  {"data":{"items":[],"total":0},"total":0,"truncated":false,"snapshotVersion":"ont-snap-001@1","empty":true,"hint":"对象类型 Order 存在但 0 实例：可能租户未引导，请先 run_synthetic/bootstrap 合成计划域，而非判定\"无数据\"。"}
+                    迁前迁后 byteEqual=true（len=190）
+  模型面回执(内层)  迁前迁后 byteEqual=true
+                    原文(前 200)={"data":{"items":[],"total":0},"total":0,"truncated":false,"snapshotVersion":"ont-snap-001@1","empty":true,"hint":"对象类型 Order 存在但 0 实例：可能租户未引导，请先 run_synthetic/bootstrap 合成计划域，而非判定\"无数据\"。"}
+
+
+  ── E2 迁前臂 · 模型面里 name 含 query 的那条 ──
+  query_objects, query_timeseries_agg
+  ── 审计行 ──
+  ["query_objects/OK"]
+
+
+stdout | test/dsh-builtin-mcp.seam.test.ts > WO-BUILTIN-TO-DSH · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E3 反向对照（判据③·e2e）：授予面拿掉 ⇒ DSH 侧模型面**没有它** ∧ 宿主零数据面调用（那条读数是活的）
+
+  ── E3 反向对照 · 模型面里的内置工具面 ──
+  mcp__builtin__query_timeseries_agg
+  ── 审计行 ──
+  []
+
+
+ ✓ test/dsh-builtin-mcp.seam.test.ts (20 tests) 61010ms
+   ✓ WO-BUILTIN-TO-DSH · A 组：DSH 侧真看到的内置工具（MCP wire 面） > A1 tools/list：DSH 侧真拿到 query_objects，描述/入参模式与宿主静态投影逐字同源（两内核同源锚点）  1803ms
+   ✓ WO-BUILTIN-TO-DSH · A 组：DSH 侧真看到的内置工具（MCP wire 面） > A2 tools/call：宿主收到的是**全名** + 入参逐键原文；模型面回执是逐字 <tool_data> 包络  1507ms
+   ✓ WO-BUILTIN-TO-DSH · A 组：DSH 侧真看到的内置工具（MCP wire 面） > A3 对照（减输入）：无宿主桥 ⇒ fail-closed 明确失败 ∧ 宿主零转发（不静默放行）  1643ms
+   ✓ WO-BUILTIN-TO-DSH · C 组：内置工具面三面同改 + 只剩一条授予路 > C3 engine 真装配（analyst）：expanded 面出全名 ∧ hostTools 面**没有**它（单路证明）  952ms
+   ✓ WO-BUILTIN-TO-DSH · C 组：内置工具面三面同改 + 只剩一条授予路 > C3b Phase6C 收窄豁免（原生臂真跑）：内置工具面不参与 top-k，其余 MCP 面照旧收窄到 8  549ms
+   ✓ WO-BUILTIN-TO-DSH · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E1 迁后（DSH 原生 MCP）：模型面有 mcp__builtin__query_objects ∧ 真调 ∧ 数据面真查 ∧ 审计行（裸名）  17866ms
+   ✓ WO-BUILTIN-TO-DSH · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E2 迁前（对照臂·同一 query）：能力在反向工具面（裸名）∧ DSH 侧零内置工具 server ∧ 同一执行体同一行审计名  12439ms
+   ✓ WO-BUILTIN-TO-DSH · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E3 反向对照（判据③·e2e）：授予面拿掉 ⇒ DSH 侧模型面**没有它** ∧ 宿主零数据面调用（那条读数是活的）  11729ms
+   ✓ WO-BUILTIN-TO-DSH · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E4 §4.2 端到端：DSH 臂上调它读**域外**对象 ⇒ 对象域门照样拒（正文点名）∧ 域内放行  11941ms
+
+ Test Files  1 passed (1)
+      Tests  20 passed (20)
+   Start at  14:17:06
+   Duration  80.74s (transform 9.22s, setup 0ms, collect 17.30s, tests 61.01s, environment 0ms, prepare 453ms)
+

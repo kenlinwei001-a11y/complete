@@ -1,0 +1,138 @@
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/apps/frontend-shell
+
+stderr | test/console0828-decision.seam.test.tsx > WO-C0828-SEAM · 08-28 决策屏接缝门 > ④ 算一下 → 出结果：一个按钮背后五跳走完，四块结果面板同时出现且读的是同一次结果
+Warning: validateDOMNesting(...): <summary> cannot appear as a descendant of <p>.
+    at summary
+    at details
+    at p
+    at div
+    at div
+    at main
+    at div
+    at div
+    at Console0828 (/Users/apple/deploy/complete/apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:185:3)
+    at div
+    at UnifiedSimShell (/Users/apple/deploy/complete/apps/frontend-shell/src/views/sim/unified/UnifiedSimShell.tsx:285:28)
+    at QueryClientProvider (file:///Users/apple/deploy/complete/node_modules/.pnpm/@tanstack+react-query@5.101.0_react@18.3.1/node_modules/@tanstack/react-query/build/modern/QueryClientProvider.js:20:3)
+Warning: validateDOMNesting(...): <p> cannot appear as a descendant of <p>.
+    at p
+    at div
+    at details
+    at p
+    at div
+    at div
+    at main
+    at div
+    at div
+    at Console0828 (/Users/apple/deploy/complete/apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:185:3)
+    at div
+    at UnifiedSimShell (/Users/apple/deploy/complete/apps/frontend-shell/src/views/sim/unified/UnifiedSimShell.tsx:285:28)
+    at QueryClientProvider (file:///Users/apple/deploy/complete/node_modules/.pnpm/@tanstack+react-query@5.101.0_react@18.3.1/node_modules/@tanstack/react-query/build/modern/QueryClientProvider.js:20:3)
+Warning: validateDOMNesting(...): <div> cannot appear as a descendant of <p>.
+    at div
+    at details
+    at p
+    at div
+    at div
+    at main
+    at div
+    at div
+    at Console0828 (/Users/apple/deploy/complete/apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:185:3)
+    at div
+    at UnifiedSimShell (/Users/apple/deploy/complete/apps/frontend-shell/src/views/sim/unified/UnifiedSimShell.tsx:285:28)
+    at QueryClientProvider (file:///Users/apple/deploy/complete/node_modules/.pnpm/@tanstack+react-query@5.101.0_react@18.3.1/node_modules/@tanstack/react-query/build/modern/QueryClientProvider.js:20:3)
+Warning: validateDOMNesting(...): <details> cannot appear as a descendant of <p>.
+    at details
+    at p
+    at div
+    at div
+    at main
+    at div
+    at div
+    at Console0828 (/Users/apple/deploy/complete/apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:185:3)
+    at div
+    at UnifiedSimShell (/Users/apple/deploy/complete/apps/frontend-shell/src/views/sim/unified/UnifiedSimShell.tsx:285:28)
+    at QueryClientProvider (file:///Users/apple/deploy/complete/node_modules/.pnpm/@tanstack+react-query@5.101.0_react@18.3.1/node_modules/@tanstack/react-query/build/modern/QueryClientProvider.js:20:3)
+
+ ✓ test/console0828-decision.seam.test.tsx (20 tests) 6514ms
+   ✓ WO-C0828-SEAM · 08-28 决策屏接缝门 > ⓪ 金丝雀：12 件事全部挂出按钮，且三种落地态都非空 —— 失败 ⇒ 报「工具坏了」，不许读作「今天没有可加的事」  536ms
+   ✓ WO-C0828-SEAM · 08-28 决策屏接缝门 > ① 到达路径：route 默认就是决策屏（不是工作台），且「专家模式」点下去真能切过去  347ms
+   ✓ WO-C0828-SEAM · 08-28 决策屏接缝门 > ②b 三态不许塌成一个：「一个实例都没有」与「有实例但没有这个量」是两句不同的话  339ms
+   ✓ WO-C0828-SEAM · 08-28 决策屏接缝门 > ③ 加事件 → 暂存：件数跟着变，**加两件必须显示 2 件**（1 件与多件在模型层不是同一段）  530ms
+   ✓ WO-C0828-SEAM · 08-28 决策屏接缝门 > ④ 算一下 → 出结果：一个按钮背后五跳走完，四块结果面板同时出现且读的是同一次结果  521ms
+   ✓ WO-C0828-SEAM · 08-28 决策屏接缝门 > ④b 多件时主因这句话必须换成「说不清」——不许挑一个顶上（差分层看不出某一格是谁推的）  331ms
+   ✓ WO-C0828-SEAM · 08-28 决策屏接缝门 > ⑤ 诚实态 · 三行钱：算不出来的画「这次算不出来」——⛔ 不许显示 0，也不许留空  328ms
+   ✓ WO-C0828-SEAM · 08-28 决策屏接缝门 > ⑥ 对照实验 · tickDays 1 vs 3：同一个第 6 拍必须给出不同日期，且差值 = 6×(3−1) = 12 天  458ms
+   ✓ WO-C0828-SEAM · 08-28 决策屏接缝门 > ⑦ 对策面板跟着选择走：点 A 标题是 A，点 B 变成 B，且选中态落在按钮上  493ms
+   ✓ WO-C0828-SEAM · 08-28 决策屏接缝门 > ⑦b 同名两行必须分得开：辨识串带判据码 + 落点，⛔ 不是「①②」这种序号  460ms
+   ✓ WO-C0828-SEAM · 08-28 决策屏接缝门 > WO-SIM-PLAIN-WORDS · 加扰动表单的业务语言与时间形态 > ⑧ 对照实验 · 长度口径：持续填 3，tickDays 1→3 屏上必须从「3 天」变成「9 天」；取不到刻度则退回「3 拍」+ 原因  373ms
+ ❯ test/sim-rail-forms.seam.test.tsx (19 tests | 1 failed) 2920ms
+   ✓ WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ⓪ 金丝雀：子页数 = fixture 里 distinct 域数（失败 ⇒ 工具坏了，不是组件没渲染） 195ms
+   ✓ WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ① 来源臂：可选的量与中文名来自后端回包 —— 改回包，屏上跟着改  306ms
+   ✓ WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ② 层级臂：改边集让链首从根源掉成枢纽 ⇒ 屏上分组跟着变（前端没有第二套度数计算） 182ms
+   ✓ WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ③ 写口臂：点「施加」真发 POST，载荷逐字段对拍契约写入子集（键集完全相等）  320ms
+   ✓ WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ③' 写口臂 · 留空持续拍数 ⇒ `durationTicks: null`（契约的「永久」语义，等价于旧 /act） 104ms
+   × WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ④ 做不到臂：不在世界态里的量屏上标明、且提交时真的被拦住（不许静默提交） 40ms
+     → expected '设备OEE' to contain 'Equipment.oee_current'
+   ✓ WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ④' 「不知道」与「扰不动」分得开：世界态清单没回来时报 `STATE_VARS_UNKNOWN` 33ms
+   ✓ WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ⑤ 收起态臂：`onAppliedChange` 交出「已施加什么」，标签同样来自回包 57ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑥ 金丝雀 + 默认起始拍臂：默认值由**当前拍现算** —— 改 curTick 回包，默认值跟着变 63ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑥' 默认值真被发出去：不碰起始拍直接施加 ⇒ 载荷里的 startTick = 当前拍+1 139ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑥'' 过去拍臂：填 0（以及任何 < 当前拍的值）⇒ 拦住、说原因、一个请求都不发 275ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑥''' 「不知道当前拍」与「当前拍是 0」分得开 —— 前者拦住并说不知道，不许拿 0 兜底 87ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑦ 当前拍上屏臂：屏上写明世界在第几拍，且这个数来自回包（改回包就跟着变） 66ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑧ 回执臂 · 生效：说清落在第几拍、那一格变了多少、全世界变了几个格 120ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑧a 回执臂 · 数字长相与卡墙同一口径 —— 屏上不许出现 IEEE754 的减法余数 138ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑧' 回执臂 · `simWorld` 必须在 POST **之前**读 —— 否则左端已经是施加后的值 96ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑧'' 回执臂 · 排在未来：说「还没轮到它」并给出还差几拍，**不说**「没生效」 129ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑧''' 回执臂 · 到点却没动：给出**可执行**的原因，且一个劝退字都不许有  454ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑧'''' 回执臂 · 施加前那份世界态没拿到 ⇒ 说「没法比」，**不许**印成「变了 0 个格」 109ms
+stderr | test/sim-unified-shell.seam.test.tsx > WO-SIM-TICK-GATE · 页签计数现算 / 假旋钮下屏 > ⑨' 计数没到手时说「还没取到」，**不许**印成 0 条（「不知道」≠「一条都没有」）
+Query data cannot be undefined. Please make sure to return a value other than undefined from your query function. Affected query key: ["a","sim-view-config"]
+
+ ✓ test/sim-unified-shell.seam.test.tsx (13 tests) 4033ms
+   ✓ WO-SIM-UNIFIED-SHELL · 统一推演控制台接缝门 > ⓪ 金丝雀：五区外壳挂得起来，且卡墙铺出了 fixture 声明的那些卡（失败 ⇒ 报「工具坏了」，不许读作「卡墙是空的」）  562ms
+   ✓ WO-SIM-UNIFIED-SHELL · 统一推演控制台接缝门 > ① 卡墙来源臂：卡的**个数与名字**来自 view-config 回包 —— 改回包，屏上跟着变  725ms
+   ✓ WO-SIM-UNIFIED-SHELL · 统一推演控制台接缝门 > ② 层级现算臂：改 propagation-rules 的**边集** ⇒ 某个变量的层级跟着变（根源 → 枢纽）  321ms
+   ✓ WO-SIM-UNIFIED-SHELL · 统一推演控制台接缝门 > ④ 收合臂：收起 ⇒ 摘要条出现且带「已施加什么」；点「改扰动」⇒ 左栏回来  378ms
+   ✓ WO-SIM-UNIFIED-SHELL · 统一推演控制台接缝门 > ⑥ 右栏检视：点卡 ⇒ 四问在屏上（含谁推的/推坏谁的系数与延迟），且「没有落点」与「算不出来」是两个态  473ms
+   ✓ WO-SIM-TICK-GATE · 页签计数现算 / 假旋钮下屏 > ⑨ 页签计数臂：两个数都由 view-config 回包现算 —— 改回包，两处 title 跟着变  324ms
+ ✓ test/sim-session-lifecycle.seam.test.tsx (10 tests) 4848ms
+   ✓ WO-SIM-SESSION-WIRE · 会话生命周期与变更波及面接缝门 > ⓪ 金丝雀：状态条挂得起来，且屏上那个状态来自会话清单回包 —— 改回包，屏上跟着变（失败 ⇒ 报「工具坏了」，不许读作「这块屏没做」）  835ms
+   ✓ WO-SIM-SESSION-WIRE · 会话生命周期与变更波及面接缝门 > ① 迁移真发那一跳：按「暂停」⇒ 打出 PATCH，实参是清单里那条会话的 id 与 PAUSED（不是别的会话、也不是别的目标）  521ms
+   ✓ WO-SIM-SESSION-WIRE · 会话生命周期与变更波及面接缝门 > ⑥ 波及面：不问一发不发；问了才发，四桶计数与逐条上屏（只读语义不做成副作用节奏）  330ms
+   ✓ WO-SIM-SESSION-WIRE · 会话生命周期与变更波及面接缝门 > ⑦ 空集分两态：确为叶子 vs 有算不出来的部分（契约原文：items 空 + unresolved 空 才是叶子）  899ms
+   ✓ WO-SIM-SESSION-WIRE · 会话生命周期与变更波及面接缝门 > ⑨ 暂停不是单程路：暂停之后「恢复」仍然点得动，且真能迁回 RUNNING（2026-08-26 真浏览器实测抓到的死路，机器从此先说话）  368ms
+   ✓ WO-SIM-SESSION-WIRE · 会话生命周期与变更波及面接缝门 > ⑧ 波及面这一跳没走通 ⇒ 「不知道有没有波及」，与 ⑦ 的「不波及任何下游」字面不同  811ms
+ ✓ test/exposure-responds-to-perturbation.seam.test.ts (9 tests) 766ms
+   ✓ SEAM · 扰动影响面随扰动变化 > ⑦ 结构判据：屏上的 deltas 必须产自从对照世界出发的差分（接线挪回旧路 = 红）  306ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/sim-rail-forms.seam.test.tsx > WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ④ 做不到臂：不在世界态里的量屏上标明、且提交时真的被拦住（不许静默提交）
+AssertionError: expected '设备OEE' to contain 'Equipment.oee_current'
+
+Expected: [32m"Equipment.oee_current"[39m
+Received: [31m"设备OEE"[39m
+
+ ❯ test/sim-rail-forms.seam.test.tsx:480:29
+    478|     const oee = screen.getByTestId("rail-blocked-oee_current");
+    479|     expect(oee.getAttribute("data-reason")).toBe("NOT_A_STATE_VAR");
+    480|     expect(oee.textContent).toContain("Equipment.oee_current");
+       |                             ^
+    481|     expect(screen.getByTestId("rail-blocked-reason").textContent).toCo…
+    482|     // ── ④b 基线里它压根进不了下拉（一条传导规则都不提它）──
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 4 passed (5)
+      Tests  1 failed | 70 passed (71)
+   Start at  16:43:36
+   Duration  74.01s (transform 8.99s, setup 34.66s, collect 4.74s, tests 19.08s, environment 9.23s, prepare 2.61s)
+
+undefined
+/Users/apple/deploy/complete/apps/frontend-shell:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run test/console0828-decision.seam.test.tsx test/exposure-responds-to-perturbation.seam.test.ts test/sim-session-lifecycle.seam.test.tsx test/sim-unified-shell.seam.test.tsx test/sim-rail-forms.seam.test.tsx --maxWorkers=1 --testTimeout=1500000
+CAPTURED_RC=1

@@ -10,13 +10,17 @@ import type {
   LlmAgentResponse,
   LlmCapabilities,
   LlmContentBlock,
+  LlmUsage,
   ParseReq,
   RawClassification,
   TokenMetricsPort,
   ToolLoopEvent,
   ToolLoopReq,
 } from "./types.js";
+import { requireUsage } from "./types.js";
 import { runToolLoop } from "./toolloop.js";
+import { harvestClassificationSlots, reportUnconsumedSlots } from "./slot-harvest.js";
+import { readDomainReason, readDomainRole } from "./domain-role.js";
 
 /** beta flag for server-side compaction (Agent 运行时增量 §1.3 第 2 刀). */
 export const COMPACTION_BETA = "compact-2026-01-12";
@@ -33,6 +37,13 @@ export const ClassificationSchema = z.object({
     .max(3),
   outOfCatalog: z.boolean(),
   extractedSlots: z.record(z.string(), z.unknown()),
+  /**
+   * WO-DOMAIN-BY-INTENT：意图所属域 key。**可空**（判不出域 → null）且**可缺**（模型未吐 → 调用侧落关键词兜底）。
+   * 刻意不设 enum：域目录是运行期数据（租户可配），硬编一份枚举就是第二张真相源。
+   */
+  domainRole: z.string().nullable().optional(),
+  /** WO-DOMAIN-BY-INTENT：域判断理由（一句）。 */
+  domainReason: z.string().optional(),
 });
 
 export class ClassifierParseError extends Error {
@@ -95,6 +106,26 @@ export class AnthropicLlmClient implements FullLlmClient {
   }
 
   /** 增量 §1.1：count_tokens API 实测（每 2 轮一次，由循环侧控制节奏）。 */
+  /**
+   * 计量**单点出口**：归一化 + 打点，一次算完给两个消费面共用。
+   *
+   * 口径定义在 `types.ts` 的 `LlmUsage`（`inputTokens` ≡ 新输入 + **缓存命中**）。本方法是
+   * 指标面（`qos_llm_tokens_total`）与返回值面（`usage`）**共用**的那一份实现 —— 分头各算一次
+   * 就是在同一个文件里造两个都叫 "input" 的不同量（「同一规则写在 N 个出口 ⇒ 谁漏写谁分裂」）。
+   */
+  private meterUsage(
+    model: string,
+    u: { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number | null },
+  ): LlmUsage {
+    const usage: LlmUsage = {
+      inputTokens: u.input_tokens + (u.cache_read_input_tokens ?? 0),
+      outputTokens: u.output_tokens,
+    };
+    this.track(model, "input", usage.inputTokens);
+    this.track(model, "output", usage.outputTokens);
+    return usage;
+  }
+
   async countTokens(req: LlmAgentRequest): Promise<number> {
     const resp = await this.client.messages.countTokens({
       model: req.model,
@@ -126,10 +157,22 @@ export class AnthropicLlmClient implements FullLlmClient {
       messages: [{ role: "user", content: req.user }],
       output_config: { format: zodOutputFormat(ClassificationSchema) },
     });
-    this.track(req.model, "input", resp.usage.input_tokens);
-    this.track(req.model, "output", resp.usage.output_tokens);
+    requireUsage(resp, req.model);
+    this.meterUsage(req.model, resp.usage);
     if (resp.parsed_output == null) throw new ClassifierParseError();
-    return resp.parsed_output;
+    // WO-SLOT-HARVEST · 槽位一律经**单源收割器**（与 openai/degrade 同一份合并规则，见 slot-harvest.ts）。
+    // 本条路由是服务端 schema 强约束（output_config.format），正常形态槽位就在顶层 extractedSlots，
+    // 收割结果与旧的"直接返回 parsed_output"等价；价值在于形态一旦漂（槽跑进 candidate / 字段改名），
+    // `unconsumed` 会**报出来**，而不是像 openai 那条路一样静默丢答案（那正是本单的病根）。
+    const harvest = harvestClassificationSlots(resp.parsed_output);
+    reportUnconsumedSlots("anthropic.classify", harvest);
+    return {
+      candidates: resp.parsed_output.candidates,
+      outOfCatalog: resp.parsed_output.outOfCatalog,
+      extractedSlots: harvest.slots,
+      domainRole: readDomainRole(resp.parsed_output),
+      domainReason: readDomainReason(resp.parsed_output),
+    };
   }
 
   async agent(req: LlmAgentRequest): Promise<LlmAgentResponse> {
@@ -146,17 +189,28 @@ export class AnthropicLlmClient implements FullLlmClient {
       messages: req.messages.map((m) => toAnthropicMessage(m)),
     } as Record<string, unknown>;
 
+    // WO-FIX-REASONING-CONTENT：收尾/兜底轮强制工具选择（缺省 auto·模型自决）。
+    // `{type:"tool", name}` → Anthropic tool_choice {type:"tool", name}；令模型必须产出结构化收尾。
+    if (req.toolChoice) {
+      params.tool_choice =
+        req.toolChoice.type === "tool" ? { type: "tool", name: req.toolChoice.name } : { type: "auto" };
+    }
+
     // Agent 运行时增量 §1.3 第 2 刀：服务端 compaction（beta compact-2026-01-12）。
     // 响应中的 compaction 块按官方语义原样回传（raw 透传，见 toAnthropicMessage 的 raw echo）。
     const compacting = this.enableCompaction && (req.contextEdits?.length ?? 0) > 0;
     if (compacting) params.context_management = { edits: req.contextEdits };
 
+    // G-9：per-call deadline 的 AbortSignal 透传给 SDK（挂住的调用可被上界终止 → AbortError）。
+    const reqOptions: Record<string, unknown> = {};
+    if (compacting) reqOptions.headers = { "anthropic-beta": COMPACTION_BETA };
+    if (req.signal) reqOptions.signal = req.signal;
     const response = await this.client.messages.create(
       params as unknown as Anthropic.MessageCreateParamsNonStreaming,
-      compacting ? { headers: { "anthropic-beta": COMPACTION_BETA } } : undefined,
+      Object.keys(reqOptions).length > 0 ? reqOptions : undefined,
     );
-    this.track(req.model, "input", response.usage.input_tokens);
-    this.track(req.model, "output", response.usage.output_tokens);
+    requireUsage(response, req.model);
+    const usage = this.meterUsage(req.model, response.usage);
     const content: LlmContentBlock[] = [];
     for (const block of response.content) {
       if (block.type === "text") content.push({ type: "text", text: block.text });
@@ -172,7 +226,7 @@ export class AnthropicLlmClient implements FullLlmClient {
     return {
       content,
       stopReason: response.stop_reason ?? "end_turn",
-      usage: { inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens },
+      usage, // 口径见 types.ts `LlmUsage`；归一化+打点在 meterUsage 单点完成
       raw: response.content,
     };
   }
@@ -191,8 +245,8 @@ export class AnthropicLlmClient implements FullLlmClient {
         },
       ],
     });
-    this.track(req.model, "input", response.usage.input_tokens);
-    this.track(req.model, "output", response.usage.output_tokens);
+    requireUsage(response, req.model);
+    this.meterUsage(req.model, response.usage);
     const text = response.content.find((b) => b.type === "text");
     return text && text.type === "text" ? text.text : "";
   }
@@ -225,8 +279,8 @@ export class AnthropicLlmClient implements FullLlmClient {
       messages: req.messages.map((m) => ({ role: m.role, content: m.content })),
       output_config: { format: zodOutputFormat(req.schema as never) },
     });
-    this.track(req.model, "input", resp.usage.input_tokens);
-    this.track(req.model, "output", resp.usage.output_tokens);
+    requireUsage(resp, req.model);
+    this.meterUsage(req.model, resp.usage);
     return (resp.parsed_output as T | null | undefined) ?? null;
   }
 

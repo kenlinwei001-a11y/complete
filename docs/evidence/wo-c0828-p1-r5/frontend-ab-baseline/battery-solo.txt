@@ -1,0 +1,1836 @@
+HEAD=4a8e02fc6 START=09-27 13:52:56
+cmd: solo-only A/B (4 文件逐个 maxWorkers=1)
+== solo test/sandbox-config-collapse.test.tsx ==
+
+ RUN  v3.2.6 /private/tmp/wt-base-front/apps/frontend-shell
+
+stderr | test/sandbox-config-collapse.test.tsx > §1 · 默认收起成一条：折的是**位置**，不是内容 > 默认态 = 横幅在、面板行内 `display:none`（且判据真的读得到东西）
+Error: Uncaught [TypeError: Cannot convert undefined or null to object]
+    at reportException (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:26599:12) TypeError: Cannot convert undefined or null to object
+    at Object.keys (<anonymous>)
+    at [90m/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:840:25
+    at updateMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:16427:19)
+    at Object.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:17067:16)
+    at Proxy.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react@18.3.1/node_modules/[4mreact[24m/cjs/react.development.js:1650:21)
+    at SandboxView [90m(/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:839:21[90m)[39m
+    at renderWithHooks (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:15486:18)
+    at updateFunctionComponent (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:19617:20)
+    at beginWork (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:21640:16)
+    at HTMLUnknownElement.callCallback (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:4164:14)
+Error: Uncaught [TypeError: Cannot convert undefined or null to object]
+    at reportException (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:26599:12) TypeError: Cannot convert undefined or null to object
+    at Object.keys (<anonymous>)
+    at [90m/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:840:25
+    at updateMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:16427:19)
+    at Object.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:17067:16)
+    at Proxy.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react@18.3.1/node_modules/[4mreact[24m/cjs/react.development.js:1650:21)
+    at SandboxView [90m(/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:839:21[90m)[39m
+    at renderWithHooks (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:15486:18)
+    at updateFunctionComponent (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:19617:20)
+    at beginWork (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:21640:16)
+    at HTMLUnknownElement.callCallback (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:4164:14)
+The above error occurred in the <SandboxView> component:
+
+    at SandboxView (/private/tmp/wt-base-front/apps/frontend-shell/src/views/sim/SandboxView.tsx:365:81)
+    at QueryClientProvider (file:///Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@tanstack+react-query@5.101.0_react@18.3.1/node_modules/@tanstack/react-query/build/modern/QueryClientProvider.js:20:3)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+stderr | test/sandbox-config-collapse.test.tsx > §1 · 默认收起成一条：折的是**位置**，不是内容 > 折叠≠删除：收起态下上一张单的内容**一件不少地留在 DOM 里**（D4 守恒）
+Error: Uncaught [TypeError: Cannot convert undefined or null to object]
+    at reportException (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:26599:12) TypeError: Cannot convert undefined or null to object
+    at Object.keys (<anonymous>)
+    at [90m/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:840:25
+    at updateMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:16427:19)
+    at Object.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:17067:16)
+    at Proxy.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react@18.3.1/node_modules/[4mreact[24m/cjs/react.development.js:1650:21)
+    at SandboxView [90m(/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:839:21[90m)[39m
+    at renderWithHooks (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:15486:18)
+    at updateFunctionComponent (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:19617:20)
+    at beginWork (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:21640:16)
+    at HTMLUnknownElement.callCallback (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:4164:14)
+Error: Uncaught [TypeError: Cannot convert undefined or null to object]
+    at reportException (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:26599:12) TypeError: Cannot convert undefined or null to object
+    at Object.keys (<anonymous>)
+    at [90m/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:840:25
+    at updateMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:16427:19)
+    at Object.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:17067:16)
+    at Proxy.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react@18.3.1/node_modules/[4mreact[24m/cjs/react.development.js:1650:21)
+    at SandboxView [90m(/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:839:21[90m)[39m
+    at renderWithHooks (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:15486:18)
+    at updateFunctionComponent (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:19617:20)
+    at beginWork (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:21640:16)
+    at HTMLUnknownElement.callCallback (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:4164:14)
+The above error occurred in the <SandboxView> component:
+
+    at SandboxView (/private/tmp/wt-base-front/apps/frontend-shell/src/views/sim/SandboxView.tsx:365:81)
+    at QueryClientProvider (file:///Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@tanstack+react-query@5.101.0_react@18.3.1/node_modules/@tanstack/react-query/build/modern/QueryClientProvider.js:20:3)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+stderr | test/sandbox-config-collapse.test.tsx > §1 · 默认收起成一条：折的是**位置**，不是内容 > 横幅**不套 `<details>`**（那条路实测折不掉版面门的账，见文件头）
+Error: Uncaught [TypeError: Cannot convert undefined or null to object]
+    at reportException (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:26599:12) TypeError: Cannot convert undefined or null to object
+    at Object.keys (<anonymous>)
+    at [90m/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:840:25
+    at updateMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:16427:19)
+    at Object.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:17067:16)
+    at Proxy.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react@18.3.1/node_modules/[4mreact[24m/cjs/react.development.js:1650:21)
+    at SandboxView [90m(/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:839:21[90m)[39m
+    at renderWithHooks (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:15486:18)
+    at updateFunctionComponent (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:19617:20)
+    at beginWork (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:21640:16)
+    at HTMLUnknownElement.callCallback (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:4164:14)
+Error: Uncaught [TypeError: Cannot convert undefined or null to object]
+    at reportException (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:26599:12) TypeError: Cannot convert undefined or null to object
+    at Object.keys (<anonymous>)
+    at [90m/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:840:25
+    at updateMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:16427:19)
+    at Object.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:17067:16)
+    at Proxy.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react@18.3.1/node_modules/[4mreact[24m/cjs/react.development.js:1650:21)
+    at SandboxView [90m(/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:839:21[90m)[39m
+    at renderWithHooks (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:15486:18)
+    at updateFunctionComponent (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:19617:20)
+    at beginWork (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:21640:16)
+    at HTMLUnknownElement.callCallback (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:4164:14)
+The above error occurred in the <SandboxView> component:
+
+    at SandboxView (/private/tmp/wt-base-front/apps/frontend-shell/src/views/sim/SandboxView.tsx:365:81)
+    at QueryClientProvider (file:///Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@tanstack+react-query@5.101.0_react@18.3.1/node_modules/@tanstack/react-query/build/modern/QueryClientProvider.js:20:3)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+stderr | test/sandbox-config-collapse.test.tsx > §2 · 横幅上的三个数是**现算**的（写死的数在这一节必红） > 落地即与 fixture 对账：已施加 0 条 · 传导边 4 条 · 启用 4 条
+Error: Uncaught [TypeError: Cannot convert undefined or null to object]
+    at reportException (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:26599:12) TypeError: Cannot convert undefined or null to object
+    at Object.keys (<anonymous>)
+    at [90m/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:840:25
+    at updateMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:16427:19)
+    at Object.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:17067:16)
+    at Proxy.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react@18.3.1/node_modules/[4mreact[24m/cjs/react.development.js:1650:21)
+    at SandboxView [90m(/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:839:21[90m)[39m
+    at renderWithHooks (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:15486:18)
+    at updateFunctionComponent (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:19617:20)
+    at beginWork (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:21640:16)
+    at HTMLUnknownElement.callCallback (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:4164:14)
+Error: Uncaught [TypeError: Cannot convert undefined or null to object]
+    at reportException (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:26599:12) TypeError: Cannot convert undefined or null to object
+    at Object.keys (<anonymous>)
+    at [90m/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:840:25
+    at updateMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:16427:19)
+    at Object.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:17067:16)
+    at Proxy.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react@18.3.1/node_modules/[4mreact[24m/cjs/react.development.js:1650:21)
+    at SandboxView [90m(/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:839:21[90m)[39m
+    at renderWithHooks (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:15486:18)
+    at updateFunctionComponent (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:19617:20)
+    at beginWork (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:21640:16)
+    at HTMLUnknownElement.callCallback (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:4164:14)
+The above error occurred in the <SandboxView> component:
+
+    at SandboxView (/private/tmp/wt-base-front/apps/frontend-shell/src/views/sim/SandboxView.tsx:365:81)
+    at QueryClientProvider (file:///Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@tanstack+react-query@5.101.0_react@18.3.1/node_modules/@tanstack/react-query/build/modern/QueryClientProvider.js:20:3)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+stderr | test/sandbox-config-collapse.test.tsx > §2 · 横幅上的三个数是**现算**的（写死的数在这一节必红） > 🔴 造一条新扰动 ⇒ 「已施加」当场 0 → 1（**走生产那条路**：点施加按钮，不是改变量）
+Error: Uncaught [TypeError: Cannot convert undefined or null to object]
+    at reportException (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:26599:12) TypeError: Cannot convert undefined or null to object
+    at Object.keys (<anonymous>)
+    at [90m/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:840:25
+    at updateMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:16427:19)
+    at Object.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:17067:16)
+    at Proxy.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react@18.3.1/node_modules/[4mreact[24m/cjs/react.development.js:1650:21)
+    at SandboxView [90m(/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:839:21[90m)[39m
+    at renderWithHooks (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:15486:18)
+    at updateFunctionComponent (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:19617:20)
+    at beginWork (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:21640:16)
+    at HTMLUnknownElement.callCallback (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:4164:14)
+Error: Uncaught [TypeError: Cannot convert undefined or null to object]
+    at reportException (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:26599:12) TypeError: Cannot convert undefined or null to object
+    at Object.keys (<anonymous>)
+    at [90m/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:840:25
+    at updateMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:16427:19)
+    at Object.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:17067:16)
+    at Proxy.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react@18.3.1/node_modules/[4mreact[24m/cjs/react.development.js:1650:21)
+    at SandboxView [90m(/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:839:21[90m)[39m
+    at renderWithHooks (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:15486:18)
+    at updateFunctionComponent (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:19617:20)
+    at beginWork (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:21640:16)
+    at HTMLUnknownElement.callCallback (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:4164:14)
+The above error occurred in the <SandboxView> component:
+
+    at SandboxView (/private/tmp/wt-base-front/apps/frontend-shell/src/views/sim/SandboxView.tsx:365:81)
+    at QueryClientProvider (file:///Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@tanstack+react-query@5.101.0_react@18.3.1/node_modules/@tanstack/react-query/build/modern/QueryClientProvider.js:20:3)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+stderr | test/sandbox-config-collapse.test.tsx > §2 · 横幅上的三个数是**现算**的（写死的数在这一节必红） > 🔴 关掉一条传导边 ⇒ 「启用」4 → 3，而「传导边」总数**不动**（两个数分得开）
+Error: Uncaught [TypeError: Cannot convert undefined or null to object]
+    at reportException (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:26599:12) TypeError: Cannot convert undefined or null to object
+    at Object.keys (<anonymous>)
+    at [90m/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:840:25
+    at updateMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:16427:19)
+    at Object.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:17067:16)
+    at Proxy.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react@18.3.1/node_modules/[4mreact[24m/cjs/react.development.js:1650:21)
+    at SandboxView [90m(/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:839:21[90m)[39m
+    at renderWithHooks (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:15486:18)
+    at updateFunctionComponent (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:19617:20)
+    at beginWork (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:21640:16)
+    at HTMLUnknownElement.callCallback (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:4164:14)
+Error: Uncaught [TypeError: Cannot convert undefined or null to object]
+    at reportException (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:26599:12) TypeError: Cannot convert undefined or null to object
+    at Object.keys (<anonymous>)
+    at [90m/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:840:25
+    at updateMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:16427:19)
+    at Object.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:17067:16)
+    at Proxy.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react@18.3.1/node_modules/[4mreact[24m/cjs/react.development.js:1650:21)
+    at SandboxView [90m(/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:839:21[90m)[39m
+    at renderWithHooks (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:15486:18)
+    at updateFunctionComponent (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:19617:20)
+    at beginWork (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:21640:16)
+    at HTMLUnknownElement.callCallback (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:4164:14)
+The above error occurred in the <SandboxView> component:
+
+    at SandboxView (/private/tmp/wt-base-front/apps/frontend-shell/src/views/sim/SandboxView.tsx:365:81)
+    at QueryClientProvider (file:///Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@tanstack+react-query@5.101.0_react@18.3.1/node_modules/@tanstack/react-query/build/modern/QueryClientProvider.js:20:3)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+stderr | test/sandbox-config-collapse.test.tsx > §2 · 横幅上的三个数是**现算**的（写死的数在这一节必红） > 🔴 取不到数时显示「—」而**不是「0」**（把「我不知道」说成「一条都没有」是静默错答）
+Error: Uncaught [TypeError: Cannot convert undefined or null to object]
+    at reportException (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:26599:12) TypeError: Cannot convert undefined or null to object
+    at Object.keys (<anonymous>)
+    at [90m/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:840:25
+    at updateMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:16427:19)
+    at Object.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:17067:16)
+    at Proxy.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react@18.3.1/node_modules/[4mreact[24m/cjs/react.development.js:1650:21)
+    at SandboxView [90m(/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:839:21[90m)[39m
+    at renderWithHooks (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:15486:18)
+    at updateFunctionComponent (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:19617:20)
+    at beginWork (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:21640:16)
+    at HTMLUnknownElement.callCallback (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:4164:14)
+Error: Uncaught [TypeError: Cannot convert undefined or null to object]
+    at reportException (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:26599:12) TypeError: Cannot convert undefined or null to object
+    at Object.keys (<anonymous>)
+    at [90m/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:840:25
+    at updateMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:16427:19)
+    at Object.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:17067:16)
+    at Proxy.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react@18.3.1/node_modules/[4mreact[24m/cjs/react.development.js:1650:21)
+    at SandboxView [90m(/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:839:21[90m)[39m
+    at renderWithHooks (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:15486:18)
+    at updateFunctionComponent (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:19617:20)
+    at beginWork (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:21640:16)
+    at HTMLUnknownElement.callCallback (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:4164:14)
+The above error occurred in the <SandboxView> component:
+
+    at SandboxView (/private/tmp/wt-base-front/apps/frontend-shell/src/views/sim/SandboxView.tsx:365:81)
+    at QueryClientProvider (file:///Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@tanstack+react-query@5.101.0_react@18.3.1/node_modules/@tanstack/react-query/build/modern/QueryClientProvider.js:20:3)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+stderr | test/sandbox-config-collapse.test.tsx > §3 · 点得开、点得回，且分栏方式跟着一起变 > 点横幅 ⇒ 展开成两列（`display:grid`，不是 `block`）；再点 ⇒ 收回
+Error: Uncaught [TypeError: Cannot convert undefined or null to object]
+    at reportException (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:26599:12) TypeError: Cannot convert undefined or null to object
+    at Object.keys (<anonymous>)
+    at [90m/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:840:25
+    at updateMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:16427:19)
+    at Object.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:17067:16)
+    at Proxy.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react@18.3.1/node_modules/[4mreact[24m/cjs/react.development.js:1650:21)
+    at SandboxView [90m(/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:839:21[90m)[39m
+    at renderWithHooks (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:15486:18)
+    at updateFunctionComponent (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:19617:20)
+    at beginWork (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:21640:16)
+    at HTMLUnknownElement.callCallback (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:4164:14)
+Error: Uncaught [TypeError: Cannot convert undefined or null to object]
+    at reportException (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:26599:12) TypeError: Cannot convert undefined or null to object
+    at Object.keys (<anonymous>)
+    at [90m/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:840:25
+    at updateMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:16427:19)
+    at Object.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:17067:16)
+    at Proxy.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react@18.3.1/node_modules/[4mreact[24m/cjs/react.development.js:1650:21)
+    at SandboxView [90m(/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:839:21[90m)[39m
+    at renderWithHooks (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:15486:18)
+    at updateFunctionComponent (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:19617:20)
+    at beginWork (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:21640:16)
+    at HTMLUnknownElement.callCallback (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:4164:14)
+The above error occurred in the <SandboxView> component:
+
+    at SandboxView (/private/tmp/wt-base-front/apps/frontend-shell/src/views/sim/SandboxView.tsx:365:81)
+    at QueryClientProvider (file:///Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@tanstack+react-query@5.101.0_react@18.3.1/node_modules/@tanstack/react-query/build/modern/QueryClientProvider.js:20:3)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+stderr | test/sandbox-config-collapse.test.tsx > §3 · 点得开、点得回，且分栏方式跟着一起变 > 🔴 分栏跟着折叠态走：收起 = 两栏（画布回第一行）· 展开 = 上下两行
+Error: Uncaught [TypeError: Cannot convert undefined or null to object]
+    at reportException (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:26599:12) TypeError: Cannot convert undefined or null to object
+    at Object.keys (<anonymous>)
+    at [90m/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:840:25
+    at updateMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:16427:19)
+    at Object.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:17067:16)
+    at Proxy.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react@18.3.1/node_modules/[4mreact[24m/cjs/react.development.js:1650:21)
+    at SandboxView [90m(/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:839:21[90m)[39m
+    at renderWithHooks (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:15486:18)
+    at updateFunctionComponent (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:19617:20)
+    at beginWork (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:21640:16)
+    at HTMLUnknownElement.callCallback (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:4164:14)
+Error: Uncaught [TypeError: Cannot convert undefined or null to object]
+    at reportException (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:26599:12) TypeError: Cannot convert undefined or null to object
+    at Object.keys (<anonymous>)
+    at [90m/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:840:25
+    at updateMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:16427:19)
+    at Object.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:17067:16)
+    at Proxy.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react@18.3.1/node_modules/[4mreact[24m/cjs/react.development.js:1650:21)
+    at SandboxView [90m(/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:839:21[90m)[39m
+    at renderWithHooks (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:15486:18)
+    at updateFunctionComponent (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:19617:20)
+    at beginWork (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:21640:16)
+    at HTMLUnknownElement.callCallback (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:4164:14)
+The above error occurred in the <SandboxView> component:
+
+    at SandboxView (/private/tmp/wt-base-front/apps/frontend-shell/src/views/sim/SandboxView.tsx:365:81)
+    at QueryClientProvider (file:///Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@tanstack+react-query@5.101.0_react@18.3.1/node_modules/@tanstack/react-query/build/modern/QueryClientProvider.js:20:3)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+stderr | test/sandbox-config-collapse.test.tsx > §3 · 点得开、点得回，且分栏方式跟着一起变 > 展开后画布区**仍在 DOM 且仍是同一个**（展开不是把画布换掉，只是换了排法）
+Error: Uncaught [TypeError: Cannot convert undefined or null to object]
+    at reportException (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:26599:12) TypeError: Cannot convert undefined or null to object
+    at Object.keys (<anonymous>)
+    at [90m/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:840:25
+    at updateMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:16427:19)
+    at Object.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:17067:16)
+    at Proxy.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react@18.3.1/node_modules/[4mreact[24m/cjs/react.development.js:1650:21)
+    at SandboxView [90m(/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:839:21[90m)[39m
+    at renderWithHooks (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:15486:18)
+    at updateFunctionComponent (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:19617:20)
+    at beginWork (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:21640:16)
+    at HTMLUnknownElement.callCallback (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:4164:14)
+Error: Uncaught [TypeError: Cannot convert undefined or null to object]
+    at reportException (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:26599:12) TypeError: Cannot convert undefined or null to object
+    at Object.keys (<anonymous>)
+    at [90m/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:840:25
+    at updateMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:16427:19)
+    at Object.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:17067:16)
+    at Proxy.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react@18.3.1/node_modules/[4mreact[24m/cjs/react.development.js:1650:21)
+    at SandboxView [90m(/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:839:21[90m)[39m
+    at renderWithHooks (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:15486:18)
+    at updateFunctionComponent (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:19617:20)
+    at beginWork (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:21640:16)
+    at HTMLUnknownElement.callCallback (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:4164:14)
+The above error occurred in the <SandboxView> component:
+
+    at SandboxView (/private/tmp/wt-base-front/apps/frontend-shell/src/views/sim/SandboxView.tsx:365:81)
+    at QueryClientProvider (file:///Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@tanstack+react-query@5.101.0_react@18.3.1/node_modules/@tanstack/react-query/build/modern/QueryClientProvider.js:20:3)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+ ❯ test/sandbox-config-collapse.test.tsx (10 tests | 10 failed) 152125ms
+   × §1 · 默认收起成一条：折的是**位置**，不是内容 > 默认态 = 横幅在、面板行内 `display:none`（且判据真的读得到东西） 15491ms
+     → Unable to find an element by: [data-testid="sandbox-config-bar"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+   × §1 · 默认收起成一条：折的是**位置**，不是内容 > 折叠≠删除：收起态下上一张单的内容**一件不少地留在 DOM 里**（D4 守恒） 15212ms
+     → Unable to find an element by: [data-testid="sandbox-config-bar"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+   × §1 · 默认收起成一条：折的是**位置**，不是内容 > 横幅**不套 `<details>`**（那条路实测折不掉版面门的账，见文件头） 15143ms
+     → Unable to find an element by: [data-testid="sandbox-config-bar"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+   × §2 · 横幅上的三个数是**现算**的（写死的数在这一节必红） > 落地即与 fixture 对账：已施加 0 条 · 传导边 4 条 · 启用 4 条 15126ms
+     → Unable to find an element by: [data-testid="sandbox-config-bar"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+   × §2 · 横幅上的三个数是**现算**的（写死的数在这一节必红） > 🔴 造一条新扰动 ⇒ 「已施加」当场 0 → 1（**走生产那条路**：点施加按钮，不是改变量） 15128ms
+     → Unable to find an element by: [data-testid="sandbox-config-bar"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+   × §2 · 横幅上的三个数是**现算**的（写死的数在这一节必红） > 🔴 关掉一条传导边 ⇒ 「启用」4 → 3，而「传导边」总数**不动**（两个数分得开） 15165ms
+     → Unable to find an element by: [data-testid="sandbox-config-bar"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+   × §2 · 横幅上的三个数是**现算**的（写死的数在这一节必红） > 🔴 取不到数时显示「—」而**不是「0」**（把「我不知道」说成「一条都没有」是静默错答） 15277ms
+     → Unable to find an element by: [data-testid="sandbox-config-bar"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+   × §3 · 点得开、点得回，且分栏方式跟着一起变 > 点横幅 ⇒ 展开成两列（`display:grid`，不是 `block`）；再点 ⇒ 收回 15129ms
+     → Unable to find an element by: [data-testid="sandbox-config-bar"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+   × §3 · 点得开、点得回，且分栏方式跟着一起变 > 🔴 分栏跟着折叠态走：收起 = 两栏（画布回第一行）· 展开 = 上下两行 15133ms
+     → Unable to find an element by: [data-testid="sandbox-config-bar"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+   × §3 · 点得开、点得回，且分栏方式跟着一起变 > 展开后画布区**仍在 DOM 且仍是同一个**（展开不是把画布换掉，只是换了排法） 15313ms
+     → Unable to find an element by: [data-testid="sandbox-config-bar"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 10 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/sandbox-config-collapse.test.tsx > §1 · 默认收起成一条：折的是**位置**，不是内容 > 默认态 = 横幅在、面板行内 `display:none`（且判据真的读得到东西）
+TestingLibraryElementError: Unable to find an element by: [data-testid="sandbox-config-bar"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+ ❯ waitForWrapper ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/wait-for.js:163:27
+ ❯ ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:86:33
+ ❯ ready test/sandbox-config-collapse.test.tsx:233:16
+    231| const ready = async () => {
+    232|   await screen.findByTestId("sandbox-console");
+    233|   await screen.findByTestId("sandbox-config-bar");
+       |                ^
+    234|   await screen.findByTestId("sandbox-config-panel");
+    235| };
+ ❯ test/sandbox-config-collapse.test.tsx:259:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/10]⎯
+
+ FAIL  test/sandbox-config-collapse.test.tsx > §1 · 默认收起成一条：折的是**位置**，不是内容 > 折叠≠删除：收起态下上一张单的内容**一件不少地留在 DOM 里**（D4 守恒）
+TestingLibraryElementError: Unable to find an element by: [data-testid="sandbox-config-bar"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+ ❯ waitForWrapper ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/wait-for.js:163:27
+ ❯ ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:86:33
+ ❯ ready test/sandbox-config-collapse.test.tsx:233:16
+    231| const ready = async () => {
+    232|   await screen.findByTestId("sandbox-console");
+    233|   await screen.findByTestId("sandbox-config-bar");
+       |                ^
+    234|   await screen.findByTestId("sandbox-config-panel");
+    235| };
+ ❯ test/sandbox-config-collapse.test.tsx:272:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/10]⎯
+
+ FAIL  test/sandbox-config-collapse.test.tsx > §1 · 默认收起成一条：折的是**位置**，不是内容 > 横幅**不套 `<details>`**（那条路实测折不掉版面门的账，见文件头）
+TestingLibraryElementError: Unable to find an element by: [data-testid="sandbox-config-bar"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+ ❯ waitForWrapper ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/wait-for.js:163:27
+ ❯ ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:86:33
+ ❯ ready test/sandbox-config-collapse.test.tsx:233:16
+    231| const ready = async () => {
+    232|   await screen.findByTestId("sandbox-console");
+    233|   await screen.findByTestId("sandbox-config-bar");
+       |                ^
+    234|   await screen.findByTestId("sandbox-config-panel");
+    235| };
+ ❯ test/sandbox-config-collapse.test.tsx:291:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/10]⎯
+
+ FAIL  test/sandbox-config-collapse.test.tsx > §2 · 横幅上的三个数是**现算**的（写死的数在这一节必红） > 落地即与 fixture 对账：已施加 0 条 · 传导边 4 条 · 启用 4 条
+TestingLibraryElementError: Unable to find an element by: [data-testid="sandbox-config-bar"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+ ❯ waitForWrapper ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/wait-for.js:163:27
+ ❯ ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:86:33
+ ❯ ready test/sandbox-config-collapse.test.tsx:233:16
+    231| const ready = async () => {
+    232|   await screen.findByTestId("sandbox-console");
+    233|   await screen.findByTestId("sandbox-config-bar");
+       |                ^
+    234|   await screen.findByTestId("sandbox-config-panel");
+    235| };
+ ❯ test/sandbox-config-collapse.test.tsx:302:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/10]⎯
+
+ FAIL  test/sandbox-config-collapse.test.tsx > §2 · 横幅上的三个数是**现算**的（写死的数在这一节必红） > 🔴 造一条新扰动 ⇒ 「已施加」当场 0 → 1（**走生产那条路**：点施加按钮，不是改变量）
+TestingLibraryElementError: Unable to find an element by: [data-testid="sandbox-config-bar"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+ ❯ waitForWrapper ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/wait-for.js:163:27
+ ❯ ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:86:33
+ ❯ ready test/sandbox-config-collapse.test.tsx:233:16
+    231| const ready = async () => {
+    232|   await screen.findByTestId("sandbox-console");
+    233|   await screen.findByTestId("sandbox-config-bar");
+       |                ^
+    234|   await screen.findByTestId("sandbox-config-panel");
+    235| };
+ ❯ test/sandbox-config-collapse.test.tsx:316:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/10]⎯
+
+ FAIL  test/sandbox-config-collapse.test.tsx > §2 · 横幅上的三个数是**现算**的（写死的数在这一节必红） > 🔴 关掉一条传导边 ⇒ 「启用」4 → 3，而「传导边」总数**不动**（两个数分得开）
+TestingLibraryElementError: Unable to find an element by: [data-testid="sandbox-config-bar"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+ ❯ waitForWrapper ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/wait-for.js:163:27
+ ❯ ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:86:33
+ ❯ ready test/sandbox-config-collapse.test.tsx:233:16
+    231| const ready = async () => {
+    232|   await screen.findByTestId("sandbox-console");
+    233|   await screen.findByTestId("sandbox-config-bar");
+       |                ^
+    234|   await screen.findByTestId("sandbox-config-panel");
+    235| };
+ ❯ test/sandbox-config-collapse.test.tsx:337:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/10]⎯
+
+ FAIL  test/sandbox-config-collapse.test.tsx > §2 · 横幅上的三个数是**现算**的（写死的数在这一节必红） > 🔴 取不到数时显示「—」而**不是「0」**（把「我不知道」说成「一条都没有」是静默错答）
+TestingLibraryElementError: Unable to find an element by: [data-testid="sandbox-config-bar"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+ ❯ waitForWrapper ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/wait-for.js:163:27
+ ❯ ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:86:33
+ ❯ ready test/sandbox-config-collapse.test.tsx:233:16
+    231| const ready = async () => {
+    232|   await screen.findByTestId("sandbox-console");
+    233|   await screen.findByTestId("sandbox-config-bar");
+       |                ^
+    234|   await screen.findByTestId("sandbox-config-panel");
+    235| };
+ ❯ test/sandbox-config-collapse.test.tsx:364:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/10]⎯
+
+ FAIL  test/sandbox-config-collapse.test.tsx > §3 · 点得开、点得回，且分栏方式跟着一起变 > 点横幅 ⇒ 展开成两列（`display:grid`，不是 `block`）；再点 ⇒ 收回
+TestingLibraryElementError: Unable to find an element by: [data-testid="sandbox-config-bar"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+ ❯ waitForWrapper ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/wait-for.js:163:27
+ ❯ ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:86:33
+ ❯ ready test/sandbox-config-collapse.test.tsx:233:16
+    231| const ready = async () => {
+    232|   await screen.findByTestId("sandbox-console");
+    233|   await screen.findByTestId("sandbox-config-bar");
+       |                ^
+    234|   await screen.findByTestId("sandbox-config-panel");
+    235| };
+ ❯ test/sandbox-config-collapse.test.tsx:385:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/10]⎯
+
+ FAIL  test/sandbox-config-collapse.test.tsx > §3 · 点得开、点得回，且分栏方式跟着一起变 > 🔴 分栏跟着折叠态走：收起 = 两栏（画布回第一行）· 展开 = 上下两行
+TestingLibraryElementError: Unable to find an element by: [data-testid="sandbox-config-bar"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+ ❯ waitForWrapper ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/wait-for.js:163:27
+ ❯ ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:86:33
+ ❯ ready test/sandbox-config-collapse.test.tsx:233:16
+    231| const ready = async () => {
+    232|   await screen.findByTestId("sandbox-console");
+    233|   await screen.findByTestId("sandbox-config-bar");
+       |                ^
+    234|   await screen.findByTestId("sandbox-config-panel");
+    235| };
+ ❯ test/sandbox-config-collapse.test.tsx:402:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/10]⎯
+
+ FAIL  test/sandbox-config-collapse.test.tsx > §3 · 点得开、点得回，且分栏方式跟着一起变 > 展开后画布区**仍在 DOM 且仍是同一个**（展开不是把画布换掉，只是换了排法）
+TestingLibraryElementError: Unable to find an element by: [data-testid="sandbox-config-bar"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+ ❯ waitForWrapper ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/wait-for.js:163:27
+ ❯ ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:86:33
+ ❯ ready test/sandbox-config-collapse.test.tsx:233:16
+    231| const ready = async () => {
+    232|   await screen.findByTestId("sandbox-console");
+    233|   await screen.findByTestId("sandbox-config-bar");
+       |                ^
+    234|   await screen.findByTestId("sandbox-config-panel");
+    235| };
+ ❯ test/sandbox-config-collapse.test.tsx:420:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/10]⎯
+
+⎯⎯⎯⎯⎯⎯ Unhandled Errors ⎯⎯⎯⎯⎯⎯
+
+Vitest caught 10 unhandled errors during the test run.
+This might cause false positive tests. Resolve unhandled errors to make sure your tests are not affected.
+
+⎯⎯⎯⎯⎯ Uncaught Exception ⎯⎯⎯⎯⎯
+TypeError: Cannot convert undefined or null to object
+ ❯ src/views/sim/SandboxView.tsx:840:25
+    838|   // 全局 KPI = 当前 world 所有对象聚合态的均值（0-100）。
+    839|   const globalKpi = useMemo(() => {
+    840|     const objs = Object.keys(world);
+       |                         ^
+    841|     if (objs.length === 0) return 0;
+    842|     return objs.reduce((a, o) => a + aggregate(world[o]), 0) / objs.le…
+ ❯ updateMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:16427:19
+ ❯ Object.useMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:17067:16
+ ❯ Proxy.useMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react@18.3.1/node_modules/react/cjs/react.development.js:1650:21
+ ❯ SandboxView src/views/sim/SandboxView.tsx:839:21
+ ❯ renderWithHooks ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:15486:18
+ ❯ updateFunctionComponent ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:19617:20
+ ❯ beginWork ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:21640:16
+ ❯ beginWork$1 ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27465:14
+
+This error originated in "test/sandbox-config-collapse.test.tsx" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.
+The latest test that might've caused the error is "默认态 = 横幅在、面板行内 `display:none`（且判据真的读得到东西）". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+
+⎯⎯⎯⎯⎯ Uncaught Exception ⎯⎯⎯⎯⎯
+TypeError: Cannot convert undefined or null to object
+ ❯ src/views/sim/SandboxView.tsx:840:25
+    838|   // 全局 KPI = 当前 world 所有对象聚合态的均值（0-100）。
+    839|   const globalKpi = useMemo(() => {
+    840|     const objs = Object.keys(world);
+       |                         ^
+    841|     if (objs.length === 0) return 0;
+    842|     return objs.reduce((a, o) => a + aggregate(world[o]), 0) / objs.le…
+ ❯ updateMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:16427:19
+ ❯ Object.useMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:17067:16
+ ❯ Proxy.useMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react@18.3.1/node_modules/react/cjs/react.development.js:1650:21
+ ❯ SandboxView src/views/sim/SandboxView.tsx:839:21
+ ❯ renderWithHooks ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:15486:18
+ ❯ updateFunctionComponent ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:19617:20
+ ❯ beginWork ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:21640:16
+ ❯ beginWork$1 ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27465:14
+
+This error originated in "test/sandbox-config-collapse.test.tsx" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.
+The latest test that might've caused the error is "折叠≠删除：收起态下上一张单的内容**一件不少地留在 DOM 里**（D4 守恒）". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+
+⎯⎯⎯⎯⎯ Uncaught Exception ⎯⎯⎯⎯⎯
+TypeError: Cannot convert undefined or null to object
+ ❯ src/views/sim/SandboxView.tsx:840:25
+    838|   // 全局 KPI = 当前 world 所有对象聚合态的均值（0-100）。
+    839|   const globalKpi = useMemo(() => {
+    840|     const objs = Object.keys(world);
+       |                         ^
+    841|     if (objs.length === 0) return 0;
+    842|     return objs.reduce((a, o) => a + aggregate(world[o]), 0) / objs.le…
+ ❯ updateMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:16427:19
+ ❯ Object.useMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:17067:16
+ ❯ Proxy.useMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react@18.3.1/node_modules/react/cjs/react.development.js:1650:21
+ ❯ SandboxView src/views/sim/SandboxView.tsx:839:21
+ ❯ renderWithHooks ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:15486:18
+ ❯ updateFunctionComponent ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:19617:20
+ ❯ beginWork ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:21640:16
+ ❯ beginWork$1 ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27465:14
+
+This error originated in "test/sandbox-config-collapse.test.tsx" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.
+The latest test that might've caused the error is "横幅**不套 `<details>`**（那条路实测折不掉版面门的账，见文件头）". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+
+⎯⎯⎯⎯⎯ Uncaught Exception ⎯⎯⎯⎯⎯
+TypeError: Cannot convert undefined or null to object
+ ❯ src/views/sim/SandboxView.tsx:840:25
+    838|   // 全局 KPI = 当前 world 所有对象聚合态的均值（0-100）。
+    839|   const globalKpi = useMemo(() => {
+    840|     const objs = Object.keys(world);
+       |                         ^
+    841|     if (objs.length === 0) return 0;
+    842|     return objs.reduce((a, o) => a + aggregate(world[o]), 0) / objs.le…
+ ❯ updateMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:16427:19
+ ❯ Object.useMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:17067:16
+ ❯ Proxy.useMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react@18.3.1/node_modules/react/cjs/react.development.js:1650:21
+ ❯ SandboxView src/views/sim/SandboxView.tsx:839:21
+ ❯ renderWithHooks ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:15486:18
+ ❯ updateFunctionComponent ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:19617:20
+ ❯ beginWork ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:21640:16
+ ❯ beginWork$1 ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27465:14
+
+This error originated in "test/sandbox-config-collapse.test.tsx" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.
+The latest test that might've caused the error is "落地即与 fixture 对账：已施加 0 条 · 传导边 4 条 · 启用 4 条". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+
+⎯⎯⎯⎯⎯ Uncaught Exception ⎯⎯⎯⎯⎯
+TypeError: Cannot convert undefined or null to object
+ ❯ src/views/sim/SandboxView.tsx:840:25
+    838|   // 全局 KPI = 当前 world 所有对象聚合态的均值（0-100）。
+    839|   const globalKpi = useMemo(() => {
+    840|     const objs = Object.keys(world);
+       |                         ^
+    841|     if (objs.length === 0) return 0;
+    842|     return objs.reduce((a, o) => a + aggregate(world[o]), 0) / objs.le…
+ ❯ updateMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:16427:19
+ ❯ Object.useMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:17067:16
+ ❯ Proxy.useMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react@18.3.1/node_modules/react/cjs/react.development.js:1650:21
+ ❯ SandboxView src/views/sim/SandboxView.tsx:839:21
+ ❯ renderWithHooks ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:15486:18
+ ❯ updateFunctionComponent ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:19617:20
+ ❯ beginWork ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:21640:16
+ ❯ beginWork$1 ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27465:14
+
+This error originated in "test/sandbox-config-collapse.test.tsx" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.
+The latest test that might've caused the error is "🔴 造一条新扰动 ⇒ 「已施加」当场 0 → 1（**走生产那条路**：点施加按钮，不是改变量）". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+
+⎯⎯⎯⎯⎯ Uncaught Exception ⎯⎯⎯⎯⎯
+TypeError: Cannot convert undefined or null to object
+ ❯ src/views/sim/SandboxView.tsx:840:25
+    838|   // 全局 KPI = 当前 world 所有对象聚合态的均值（0-100）。
+    839|   const globalKpi = useMemo(() => {
+    840|     const objs = Object.keys(world);
+       |                         ^
+    841|     if (objs.length === 0) return 0;
+    842|     return objs.reduce((a, o) => a + aggregate(world[o]), 0) / objs.le…
+ ❯ updateMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:16427:19
+ ❯ Object.useMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:17067:16
+ ❯ Proxy.useMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react@18.3.1/node_modules/react/cjs/react.development.js:1650:21
+ ❯ SandboxView src/views/sim/SandboxView.tsx:839:21
+ ❯ renderWithHooks ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:15486:18
+ ❯ updateFunctionComponent ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:19617:20
+ ❯ beginWork ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:21640:16
+ ❯ beginWork$1 ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27465:14
+
+This error originated in "test/sandbox-config-collapse.test.tsx" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.
+The latest test that might've caused the error is "🔴 关掉一条传导边 ⇒ 「启用」4 → 3，而「传导边」总数**不动**（两个数分得开）". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+
+⎯⎯⎯⎯⎯ Uncaught Exception ⎯⎯⎯⎯⎯
+TypeError: Cannot convert undefined or null to object
+ ❯ src/views/sim/SandboxView.tsx:840:25
+    838|   // 全局 KPI = 当前 world 所有对象聚合态的均值（0-100）。
+    839|   const globalKpi = useMemo(() => {
+    840|     const objs = Object.keys(world);
+       |                         ^
+    841|     if (objs.length === 0) return 0;
+    842|     return objs.reduce((a, o) => a + aggregate(world[o]), 0) / objs.le…
+ ❯ updateMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:16427:19
+ ❯ Object.useMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:17067:16
+ ❯ Proxy.useMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react@18.3.1/node_modules/react/cjs/react.development.js:1650:21
+ ❯ SandboxView src/views/sim/SandboxView.tsx:839:21
+ ❯ renderWithHooks ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:15486:18
+ ❯ updateFunctionComponent ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:19617:20
+ ❯ beginWork ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:21640:16
+ ❯ beginWork$1 ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27465:14
+
+This error originated in "test/sandbox-config-collapse.test.tsx" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.
+The latest test that might've caused the error is "🔴 取不到数时显示「—」而**不是「0」**（把「我不知道」说成「一条都没有」是静默错答）". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+
+⎯⎯⎯⎯⎯ Uncaught Exception ⎯⎯⎯⎯⎯
+TypeError: Cannot convert undefined or null to object
+ ❯ src/views/sim/SandboxView.tsx:840:25
+    838|   // 全局 KPI = 当前 world 所有对象聚合态的均值（0-100）。
+    839|   const globalKpi = useMemo(() => {
+    840|     const objs = Object.keys(world);
+       |                         ^
+    841|     if (objs.length === 0) return 0;
+    842|     return objs.reduce((a, o) => a + aggregate(world[o]), 0) / objs.le…
+ ❯ updateMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:16427:19
+ ❯ Object.useMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:17067:16
+ ❯ Proxy.useMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react@18.3.1/node_modules/react/cjs/react.development.js:1650:21
+ ❯ SandboxView src/views/sim/SandboxView.tsx:839:21
+ ❯ renderWithHooks ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:15486:18
+ ❯ updateFunctionComponent ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:19617:20
+ ❯ beginWork ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:21640:16
+ ❯ beginWork$1 ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27465:14
+
+This error originated in "test/sandbox-config-collapse.test.tsx" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.
+The latest test that might've caused the error is "点横幅 ⇒ 展开成两列（`display:grid`，不是 `block`）；再点 ⇒ 收回". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+
+⎯⎯⎯⎯⎯ Uncaught Exception ⎯⎯⎯⎯⎯
+TypeError: Cannot convert undefined or null to object
+ ❯ src/views/sim/SandboxView.tsx:840:25
+    838|   // 全局 KPI = 当前 world 所有对象聚合态的均值（0-100）。
+    839|   const globalKpi = useMemo(() => {
+    840|     const objs = Object.keys(world);
+       |                         ^
+    841|     if (objs.length === 0) return 0;
+    842|     return objs.reduce((a, o) => a + aggregate(world[o]), 0) / objs.le…
+ ❯ updateMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:16427:19
+ ❯ Object.useMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:17067:16
+ ❯ Proxy.useMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react@18.3.1/node_modules/react/cjs/react.development.js:1650:21
+ ❯ SandboxView src/views/sim/SandboxView.tsx:839:21
+ ❯ renderWithHooks ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:15486:18
+ ❯ updateFunctionComponent ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:19617:20
+ ❯ beginWork ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:21640:16
+ ❯ beginWork$1 ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27465:14
+
+This error originated in "test/sandbox-config-collapse.test.tsx" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.
+The latest test that might've caused the error is "🔴 分栏跟着折叠态走：收起 = 两栏（画布回第一行）· 展开 = 上下两行". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+
+⎯⎯⎯⎯⎯ Uncaught Exception ⎯⎯⎯⎯⎯
+TypeError: Cannot convert undefined or null to object
+ ❯ src/views/sim/SandboxView.tsx:840:25
+    838|   // 全局 KPI = 当前 world 所有对象聚合态的均值（0-100）。
+    839|   const globalKpi = useMemo(() => {
+    840|     const objs = Object.keys(world);
+       |                         ^
+    841|     if (objs.length === 0) return 0;
+    842|     return objs.reduce((a, o) => a + aggregate(world[o]), 0) / objs.le…
+ ❯ updateMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:16427:19
+ ❯ Object.useMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:17067:16
+ ❯ Proxy.useMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react@18.3.1/node_modules/react/cjs/react.development.js:1650:21
+ ❯ SandboxView src/views/sim/SandboxView.tsx:839:21
+ ❯ renderWithHooks ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:15486:18
+ ❯ updateFunctionComponent ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:19617:20
+ ❯ beginWork ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:21640:16
+ ❯ beginWork$1 ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27465:14
+
+This error originated in "test/sandbox-config-collapse.test.tsx" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.
+The latest test that might've caused the error is "展开后画布区**仍在 DOM 且仍是同一个**（展开不是把画布换掉，只是换了排法）". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+
+
+ Test Files  1 failed (1)
+      Tests  10 failed (10)
+     Errors  10 errors
+   Start at  13:52:58
+   Duration  161.80s (transform 4.50s, setup 5.16s, collect 2.77s, tests 152.12s, environment 1.04s, prepare 164ms)
+
+undefined
+/private/tmp/wt-base-front/apps/frontend-shell:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run test/sandbox-config-collapse.test.tsx --maxWorkers=1 --testTimeout=1500000
+SOLO_RC[test/sandbox-config-collapse.test.tsx]=1
+== solo test/disruption-cards.seam.test.tsx ==
+
+ RUN  v3.2.6 /private/tmp/wt-base-front/apps/frontend-shell
+
+stderr | test/disruption-cards.seam.test.tsx > WO-DISRUPTION-CARDS · 扰动因素按域分片的卡片 > 🔴 分组：每个 chip 的条数 == 数据里该域的边数；chip 集合 == 数据里的域集合（零写死）
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+
+ ❯ test/disruption-cards.seam.test.tsx (7 tests | 1 failed) 4427ms
+   ✓ WO-DISRUPTION-CARDS · 扰动因素按域分片的卡片 > 金丝雀：fixture 真的横跨 ≥2 个域且含未归域（否则下面的切片判据恒绿）  347ms
+   ✓ WO-DISRUPTION-CARDS · 扰动因素按域分片的卡片 > 🔴 分组：每个 chip 的条数 == 数据里该域的边数；chip 集合 == 数据里的域集合（零写死）  1420ms
+   ✓ WO-DISRUPTION-CARDS · 扰动因素按域分片的卡片 > 🔴 切片：点某个域的 chip ⇒ 只出该域的行；别的域的行既不可见、也不在 DOM 里  848ms
+   ✓ WO-DISRUPTION-CARDS · 扰动因素按域分片的卡片 > 🔴 拨动：切片之后关掉一条边 ⇒ 差值表出现带方向与量级的数（断的是数，不是勾选框）  1103ms
+   ✓ WO-DISRUPTION-CARDS · 扰动因素按域分片的卡片 > 变异反证：抹掉 domainKey ⇒ 分片塌成一片「未归域」，与真数据的分片对不上（不是组件不见了） 91ms
+   ✓ WO-DISRUPTION-CARDS · 扰动因素按域分片的卡片 > 纯模型：buildDomainSlices 按域 key 全序、未归域垫底、count 恒等于 rows.length；resolveActiveSlice 受控回落 3ms
+   × WO-DISRUPTION-CARDS · 扰动因素按域分片的卡片 > 🔴 两级标签：行主标题是对象类型的业务名，第二行是系统键；类型名取自本体 displayName（查不到显裸键） 609ms
+     → Unable to find an element by: [data-testid="info-edge-active-project-sim-keys-seed_line_to_base"]
+
+Ignored nodes: comments, script, style
+[36m<li[39m
+  [33mclass[39m=[32m"_row_b1d134"[39m
+  [33mdata-active[39m=[32m"true"[39m
+  [33mdata-domain[39m=[32m"D10"[39m
+  [33mdata-testid[39m=[32m"edge-active-project-sim-edge-seed_line_to_base"[39m
+[36m>[39m
+  [36m<input[39m
+    [33maria-label[39m=[32m"传导边 Line.s1 → Base.s2 是否参与本次推演"[39m
+    [33mchecked[39m=[32m""[39m
+    [33mdata-testid[39m=[32m"edge-active-project-sim-toggle-seed_line_to_base"[39m
+    [33mid[39m=[32m"edge-active-project-sim-toggle-seed_line_to_base"[39m
+    [33mtype[39m=[32m"checkbox"[39m
+  [36m/>[39m
+  [36m<label[39m
+    [33mclass[39m=[32m"_rowMain_b1d134"[39m
+    [33mfor[39m=[32m"edge-active-project-sim-toggle-seed_line_to_base"[39m
+  [36m>[39m
+    [0m产线 · s1[0m
+    [36m<span[39m
+      [33mclass[39m=[32m"_rowArrow_b1d134"[39m
+    [36m>[39m
+      [0m→[0m
+    [36m</span>[39m
+    [0m生产基地 · s2[0m
+    [36m<small[39m
+      [33mclass[39m=[32m"_rowKeys_b1d134"[39m
+      [33mdata-testid[39m=[32m"edge-active-project-sim-keys-seed_line_to_base"[39m
+    [36m>[39m
+      [0mLine.s1[0m
+      [0m —[0m
+      [0mline_belongs_to_base[0m
+      [0m→ [0m
+      [0mBase.s2[0m
+    [36m</small>[39m
+  [36m</label>[39m
+  [36m<span[39m
+    [33mclass[39m=[32m"_rowMeta_b1d134"[39m
+  [36m>[39m
+    [0m系数 [0m
+    [0m0.85[0m
+    [0m · 延迟 [0m
+    [0m1[0m
+    [36m<span[39m
+      [33mclass[39m=[32m"_derivedTag_b1d134"[39m
+    [36m>[39m
+      [0m声明值[0m
+    [36m</span>[39m
+  [36m</span>[39m
+[36m</li>[39m
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/disruption-cards.seam.test.tsx > WO-DISRUPTION-CARDS · 扰动因素按域分片的卡片 > 🔴 两级标签：行主标题是对象类型的业务名，第二行是系统键；类型名取自本体 displayName（查不到显裸键）
+TestingLibraryElementError: Unable to find an element by: [data-testid="info-edge-active-project-sim-keys-seed_line_to_base"]
+
+Ignored nodes: comments, script, style
+[36m<li[39m
+  [33mclass[39m=[32m"_row_b1d134"[39m
+  [33mdata-active[39m=[32m"true"[39m
+  [33mdata-domain[39m=[32m"D10"[39m
+  [33mdata-testid[39m=[32m"edge-active-project-sim-edge-seed_line_to_base"[39m
+[36m>[39m
+  [36m<input[39m
+    [33maria-label[39m=[32m"传导边 Line.s1 → Base.s2 是否参与本次推演"[39m
+    [33mchecked[39m=[32m""[39m
+    [33mdata-testid[39m=[32m"edge-active-project-sim-toggle-seed_line_to_base"[39m
+    [33mid[39m=[32m"edge-active-project-sim-toggle-seed_line_to_base"[39m
+    [33mtype[39m=[32m"checkbox"[39m
+  [36m/>[39m
+  [36m<label[39m
+    [33mclass[39m=[32m"_rowMain_b1d134"[39m
+    [33mfor[39m=[32m"edge-active-project-sim-toggle-seed_line_to_base"[39m
+  [36m>[39m
+    [0m产线 · s1[0m
+    [36m<span[39m
+      [33mclass[39m=[32m"_rowArrow_b1d134"[39m
+    [36m>[39m
+      [0m→[0m
+    [36m</span>[39m
+    [0m生产基地 · s2[0m
+    [36m<small[39m
+      [33mclass[39m=[32m"_rowKeys_b1d134"[39m
+      [33mdata-testid[39m=[32m"edge-active-project-sim-keys-seed_line_to_base"[39m
+    [36m>[39m
+      [0mLine.s1[0m
+      [0m —[0m
+      [0mline_belongs_to_base[0m
+      [0m→ [0m
+      [0mBase.s2[0m
+    [36m</small>[39m
+  [36m</label>[39m
+  [36m<span[39m
+    [33mclass[39m=[32m"_rowMeta_b1d134"[39m
+  [36m>[39m
+    [0m系数 [0m
+    [0m0.85[0m
+    [0m · 延迟 [0m
+    [0m1[0m
+    [36m<span[39m
+      [33mclass[39m=[32m"_derivedTag_b1d134"[39m
+    [36m>[39m
+      [0m声明值[0m
+    [36m</span>[39m
+  [36m</span>[39m
+[36m</li>[39m
+ ❯ Object.getElementError ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+ ❯ ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+ ❯ ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ test/disruption-cards.seam.test.tsx:251:47
+    249|     // 第一层不许再有接线名
+    250|     expect(within(row).queryByTestId(tid(`keys-text-${named!.key}`))).…
+    251|     await userEvent.setup().hover(within(row).getByTestId(`info-${keyT…
+       |                                               ^
+    252|     const body = await within(row).findByTestId(`info-body-${keyTid}`);
+    253|     expect(body.textContent).toContain(`${named!.sourceTypeKey}.${name…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 6 passed (7)
+   Start at  13:55:43
+   Duration  14.52s (transform 4.14s, setup 5.85s, collect 1.33s, tests 4.43s, environment 1.72s, prepare 285ms)
+
+undefined
+/private/tmp/wt-base-front/apps/frontend-shell:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run test/disruption-cards.seam.test.tsx --maxWorkers=1 --testTimeout=1500000
+SOLO_RC[test/disruption-cards.seam.test.tsx]=1
+== solo test/stale-claims.seam.test.ts ==
+
+ RUN  v3.2.6 /private/tmp/wt-base-front/apps/frontend-shell
+
+
+❌ 新增「自称实测」声明违规 22 条：
+   apps/frontend-shell/src/views/sim/SandboxImpactBand.tsx:748-754  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* ⚠ 此前这里直接渲 `{d.v}` —— 实测后端 `stateVarNames` **48/48 全有中文名**，
+   apps/frontend-shell/src/views/sim/SandboxImpactBand.tsx:748-754  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* ⚠ 此前这里直接渲 `{d.v}` —— 实测后端 `stateVarNames` **48/48 全有中文名**，
+   apps/frontend-shell/src/views/sim/unified/MetricWall.tsx:56-67  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：*   而键在当时的 `title` 里已经有一份。实测这一屏纯英文片段 47 个，卡墙独占 6 个。
+   apps/frontend-shell/src/views/sim/unified/MetricWall.tsx:56-67  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：*   而键在当时的 `title` 里已经有一份。实测这一屏纯英文片段 47 个，卡墙独占 6 个。
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:294-298  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* 落点下拉最多列几条。有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:294-298  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* 落点下拉最多列几条。有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:425-448  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* ── 为什么只有这一条路（真浏览器实测的账，不是版面偏好）───────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:425-448  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* ── 为什么只有这一条路（真浏览器实测的账，不是版面偏好）───────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:592-613  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* ── 今天的行为是 X，应该是 Y（真数据实测，不是读码推断）─────────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:627-634  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* **号只在需要消歧时才上屏**（实测两种类型给出相反的答案，故不能一刀切）：
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:627-634  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* **号只在需要消歧时才上屏**（实测两种类型给出相反的答案，故不能一刀切）：
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:643-649  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* `slice` 本身有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:643-649  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* `slice` 本身有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:701-711  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* 唯一差别 = 没有本批扰动 ⇒ 它与实跑终态之差才是这批扰动的**边际贡献**。
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:701-711  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* 唯一差别 = 没有本批扰动 ⇒ 它与实跑终态之差才是这批扰动的**边际贡献**。
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:938-954  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* ⛔ 但**不许删**：上面头注那条顾虑是真的（同名标签实测 5 组 × 2 行），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:938-954  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* ⛔ 但**不许删**：上面头注那条顾虑是真的（同名标签实测 5 组 × 2 行），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:1596-1626  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：── 今天的行为是 X（真浏览器实测，视口 1680×927）──────────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:1596-1626  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：── 今天的行为是 X（真浏览器实测，视口 1680×927）──────────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:2525-2532  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* 「放大」—— 这四栏卡片摆在中栏页签里，**可视只有 ~364px**，实测卡片下半截
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:2525-2532  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* 「放大」—— 这四栏卡片摆在中栏页签里，**可视只有 ~364px**，实测卡片下半截
+   apps/frontend-shell/src/views/sim/unified/console0828/console0828Model.ts:103-127  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：*   每一拍都在继续传导，背景漂移实测 p50 ≈ 8.64 压力点 ≫ `NOISE_FLOOR`(0.01)
+
+   修法：① 补上实测日期（YYYY-MM-DD）；② 补上复验方式（端点 / 命令 / file:line）；
+         ③ 若是 STALE-3/4：上游已经补齐了，**把话改对**，不要加豁免。
+
+❌ 新增「屏上过时事实」违规 1 条：
+   apps/frontend-shell/src/views/sim/CellExplainPanel.tsx:115  [STALE-5]
+      屏上字面量里有**否定断言**（「一条都没有」/「全仓 0 条」），却没有任何 `@stale-fact` 溯源记号 —— 这句话上游一变就变成屏上说谎，而没有任何人会被通知。修法：在本单元或紧贴其上的注释块里挂 `@stale-fact <路径> /<正则>/ <op><n>`，把这句话赌的那个计数写下来。
+      原文：第 {tick} 拍，<b>没有任何一条传导边写这一格</b>（入边 0 条）。
+
+   修法：· STALE-5 ⇒ 挂 `@stale-fact <路径> /<正则>/ <op><n>`，把这句话赌的计数写下来；
+         · STALE-6 ⇒ **上游已经变了，把屏上那句话改对**（这一条永不豁免）；
+         · STALE-7/8 ⇒ 把旧名/分叉的那一份真相源改到位（一个概念只许有一份真相源）。
+
+❌ stale-claims:check 未通过 —— 注释层(STALE-1..4)：红（新增 22 · 回弹 0） · 屏上层(STALE-5..8)：红（新增 1 · 松弛 0） · 门自述层(STALE-9/10)：绿
+ ❯ test/stale-claims.seam.test.ts (17 tests | 1 failed) 23501ms
+   ✓ §1 · 门在跑，且门自己没瞎 > `--selftest` 金丝雀通过（必咬样例全部咬中 · 必不咬样例全部放过 · 扫描规模达标）  714ms
+   × §1 · 门在跑，且门自己没瞎 > 门本体通过（存量豁免棘轮内，无新增声明违规） 11488ms
+     → Command failed: node /private/tmp/wt-base-front/scripts/check-stale-claims.mjs
+
+❌ 新增「自称实测」声明违规 22 条：
+   apps/frontend-shell/src/views/sim/SandboxImpactBand.tsx:748-754  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* ⚠ 此前这里直接渲 `{d.v}` —— 实测后端 `stateVarNames` **48/48 全有中文名**，
+   apps/frontend-shell/src/views/sim/SandboxImpactBand.tsx:748-754  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* ⚠ 此前这里直接渲 `{d.v}` —— 实测后端 `stateVarNames` **48/48 全有中文名**，
+   apps/frontend-shell/src/views/sim/unified/MetricWall.tsx:56-67  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：*   而键在当时的 `title` 里已经有一份。实测这一屏纯英文片段 47 个，卡墙独占 6 个。
+   apps/frontend-shell/src/views/sim/unified/MetricWall.tsx:56-67  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：*   而键在当时的 `title` 里已经有一份。实测这一屏纯英文片段 47 个，卡墙独占 6 个。
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:294-298  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* 落点下拉最多列几条。有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:294-298  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* 落点下拉最多列几条。有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:425-448  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* ── 为什么只有这一条路（真浏览器实测的账，不是版面偏好）───────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:425-448  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* ── 为什么只有这一条路（真浏览器实测的账，不是版面偏好）───────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:592-613  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* ── 今天的行为是 X，应该是 Y（真数据实测，不是读码推断）─────────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:627-634  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* **号只在需要消歧时才上屏**（实测两种类型给出相反的答案，故不能一刀切）：
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:627-634  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* **号只在需要消歧时才上屏**（实测两种类型给出相反的答案，故不能一刀切）：
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:643-649  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* `slice` 本身有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:643-649  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* `slice` 本身有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:701-711  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* 唯一差别 = 没有本批扰动 ⇒ 它与实跑终态之差才是这批扰动的**边际贡献**。
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:701-711  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* 唯一差别 = 没有本批扰动 ⇒ 它与实跑终态之差才是这批扰动的**边际贡献**。
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:938-954  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* ⛔ 但**不许删**：上面头注那条顾虑是真的（同名标签实测 5 组 × 2 行），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:938-954  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* ⛔ 但**不许删**：上面头注那条顾虑是真的（同名标签实测 5 组 × 2 行），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:1596-1626  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：── 今天的行为是 X（真浏览器实测，视口 1680×927）──────────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:1596-1626  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：── 今天的行为是 X（真浏览器实测，视口 1680×927）──────────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:2525-2532  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* 「放大」—— 这四栏卡片摆在中栏页签里，**可视只有 ~364px**，实测卡片下半截
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:2525-2532  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* 「放大」—— 这四栏卡片摆在中栏页签里，**可视只有 ~364px**，实测卡片下半截
+   apps/frontend-shell/src/views/sim/unified/console0828/console0828Model.ts:103-127  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：*   每一拍都在继续传导，背景漂移实测 p50 ≈ 8.64 压力点 ≫ `NOISE_FLOOR`(0.01)
+
+   修法：① 补上实测日期（YYYY-MM-DD）；② 补上复验方式（端点 / 命令 / file:line）；
+         ③ 若是 STALE-3/4：上游已经补齐了，**把话改对**，不要加豁免。
+
+❌ 新增「屏上过时事实」违规 1 条：
+   apps/frontend-shell/src/views/sim/CellExplainPanel.tsx:115  [STALE-5]
+      屏上字面量里有**否定断言**（「一条都没有」/「全仓 0 条」），却没有任何 `@stale-fact` 溯源记号 —— 这句话上游一变就变成屏上说谎，而没有任何人会被通知。修法：在本单元或紧贴其上的注释块里挂 `@stale-fact <路径> /<正则>/ <op><n>`，把这句话赌的那个计数写下来。
+      原文：第 {tick} 拍，<b>没有任何一条传导边写这一格</b>（入边 0 条）。
+
+   修法：· STALE-5 ⇒ 挂 `@stale-fact <路径> /<正则>/ <op><n>`，把这句话赌的计数写下来；
+         · STALE-6 ⇒ **上游已经变了，把屏上那句话改对**（这一条永不豁免）；
+         · STALE-7/8 ⇒ 把旧名/分叉的那一份真相源改到位（一个概念只许有一份真相源）。
+
+❌ stale-claims:check 未通过 —— 注释层(STALE-1..4)：红（新增 22 · 回弹 0） · 屏上层(STALE-5..8)：红（新增 1 · 松弛 0） · 门自述层(STALE-9/10)：绿
+
+   ✓ §1 · 门在跑，且门自己没瞎 > 门**真的被挂进交付链**（gate.sh 里有它）—— 门存在 ≠ 门在跑 4ms
+   ✓ §1 · 门在跑，且门自己没瞎 > 豁免棘轮：每条都有理由，maxExemptions 恒等于条数，且不超历史最高水位 8ms
+   ✓ §2 · 判据真的会咬（喂已知坏样例） > 自称实测但**没日期** ⇒ STALE-1 276ms
+   ✓ §2 · 判据真的会咬（喂已知坏样例） > 自称实测但**没复验方式** ⇒ STALE-2 5ms
+   ✓ §2 · 判据真的会咬（喂已知坏样例） > 声称某对象类型 0 条，**而它其实在 putAll 册上** ⇒ STALE-3（上游一补齐，声明当场红） 5ms
+   ✓ §2 · 判据真的会咬（喂已知坏样例） > **不含任何触发词**、但事实已被上游推翻 ⇒ 照样 STALE-3（事实层与关键词解耦） 4ms
+   ✓ §2 · 判据真的会咬（喂已知坏样例） > 把「实测」当**词**用的（三态徽章 / 字段名 / 诚实灰标）一律放过 —— 噪声门等于没门 7ms
+   ✓ §2 · 判据真的会咬（喂已知坏样例） > 对象类型**不在** putAll 册上时不乱咬（宁可漏，不可诬） 5ms
+   ✓ §3 · 事实锁：本单改写的文案，其依据必须还在（上游一删就红） > 上游承载还在：仍 `putAll("Cadence")`、推演仍读回 —— 删了则 K1/K2 新文案又变假话  1139ms
+   ✓ §3 · 事实锁：本单改写的文案，其依据必须还在（上游一删就红） > offsetDays 的运行时消费方还在（K2 那句「零消费方为假」的依据）  3751ms
+   ✓ §3 · 事实锁：本单改写的文案，其依据必须还在（上游一删就红） > K1 / K2 的 evidence：旧的那两句假话没了，且新话带**实测日期 + 复验方式**  1093ms
+   ✓ §3 · 事实锁：本单改写的文案，其依据必须还在（上游一删就红） > REWORK 那条**没被顺手改坏**（它与后端口径一致、今天仍成立）  1221ms
+   ✓ §4 · 控制台图例不许再复述「零输入基线」 > 图例只读 `.label`（四个分支恒等、不带保质期），**不读** `.reason` / `.status` / `.unblockedBy`  2595ms
+   ✓ §4 · 控制台图例不许再复述「零输入基线」 > `.label` 确实是**输入无关**的（四个分支同一个值）—— 否则读它一样是在读一张会过期的快照 46ms
+   ✓ §4 · 控制台图例不许再复述「零输入基线」 > 图例紧挨着渲染的就是会真取数的 `<TransitFlowView>` —— 状态由它自陈  1132ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/stale-claims.seam.test.ts > §1 · 门在跑，且门自己没瞎 > 门本体通过（存量豁免棘轮内，无新增声明违规）
+Error: Command failed: node /private/tmp/wt-base-front/scripts/check-stale-claims.mjs
+
+❌ 新增「自称实测」声明违规 22 条：
+   apps/frontend-shell/src/views/sim/SandboxImpactBand.tsx:748-754  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* ⚠ 此前这里直接渲 `{d.v}` —— 实测后端 `stateVarNames` **48/48 全有中文名**，
+   apps/frontend-shell/src/views/sim/SandboxImpactBand.tsx:748-754  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* ⚠ 此前这里直接渲 `{d.v}` —— 实测后端 `stateVarNames` **48/48 全有中文名**，
+   apps/frontend-shell/src/views/sim/unified/MetricWall.tsx:56-67  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：*   而键在当时的 `title` 里已经有一份。实测这一屏纯英文片段 47 个，卡墙独占 6 个。
+   apps/frontend-shell/src/views/sim/unified/MetricWall.tsx:56-67  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：*   而键在当时的 `title` 里已经有一份。实测这一屏纯英文片段 47 个，卡墙独占 6 个。
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:294-298  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* 落点下拉最多列几条。有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:294-298  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* 落点下拉最多列几条。有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:425-448  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* ── 为什么只有这一条路（真浏览器实测的账，不是版面偏好）───────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:425-448  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* ── 为什么只有这一条路（真浏览器实测的账，不是版面偏好）───────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:592-613  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* ── 今天的行为是 X，应该是 Y（真数据实测，不是读码推断）─────────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:627-634  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* **号只在需要消歧时才上屏**（实测两种类型给出相反的答案，故不能一刀切）：
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:627-634  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* **号只在需要消歧时才上屏**（实测两种类型给出相反的答案，故不能一刀切）：
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:643-649  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* `slice` 本身有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:643-649  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* `slice` 本身有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:701-711  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* 唯一差别 = 没有本批扰动 ⇒ 它与实跑终态之差才是这批扰动的**边际贡献**。
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:701-711  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* 唯一差别 = 没有本批扰动 ⇒ 它与实跑终态之差才是这批扰动的**边际贡献**。
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:938-954  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* ⛔ 但**不许删**：上面头注那条顾虑是真的（同名标签实测 5 组 × 2 行），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:938-954  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* ⛔ 但**不许删**：上面头注那条顾虑是真的（同名标签实测 5 组 × 2 行），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:1596-1626  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：── 今天的行为是 X（真浏览器实测，视口 1680×927）──────────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:1596-1626  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：── 今天的行为是 X（真浏览器实测，视口 1680×927）──────────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:2525-2532  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* 「放大」—— 这四栏卡片摆在中栏页签里，**可视只有 ~364px**，实测卡片下半截
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:2525-2532  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* 「放大」—— 这四栏卡片摆在中栏页签里，**可视只有 ~364px**，实测卡片下半截
+   apps/frontend-shell/src/views/sim/unified/console0828/console0828Model.ts:103-127  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：*   每一拍都在继续传导，背景漂移实测 p50 ≈ 8.64 压力点 ≫ `NOISE_FLOOR`(0.01)
+
+   修法：① 补上实测日期（YYYY-MM-DD）；② 补上复验方式（端点 / 命令 / file:line）；
+         ③ 若是 STALE-3/4：上游已经补齐了，**把话改对**，不要加豁免。
+
+❌ 新增「屏上过时事实」违规 1 条：
+   apps/frontend-shell/src/views/sim/CellExplainPanel.tsx:115  [STALE-5]
+      屏上字面量里有**否定断言**（「一条都没有」/「全仓 0 条」），却没有任何 `@stale-fact` 溯源记号 —— 这句话上游一变就变成屏上说谎，而没有任何人会被通知。修法：在本单元或紧贴其上的注释块里挂 `@stale-fact <路径> /<正则>/ <op><n>`，把这句话赌的那个计数写下来。
+      原文：第 {tick} 拍，<b>没有任何一条传导边写这一格</b>（入边 0 条）。
+
+   修法：· STALE-5 ⇒ 挂 `@stale-fact <路径> /<正则>/ <op><n>`，把这句话赌的计数写下来；
+         · STALE-6 ⇒ **上游已经变了，把屏上那句话改对**（这一条永不豁免）；
+         · STALE-7/8 ⇒ 把旧名/分叉的那一份真相源改到位（一个概念只许有一份真相源）。
+
+❌ stale-claims:check 未通过 —— 注释层(STALE-1..4)：红（新增 22 · 回弹 0） · 屏上层(STALE-5..8)：红（新增 1 · 松弛 0） · 门自述层(STALE-9/10)：绿
+
+ ❯ test/stale-claims.seam.test.ts:53:17
+     51| 
+     52|   it("门本体通过（存量豁免棘轮内，无新增声明违规）", () => {
+     53|     const out = execFileSync("node", [GATE], { cwd: REPO_ROOT, encodin…
+       |                 ^
+     54|     expect(out).toContain("stale-claims:check 通过");
+     55|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 16 passed (17)
+   Start at  13:55:59
+   Duration  29.62s (transform 2.43s, setup 4.43s, collect 50ms, tests 23.50s, environment 1.06s, prepare 149ms)
+
+undefined
+/private/tmp/wt-base-front/apps/frontend-shell:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run test/stale-claims.seam.test.ts --maxWorkers=1 --testTimeout=1500000
+SOLO_RC[test/stale-claims.seam.test.ts]=1
+== solo test/sandbox-kpi-layer.seam.test.tsx ==
+
+ RUN  v3.2.6 /private/tmp/wt-base-front/apps/frontend-shell
+
+stderr | test/sandbox-kpi-layer.seam.test.tsx > WO-SANDBOX-KPI-LAYER · 顶栏读数按偏离度分层 > ① 真降层：偏离最大的 3 个在第一层，其余进 <details>；② D4 守恒：8 个 testid 一个不少
+Error: Uncaught [TypeError: Cannot convert undefined or null to object]
+    at reportException (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:26599:12) TypeError: Cannot convert undefined or null to object
+    at Object.keys (<anonymous>)
+    at [90m/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:840:25
+    at updateMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:16427:19)
+    at Object.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:17067:16)
+    at Proxy.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react@18.3.1/node_modules/[4mreact[24m/cjs/react.development.js:1650:21)
+    at SandboxView [90m(/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:839:21[90m)[39m
+    at renderWithHooks (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:15486:18)
+    at updateFunctionComponent (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:19617:20)
+    at beginWork (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:21640:16)
+    at HTMLUnknownElement.callCallback (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:4164:14)
+Error: Uncaught [TypeError: Cannot convert undefined or null to object]
+    at reportException (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:26599:12) TypeError: Cannot convert undefined or null to object
+    at Object.keys (<anonymous>)
+    at [90m/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:840:25
+    at updateMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:16427:19)
+    at Object.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:17067:16)
+    at Proxy.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react@18.3.1/node_modules/[4mreact[24m/cjs/react.development.js:1650:21)
+    at SandboxView [90m(/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:839:21[90m)[39m
+    at renderWithHooks (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:15486:18)
+    at updateFunctionComponent (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:19617:20)
+    at beginWork (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:21640:16)
+    at HTMLUnknownElement.callCallback (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:4164:14)
+The above error occurred in the <SandboxView> component:
+
+    at SandboxView (/private/tmp/wt-base-front/apps/frontend-shell/src/views/sim/SandboxView.tsx:365:81)
+    at QueryClientProvider (file:///Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@tanstack+react-query@5.101.0_react@18.3.1/node_modules/@tanstack/react-query/build/modern/QueryClientProvider.js:20:3)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+stderr | test/sandbox-kpi-layer.seam.test.tsx > WO-SANDBOX-KPI-LAYER · 顶栏读数按偏离度分层 > ④ 第一层容量守恒：无论多少个 stateVar，第一层读数个数不随之膨胀（这才是「不密密麻麻」的机器判据）
+Error: Uncaught [TypeError: Cannot convert undefined or null to object]
+    at reportException (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:26599:12) TypeError: Cannot convert undefined or null to object
+    at Object.keys (<anonymous>)
+    at [90m/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:840:25
+    at updateMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:16427:19)
+    at Object.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:17067:16)
+    at Proxy.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react@18.3.1/node_modules/[4mreact[24m/cjs/react.development.js:1650:21)
+    at SandboxView [90m(/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:839:21[90m)[39m
+    at renderWithHooks (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:15486:18)
+    at updateFunctionComponent (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:19617:20)
+    at beginWork (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:21640:16)
+    at HTMLUnknownElement.callCallback (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:4164:14)
+Error: Uncaught [TypeError: Cannot convert undefined or null to object]
+    at reportException (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/jsdom@25.0.1/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:26599:12) TypeError: Cannot convert undefined or null to object
+    at Object.keys (<anonymous>)
+    at [90m/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:840:25
+    at updateMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:16427:19)
+    at Object.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:17067:16)
+    at Proxy.useMemo (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react@18.3.1/node_modules/[4mreact[24m/cjs/react.development.js:1650:21)
+    at SandboxView [90m(/private/tmp/wt-base-front/apps/frontend-shell/[39msrc/views/sim/SandboxView.tsx:839:21[90m)[39m
+    at renderWithHooks (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:15486:18)
+    at updateFunctionComponent (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:19617:20)
+    at beginWork (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:21640:16)
+    at HTMLUnknownElement.callCallback (/Users/apple/deploy/wo-edge-wire/node_modules/[4m.pnpm[24m/react-dom@18.3.1_react@18.3.1/node_modules/[4mreact-dom[24m/cjs/react-dom.development.js:4164:14)
+The above error occurred in the <SandboxView> component:
+
+    at SandboxView (/private/tmp/wt-base-front/apps/frontend-shell/src/views/sim/SandboxView.tsx:365:81)
+    at QueryClientProvider (file:///Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@tanstack+react-query@5.101.0_react@18.3.1/node_modules/@tanstack/react-query/build/modern/QueryClientProvider.js:20:3)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+ ❯ test/sandbox-kpi-layer.seam.test.tsx (2 tests | 2 failed) 30525ms
+   × WO-SANDBOX-KPI-LAYER · 顶栏读数按偏离度分层 > ① 真降层：偏离最大的 3 个在第一层，其余进 <details>；② D4 守恒：8 个 testid 一个不少 15358ms
+     → Unable to find an element by: [data-testid="sandbox-kpi-rest"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<html>[39m
+  [36m<head />[39m
+  [36m<body>[39m
+    [36m<div />[39m
+  [36m</body>[39m
+[36m</html>[39m
+   × WO-SANDBOX-KPI-LAYER · 顶栏读数按偏离度分层 > ④ 第一层容量守恒：无论多少个 stateVar，第一层读数个数不随之膨胀（这才是「不密密麻麻」的机器判据） 15161ms
+     → Unable to find an element by: [data-testid="sandbox-kpi-rest"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<html>[39m
+  [36m<head />[39m
+  [36m<body>[39m
+    [36m<div />[39m
+  [36m</body>[39m
+[36m</html>[39m
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/sandbox-kpi-layer.seam.test.tsx > WO-SANDBOX-KPI-LAYER · 顶栏读数按偏离度分层 > ① 真降层：偏离最大的 3 个在第一层，其余进 <details>；② D4 守恒：8 个 testid 一个不少
+TestingLibraryElementError: Unable to find an element by: [data-testid="sandbox-kpi-rest"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<html>[39m
+  [36m<head />[39m
+  [36m<body>[39m
+    [36m<div />[39m
+  [36m</body>[39m
+[36m</html>[39m
+ ❯ Proxy.waitForWrapper ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/wait-for.js:163:27
+ ❯ test/sandbox-kpi-layer.seam.test.tsx:96:11
+     94|     mount();
+     95|     await ready();
+     96|     await waitFor(() => expect(screen.getByTestId("sandbox-kpi-rest"))…
+       |           ^
+     97|     // ── 前置守护（非空转）：CFG 必须真的超出第一层容量，否则下面两向都恒真 ──
+     98|     // ⚠ 单参写法是**必须**的，不是风格：`coverage-blind` 门的 `hasCardinalityAnchor`
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  test/sandbox-kpi-layer.seam.test.tsx > WO-SANDBOX-KPI-LAYER · 顶栏读数按偏离度分层 > ④ 第一层容量守恒：无论多少个 stateVar，第一层读数个数不随之膨胀（这才是「不密密麻麻」的机器判据）
+TestingLibraryElementError: Unable to find an element by: [data-testid="sandbox-kpi-rest"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div />[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<html>[39m
+  [36m<head />[39m
+  [36m<body>[39m
+    [36m<div />[39m
+  [36m</body>[39m
+[36m</html>[39m
+ ❯ Proxy.waitForWrapper ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/wait-for.js:163:27
+ ❯ test/sandbox-kpi-layer.seam.test.tsx:142:11
+    140|     mount();
+    141|     await ready();
+    142|     await waitFor(() => expect(screen.getByTestId("sandbox-kpi-rest"))…
+       |           ^
+    143|     const rest = screen.getByTestId("sandbox-kpi-rest");
+    144|     const inFirst = CFG.stateVars.filter((v) => within(rest).queryByTe…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+⎯⎯⎯⎯⎯⎯ Unhandled Errors ⎯⎯⎯⎯⎯⎯
+
+Vitest caught 2 unhandled errors during the test run.
+This might cause false positive tests. Resolve unhandled errors to make sure your tests are not affected.
+
+⎯⎯⎯⎯⎯ Uncaught Exception ⎯⎯⎯⎯⎯
+TypeError: Cannot convert undefined or null to object
+ ❯ src/views/sim/SandboxView.tsx:840:25
+    838|   // 全局 KPI = 当前 world 所有对象聚合态的均值（0-100）。
+    839|   const globalKpi = useMemo(() => {
+    840|     const objs = Object.keys(world);
+       |                         ^
+    841|     if (objs.length === 0) return 0;
+    842|     return objs.reduce((a, o) => a + aggregate(world[o]), 0) / objs.le…
+ ❯ updateMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:16427:19
+ ❯ Object.useMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:17067:16
+ ❯ Proxy.useMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react@18.3.1/node_modules/react/cjs/react.development.js:1650:21
+ ❯ SandboxView src/views/sim/SandboxView.tsx:839:21
+ ❯ renderWithHooks ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:15486:18
+ ❯ updateFunctionComponent ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:19617:20
+ ❯ beginWork ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:21640:16
+ ❯ beginWork$1 ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27465:14
+
+This error originated in "test/sandbox-kpi-layer.seam.test.tsx" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.
+The latest test that might've caused the error is "① 真降层：偏离最大的 3 个在第一层，其余进 <details>；② D4 守恒：8 个 testid 一个不少". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+
+⎯⎯⎯⎯⎯ Uncaught Exception ⎯⎯⎯⎯⎯
+TypeError: Cannot convert undefined or null to object
+ ❯ src/views/sim/SandboxView.tsx:840:25
+    838|   // 全局 KPI = 当前 world 所有对象聚合态的均值（0-100）。
+    839|   const globalKpi = useMemo(() => {
+    840|     const objs = Object.keys(world);
+       |                         ^
+    841|     if (objs.length === 0) return 0;
+    842|     return objs.reduce((a, o) => a + aggregate(world[o]), 0) / objs.le…
+ ❯ updateMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:16427:19
+ ❯ Object.useMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:17067:16
+ ❯ Proxy.useMemo ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react@18.3.1/node_modules/react/cjs/react.development.js:1650:21
+ ❯ SandboxView src/views/sim/SandboxView.tsx:839:21
+ ❯ renderWithHooks ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:15486:18
+ ❯ updateFunctionComponent ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:19617:20
+ ❯ beginWork ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:21640:16
+ ❯ beginWork$1 ../../../../../Users/apple/deploy/wo-edge-wire/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/cjs/react-dom.development.js:27465:14
+
+This error originated in "test/sandbox-kpi-layer.seam.test.tsx" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.
+The latest test that might've caused the error is "④ 第一层容量守恒：无论多少个 stateVar，第一层读数个数不随之膨胀（这才是「不密密麻麻」的机器判据）". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed (2)
+     Errors  2 errors
+   Start at  13:56:31
+   Duration  40.86s (transform 4.26s, setup 5.56s, collect 2.34s, tests 30.52s, environment 1.58s, prepare 208ms)
+
+undefined
+/private/tmp/wt-base-front/apps/frontend-shell:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run test/sandbox-kpi-layer.seam.test.tsx --maxWorkers=1 --testTimeout=1500000
+SOLO_RC[test/sandbox-kpi-layer.seam.test.tsx]=1
+SOLO_RC=1 END=09-27 13:57:12

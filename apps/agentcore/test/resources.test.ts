@@ -52,10 +52,10 @@ describe("M4 · 统一资源模式（agents）", () => {
     expect(versions.map((v) => v.version)).toEqual([2, 1]);
   });
 
-  it("发布校验：模型 ID 非法 + 工具引用不存在 → ok:false errors 指明字段", async () => {
+  it("发布校验：模型 ID 非法（含非法字符）+ 工具引用不存在 → ok:false errors 指明字段", async () => {
     const t = await createTestApp();
     const id = await createAgent(t, "uni_bad", {
-      model: "",
+      model: "bad model!", // 含空格/感叹号 → 非法（空才是"继承矩阵"合法值）
       tools: [
         { kind: "BUILTIN", name: "no_such_tool" },
         { kind: "WORKFLOW", workflowId: "wf_missing", version: "latest" },
@@ -68,6 +68,25 @@ describe("M4 · 统一资源模式（agents）", () => {
     expect(body.errors.some((e) => e.field === "model")).toBe(true);
     expect(body.errors.some((e) => e.field === "tools" && e.message.includes("no_such_tool"))).toBe(true);
     expect(body.errors.some((e) => e.field === "tools" && e.message.includes("wf_missing"))).toBe(true);
+  });
+
+  it("发布校验：模型留空合法（继承用途绑定矩阵 agent 模型）→ 不报 model 错", async () => {
+    const t = await createTestApp();
+    const id = await createAgent(t, "uni_inherit", { model: "" });
+    const pub = await t.app.inject({ method: "POST", url: `/b/v1/agents/${id}/publish`, headers: debugHeaders(ADMIN) });
+    const body = pub.json() as { ok: boolean; errors?: { field: string; message: string }[] };
+    expect((body.errors ?? []).some((e) => e.field === "model")).toBe(false); // 空模型不再判非法（继承矩阵）
+  });
+
+  it("B→A 存在性探针：scopeDeclaration 含 DataCore 不存在的对象类型 → 死路，发布被拒", async () => {
+    const t = await createTestApp();
+    const id = await createAgent(t, "uni_scope_bad", { scopeDeclaration: { objectTypes: ["Order", "GhostType"], toolNames: ["query_objects"] } });
+    const pub = await t.app.inject({ method: "POST", url: `/b/v1/agents/${id}/publish`, headers: debugHeaders(ADMIN) });
+    const body = pub.json() as { ok: boolean; errors: { field: string; message: string }[] };
+    expect(body.ok).toBe(false);
+    expect(body.errors.some((e) => e.field === "scopeDeclaration.objectTypes" && e.message.includes("GhostType") && e.message.includes("死路"))).toBe(true);
+    // 合法对象类型不报死路（Order 存在）
+    expect(body.errors.some((e) => e.message.includes("Order") && e.message.includes("死路"))).toBe(false);
   });
 
   it("references 非空时 retire 需 confirm、delete 被拒；解除引用后 delete → 204", async () => {

@@ -33,13 +33,15 @@ export function lexTokens(s: string): Set<string> {
   return out;
 }
 
-/** 词法重叠计数（平手裁决用）：query token 命中 skill(name 权重×2 / summary ×1)。 */
+/** 词法重叠计数（平手裁决用）：query token 命中 skill(name 权重×2 / capability ×2 / summary ×1)。 */
 export function scoreSkill(queryTokens: Set<string>, skill: SkillDefinition): number {
   const nameTok = lexTokens(skill.name ?? "");
+  const capTok = lexTokens(`${skill.capability ?? ""}`);
   const sumTok = lexTokens(`${skill.summary ?? ""}`);
   let score = 0;
   for (const q of queryTokens) {
     if (nameTok.has(q)) score += 2;
+    else if (capTok.has(q)) score += 2;
     else if (sumTok.has(q)) score += 1;
   }
   return score;
@@ -55,7 +57,7 @@ export function rankSkills(
   const qt = lexTokens(query ?? "");
   return skills
     .map((skill) => {
-      const sim = cosine(qv, embedder(`${skill.name ?? ""} ${skill.summary ?? ""}`));
+      const sim = cosine(qv, embedder(`${skill.name ?? ""} ${skill.capability ?? ""} ${skill.summary ?? ""}`));
       const score = Math.round((sim + scoreSkill(qt, skill) * 1e-3) * 1e6) / 1e6;
       return { skill, score };
     })

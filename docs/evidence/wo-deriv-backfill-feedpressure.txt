@@ -1,0 +1,9 @@
+WorkOrder 样本 props 键: ['baseId', 'endDate', 'lineId', 'moNo', 'modelId', 'orderRef', 'qtyActual', 'qtyPlanned', 'releasePressure', 'spanDays', 'startDate', 'status', 'woId']
+WIPLot  样本 props 键: ['currentProcess', 'feedPressure', 'lastMoveTime', 'lineId', 'lotId', 'modelId', 'qty', 'startTime', 'status', 'woId']
+金丝雀：wo_by_id 大小 260 ；能拼上键的 WIPLot 260/260
+重算逐位相符 260 / 不符 0 （n=260，容差 5e-04）
+入边条数分布 {1: 260}
+入边 qtyPlanned 和 [1431, 5674] 不同值 239
+qty        [1287, 5106]
+feedPressure [111.1, 111.2] 不同值 181
+比值 sum/qty [1.11111, 1.11189] 不同值 220

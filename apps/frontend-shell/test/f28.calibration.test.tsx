@@ -107,3 +107,18 @@ describe("F28 · 校准报告页（/admin/calibration，M11 增量）", () => {
     expect(screen.getByTestId("calib-history-meta-1")).toHaveTextContent("待元闭环回写");
   });
 });
+
+describe("M0-F2 · 实料欠账计上屏（PRD-ground-truth §2.1）", () => {
+  it("欠账面板：屏上读数与回包逐字一致（paired/forecasts/覆盖/expected/账龄/分指标）", async () => {
+    loginAs("planner");
+    renderApp("/admin/calibration");
+
+    // 屏上 = 回包逐字（fixture：forecasts 252 · paired 3 · unpaired 249 · 覆盖 1.19% · 期望≥30 欠 27 · 账龄 12 天）
+    const panel = await screen.findByTestId("calib-debt-panel");
+    expect(panel).toHaveTextContent("预测 252 条 · 已配对 3 · 未配对 249 · 覆盖 1.19%");
+    expect(screen.getByTestId("calib-debt-expected")).toHaveTextContent("期望 ≥30 对 · 欠 27 对");
+    expect(screen.getByTestId("calib-debt-oldest")).toHaveTextContent("最老未配对账龄 12 天");
+    expect(screen.getByTestId("calib-debt-rationale")).toHaveTextContent("欠 27 对");
+    expect(screen.getByTestId("calib-debt-bymetric")).toHaveTextContent("capacity_forecast/4680-NCM：3/252");
+  });
+});

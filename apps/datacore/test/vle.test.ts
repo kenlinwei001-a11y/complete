@@ -8,7 +8,9 @@ interface Report {
   engineeringVerificationScore: number;
 }
 
-describe("闭环验证引擎 VLE（VL1/VL3/VL6/VL8）", () => {
+// VLE 每 run 跑 3 次确定性合成生成（主 + determinism 双算）≈数秒；contended CI 下 30s 默认偏紧 →
+// 提到 120s（仅本套，全局 vitest.config 30s 不动）。这是环境耗时适配，非掩盖回归（baseline 同样需要）。
+describe("闭环验证引擎 VLE（VL1/VL3/VL6/VL8）", { timeout: 120000 }, () => {
   it("VL1: SMOKE 全绿基线 —— 七段断言通过、三覆盖率、工程验证度", async () => {
     const t = await makeApp();
     const run = await t.services.vle.run(t.adminCtx, "SMOKE", 42);

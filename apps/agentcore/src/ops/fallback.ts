@@ -3,6 +3,8 @@ import { newId } from "../ids.js";
 import type { FallbackTraceRow, Repos } from "../persistence/repos.js";
 import { HttpError } from "../router/orchestrator.js";
 import { centroid, cosine, pseudoEmbed } from "../util/embedding.js";
+// WO-BUILTIN-MIGRATE-REST · sketch 里的调用名是**载体**，本文件按**身份**查表/判标记 ⇒ 归一。
+import { resolveBuiltinToolIdentity } from "../mcp/builtin-mcp.js";
 
 export interface FallbackStatsItem {
   /** 代表性 trace（最新一条）的 id —— 前端 promote 以 traceId 提交 */
@@ -109,7 +111,10 @@ export async function promoteFallbackTrace(
   const steps: PlanStep[] = [];
   let i = 1;
   for (const sketch of trace.executedPlanSketch) {
-    const make = SKETCH_TO_STEP[sketch.toolName];
+    // ⚠ WO-BUILTIN-MIGRATE-REST：sketch 记的是**模型面调用名**（载体），而这张表按**身份**（裸名）建
+    // ⇒ 必须先归一。不归一：已迁件（query_objects / resolve_slice / evaluate_rules / invoke_solver /
+    // create_action_draft…）在这一步**静默丢步**（少一步而不是报错），下面两个标记位同理。
+    const make = SKETCH_TO_STEP[resolveBuiltinToolIdentity(sketch.toolName)];
     if (make) steps.push(make(i++));
   }
   steps.push({
@@ -128,8 +133,8 @@ export async function promoteFallbackTrace(
   };
   await repos.plans.insert(plan);
 
-  const hasActionDraft = trace.executedPlanSketch.some((s) => s.toolName === "create_action_draft");
-  const hasSolver = trace.executedPlanSketch.some((s) => s.toolName === "invoke_solver");
+  const hasActionDraft = trace.executedPlanSketch.some((s) => resolveBuiltinToolIdentity(s.toolName) === "create_action_draft");
+  const hasSolver = trace.executedPlanSketch.some((s) => resolveBuiltinToolIdentity(s.toolName) === "invoke_solver");
   const now = new Date().toISOString();
   const intent: IntentDefinition = {
     id: newId("int"),

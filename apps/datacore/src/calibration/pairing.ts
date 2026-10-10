@@ -42,10 +42,26 @@ export async function runPairing(repos: Repos, solvers: SolverService, tenantId:
   const stale = health.some((h) => h.props.critical === true && num(h.props.lagHours) > params.health.staleHours);
   if (stale) return { paired: 0, deferred: unpaired.length, staleDeferred: true };
 
-  // 实际值索引：line_output_daily（A8 ts_agg_runs，日窗口、按产线）
+  // 实际值索引：line_output_daily（A8 ts_agg_runs，日窗口、按产线）→ 按基地聚合。
+  // SA-3 Workshop 层后一个基地的 10 条"产线"实为 10 道串行工序车间（制浆→…→PACK），
+  // 物料顺次流经各车间，基地当日成品产出 = 单道代表工序吞吐（各车间产出的均值），
+  // 而非各车间产出之和（求和会把同一批在制品按车间数重复计入）。此口径与被校准的
+  // 预测（基地产能受共享化成/老化瓶颈约束 ≈ 单产线当量）同尺度，也与 Workshop 前单产线口径一致。
   const runs = await repos.tsAggRuns.list(tenantId, (r) => r.specKey === "line_output_daily");
-  const outByLineDate = new Map<string, number>();
-  for (const r of runs) outByLineDate.set(`${r.entityId}|${r.windowEnd}`, r.value);
+  const lines = await repos.objects.listByType(tenantId, "Line");
+  const baseByLine = new Map<string, string>();
+  for (const l of lines) baseByLine.set(String(l.props.lineId ?? l.id), String(l.props.baseId ?? ""));
+  const outSumByBaseDate = new Map<string, number>();
+  const outCntByBaseDate = new Map<string, number>();
+  for (const r of runs) {
+    const b = baseByLine.get(String(r.entityId));
+    if (!b) continue;
+    const key = `${b}|${r.windowEnd}`;
+    outSumByBaseDate.set(key, (outSumByBaseDate.get(key) ?? 0) + r.value);
+    outCntByBaseDate.set(key, (outCntByBaseDate.get(key) ?? 0) + 1);
+  }
+  const outByBaseDate = new Map<string, number>();
+  for (const [key, sum] of outSumByBaseDate) outByBaseDate.set(key, sum / (outCntByBaseDate.get(key) ?? 1));
 
   const c = await solvers.loadContext(tenantId);
   const currentVersion = await solvers.paramsVersion(tenantId);
@@ -67,7 +83,7 @@ export async function runPairing(repos: Repos, solvers: SolverService, tenantId:
     for (let d = f.windowFrom; d <= f.windowTo && complete; d = datePlus(d, 1)) {
       days++;
       for (const b of baseIds) {
-        const v = outByLineDate.get(`LINE-${b}|${d}`);
+        const v = outByBaseDate.get(`${b}|${d}`);
         if (v === undefined) {
           complete = false;
           break;

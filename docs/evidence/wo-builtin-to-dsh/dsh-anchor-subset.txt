@@ -1,0 +1,56 @@
+── test/dsh-* 锚子集（32 文件：31 既有 + 本单新增 dsh-builtin-mcp.seam.test.ts）──
+来源 = 全量套件 run（vitest run --maxWorkers=3，全 230 文件）的逐文件行；本子集**全绿**。
+
+✓ test/dsh-engine-tool-bridge.seam.test.ts (24 tests) 191008ms
+✓ test/dsh-resource-reach.seam.test.ts (14 tests) 262377ms
+✓ test/dsh-builtin-mcp.seam.test.ts (20 tests) 131005ms
+✓ test/dsh-arm-ad-surface.seam.test.ts (3 tests) 84379ms
+✓ test/dsh-e2e-honesty.test.ts (6 tests) 75712ms
+✓ test/dsh-rules-mcp.seam.test.ts (14 tests) 65946ms
+✓ test/dsh-engine-mcp-forward.seam.test.ts (8 tests) 52749ms
+✓ test/dsh-e2e-real-triad.test.ts (8 tests | 2 skipped) 55941ms
+✓ test/dsh-gov-production.seam.test.ts (5 tests) 34947ms
+✓ test/dsh-solvers-mcp.seam.test.ts (16 tests) 32215ms
+✓ test/dsh-provider-seam.test.ts (12 tests) 20694ms
+✓ test/dsh-poc-acceptance.test.ts (6 tests) 21116ms
+✓ test/dsh-e2e-tenant-collision.test.ts (3 tests) 33855ms
+✓ test/dsh-fault-injection.seam.test.ts (9 tests) 21527ms
+✓ test/dsh-postcheck.seam.test.ts (4 tests) 22456ms
+✓ test/dsh-two-arm-account-diff.seam.test.ts (4 tests | 1 skipped) 25057ms
+✓ test/dsh-deny-budget.seam.test.ts (5 tests) 16823ms
+✓ test/dsh-degraded-seams.test.ts (6 tests) 21326ms
+✓ test/dsh-solver-precondition.seam.test.ts (3 tests) 22644ms
+✓ test/dsh-e2e-degradation-screen.test.ts (3 tests) 14259ms
+✓ test/dsh-watchdog.test.ts (7 tests) 29744ms
+✓ test/dsh-e2e-dualrun50.test.ts (76 tests) 762847ms
+✓ test/dsh-dualrun-reconcile.test.ts (3 tests) 29441ms
+✓ test/dsh-token-bucket-carrying.seam.test.ts (1 test) 11254ms
+✓ test/dsh-reflect-wiring.seam.test.ts (4 tests) 4552ms
+✓ test/dsh-gov-datacore-credential.seam.test.ts (5 tests) 2461ms
+✓ test/dsh-skill-routing-parity.seam.test.ts (12 tests | 1 skipped) 1044ms
+✓ test/dsh-runtime-reassemble.test.ts (47 tests) 778ms
+✓ test/dsh-skill-provider.seam.test.ts (17 tests) 1172ms
+✓ test/dsh-solver-gate-wire.seam.test.ts (6 tests) 612ms
+✓ test/dsh-runtime-map.test.ts (15 tests) 126ms
+✓ test/dsh-reflect-parity.seam.test.ts (11 tests) 64ms
+
+── 全量套件尾部（同一份日志）──
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 228 passed | 1 skipped (230)
+      Tests  1 failed | 1676 passed | 9 skipped (1686)
+   Start at  13:43:21
+   Duration  1590.50s (transform 11.84s, setup 0ms, collect 1603.78s, tests 2666.72s, environment 201ms, prepare 174.66s)
+
+
+── 同一份全量套件里唯一一条红（**不在本子集内**，且与本次改动无因果）──
+FAIL test/runtime-workflow.test.ts > R10 · 工具并行执行 > 同轮 3 个 READ 并行
+  AssertionError: expected 308 to be less than 250（串行需 ≥300ms 的墙钟断言）
+归因（三条，全部实测）：
+  ① 该文件与 canonical **逐字节相同**（本单未改它）；
+  ② 它跑的是**自定义 agent**（`{kind:"BUILTIN", name:"query_objects"}`，走旧载体、语义未动），
+     本单在该路径上新增的只有一次名字前缀解析；
+  ③ 机器负载：全量套件期间 load 120→249；固定 CPU 工作量金丝雀（1e7 次哈希，空闲机秒级）
+     实测 46,382ms / 49,527ms / 52,425ms（≈15–30× 膨胀）；并行 100ms 定时器金丝雀 = 101ms（睡眠不受影响）。
+  复测：solo 跑三次 —— 279ms（红）· 308ms（红，全量套件内）· **绿 9/9（load 112）**。

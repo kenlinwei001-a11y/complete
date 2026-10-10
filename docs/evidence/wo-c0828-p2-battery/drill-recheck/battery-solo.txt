@@ -1,0 +1,20 @@
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/apps/datacore
+
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/dynamic-drill-resolve.seam.test.ts [ test/dynamic-drill-resolve.seam.test.ts ]
+Error: [vitest-worker]: Timeout calling "fetch" with "["/src/decision/record-materialize.ts","ssr"]"
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  no tests
+   Start at  20:23:32
+   Duration  1957.37s (transform 1346.81s, setup 0ms, collect 0ms, tests 0ms, environment 0ms, prepare 1.58s)
+
+undefined
+/Users/apple/deploy/complete/apps/datacore:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run test/dynamic-drill-resolve.seam.test.ts --maxWorkers=1 --testTimeout=1500000
+CAPTURED_RC=1

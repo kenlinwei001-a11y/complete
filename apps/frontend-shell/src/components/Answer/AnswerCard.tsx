@@ -5,6 +5,8 @@ import { sendFeedback } from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 import { AnswerBlockView } from "./AnswerBlocks";
+import { ValidationTracePanel } from "./ValidationTracePanel";
+import { CoordinatorSummaryCard, isCoordinatorAnswer } from "./CoordinatorSummaryCard";
 import styles from "./AnswerCard.module.css";
 
 /**
@@ -18,11 +20,14 @@ export function AnswerCard({
   taskId,
   showFeedback = true,
   showDetailLink = true,
+  onRetry,
 }: {
   answer: Answer;
   taskId: string;
   showFeedback?: boolean;
   showDetailLink?: boolean;
+  /** CL.7：gap 块"继续推演"重跑原问句（QueryDock 注入）。 */
+  onRetry?: () => void;
 }) {
   const exploratory = answer.trustLevel === "AGENT_EXPLORATORY";
   const provOrder = useMemo(() => answer.provenance.map((p) => p.id), [answer.provenance]);
@@ -31,6 +36,8 @@ export function AnswerCard({
     return i >= 0 ? i + 1 : 0;
   };
   const [voted, setVoted] = useState<"UP" | "DOWN" | null>(null);
+  // WO-FIVE-ROLE-AI-EMPLOYEE P1 · C5：跨域协调答案 → 多角色协作汇总卡（每角色一栏 + scope 徽标 + 冲突高亮）。
+  const isCoordinator = useMemo(() => isCoordinatorAnswer(answer), [answer]);
 
   const vote = async (v: "UP" | "DOWN") => {
     try {
@@ -59,12 +66,24 @@ export function AnswerCard({
             ◇ {zh.dock.exploratoryBadge}
           </span>
         )}
+        {/* WO-REAL-LLM-FREE-QUERY 诚实三态之三：AGENT_EXPLORATORY = path-B 真 LLM 深问（据页/块上下文·工具取证）。
+            与 solver「确定性求解」/ DecisionPlay「策略推理·确定性生成」互斥——绝不把真 LLM 输出标"数据库事实"。 */}
+        {exploratory && (
+          <span className="badge" data-testid="answer-reasoning-mode" style={{ marginLeft: 6, color: "var(--muted)", borderColor: "var(--line2)", fontSize: 12 }}>
+            {zh.dock.llmReasoningBadge}
+          </span>
+        )}
       </div>
       <div className={styles.blocks}>
-        {answer.blocks.map((b, i) => (
-          <AnswerBlockView key={i} block={b} taskId={taskId} provIndex={provIndex} />
-        ))}
+        {isCoordinator ? (
+          <CoordinatorSummaryCard answer={answer} />
+        ) : (
+          answer.blocks.map((b, i) => (
+            <AnswerBlockView key={i} block={b} taskId={taskId} provIndex={provIndex} onRetry={onRetry} />
+          ))
+        )}
       </div>
+      {answer.validationTrace && <ValidationTracePanel trace={answer.validationTrace} />}
       {(showFeedback || showDetailLink) && (
         <div className={styles.foot}>
           {showFeedback && (

@@ -23,6 +23,7 @@ interface AuditItem {
   title: string;
   ruleRef?: string;
   why: string;
+  kind?: import("@platform/contracts").AuditKind;
   fix?: { label: string; patch: Record<string, number> };
 }
 
@@ -81,9 +82,11 @@ export function planAudit(c: SolverContext, input: PlanAuditInput): Record<strin
   }
 
   const m = segMargins(c);
-  const wPas = input.seg_pas / Math.max(0.0001, input.dem);
-  const wEss = input.seg_ess / Math.max(0.0001, input.dem);
-  const wCom = input.seg_com / Math.max(0.0001, input.dem);
+  // PRD-IND-audit §4.5-A1：结构毛利权重分母用 segTot（三细分合计），与 HTML 一致 → X01/gmStruct 自洽。
+  const segTot = Math.max(0.0001, input.seg_pas + input.seg_ess + input.seg_com);
+  const wPas = input.seg_pas / segTot;
+  const wEss = input.seg_ess / segTot;
+  const wCom = input.seg_com / segTot;
   const gmStruct = round(wPas * m.pas + wEss * m.ess + wCom * m.com, 4);
   if (input.gmTarget > gmStruct + t.gmHardOver) {
     H.push({
@@ -172,6 +175,33 @@ export function planAudit(c: SolverContext, input: PlanAuditInput): Record<strin
     });
   }
 
+  // PRD-IND-audit §4.4：外部信号诊断 E01–E03（环境感知，纳入软风险 M；ruleRef C24/C25/C13）。
+  // E01 碳酸锂上行挤压毛利缓冲：结构毛利与目标缓冲 < extGmBufferMin → 成本上行即击穿。
+  if (gmStruct - input.gmTarget < t.extGmBufferMin) {
+    M.push({
+      id: "E01",
+      title: "外部·原料成本",
+      ruleRef: "C24",
+      why: `外部信号「碳酸锂价上行」：结构毛利 ${gmStruct}% 与目标 ${input.gmTarget}% 缓冲仅 ${round(gmStruct - input.gmTarget, 2)}pp（<${t.extGmBufferMin}），成本上行即击穿`,
+    });
+  }
+  // E02 终端上险低于假设：高位需求依赖未兑现的终端上量。
+  if (input.dem >= t.extDemHigh) {
+    M.push({
+      id: "E02",
+      title: "外部·终端需求",
+      ruleRef: "C25",
+      why: `外部信号「终端上险低于假设」：需求 P50 ${input.dem} 万套（≥${t.extDemHigh}）高位，若终端上量不及预期则产销缺口扩大`,
+    });
+  }
+  // E03 重点客户负面舆情：应收/信用承压（环境感知恒提示）。
+  M.push({
+    id: "E03",
+    title: "外部·客户信用",
+    ruleRef: "C13",
+    why: `外部信号「重点客户负面舆情」：建议动态复核应收周期与信用额度（C13），防止回款逾期击穿现金垫`,
+  });
+
   // 建议修正 S[] — one suggestion per fix-able finding.
   for (const item of [...H, ...M]) {
     if (item.fix && Object.keys(item.fix.patch).length > 0) {
@@ -179,8 +209,27 @@ export function planAudit(c: SolverContext, input: PlanAuditInput): Record<strin
     }
   }
 
+  // PRD §2②：给每审计项打 kind（9 种口径）→ 前端按 kind 路由 audit_timeline 出各自逐日 series。
+  // 确定性 id→kind 映射（按审计项语义；S-* 修正项继承其源项 kind）。
+  const AUDIT_KIND_BY_ID: Record<string, import("@platform/contracts").AuditKind> = {
+    X01: "份额", X02: "产销", X03: "毛利", X04: "齐套", X05: "现金",
+    R01: "struct", R02: "capex23", E01: "毛利", E02: "产销", E03: "份额",
+  };
+  for (const item of [...H, ...M, ...S]) {
+    const baseId = item.id.replace(/^S-/, "");
+    item.kind = AUDIT_KIND_BY_ID[baseId] ?? "struct";
+  }
+
   const score = clamp(100 - t.scoreH * H.length - t.scoreM * M.length, 0, 100);
-  const verdict = score >= t.passScore ? "通过" : score >= t.condScore ? "有条件通过" : "不通过";
+  // PRD-IND-audit §3.1：4 态状态机（按 H/M 计数，非分数阈值）。
+  const verdict =
+    H.length > 0
+      ? "站不住"
+      : M.length >= 3
+        ? "可定稿但有重要风险"
+        : M.length > 0
+          ? "可定稿·关注风险"
+          : "全部通过·可直接定稿";
   return { H, M, S, score, verdict, gmStruct };
 }
 
@@ -262,11 +311,23 @@ export function planGenerate(c: SolverContext, args: PlanGenerateArgs): Record<s
     return { pathKey, name: eff.name, outcome, scores: { profit, scale, cash, growth, stability, total }, hardViol, meets };
   });
 
-  const byKey = new Map(evals.map((e) => [e.pathKey, e]));
-  const pick = (k: string): PathEval => byKey.get(k) as PathEval;
-  const cEval = pick("C");
-  const bEval = pick("B");
-  const aggressive = cEval.scores.total >= bEval.scores.total ? cEval : bEval;
+  // PRD-IND-plan-generate §4.4 / HTML gen3Plans：5 路径骨架 → 按取向收敛 3 方案（1:1）。
+  // 先锁 稳健(盈利+现金+稳健 max，可行优先) 与 进取(规模+增长 max，全集)，再从剩余可行取 total max 为 均衡；去重。
+  const pickMax = (pool: PathEval[], fn: (e: PathEval) => number, used: Set<string>): PathEval => {
+    const free = pool.filter((e) => !used.has(e.pathKey)).sort((a, b) => fn(b) - fn(a) || (a.pathKey < b.pathKey ? -1 : 1));
+    return free[0] ?? [...pool].sort((a, b) => fn(b) - fn(a) || (a.pathKey < b.pathKey ? -1 : 1))[0]!;
+  };
+  const feas = evals.filter((e) => e.hardViol.length === 0);
+  const used = new Set<string>();
+  const std = pickMax(feas.length ? feas : evals, (e) => e.scores.profit + e.scores.cash + e.scores.stability, used); used.add(std.pathKey);
+  const agg = pickMax(evals, (e) => e.scores.scale + e.scores.growth, used); used.add(agg.pathKey);
+  const bal = pickMax(feas.length ? feas : evals, (e) => e.scores.total, used); used.add(bal.pathKey);
+  // PRD-IND-plan-generate §4.6 种子（extSens/focus 为电池域 IndustryTemplate 增量字段）。
+  type FocusProb = { n: string; kind: string; rule: string | null; why: string; chain: [string, string, string][] };
+  const extCfg = cfg as unknown as {
+    extSens?: Record<string, [string, string, string][]>;
+    focus?: Record<string, { keys: string; probs: FocusProb[] }>;
+  };
   const schemeOf = (no: string, name: string, ev: PathEval): Record<string, unknown> => ({
     no,
     name,
@@ -277,7 +338,16 @@ export function planGenerate(c: SolverContext, args: PlanGenerateArgs): Record<s
     meets: ev.meets,
     gain: cfg.gains[ev.pathKey] ?? [],
     give: cfg.gives[ev.pathKey] ?? [],
-    problems: ev.hardViol.map((v) => ({
+    // PRD-IND-plan-generate §4.6：外部信号敏感性 + 执行关键点（种子 extSens/focus；R14 前端零写死）。
+    extSensitivity: ((extCfg.extSens?.[ev.pathKey] ?? []) as [string, string, string][]).map((e) => ({ signal: e[0], impact: e[1], color: e[2] })),
+    focusKeys: extCfg.focus?.[ev.pathKey]?.keys ?? "",
+    // 必须解决的问题：先 GEN_FOCUS 焦点问题（含 why/chain，恒在），再硬违规问题（解锁提示）。
+    problems: [
+      ...((extCfg.focus?.[ev.pathKey]?.probs ?? []) as FocusProb[]).map((q) => ({
+        n: q.n, kind: q.kind, rule: q.rule ?? null, why: q.why,
+        chain: q.chain.map((node) => ({ label: node[0], object: node[1], color: node[2] })),
+      })),
+      ...ev.hardViol.map((v) => ({
       ruleRef: v,
       title:
         v === "C15"
@@ -293,25 +363,23 @@ export function planGenerate(c: SolverContext, args: PlanGenerateArgs): Record<s
             : `路径 ${ev.pathKey} CAPEX ${ev.outcome.capex} 亿超过目标面板上限 ${targets.capexCap} 亿`,
       unlock:
         v === "CAPEX" ? `提高 CAPEX 上限至 ≥${ev.outcome.capex} 可解锁` : "调整目标面板对应底线可解锁",
-    })),
+      })),
+    ],
   });
+  // 顺序：壹=稳健·守盈利 / 贰=均衡 / 叁=进取·冲规模（1:1 HTML gen3Plans）。
   const schemes = [
-    schemeOf("S1", cfg.schemeNames.steady, pick("A")),
-    schemeOf("S2", cfg.schemeNames.balanced, pick("E")),
-    schemeOf("S3", cfg.schemeNames.aggressive, aggressive),
+    schemeOf("壹", `${cfg.schemeNames.steady}方案 · 守盈利`, std),
+    schemeOf("贰", `${cfg.schemeNames.balanced}方案`, bal),
+    schemeOf("叁", `${cfg.schemeNames.aggressive}方案 · 冲规模`, agg),
   ];
+  // ★推荐 = 三案中可行且综合分最高（无可行则全集 total 最高）；recommend 返回其 pathKey。
   const eligible = schemes.filter((s) => (s.hardViol as string[]).length === 0);
-  // recommend = 无违规方案中 total 最高（以路径键标识，如默认数据下为 E）
-  const recommend =
-    eligible.length > 0
-      ? str(
-          [...eligible].sort(
-            (x, y) =>
-              ((y.scores as { total: number }).total - (x.scores as { total: number }).total) ||
-              (str(x.no) < str(y.no) ? -1 : 1),
-          )[0]?.pathKey,
-        )
-      : "";
+  const pool = eligible.length > 0 ? eligible : schemes;
+  const recommend = str(
+    [...pool].sort(
+      (x, y) => ((y.scores as { total: number }).total - (x.scores as { total: number }).total) || (str(x.pathKey) < str(y.pathKey) ? -1 : 1),
+    )[0]?.pathKey,
+  );
 
   return {
     schemes,

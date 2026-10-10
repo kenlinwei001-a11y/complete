@@ -1,0 +1,200 @@
+npm warn Unknown env config "side-effects-cache". This will stop working in the next major version of npm.
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/agent-adfaa59886e57c31c/apps/agentcore
+
+stdout | test/domain-by-intent.seam.test.ts > WO-DOMAIN-BY-INTENT ① 无域关键词、意图属某域 ⇒ 该域角色 agent > 「这批电芯自放电偏高…」（零域关键词）→ 分析判质量域 ⇒ quality 角色 agent
+[WO-DOMAIN-BY-INTENT ①/⑤] q=「这批电芯自放电偏高，帮我定位问题出在哪儿」
+  · 关键词表（无分析时）detectSingleRole=undefined
+  · 分析 domainRole=quality · classification.model=agent:role:quality
+  · 依据（哪份域目录/哪版/哪行）={"catalog":"PLATFORM_DEFAULT","version":0,"line":"- quality（质量·良率）：覆盖 质量与良率、检验与不良/缺陷、一致性/合规（含批次、设备质量记录）类问题；不覆盖 物料供应保障、产能与排产。"}
+  · 理由="问的是质量异常定位（自放电偏高），属质量域；与供应保障、产能排产无关。"
+  · 落点 agentKey=quality_inspector
+
+stdout | test/domain-by-intent.seam.test.ts > WO-DOMAIN-BY-INTENT ① 无域关键词、意图属某域 ⇒ 该域角色 agent > 同族反面：域目录里没有的域 key（模型编造）⇒ 不采信，落通用 agent（不回落关键词）
+[WO-DOMAIN-BY-INTENT ①·反面] domainRole="weather"（目录外）⇒ 落点 agentKey=general
+
+stdout | test/domain-by-intent.seam.test.ts > WO-DOMAIN-BY-INTENT ② 含域关键词、意图不属该域 ⇒ 不落该域 > 「把 EquipmentOEE 的前 3 条记录列出来」（命中 OEE⇒生产域）→ 分析判不出域 ⇒ 通用 agent
+[WO-DOMAIN-BY-INTENT ②] q=「把 EquipmentOEE 的前 3 条记录列出来」
+  · 关键词表（无分析时）detectSingleRole=production
+  · 分析 domainRole=null（null=分析判定判不出域）
+  · 落点 agentKey=general
+
+stdout | test/domain-by-intent.seam.test.ts > WO-DOMAIN-BY-INTENT ③ 判不出域 ⇒ 通用 agent（兜底在位） > 泛问 + 分析判 null ⇒ 通用 agent（且不经关键词二次判定）
+[WO-DOMAIN-BY-INTENT ③] q=「帮我把能查的都翻一遍，给个综合的自由结论」· domainRole=null ⇒ 落点 agentKey=general
+  · 依据={"catalog":"PLATFORM_DEFAULT","version":0,"line":null} · 理由="既非供应保障也非产能/质量判定，属泛问。"
+
+stdout | test/domain-by-intent.seam.test.ts > WO-DOMAIN-BY-INTENT ③ 判不出域 ⇒ 通用 agent（兜底在位） > ⑥-a 两域都沾边但能判主域 ⇒ 选它 + 理由里写明另一个域为何不适用
+[WO-DOMAIN-BY-INTENT ⑥-a] q=「这批货到底是来料有问题还是我们工艺上出的岔子」⇒ domainRole="quality" · 落点=quality_inspector
+  · 理由="两域都沾边（来料→供应保障，工艺自放电→质量判定）；用户要定的是这批货本身合不合格 ⇒ 归质量域。"
+
+stdout | test/domain-by-intent.seam.test.ts > WO-DOMAIN-BY-INTENT ③ 判不出域 ⇒ 通用 agent（兜底在位） > ⑥-b 判不出唯一主域 ⇒ 落兜底（通用 agent），理由里说明是哪两域撞上了
+[WO-DOMAIN-BY-INTENT ⑥-b] q=「这条线的供应和产出到底哪个先出问题，我该先救哪头」⇒ domainRole=null · 落点=general
+  · 理由="供应保障与产能瓶颈两域都贴得住，无法唯一归域。"
+
+stdout | test/domain-by-intent.seam.test.ts > WO-DOMAIN-BY-INTENT ③ 判不出域 ⇒ 通用 agent（兜底在位） > 兜底臂（回归）：**没有这份分析**（老分类结果·无 domainRole 字段）⇒ 关键词表照旧生效
+[WO-DOMAIN-BY-INTENT 兜底臂] domainRole 字段缺省（=没有分析）⇒ 关键词兜底 · 落点 agentKey=supply_chain · task.classification.domainRole=undefined
+
+stdout | test/domain-by-intent.seam.test.ts > WO-DOMAIN-BY-INTENT ③ 判不出域 ⇒ 通用 agent（兜底在位） > 会诊臂：分析在场 ⇒ 不按关键词拉多角色会诊（domainRole=null 时落通用 agent，不给关键词机会）
+[WO-DOMAIN-BY-INTENT 会诊臂] domainRole=null ⇒ coordinator.planned=false（false=未按词面会诊）
+
+stdout | test/domain-by-intent.seam.test.ts > WO-DOMAIN-BY-INTENT ④ 落点变了，围栏没变（角色 agent 读域外类型仍被拒） > ④-1 围栏本身（不经路由·两版代码同读数）：DENY payload 的 allowed 与声明面逐条相同
+[WO-DOMAIN-BY-INTENT ④-1] quality 角色 agent 读域外类型 Material ⇒ allowed=[Process,Equipment,QualityStandard]（声明面=["Process","Equipment","QualityStandard"]）
+
+stdout | test/domain-by-intent.seam.test.ts > WO-DOMAIN-BY-INTENT ④ 落点变了，围栏没变（角色 agent 读域外类型仍被拒） > ④-2 quality 角色 agent（经 ① 的新落点）真跑一次读域外对象 ⇒ AGENT_SCOPE_VIOLATION
+[WO-DOMAIN-BY-INTENT ④] quality 角色 agent（落点 agentKey=quality_inspector）读域外类型 Material
+  · 声明面（未改·逐条）=["Process","Equipment","QualityStandard"]
+  · 工具回执={"error":"AGENT_SCOPE_VIOLATION","objectType":"Material","allowed":["Process","Equipment","QualityStandard"]}
+
+stdout | test/domain-by-intent.seam.test.ts > WO-DOMAIN-BY-INTENT 接缝：域目录 = 配置面（每域一条描述·覆盖/不覆盖） > 平台默认那份域目录进 prompt：三域各一条、都写清『不覆盖』、且与角色目录不漂
+[WO-DOMAIN-BY-INTENT 接缝·默认] 三域描述行齐备=true,true,true
+
+stdout | test/domain-by-intent.seam.test.ts > WO-DOMAIN-BY-INTENT 接缝：域目录 = 配置面（每域一条描述·覆盖/不覆盖） > 租户 override 域目录（改描述不改代码）⇒ 进 prompt 且依据留痕标 TENANT_OVERRIDE@vN
+[WO-DOMAIN-BY-INTENT 接缝·override] prompt 含租户自定义行=true · 落点=quality_inspector · 依据={"catalog":"TENANT_OVERRIDE","version":1,"line":"- quality（质量）：覆盖 一切与电芯一致性/自放电有关的判定；不覆盖 供应与产能。"}
+
+stdout | test/domain-by-intent.seam.test.ts > WO-DOMAIN-BY-INTENT · 适配器层透传（openai / anthropic） > openai：raw 里的 domainRole 穿到 RawClassification（空串 ⇒ null；缺字段 ⇒ undefined）
+[WO-DOMAIN-BY-INTENT 适配器·openai] domainRole="quality" ⇒ "quality" · "" ⇒ null · 缺字段 ⇒ undefined
+
+stdout | test/domain-by-intent.seam.test.ts > WO-DOMAIN-BY-INTENT · 适配器层透传（openai / anthropic） > anthropic（live 部署那条路）：parsed_output 里的 domainRole 穿到 RawClassification
+[WO-DOMAIN-BY-INTENT 适配器·anthropic] domainRole="production"
+
+ ✓ test/domain-by-intent.seam.test.ts (15 tests) 2667ms
+   ✓ WO-DOMAIN-BY-INTENT ① 无域关键词、意图属某域 ⇒ 该域角色 agent > 「这批电芯自放电偏高…」（零域关键词）→ 分析判质量域 ⇒ quality 角色 agent  580ms
+   ✓ WO-DOMAIN-BY-INTENT ① 无域关键词、意图属某域 ⇒ 该域角色 agent > 同族反面：域目录里没有的域 key（模型编造）⇒ 不采信，落通用 agent（不回落关键词）  442ms
+ ❯ test/arm-failure-visible.seam.test.ts (12 tests | 1 failed) 1446ms
+   ✓ WO-DSH-ARM-FAILURE-VISIBLE · ① 收尾支可判 + 溯源口径（对照实验） > ① final_answer 支：provenance 声明落在范围内 ⇒ provenance.length>0 且 unverifiedNumerics=false 16ms
+   ✓ WO-DSH-ARM-FAILURE-VISIBLE · ① 收尾支可判 + 溯源口径（对照实验） > ② 同一夹具只把 ref 改成越界（⟦ref:99⟧）⇒ unverifiedNumerics=true（① 与 ② 必须同时成立） 13ms
+   ✓ WO-DSH-ARM-FAILURE-VISIBLE · ① 收尾支可判 + 溯源口径（对照实验） > ③ 软收尾支：可判（closing=SOFT_CLOSE）+ provenance 恒空；final_answer 支可判为 FINAL_ANSWER 2ms
+   ✓ WO-DSH-ARM-FAILURE-VISIBLE · ④ 工具失败可点名（哪次调用 + 哪道门） > ④a final_answer 支：答案里必须**指名**两个失败调用（工具名 + outcome + 门/原因原文） 3ms
+   ✓ WO-DSH-ARM-FAILURE-VISIBLE · ④ 工具失败可点名（哪次调用 + 哪道门） > ④b 软收尾支：同一条判据（失败披露不只在 final_answer 支） 1ms
+   ✓ WO-DSH-ARM-FAILURE-VISIBLE · ④ 工具失败可点名（哪次调用 + 哪道门） > ④c 反向金丝雀：零失败的夹具**不许**长出披露块（否则它只是噪声，不是信号） 3ms
+   × WO-DSH-ARM-FAILURE-VISIBLE · Q2 复现：原生臂求解器 MCP 工具必须真到 dataCore.solver.invoke > 归一后 binding 必须落 BUILTIN ⇒ 调用真到求解器（修前：0ms ERROR、DataCore 零请求） 884ms
+     → dsh 路要求 DataCore 用途绑定（dcp:{providerId}:{modelId} spec），拒绝非 dcp spec: claude-opus-4-8
+   ✓ WO-ARM-FAILURE-VISIBLE · ⑤ 原生臂：失败在答案里可点名（活服务跑的就是这条臂） > ⑤a 一次 DENIED + 一次 ERROR ⇒ 逐条点名（工具名 + 四态 + 门/原因原文） 223ms
+   ✓ WO-ARM-FAILURE-VISIBLE · ⑤ 原生臂：失败在答案里可点名（活服务跑的就是这条臂） > ⑤b 反向金丝雀：零失败的运行不许长出披露块（否则它只是噪声，不是信号） 47ms
+   ✓ WO-ARM-FAILURE-VISIBLE · ⑥ 两臂同判据：同一份失败集合渲染出的披露块**逐字同** > 原生臂的披露块 == DSH 臂（帧流）的披露块 131ms
+   ✓ WO-ARM-FAILURE-VISIBLE · ⑦ 广告面审计（工具面 vs 提示词面） > ⑦a 工具面：`expandAgentTools` 严格吃 toolFilter ⇒ cockpit_kpi **不**在模型可调清单里 117ms
+   ✓ WO-ARM-FAILURE-VISIBLE · ⑦ 广告面审计（工具面 vs 提示词面） > ⑦b 提示词面：导航切片的「全部可调用求解器目录」**已收到 toolFilter 上** ⇒ cockpit_kpi 不再被点名 1ms
+ ✓ test/skill-orchestrator.seam.test.ts (18 tests) 3284ms
+   ✓ SEAM · 两层 Skill Graph：第二层真的拿到了第一层的输出 > HTTP 入口 → 真实种子技能 → 边 → 求解器：数据流过了边  995ms
+   ✓ SEAM · 两层 Skill Graph：第二层真的拿到了第一层的输出 > 变异反证（掐掉边）：同一张图删掉边 → 第二层拿不到第一层输出 → FAILED  394ms
+   ✓ SEAM · Skill.execution 对名裁决：执行来源在响应里可见 > execution.steps（新路·线性，元素就是 PlanStep）→ source=execution.steps 且编成 seq 链  338ms
+ ✓ test/agent-run-attribution.seam.test.ts (16 tests) 22458ms
+   ✓ WO-AGENTRUN-ATTRIBUTION · 运行归属接缝 > ① 真跑注册 agent → 引擎把归属写进库 → 端点按 agent 读回同一条（不是端点自己拼的）  503ms
+   ✓ WO-AGENTRUN-ATTRIBUTION · 运行归属接缝 > ③-a 通用 agent 在场 ⇒ 归属落在**它自己**名下（REGISTERED·agentKey=general），仍不挂到别的 agent  524ms
+   ✓ WO-DSH-P2-UX · 内核标识写入对拍（A7） > DSH_HARNESS=1（测试装配 ⇒ DSH）⇒ run.kernel === "EXTERNAL"  5187ms
+   ✓ WO-DSH-P2-UX · 内核标识写入对拍（A7） > 装配位=DSH + agent.kernel="EXTERNAL" + env 关 ⇒ run.kernel === "EXTERNAL"  4557ms
+   ✓ WO-DSH-P2-UX · 内核标识写入对拍（A7） > ★ 退役证明 · agent.kernel="NATIVE" 不再是回退开关：装配位=DSH 时它仍落 EXTERNAL  4506ms
+   ✓ WO-DSH-P2-UX · 内核标识写入对拍（A7） > ★ 退役证明 · kernel 字段**整个删掉**：读数不变（EXTERNAL）——字段不再是判据  5957ms
+ ✓ test/numeric-redline-paths.seam.test.ts (10 tests) 4626ms
+   ✓ §1 实验 1 · 同一份凭空数字，两条路处置不同 > 1.1 原生路：**放行**（outcome ANSWERED·正文原样上屏），但 would_block 计数 +1  815ms
+   ✓ §1 实验 1 · 同一份凭空数字，两条路处置不同 > 1.2 计数记在**交付出口**：一次运行至多 +1（不随 final_answer 尝试次数膨胀）  356ms
+   ✓ §3 组合路径 · 交付出口的判据与单源同口径（不再有第二份实现） > 3.2 ★ 真分叉点：`⟦ref:N⟧` 指得出东西 ⇒ 不再被误标（修前此处是 true）  399ms
+   ✓ §3 组合路径 · 交付出口的判据与单源同口径（不再有第二份实现） > 3.3 与单源判据**逐条同结论**（含「标记自身不是业务数字」这一条）  762ms
+   ✓ §4 Coordinator 路 · 交付出口的数字红线据实判定 > 4.2 ★ 引擎级真跑：交付面上真有「指不出出处的数字」时，诚实标必须是 true（修前是 false）  1694ms
+stdout | test/general-agent-dsh.seam.test.ts > WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核） > ① 无角色关键词 ⇒ agentKey=通用 agent · kernel=EXTERNAL · 归属 REGISTERED
+[WO-GENERAL-AGENT-DSH ①] run={"agentId":"agt_general","agentKey":"general","agentVersion":1,"attribution":"REGISTERED","kernel":"EXTERNAL","origin":"ROOT","tenantId":"demo"}
+
+ ✓ test/skill-partial-a-seam.test.ts (12 tests) 2313ms
+   ✓ A · maxBudgetRounds 接线（PRD-skill-contract-dsl §4.6 · Track E 约束 4） > SEAM · 声明 maxBudgetRounds=1 → 探针真跑时第二轮 LLM 调用**不再发生**（效果层，非“字段读出来了”）  1091ms
+   ✓ A · maxBudgetRounds 接线（PRD-skill-contract-dsl §4.6 · Track E 约束 4） > SEAM 对照 · 同一 skill 不声明 maxBudgetRounds → 第二轮照跑（证上一条红的是预算，不是别的东西）  333ms
+ ✓ test/coordinator-a2a.test.ts (8 tests) 4042ms
+   ✓ WO-FIVE-ROLE P1 · SEAM 跨域真拆→invoke_agent 真调 ≥2 角色→scope 真隔离越界拒→汇总 > 头号判据：常州交付风险 → 真调 supply_chain+capacity_planner 两不同 agent·各受自身 scope 约束·汇总合并  2605ms
+   ✓ WO-FIVE-ROLE P1 · SEAM 跨域真拆→invoke_agent 真调 ≥2 角色→scope 真隔离越界拒→汇总 > SEAM 有牙：改一角色 scope（供应链去掉 Material）→ 其 Material 取证被拒（scope 真约束·非装饰）  753ms
+   ✓ WO-FIVE-ROLE P1 · C2 path-B 按 role 选对应 agent（单域·非永远 universal） > 单域「物料齐套」问句 + coordinator 开 → 走供应链角色 agent（agent:role:supply-chain）  455ms
+stdout | test/general-agent-dsh.seam.test.ts > WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核） > ②-a 退役证明：把该 agent 的 kernel 设回 NATIVE ⇒ **仍落 EXTERNAL**（旧回退开关已失效）
+[WO-GENERAL-AGENT-DSH ②-a] run={"agentKey":"general","kernel":"EXTERNAL","attribution":"REGISTERED"}
+
+stdout | test/general-agent-dsh.seam.test.ts > WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核） > ②-b 对照：通用 agent 不在场 + **测试装配（进程内循环）** ⇒ EXPLORATORY + NATIVE（产品态读数见 ②-c）
+[WO-GENERAL-AGENT-DSH ②-b] run={"attribution":"EXPLORATORY","kernel":"NATIVE","agentId":null}
+
+stdout | test/general-agent-dsh.seam.test.ts > WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核） > ②-c ★ 通用 agent 不在场 + 装配位=DSH ⇒ 合成探索 agent · kernel=EXTERNAL · 归属仍 EXPLORATORY
+[WO-CLOSE-NATIVE-GAPS ②-c] run={"attribution":"EXPLORATORY","kernel":"EXTERNAL","agentId":null,"outcome":2}
+
+stdout | test/general-agent-dsh.seam.test.ts > WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核） > ③ 目录驱动自证：工具清单 / 对象类型清单都是目录现算（贴三个数 + 差集解释）
+[WO-GENERAL-AGENT-DSH ③·tools] 目录={"builtinFace":26,"ontologyMcp":2,"solvers":63,"workflowsPublished":4} 合计=95 agent清单=95 差集=0 ｜未进清单的目录项=2（DRAFT 工作流：未发布定义不是可调用工具）
+
+stdout | test/general-agent-dsh.seam.test.ts > WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核） > ③ 目录驱动自证：工具清单 / 对象类型清单都是目录现算（贴三个数 + 差集解释）
+[WO-GENERAL-AGENT-DSH ③·objectTypes] 目录=14 · 声明面=0（刻意留空：全量的判据是字段 allObjectTypes，⛔ 不手抄清单） · 运行期有效面=14（③-b 的 DENY payload `allowed` 原文与目录逐条相同） · 差集(有效面 vs 目录)=0
+
+stdout | test/general-agent-dsh.seam.test.ts > WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核） > ③-b 对象域「目录现算」真生效：读**声明面之外**的类型不被 scope 门拒（对照臂必须 DENIED）
+[WO-GENERAL-AGENT-DSH ③-b] 通用 agent 读 Material ⇒ {"data":{"items":[],"total":0},"total":0,"truncated":false,"snapshotVersion":"ont-snap-001@1","empty":true,"hint":"对象类型 Material 存在但 0 实例：可能租户未引导，请先 run_synthetic/bootstrap 合成计划域，而非判定\"无数据\"。"}
+[WO-GENERAL-AGENT-DSH ③-b·对照] agt_seed_explore 读 Material ⇒ {"error":"AGENT_SCOPE_VIOLATION","objectType":"Material","allowed":["Base","Order","Model","Line"]}
+[WO-GENERAL-AGENT-DSH ③-b·有效域] 通用 agent 读目录外类型 ⇒ {"error":"AGENT_SCOPE_VIOLATION","objectType":"NoSuchType_Probe","allowed":["Base","Customer","Equipment","Line","Material","MaterialBalance","Model","Order","OrderLine","Process","Segment","Shipment","WIPLot","WorkOrder"]}
+
+stdout | test/general-agent-dsh.seam.test.ts > WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核） > ⑤ 真有角色关键词的问句不受影响：仍落到角色 agent（agent.coordinator 开时）
+[WO-GENERAL-AGENT-DSH ⑤] classification.model=agent:role:supply-chain runKey=supply_chain
+
+ ✓ test/general-agent-dsh.seam.test.ts (7 tests) 35226ms
+   ✓ WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核） > ① 无角色关键词 ⇒ agentKey=通用 agent · kernel=EXTERNAL · 归属 REGISTERED  14757ms
+   ✓ WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核） > ②-a 退役证明：把该 agent 的 kernel 设回 NATIVE ⇒ **仍落 EXTERNAL**（旧回退开关已失效）  14462ms
+   ✓ WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核） > ②-c ★ 通用 agent 不在场 + 装配位=DSH ⇒ 合成探索 agent · kernel=EXTERNAL · 归属仍 EXPLORATORY  5443ms
+   ✓ WO-GENERAL-AGENT-DSH · 探索路落点 = 通用 agent（DSH 内核） > ③-b 对象域「目录现算」真生效：读**声明面之外**的类型不被 scope 门拒（对照臂必须 DENIED）  304ms
+stderr | test/coord-yield-terminal-seam.test.ts > WO-COORD-YIELD-AND-TERMINAL §3.2 · 终态门（EXECUTING_AGENT 必须有终态责任人） > Coordinator 扇出永不返回（HANG）→ 越过阈值后落终态·completedAt 非空·答案说真话（未收敛/已中止 + 已完成到哪一步）
+{"level":50,"module":"orchestrator","where":"terminal-watchdog","taskId":"task_01M4G1KAFQZ5D07GNAZPMWJ9SY","msg":"Error: task stuck in EXECUTING_AGENT for 1s (phase=3 角色会诊, doneSteps=1) — forced to FAILED","stack":"Error: task stuck in EXECUTING_AGENT for 1s (phase=3 角色会诊, doneSteps=1) — forced to FAILED\n    at Orchestrator.forceTerminalOnTimeout (/Users/apple/deploy/complete/.claude/worktrees/agent-adfaa59886e57c31c/apps/agentcore/src/router/orchestrator.ts:1622:7)"}
+
+stderr | test/coord-yield-terminal-seam.test.ts > WO-COORD-YIELD-AND-TERMINAL §3.2 · 终态门（EXECUTING_AGENT 必须有终态责任人） > 看门狗是**状态机层**的，不是 Coordinator 专属：单 agent path-B 永不返回 → 同样落终态
+{"level":50,"module":"orchestrator","where":"terminal-watchdog","taskId":"task_01M4G1KAXD4JJEFYEX1TTFHRHS","msg":"Error: task stuck in EXECUTING_AGENT for 1s (phase=探索模式（单 agent 自由多跳）, doneSteps=0) — forced to FAILED","stack":"Error: task stuck in EXECUTING_AGENT for 1s (phase=探索模式（单 agent 自由多跳）, doneSteps=0) — forced to FAILED\n    at Orchestrator.forceTerminalOnTimeout (/Users/apple/deploy/complete/.claude/worktrees/agent-adfaa59886e57c31c/apps/agentcore/src/router/orchestrator.ts:1622:7)"}
+
+ ✓ test/coord-yield-terminal-seam.test.ts (5 tests) 3000ms
+   ✓ WO-COORD-YIELD-AND-TERMINAL §3.1 · 措辞对照门（同义问句必须被同一套判据对待） > 头号判据：A「交期风险波及哪些在手单」与 B「有哪些单要被拖累」→ 同一路由指纹·都 COMPLETED·都不进 Coordinator  1259ms
+   ✓ WO-COORD-YIELD-AND-TERMINAL §3.1 · 措辞对照门（同义问句必须被同一套判据对待） > Coordinator 没被删掉·只是降级为兜底：同一问句 A + 分类器域外 → 仍会诊（关键词判据 = 必要不充分）  543ms
+   ✓ WO-COORD-YIELD-AND-TERMINAL §3.2 · 终态门（EXECUTING_AGENT 必须有终态责任人） > Coordinator 扇出永不返回（HANG）→ 越过阈值后落终态·completedAt 非空·答案说真话（未收敛/已中止 + 已完成到哪一步）  653ms
+   ✓ WO-COORD-YIELD-AND-TERMINAL §3.2 · 终态门（EXECUTING_AGENT 必须有终态责任人） > 看门狗是**状态机层**的，不是 Coordinator 专属：单 agent path-B 永不返回 → 同样落终态  403ms
+ ✓ test/skill-compiler.seam.test.ts (10 tests) 2074ms
+   ✓ WO-SKILL-COMPILER-S1 · SEAM：真实种子技能 → HTTP compile → 推理图与声明的引用对账 > ① 每个出厂技能：graph 的节点集合 === 它 references[] 声明的资源（逐个技能对账，一条都不许漏或多）  1230ms
+ ✓ test/agent-run-fanout.seam.test.ts (7 tests) 4003ms
+   ✓ WO-AGENTRUN-FANOUT-PERSIST · 会诊扇出落库接缝 > ① 头号判据：真会诊 → 三个角色子 agent 各自真跑 → 三条 run 真落库 → 每个 agent 按 key 读回自己那次  1838ms
+   ✓ WO-AGENTRUN-FANOUT-PERSIST · 会诊扇出落库接缝 > ② 次数就是次数：同一个角色 agent 参加两次会诊 → 它的运行数 = 2（一次一条，不互相覆盖）  807ms
+   ✓ WO-AGENTRUN-FANOUT-PERSIST · 会诊扇出落库接缝 > ⑦ 修的不是「会诊」这一条路：任何工作流里的 invoke_agent 子运行同样落库（证明补在 engine 是对的地方）  417ms
+ ✓ test/ledger-single-tap.seam.test.ts (4 tests) 1924ms
+   ✓ §0 金丝雀 · 探针必须有鉴别力 > 0.1 正对照：走通用 path-B（coordinator 关）⇒ 账本必须收到**非零** token  1351ms
+   ✓ §1 角色路出口必须记账（本单之前：落库了但一次账都没记） > 1.1 单域问句 ⇒ 真走 runRolePathB ⇒ 恰记一次，且账 == 该 run 的 total* 之和  330ms
+ ✓ test/coordinator-child-degraded-bubble.seam.test.ts (3 tests) 2063ms
+   ✓ WO#77 §16 · Coordinator 子 agent 降级冒泡（engine.runAgentStep 扇出静默缝） > A1 正例·供应链子 agent STALL_LOOP → 父流恰好一帧 agent_degraded·归属 dispatch_0/agt_supply_chain·早于父步完成与 answer.final  1528ms
+   ✓ WO#77 §16 · Coordinator 子 agent 降级冒泡（engine.runAgentStep 扇出静默缝） > A2 阴性臂·三角色全正常 → 零 agent_degraded 帧 ∧ 事件名序列逐字节钉板（非降级流零扰）  359ms
+stdout | test/agent-kernel-retire.seam.test.ts > WO-CLOSE-NATIVE-GAPS · agent 内核字段退役（写侧 + 执行面） > ② 显式传 kernel:"NATIVE" ⇒ 400 + 错误原文（写侧拒已退役取值）
+[WO-CLOSE-NATIVE-GAPS ②] POST /b/v1/agents {kernel:"NATIVE"} ⇒ HTTP 400 {"error":{"code":"VALIDATION_ERROR","message":"kernel:\"NATIVE\" 已被拒：原生内核自 2026-10-09 起退役（仓主「都改掉，不考虑回退」），注册 agent 的执行恒走 DSH 外部运行时；kernel 字段只接受 \"EXTERNAL\"，或留空（缺省即为 EXTERNAL）。回退方式已不提供（旧内核入口整体移除）。","requestId":"req-1"}}
+
+ ✓ test/agent-kernel-retire.seam.test.ts (4 tests) 830ms
+   ✓ WO-CLOSE-NATIVE-GAPS · agent 内核字段退役（写侧 + 执行面） > ① 新建 agent 不传 kernel ⇒ 落库 EXTERNAL（缺省落 DSH，不再回落旧内核）  489ms
+ ❯ test/lived-in.test.ts (4 tests | 1 failed) 1038ms
+   ✓ 运营态出厂配置 §2/§3（场景入口 / analyst / 经验记忆库） > §2 七场景入口零配置：模式/绑定/建议问题/历史问答全在种子内  626ms
+   × 运营态出厂配置 §2/§3（场景入口 / analyst / 经验记忆库） > §3 出厂 analyst agent：四要素提示词 + scopeDeclaration + 预算，出厂即 PUBLISHED 141ms
+     → expected [ Array(27) ] to include 'search_experience'
+   ✓ 运营态出厂配置 §2/§3（场景入口 / analyst / 经验记忆库） > §3 经验记忆库种子：50 例、同租户重跑字节一致（确定性）、多场景覆盖 74ms
+   ✓ 运营态出厂配置 §2/§3（场景入口 / analyst / 经验记忆库） > §3 search_experience：路径 B READ 检索（余弦降序 topK）+ 统一审计（tool_calls） 195ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/arm-failure-visible.seam.test.ts > WO-DSH-ARM-FAILURE-VISIBLE · Q2 复现：原生臂求解器 MCP 工具必须真到 dataCore.solver.invoke > 归一后 binding 必须落 BUILTIN ⇒ 调用真到求解器（修前：0ms ERROR、DataCore 零请求）
+Error: dsh 路要求 DataCore 用途绑定（dcp:{providerId}:{modelId} spec），拒绝非 dcp spec: claude-opus-4-8
+ ❯ LlmSettings.resolveConnectionFacts src/llm/providers.ts:435:13
+    433|     const dc = parseDataCoreSpec(spec);
+    434|     if (!dc) {
+    435|       throw new Error(`dsh 路要求 DataCore 用途绑定（dcp:{providerId}:{modelId…
+       |             ^
+    436|     }
+    437|     if (!this.directory) throw new Error("DataCore provider directory …
+ ❯ ExecutionEngine.runRegisteredAgent src/engine.ts:1312:49
+ ❯ test/arm-failure-visible.seam.test.ts:221:7
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  test/lived-in.test.ts > 运营态出厂配置 §2/§3（场景入口 / analyst / 经验记忆库） > §3 出厂 analyst agent：四要素提示词 + scopeDeclaration + 预算，出厂即 PUBLISHED
+AssertionError: expected [ Array(27) ] to include 'search_experience'
+ ❯ test/lived-in.test.ts:53:49
+     51|     }
+     52|     expect(analyst!.scopeDeclaration.objectTypes.length).toBeGreaterTh…
+     53|     expect(analyst!.scopeDeclaration.toolNames).toContain("search_expe…
+       |                                                 ^
+     54|     expect(analyst!.scopeDeclaration.toolNames).toContain("create_acti…
+     55|     expect(analyst!.budget?.maxIterations).toBeGreaterThan(0);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed | 13 passed (15)
+      Tests  2 failed | 133 passed (135)
+   Start at  17:56:57
+   Duration  124.67s (transform 13.81s, setup 0ms, collect 126.25s, tests 90.99s, environment 10ms, prepare 8.08s)
+

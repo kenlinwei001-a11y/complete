@@ -1,0 +1,90 @@
+# premise-check 夹具 · **真产物顶层形态版**（atoms 分片用 package/counts/atoms: 映射写法）
+# 数据与 ../graph/ 逐条相同 —— 自测断言两者产出完全一致（接缝回归）。
+# ---------------------------------------------------------------------------
+# ⚠ 这不是 `docs/ontology-graph/` 的真图谱。真抽取器（WO-ONTOGRAPH）由另一个 dev 在做，
+#   本分支上还没有它的产物。本夹具照 WO 定死的 schema 手写，**每一条都取自真仓实测**：
+#     · 求解器 63  = ALL_SOLVER_CATALOG (catalog.ts:279) = SOLVER_CATALOG 23 + COCKPIT 18 + GENERIC 22
+#     · 规则   30  = BATTERY_RULES (synthetic/battery.ts:737..837)，剥行注释后 `{ key: "C\d+"` 计数
+#     · args   11  = SOLVER_ARGS_SCHEMAS (packages/contracts/src/solver-args.ts:111)
+#     · description 分布 = catalog.ts 里 65 条 description 字面量的字符数
+#     · lineGranularity 的 6 处 src 引用与 buildSliceIndex 的 3 处入边，均为 grep 实测坐标
+version: 1
+generatedFrom: 103e684c
+counts: { atoms: 14, edges: 21, slices: 1, byState: { wired: 12, test-only: 1, no-ref: 1 } }
+
+# ── 图谱自己的金丝雀 ────────────────────────────────────────────────────────
+# 铁律 0.6：扫描类结论一律先自证工具。premise-check 读这一段来给**第四列**背书，
+# 并且会核对 expect 与 actual 自不自洽 —— `expect: ">0"` 配 `actual: 0, ok: true`
+# 这种自相矛盾的写法会被当场点名「图谱在这一格骗人」。
+canary:
+  - { probe: "buildSliceIndex 入边（引用图必中样例）", expect: ">0", actual: 3, ok: true }
+  - { probe: "ALL_SOLVER_CATALOG 注册表分段求和（计数维度必中样例）", expect: "=63", actual: 63, ok: true }
+  - { probe: "args-schemas.ts 的 re-export 判定（原子/分片维度必中样例）", expect: ">0", actual: 12, ok: true }
+  - { probe: "catalog.ts description 字段长度分布（长度维度必中样例）", expect: ">0", actual: 65, ok: true }
+  - { probe: "service.ts:3512 行号落点（坐标维度必中样例）", expect: ">0", actual: 1, ok: true }
+
+# ── 图谱自己的盲区清单（机器可读）───────────────────────────────────────────
+# premise-check 的第四列会拿声明维度去撞这张表。**没有这张表**，第四列只能降到「存疑」——
+# 因为「图谱没说它看不见 X」和「图谱看得见 X」是两个不同的命题。
+#
+# ⚠ 每条**必须带 dims**（该盲区遮住的是哪几类声明）。只写散文的话，premise-check 只能拿
+#   关键词去撞，而「两段文字有共同的词」不度量「它们说的是同一件事」——
+#   实测撞错过一次：「引用图看不见 re-export 形式的调用」（说的是 NOREF）被撞到了
+#   空文件声明（EMPTYFILE）头上，凭空给一条本来可信的结论扣上「图谱自认盲区」。
+blindSpots:
+  - dims: [NOREF, REFCOUNT]
+    text: "引用图只解析静态可见的调用；re-export / 高阶函数 / 依赖注入 / 字符串键分发 / 事件订阅这五类看不见 ⇒ 「零调用方」这类否定结论本图谱永远给不实"
+  - dims: []
+    text: "不度量「算得对不对」—— 链路接通、类型正确、测试全绿的边，系数写错了图谱照样标 wired（CLAUDE.md 铁律 1.5 那条 9.75/9.75 的病，本图谱一个字都看不见）"
+  - dims: [NOREF, REFCOUNT]
+    text: "不度量运行期条件：一条 src 入边可能挂在一个恒假的分支上（「接了线没数据」态），图谱只说「接了线」"
+  - dims: [COORD]
+    text: "行号取自 generatedFrom 那一棵树；派单基于更新的树时坐标会漂，±容差内「对上了」不证明是同一处"
+
+registries:
+  - name: 求解器
+    aliases: [solver, solvers, 求解器注册表]
+    count: 63
+    source: "apps/datacore/src/catalog.ts:279 ALL_SOLVER_CATALOG"
+    breakdown: "SOLVER_CATALOG(23·catalog.ts:83) + COCKPIT_SOLVER_CATALOG(18·catalog.ts:127) + GENERIC_SOLVER_CATALOG(22·catalog.ts:184)"
+    note: "⚠ 同文件 catalog.ts:395 的 JSDoc 仍写「22+9+8=39」、:352 仍写「论域 = 全 59」，两条都是过期注释 —— 信注释 = 信台账（铁律 1.5 判据四）"
+  - name: 规则
+    aliases: [rule, rules, 规则库, 业务规则, 约束规则]
+    count: 30
+    source: "apps/datacore/src/synthetic/battery.ts:737..837 BATTERY_RULES"
+    breakdown: "C01..C06,C08..C13,C15,C16,C18,C21..C35（剥行注释后 `{ key: \"C\\d+\"` 计数）"
+    note: "⚠ 同一区间内裸 /C\\d\\d/ 命中 69 次，多数在注释里 —— grep -c 会报 69 不是 30"
+  - name: 求解器参数模式
+    aliases: [args schema, args-schema, SOLVER_ARGS_SCHEMAS, 求解器参数, 参数模式]
+    count: 11
+    source: "packages/contracts/src/solver-args.ts:111 SOLVER_ARGS_SCHEMAS"
+    breakdown: "注册表本体在 contracts；apps/datacore/src/solvers/args-schemas.ts 只是 22 行薄 re-export"
+
+# ── 字段长度分布（长度声明的唯一可信来源）──────────────────────────────────
+# 没有这一段时，premise-check 会退化成「拿图谱侧 brief 的长度代答」，并在第四列明写
+# 「brief ≠ 产品字段 description」。那是降级不是证据 —— 两者必须分得清。
+fieldStats:
+  - field: "CatalogItem.description"
+    aliases: [description]
+    source: "apps/datacore/src/catalog.ts（65 条 description 字面量·字符数）"
+    n: 65
+    minChars: 15
+    p50: 49
+    p90: 301
+    maxChars: 714
+    totalBytes: 16450
+
+atomShards:
+  - { package: datacore, file: atoms/datacore.yaml, count: 11 }
+  - { package: contracts, file: atoms/contracts.yaml, count: 3 }
+
+slices:
+  - key: biz.mfg.PortfolioPlan
+    file: slices/biz.mfg.PortfolioPlan.yaml
+    rootType: Order
+    scope: intra
+    brief: "组合排产切片：订单 → 基地/产线产能单元 → 换型 → 排产结果"
+    tags: [datacore, solver, portfolio]
+    spannedTypes: [Order, Base, Line, WorkOrder, Model]
+    atomCount: 4
+    consumerCount: 2

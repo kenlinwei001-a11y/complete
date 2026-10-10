@@ -1,0 +1,22 @@
+## ③d seed-derivation-specs.ts 46 行改动归属（该文件在我们线零碰触）2026-09-20
+
+净差 4603435ae→60d04679e = **1 个 hunk / 46 行**（证据 verify-postmerge-d-seed-derivation-specs-diff.txt），
+内容 = `model_forecast_bias` 规格退役 + 取值域上界订正。归属两条：
+
+1. **c2f7dfaed「退役 model_forecast_bias（规格 + valueRef 登记两处）」（forecastbias-retire 兄弟线）**
+   病灶：分子两项同源——`this.totalDemand` 的定义就是 `SUM(Order.qty BY model)`，
+   减数沿 `order_for_model` 数同一批 Order 的同一个 qty ⇒ Σ 减它自己**恒等于 0**，
+   而原注释声称「实测 49–77 在域内」是假的。tick0 实测 6/6 型号 forecastBias=0 且出处章
+   盖 "measured"（把恒等式的零冒充实测读数）。下游 −0.6 负系数边一拍都不传导（单拍 trace
+   0 行 / 同拍全表 5810 行）。退役同时拿掉规格与 battery.ts 的 valueRef 登记两处，
+   缺一处播种即抛错（非静默回落）。退役后回哈希占位档，出处章如实变 "derived"。
+   遗留缺口如实登记：哈希档恒非负 ⇒ 「低估⇒需求压力上冲」一支仍进不去，变好未闭合，另单。
+2. **824a9e0b2「订正取值域上界：哈希占位 ∈ [0,100] 不是 [0,99]」（集成线）**
+   `seedHash01` 返回 [0,0.999]，`round(0.999×100)=100`；seed.ts ③ 段的 [0,99] 差一档，
+   不影响「恒非负」结论。
+
+旁证排除：a0960fd2f（impediment-residual 收编 merge）虽被 `git log -- 该文件` 列出，
+但 diff(^1,merge) 对该文件为空 ⇒ 对本文件**零净改动**（其收编内容在别的文件），不占归属。
+
+我们线影响评估：F0 删的就是前端 hash01 自造世界；此退役把后端派生式里同源恒零的假实测清掉，
+与 M0「实料地基」同向。零动作需要（看懂+报告，不执法）。

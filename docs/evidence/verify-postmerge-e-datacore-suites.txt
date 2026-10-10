@@ -1,0 +1,52 @@
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/datacore
+
+ ✓ test/connectors.test.ts (7 tests) 10852ms
+   ✓ A1 connectors > CN1: CSV upload → connection → schema discovery field profiles correct  2831ms
+   ✓ A1 connectors > CN1b: XLSX 上传 → 解析 → RawDataset 落库（G-6 parseXlsx，xlsx 三路统一）  1552ms
+   ✓ A1 connectors > CN2: mock_erp sync lands rows; repeat sync is idempotent  1686ms
+   ✓ A1 connectors > encrypts credentials at rest and never echoes them  1203ms
+   ✓ A1 connectors > rest_api adapter pulls a JSON array  1569ms
+   ✓ A1 connectors > accepts multipart uploads (≤100MB) on POST /a/v1/uploads  1027ms
+   ✓ A1 connectors > registers all 7 PRD connector types (plus mocks)  856ms
+ ✓ test/connection-test-honest.test.ts (26 tests) 20324ms
+   ✓ WO-CONNTEST-HONEST §1 · 连不上就说连不上（修复前对任何主机都返 ok:true） > 主机名解析不到 ⇒ ok:false + DNS_NOT_RESOLVED（而不是「连接成功」）  2918ms
+   ✓ WO-CONNTEST-HONEST §1 · 连不上就说连不上（修复前对任何主机都返 ok:true） > 端口拒绝 ⇒ CONNECTION_REFUSED（与 DNS 失败是**两条不同的下一步动作**）  1444ms
+   ✓ WO-CONNTEST-HONEST §1 · 连不上就说连不上（修复前对任何主机都返 ok:true） > 认证被拒（401/403）⇒ AUTH_FAILED：连上了但凭据不对，不能与「连不上」混为一谈  1255ms
+   ✓ WO-CONNTEST-HONEST §1 · 连不上就说连不上（修复前对任何主机都返 ok:true） > 对端 500 ⇒ HTTP_ERROR（地址可达，服务不正常）  1001ms
+   ✓ WO-CONNTEST-HONEST §1 · 连不上就说连不上（修复前对任何主机都返 ok:true） > 非 HTTP 方案 ⇒ 明说「协议不受支持」，不许退化成笼统的「地址格式不正确」  953ms
+   ✓ WO-CONNTEST-HONEST §1 · 连不上就说连不上（修复前对任何主机都返 ok:true） > 四类失败的 reason 两两不同 —— 只回一个笼统「失败」等于没修  3603ms
+   ✓ WO-CONNTEST-HONEST §2 · 反向对照：真能连上的必须仍然 ok:true > HTTP 200 ⇒ ok:true（没把按钮做成永远失败）  817ms
+   ✓ WO-CONNTEST-HONEST §2 · 反向对照：真能连上的必须仍然 ok:true > 内置样例型（mock_erp/mock_crm/mock_external）真枚举数据集 ⇒ ok:true 且报得出表数  875ms
+   ✓ WO-CONNTEST-HONEST §2 · 反向对照：真能连上的必须仍然 ok:true > 文件型：blob 存在 ⇒ ok:true；blob 不存在 ⇒ NOT_FOUND（不是笼统失败）  565ms
+   ✓ WO-CONNTEST-HONEST §3 · 金丝雀与「没试」的可区分性 > 金丝雀：缺必填 ⇒ 回包必须变（证明观测手段有鉴别力，不是恒 true）  567ms
+   ✓ WO-CONNTEST-HONEST §3 · 金丝雀与「没试」的可区分性 > probed 位把「试过了连不上」与「压根没试」分开 —— 这正是修复前 bug 的本体  948ms
+   ✓ WO-CONNTEST-HONEST §3 · 金丝雀与「没试」的可区分性 > 未知连接器类型 ⇒ UNKNOWN_TYPE  604ms
+   ✓ WO-CONNTEST-HONEST §4 · 无适配器的三类：不许报「连接成功」 > sap_erp / salesforce_crm / generic_jdbc / external_feed ⇒ ok:false + UNSUPPORTED_TYPE，且说得出后果  684ms
+   ✓ WO-CONNTEST-HONEST §4 · 无适配器的三类：不许报「连接成功」 > knowledge_base 由 KbService 服务 ⇒ 必须 ok:true，且不许拿 HTTP 去探 internal:// 的 endpoint  555ms
+   ✓ WO-CONNTEST-HONEST §4 · 无适配器的三类：不许报「连接成功」 > 知识库探针真读了后备存储：灌一篇文档后回包里的篇数会变（不是写死的 true）  853ms
+   ✓ WO-CONNTEST-HONEST §5 · 有界超时：不许把请求线程挂死 > 对端永不响应 ⇒ 在超时上界内返回 TIMEOUT（实测耗时随回包一起给）  972ms
+   ✓ WO-CONNTEST-HONEST §6 · no-secrets-echo：失败原因不许带出凭据 > query 里的密钥与地址里的 userinfo 都不进回包（target 只留 origin）  709ms
+   ✓ WO-CONNTEST-HONEST §6 · no-secrets-echo：失败原因不许带出凭据 > 凭据内嵌在地址里 ⇒ 明确提示挪到凭据字段，且不回显密码  492ms
+   ✓ WO-CONNTEST-HONEST §6 · no-secrets-echo：失败原因不许带出凭据 > sap_erp 的 password 不出现在回包里  503ms
+ ✓ test/m11-calibration.test.ts (16 tests) 109284ms
+   ✓ M11 校准引擎（PRD-addendum-m11-calibration C1–C9） > C1: 窗口未过期/源延迟时不配对；过期且健康后配对；error/ape 与手算一致；一个预测只配对一次  32633ms
+   ✓ M11 校准引擎（PRD-addendum-m11-calibration C1–C9） > C3: 仅爬坡偏差的合成历史 → ≥80% 偏差归因到爬坡系数；提案变幅被 clip ±10%  4188ms
+   ✓ M11 校准引擎（PRD-addendum-m11-calibration C1–C9） > C5: 构造'改了也不准'的样本 → NO_IMPROVEMENT、零提案  4047ms
+   ✓ M11 校准引擎（PRD-addendum-m11-calibration C1–C9） > C6: 批准 → 参数版本+1 且后续求解用新值；回滚恢复上一版本；runWithParams 复现旧版本  4505ms
+   ✓ M11 校准引擎（PRD-addendum-m11-calibration C1–C9） > C6b: autoApply 开关仅放行方法 A 且小变幅（方法 B 胜出时仍走审批）  8279ms
+   ✓ M11 校准引擎（PRD-addendum-m11-calibration C1–C9） > C7: 同窗多提案只放行改善最大者（其余 CASCADE_HOLD）；同参数一周内二次提案 FREQUENCY_LIMIT  4059ms
+   ✓ M11 校准引擎（PRD-addendum-m11-calibration C1–C9） > C8: APPLIED 14（模拟）日后 realizedMape 回写提案与历史（预言 vs 实现）  3739ms
+   ✓ M11 校准引擎（PRD-addendum-m11-calibration C1–C9） > C9: tick 良率下滑 → C12 → 方法A提案(含回测证据) → 批准 → 继续 tick → MAPE 收敛且报告可见全链  25512ms
+   ✓ M0-F1 RealizedOutcome 配对键（T4） > T4①③ file_upload 真传 CSV ⇒ 实料落库可追回 syncJobId · 配对前后 paired 两数都动  3837ms
+   ✓ M0-F1 RealizedOutcome 配对键（T4） > T4② provenance 残缺 ⇒ 400 并点名缺哪个字段；mock_* 申报期即拒  534ms
+   ✓ M0-F2 欠账计 GET /a/v1/calibration/debt（T1+T3） > T1① 无实料 ⇒ paired:0 · expected.minPaired:N · coveragePct:0 · 🐤 forecasts>0  4346ms
+   ✓ M0-F2 欠账计 GET /a/v1/calibration/debt（T1+T3） > T1②+T3 录 M 条配对 ⇒ 三数同步变 · 账龄随钟 +1（正控）· 墙钟未来账龄钳 0（反证）  5668ms
+   ✓ M0-F3 实料闸（T2 变异反证） > T2① paired=0 ⇒ 四项全拒且各自披露（点名能力 + 欠 N 对）· assertGateOpen 409  4147ms
+   ✓ M0-F3 实料闸（T2 变异反证） > T2② paired≥minPaired ⇒ 四项全放行 · 🐤 反向：闸读数与 debt 同源（不是第二套真相）  3782ms
+
+ Test Files  3 passed (3)
+      Tests  49 passed (49)
+   Start at  17:52:39
+   Duration  126.96s (transform 8.75s, setup 0ms, collect 48.24s, tests 140.46s, environment 1ms, prepare 1.49s)
+

@@ -1,0 +1,241 @@
+agent              配置项                  谁承载          DSH 机制     缺口
+------------------------------------------------------------------------------------------------------------------------
+analyst            id                   N/A          —          
+analyst            tenantId             DSH_NATIVE   MCP        
+analyst            key                  N/A          —          
+analyst            version              N/A          —          
+analyst            name                 N/A          —          
+analyst            description          N/A          —          
+analyst            model                PLATFORM     —          (空=继承绑定矩阵)
+analyst            systemPrompt         DSH_NATIVE   plugin     len=864
+analyst            tools                PER_KIND     MCP|—      BUILTIN=5 MCP=4 WORKFLOW=0 | BUILTIN×5 走反向通道（无 DSH 身份）
+analyst            ruleBindings         DSH_NATIVE   plugin     ALL_APPLICABLE/POST_CHECK
+analyst            skills               DSH_NATIVE   skill      n=1
+analyst            mcpServers           DSH_NATIVE   MCP        ontology,solvers,workflow,rules
+analyst            scopeDeclaration     DSH_NATIVE   plugin     obj=8 tool=27
+analyst            budget               PLATFORM     —          it=8 tc=12
+analyst            status               N/A          —          
+analyst            role                 N/A          —          
+analyst            kernel               PLATFORM     —          (未配置⇒跟 env)
+------------------------------------------------------------------------------------------------------------------------
+explore_agent      id                   N/A          —          
+explore_agent      tenantId             DSH_NATIVE   MCP        
+explore_agent      key                  N/A          —          
+explore_agent      version              N/A          —          
+explore_agent      name                 N/A          —          
+explore_agent      description          N/A          —          
+explore_agent      model                PLATFORM     —          (空=继承绑定矩阵)
+explore_agent      systemPrompt         DSH_NATIVE   plugin     len=221
+explore_agent      tools                PER_KIND     MCP|—      BUILTIN=1 MCP=2 WORKFLOW=0 | BUILTIN×1 走反向通道（无 DSH 身份）
+explore_agent      ruleBindings         DSH_NATIVE   plugin     ALL_APPLICABLE/POST_CHECK
+explore_agent      skills               DSH_NATIVE   skill      n=1
+explore_agent      mcpServers           DSH_NATIVE   MCP        solvers,workflow
+explore_agent      scopeDeclaration     DSH_NATIVE   plugin     obj=4 tool=5
+explore_agent      budget               PLATFORM     —          it=8 tc=10
+explore_agent      status               N/A          —          
+explore_agent      role                 N/A          —          
+explore_agent      kernel               PLATFORM     —          (未配置⇒跟 env)
+------------------------------------------------------------------------------------------------------------------------
+risk_advisor       id                   N/A          —          
+risk_advisor       tenantId             DSH_NATIVE   MCP        
+risk_advisor       key                  N/A          —          
+risk_advisor       version              N/A          —          
+risk_advisor       name                 N/A          —          
+risk_advisor       description          N/A          —          
+risk_advisor       model                PLATFORM     —          (空=继承绑定矩阵)
+risk_advisor       systemPrompt         DSH_NATIVE   plugin     len=249
+risk_advisor       tools                PER_KIND     MCP|—      BUILTIN=2 MCP=2 WORKFLOW=0 | BUILTIN×2 走反向通道（无 DSH 身份）
+risk_advisor       ruleBindings         DSH_NATIVE   plugin     ALL_APPLICABLE/POST_CHECK
+risk_advisor       skills               DSH_NATIVE   skill      n=1
+risk_advisor       mcpServers           DSH_NATIVE   MCP        solvers,workflow
+risk_advisor       scopeDeclaration     DSH_NATIVE   plugin     obj=5 tool=7
+risk_advisor       budget               PLATFORM     —          it=8 tc=10
+risk_advisor       status               N/A          —          
+risk_advisor       role                 N/A          —          
+risk_advisor       kernel               PLATFORM     —          (未配置⇒跟 env)
+------------------------------------------------------------------------------------------------------------------------
+capacity_planner   id                   N/A          —          
+capacity_planner   tenantId             DSH_NATIVE   MCP        
+capacity_planner   key                  N/A          —          
+capacity_planner   version              N/A          —          
+capacity_planner   name                 N/A          —          
+capacity_planner   description          N/A          —          
+capacity_planner   model                PLATFORM     —          (空=继承绑定矩阵)
+capacity_planner   systemPrompt         DSH_NATIVE   plugin     len=226
+capacity_planner   tools                PER_KIND     MCP|—      BUILTIN=1 MCP=3 WORKFLOW=0 | BUILTIN×1 走反向通道（无 DSH 身份）
+capacity_planner   ruleBindings         DSH_NATIVE   plugin     ALL_APPLICABLE/POST_CHECK
+capacity_planner   skills               DSH_NATIVE   skill      n=1
+capacity_planner   mcpServers           DSH_NATIVE   MCP        ontology,solvers,workflow
+capacity_planner   scopeDeclaration     DSH_NATIVE   plugin     obj=4 tool=9
+capacity_planner   budget               PLATFORM     —          it=8 tc=10
+capacity_planner   status               N/A          —          
+capacity_planner   role                 N/A          —          
+capacity_planner   kernel               PLATFORM     —          (未配置⇒跟 env)
+------------------------------------------------------------------------------------------------------------------------
+quality_inspector  id                   N/A          —          
+quality_inspector  tenantId             DSH_NATIVE   MCP        
+quality_inspector  key                  N/A          —          
+quality_inspector  version              N/A          —          
+quality_inspector  name                 N/A          —          
+quality_inspector  description          N/A          —          
+quality_inspector  model                PLATFORM     —          (空=继承绑定矩阵)
+quality_inspector  systemPrompt         DSH_NATIVE   plugin     len=217
+quality_inspector  tools                PER_KIND     MCP|—      BUILTIN=1 MCP=1 WORKFLOW=0 | BUILTIN×1 走反向通道（无 DSH 身份）
+quality_inspector  ruleBindings         DSH_NATIVE   plugin     ALL_APPLICABLE/POST_CHECK
+quality_inspector  skills               DSH_NATIVE   skill      n=0
+quality_inspector  mcpServers           DSH_NATIVE   MCP        solvers
+quality_inspector  scopeDeclaration     DSH_NATIVE   plugin     obj=3 tool=2
+quality_inspector  budget               PLATFORM     —          it=6 tc=8
+quality_inspector  status               N/A          —          
+quality_inspector  role                 N/A          —          
+quality_inspector  kernel               PLATFORM     —          (未配置⇒跟 env)
+------------------------------------------------------------------------------------------------------------------------
+supply_chain       id                   N/A          —          
+supply_chain       tenantId             DSH_NATIVE   MCP        
+supply_chain       key                  N/A          —          
+supply_chain       version              N/A          —          
+supply_chain       name                 N/A          —          
+supply_chain       description          N/A          —          
+supply_chain       model                PLATFORM     —          (空=继承绑定矩阵)
+supply_chain       systemPrompt         DSH_NATIVE   plugin     len=239
+supply_chain       tools                PER_KIND     MCP|—      BUILTIN=1 MCP=1 WORKFLOW=0 | BUILTIN×1 走反向通道（无 DSH 身份）
+supply_chain       ruleBindings         DSH_NATIVE   plugin     ALL_APPLICABLE/POST_CHECK
+supply_chain       skills               DSH_NATIVE   skill      n=0
+supply_chain       mcpServers           DSH_NATIVE   MCP        solvers
+supply_chain       scopeDeclaration     DSH_NATIVE   plugin     obj=4 tool=3
+supply_chain       budget               PLATFORM     —          it=6 tc=8
+supply_chain       status               N/A          —          
+supply_chain       role                 N/A          —          
+supply_chain       kernel               PLATFORM     —          (未配置⇒跟 env)
+------------------------------------------------------------------------------------------------------------------------
+finance_analyst    id                   N/A          —          
+finance_analyst    tenantId             DSH_NATIVE   MCP        
+finance_analyst    key                  N/A          —          
+finance_analyst    version              N/A          —          
+finance_analyst    name                 N/A          —          
+finance_analyst    description          N/A          —          
+finance_analyst    model                PLATFORM     —          (空=继承绑定矩阵)
+finance_analyst    systemPrompt         DSH_NATIVE   plugin     len=246
+finance_analyst    tools                PER_KIND     MCP|—      BUILTIN=1 MCP=1 WORKFLOW=0 | BUILTIN×1 走反向通道（无 DSH 身份）
+finance_analyst    ruleBindings         DSH_NATIVE   plugin     ALL_APPLICABLE/POST_CHECK
+finance_analyst    skills               DSH_NATIVE   skill      n=0
+finance_analyst    mcpServers           DSH_NATIVE   MCP        solvers
+finance_analyst    scopeDeclaration     DSH_NATIVE   plugin     obj=3 tool=5
+finance_analyst    budget               PLATFORM     —          it=6 tc=8
+finance_analyst    status               N/A          —          
+finance_analyst    role                 N/A          —          
+finance_analyst    kernel               PLATFORM     —          (未配置⇒跟 env)
+------------------------------------------------------------------------------------------------------------------------
+carbon_auditor     id                   N/A          —          
+carbon_auditor     tenantId             DSH_NATIVE   MCP        
+carbon_auditor     key                  N/A          —          
+carbon_auditor     version              N/A          —          
+carbon_auditor     name                 N/A          —          
+carbon_auditor     description          N/A          —          
+carbon_auditor     model                PLATFORM     —          (空=继承绑定矩阵)
+carbon_auditor     systemPrompt         DSH_NATIVE   plugin     len=215
+carbon_auditor     tools                PER_KIND     MCP|—      BUILTIN=1 MCP=1 WORKFLOW=0 | BUILTIN×1 走反向通道（无 DSH 身份）
+carbon_auditor     ruleBindings         DSH_NATIVE   plugin     ALL_APPLICABLE/POST_CHECK
+carbon_auditor     skills               DSH_NATIVE   skill      n=0
+carbon_auditor     mcpServers           DSH_NATIVE   MCP        solvers
+carbon_auditor     scopeDeclaration     DSH_NATIVE   plugin     obj=3 tool=2
+carbon_auditor     budget               PLATFORM     —          it=6 tc=8
+carbon_auditor     status               N/A          —          
+carbon_auditor     role                 N/A          —          
+carbon_auditor     kernel               PLATFORM     —          (未配置⇒跟 env)
+------------------------------------------------------------------------------------------------------------------------
+external_market    id                   N/A          —          
+external_market    tenantId             DSH_NATIVE   MCP        
+external_market    key                  N/A          —          
+external_market    version              N/A          —          
+external_market    name                 N/A          —          
+external_market    description          N/A          —          
+external_market    model                PLATFORM     —          (空=继承绑定矩阵)
+external_market    systemPrompt         DSH_NATIVE   plugin     len=305
+external_market    tools                PER_KIND     MCP|—      BUILTIN=1 MCP=3 WORKFLOW=0 | BUILTIN×1 走反向通道（无 DSH 身份）
+external_market    ruleBindings         DSH_NATIVE   plugin     ALL_APPLICABLE/POST_CHECK
+external_market    skills               DSH_NATIVE   skill      n=1
+external_market    mcpServers           DSH_NATIVE   MCP        market_data,solvers,workflow
+external_market    scopeDeclaration     DSH_NATIVE   plugin     obj=4 tool=8
+external_market    budget               PLATFORM     —          it=8 tc=12
+external_market    status               N/A          —          
+external_market    role                 N/A          —          
+external_market    kernel               PLATFORM     —          (未配置⇒跟 env)
+------------------------------------------------------------------------------------------------------------------------
+code_assistant     id                   N/A          —          
+code_assistant     tenantId             DSH_NATIVE   MCP        
+code_assistant     key                  N/A          —          
+code_assistant     version              N/A          —          
+code_assistant     name                 N/A          —          
+code_assistant     description          N/A          —          
+code_assistant     model                PLATFORM     —          (空=继承绑定矩阵)
+code_assistant     systemPrompt         DSH_NATIVE   plugin     len=241
+code_assistant     tools                PER_KIND     MCP|—      BUILTIN=1 MCP=1 WORKFLOW=0 | BUILTIN×1 走反向通道（无 DSH 身份）
+code_assistant     ruleBindings         DSH_NATIVE   plugin     0/POST_CHECK
+code_assistant     skills               DSH_NATIVE   skill      n=1
+code_assistant     mcpServers           DSH_NATIVE   MCP        code_tools
+code_assistant     scopeDeclaration     DSH_NATIVE   plugin     obj=0 tool=3
+code_assistant     budget               PLATFORM     —          it=6 tc=8
+code_assistant     status               N/A          —          
+code_assistant     role                 N/A          —          
+code_assistant     kernel               PLATFORM     —          (未配置⇒跟 env)
+------------------------------------------------------------------------------------------------------------------------
+coordinator        id                   N/A          —          
+coordinator        tenantId             DSH_NATIVE   MCP        
+coordinator        key                  N/A          —          
+coordinator        version              N/A          —          
+coordinator        name                 N/A          —          
+coordinator        description          N/A          —          
+coordinator        model                PLATFORM     —          (空=继承绑定矩阵)
+coordinator        systemPrompt         DSH_NATIVE   plugin     len=345
+coordinator        tools                PER_KIND     MCP|—      BUILTIN=1 MCP=1 WORKFLOW=0 | BUILTIN×1 走反向通道（无 DSH 身份）
+coordinator        ruleBindings         DSH_NATIVE   plugin     ALL_APPLICABLE/POST_CHECK
+coordinator        skills               DSH_NATIVE   skill      n=0
+coordinator        mcpServers           DSH_NATIVE   MCP        solvers
+coordinator        scopeDeclaration     DSH_NATIVE   plugin     obj=8 tool=4
+coordinator        budget               PLATFORM     —          it=6 tc=12
+coordinator        status               N/A          —          
+coordinator        role                 N/A          —          
+coordinator        kernel               PLATFORM     —          (未配置⇒跟 env)
+------------------------------------------------------------------------------------------------------------------------
+general            id                   N/A          —          
+general            tenantId             DSH_NATIVE   MCP        
+general            key                  N/A          —          
+general            version              N/A          —          
+general            name                 N/A          —          
+general            description          N/A          —          
+general            model                PLATFORM     —          (空=继承绑定矩阵)
+general            systemPrompt         DSH_NATIVE   plugin     len=423
+general            tools                PER_KIND     MCP|—      BUILTIN=26 MCP=3 WORKFLOW=0 | BUILTIN×26 走反向通道（无 DSH 身份）
+general            ruleBindings         DSH_NATIVE   plugin     ALL_APPLICABLE/POST_CHECK
+general            skills               DSH_NATIVE   skill      n=4
+general            mcpServers           DSH_NATIVE   MCP        ontology,solvers,workflow
+general            scopeDeclaration     DSH_NATIVE   plugin     obj=0(ALL) tool=28(ALL)
+general            budget               PLATFORM     —          it=8 tc=12
+general            status               N/A          —          
+general            role                 N/A          —          
+general            kernel               PLATFORM     —          EXTERNAL
+------------------------------------------------------------------------------------------------------------------------
+
+=== 汇总：逐 agent 的 BUILTIN 工具面（= 唯一无 DSH 身份的资源类配置）===
+analyst            BUILTIN: query_objects, get_object, search_knowledge, query_timeseries_agg, search_experience
+explore_agent      BUILTIN: query_objects
+risk_advisor       BUILTIN: query_objects, evaluate_rules
+capacity_planner   BUILTIN: query_objects
+quality_inspector  BUILTIN: query_objects
+supply_chain       BUILTIN: query_objects
+finance_analyst    BUILTIN: query_objects
+carbon_auditor     BUILTIN: query_objects
+external_market    BUILTIN: query_objects
+code_assistant     BUILTIN: query_objects
+coordinator        BUILTIN: query_objects
+general            BUILTIN: discover, retrieve_knowledge, query_ontology, query_objects, query_system_ontology, get_breakpoint, impact_of, aggregate_objects, get_object, invoke_solver, evaluate_rules, search_knowledge, query_timeseries_agg, read_skill_resource, search_experience, fill_data, run_synthetic, build_domain, sim_init, sim_tick, sim_world, sim_certify, create_action_draft, discover_growth_tickets, claim_growth_ticket, submit_growth_ticket
+
+=== 平台内置 MCP server 登记行（DSH 侧有身份的）===
+mcp_builtin_ontology       serverName=ontology     status=ACTIVE
+mcp_builtin_solvers        serverName=solvers      status=ACTIVE
+mcp_builtin_workflow       serverName=workflow     status=ACTIVE
+mcp_builtin_rules          serverName=rules        status=ACTIVE
+mcp_seed_demo              serverName=demo_server  status=ACTIVE
+mcp_market_data            serverName=market_data  status=ACTIVE
+mcp_code_tools             serverName=code_tools   status=DISABLED

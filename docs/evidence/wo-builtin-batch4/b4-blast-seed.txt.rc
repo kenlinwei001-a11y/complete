@@ -1,0 +1,2 @@
+BLAST_RC=1（Test Files 1 failed | 16 passed (17) / Tests 1 failed | 172 passed (173)）
+唯一红 = arm-failure-visible Q2（批次 1 用 pristine seed 证过的既有红，批次 3 同读数）。

@@ -214,7 +214,7 @@ describe("回放编排器与虚拟操作团队（R1–R13）", () => {
       await seedOpsTeam(t);
       const before = (await t.repos.calibrationForecasts.list("demo")).length;
       const replay = replayWithAsk(t, []);
-      const pb: OpsPlaybook = { key: "k", version: 1, cadence: { daily: [{ kind: "run_forecast", persona: "vp_planner_zhang", modelPool: ["S192-LFP", "4680-NCM"] }] } };
+      const pb: OpsPlaybook = { key: "k", version: 1, cadence: { daily: [{ kind: "run_forecast", persona: "vp_planner_zhang", modelPool: ["圆柱-LFP", "4680-NCM"] }] } };
       const report = await replay.runTick("demo", pb, { tick: 1, date: "2026-07-06", seed: 42, scenarioEvents: [] });
       expect(report.executed.some((e) => e.kind === "run_forecast")).toBe(true);
       const after = (await t.repos.calibrationForecasts.list("demo")).length;
@@ -222,7 +222,7 @@ describe("回放编排器与虚拟操作团队（R1–R13）", () => {
       // R10：SCHEDULED_FORECAST handler 经 ServiceAccount 身份产生预测 + executedAs 标记
       await t.services.opsSchedule.put(
         { tenantId: "demo", userId: "usr_demo_admin", roles: ["tenant_admin"], attributes: {} },
-        { forecasts: [{ cron: "0 6 * * 1", modelIds: ["S192-LFP"], weeks: 12 }] },
+        { forecasts: [{ cron: "0 6 * * 1", modelIds: ["圆柱-LFP"], weeks: 12 }] },
       );
       await t.services.opsSchedule.runScheduledForecast("demo", "f0");
       const evt = (await t.repos.outboxEvents.list("demo", (e) => e.event === "ops_schedule.forecast_run")).pop();

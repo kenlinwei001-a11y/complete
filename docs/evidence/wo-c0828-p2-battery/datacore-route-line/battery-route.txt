@@ -1,0 +1,51 @@
+cmd: vitest run <32 files> --maxWorkers=1 --testTimeout=1500000
+file_count: 32
+  test/adversary-reaction.seam.test.ts
+  test/chain-loss-session-overlay.seam.test.ts
+  test/change-impact-preview.seam.test.ts
+  test/decision-causal-graph.test.ts
+  test/edge-active-counterfactual.test.ts
+  test/engine2-checkpoints-route.seam.test.ts
+  test/enterprise-state.seam.test.ts
+  test/finance-worldstate.seam.test.ts
+  test/impact-propagation.seam.test.ts
+  test/metric-series.seam.test.ts
+  test/process-tick-coverage.seam.test.ts
+  test/sandbox-e4-cadence-propagation.seam.test.ts
+  test/sandbox-g1-seam.test.ts
+  test/seed-demo-propagation.test.ts
+  test/sim-act-close.seam.test.ts
+  test/sim-cert-contract-reconcile.seam.test.ts
+  test/sim-certification.test.ts
+  test/sim-checkpoint-list.seam.test.ts
+  test/sim-drill.seam.test.ts
+  test/sim-node-detail-fields.seam.test.ts
+  test/sim-perturbation.test.ts
+  test/sim-propagation-direction.seam.test.ts
+  test/sim-root-procurement.seam.test.ts
+  test/sim-root-triad.seam.test.ts
+  test/sim-scope-trial.seam.test.ts
+  test/sim-seed-world.seam.test.ts
+  test/sim-session-lifecycle.seam.test.ts
+  test/sim-session.test.ts
+  test/sim-sessions-projection.seam.test.ts
+  test/sim-trial-scope-reconcile.seam.test.ts
+  test/turn-loop.seam.test.ts
+  test/worldstate-surface.seam.test.ts
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/apps/datacore
+
+ ❯ test/chain-loss-session-overlay.seam.test.ts (9 tests | 2 failed) 16904244ms
+   ✓ WO-DRILL-VERDICT-BACKEND · 根因链 × 推演会话接缝 > ① 金丝雀：换一个 so，矩阵回包必须变（证本文件的读数取法有鉴别力）  12538ms
+   ✓ WO-DRILL-VERDICT-BACKEND · 根因链 × 推演会话接缝 > ② 反向对照：不传 sessionId 连跑两次逐字节相同，且 simContext 整块缺席（R6 + 向后兼容）  6140ms
+   × WO-DRILL-VERDICT-BACKEND · 根因链 × 推演会话接缝 > ②b 形状契约：无会话时顶层 key 恒 == SOLVER_OUTPUT_SHAPES；simContext 是**条件字段**故意不登记 7175457ms
+     → Test timed out in 1500000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   ✓ WO-DRILL-VERDICT-BACKEND · 根因链 × 推演会话接缝 > ③ 正向对照：天数族叠加后，该段天数 == 字段真值换算 + 状态量（按可预言的量变，不是「变了就算过」）  32717ms
+   ✓ WO-DRILL-VERDICT-BACKEND · 根因链 × 推演会话接缝 > ④ 量纲纪律：0–100 压力族一天都不叠，且必须被 excluded 点名为 NOT_DAY_UNIT  5605ms
+   × WO-DRILL-VERDICT-BACKEND · 根因链 × 推演会话接缝 > ⑤ 排除理由不许说谎：天数族挂错承载物 ⇒ OTHER_CARRIER，不是 NOT_DAY_UNIT 7208275ms
+     → Test timed out in 1500000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   ✓ WO-DRILL-VERDICT-BACKEND · 根因链 × 推演会话接缝 > ⑥ 矩阵端点同样进会话上下文：列天数按可预言的量变，且 simContext 逐条披露  1402810ms
+   ✓ WO-DRILL-VERDICT-BACKEND · 根因链 × 推演会话接缝 > ⑦ R2：不存在的会话 404，绝不静默退化成「不叠加」  1051157ms
+   ✓ WO-DRILL-VERDICT-BACKEND · 根因链 × 推演会话接缝 > ⑧ 下钻端点：传 sessionId 后子因天数按可预言的量变  9541ms

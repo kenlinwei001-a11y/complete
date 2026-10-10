@@ -1,0 +1,57 @@
+diff --git a/apps/datacore/src/seed-derivation-specs.ts b/apps/datacore/src/seed-derivation-specs.ts
+index ce146f74d..9ef4a7373 100644
+--- a/apps/datacore/src/seed-derivation-specs.ts
++++ b/apps/datacore/src/seed-derivation-specs.ts
+@@ -127,10 +127,48 @@ export const DEMO_DERIVATION_SPECS: readonly {
+   // Model.costPressure：成本压力 = 单位成本 / 单位售价 × 100（成本占售价比，越高越压毛利）。
+   //   ⚠ 不用 (1−cost/price)：那是毛利率，seed 实测虚高 96–97（巧合贴 100）。本式实测 2.5–3.9。
+   { specKey: "model_cost_pressure", targetType: "Model", targetProp: "costPressure", formula: "COALESCE(this.unitCost * 100 / this.unitPrice, 0)" },
+-  // Model.forecastBias：预测偏差 = (预测总需求 − 在手订单实需合计) / 预测总需求 × 100（正=高估）。
+-  //   ⚠ 分母取 totalDemand 不取订单实需：后者实测 97–338 越出 [−100,100] 域。本式实测 49–77（在域内）。
+-  //   链 order_for_model（500 实例）。COALESCE 兜除零。
+-  { specKey: "model_forecast_bias", targetType: "Model", targetProp: "forecastBias", formula: "COALESCE((this.totalDemand - SUM(in(order_for_model).qty)) * 100 / this.totalDemand, 0)" },
++  // ── ⛔ `model_forecast_bias` 已于 2026-09-20 退役（WO-FORECASTBIAS-RETIRE）────────────
++  //
++  // 原式：`COALESCE((this.totalDemand - SUM(in(order_for_model).qty)) * 100 / this.totalDemand, 0)`
++  // 原注释声称「本式实测 49–77（在域内）」——**这句话是假的，而且它一直是假的**。
++  //
++  // 病灶：**分子两项同源，是 Σ 减它自己 ⇒ 恒等于 0。**
++  //   · `this.totalDemand` 的定义（`synthetic/battery.ts` `modelDerived`）就是 `SUM(Order.qty BY model)`；
++  //   · 减数 `SUM(in(order_for_model).qty)` 沿链数的是同一批 Order 的同一个 `qty`。
++  //   两者是同一个和的两种写法，差恒为 0，与租户数据无关 ⇒ **无论换什么替代品，它自己都是错的**，
++  //   故退役不依赖后继方案。
++  //
++  // 实测（生产装配路，`docs/evidence/wo-forecastbias-retire/before.log`）：
++  //   tick0 世界态 6/6 个型号 `forecastBias = 0`，且出处章盖的是 **"measured"** ——
++  //   屏上在说「这是实测读数」，而它是一个恒等式的零。两层都坏。
++  //
++  // 为什么不是「一个数是 0」那么轻：`forecastBias` 是全平台**唯一带方向**的量纲
++  //   （正=高估 / 负=低估），下游 `Model.forecastBias --model_demanded_by_order--> Order.demandPressure`
++  //   系数 **−0.6** 是**全图唯一的负系数边**。源恒 0 ⇒ 该边一拍都不传导
++  //   （实测单拍 trace **0 行**，而同拍全表 5810 行 / 33 条边在动 ⇒ 取法有鉴别力）。
++  //   ⇒ 沙盘唯一的「需求高估」杠杆是死的，全图唯一的阻尼方向从不触发。
++  //
++  // 还有一条纪律层面的冲突：`forecastBias` 入度 0，是**外生根**。`sim/propagation.ts` 的
++  //   衰减豁免段点名了它：「入度 0 的量纲是外生输入，**引擎无权让它自己变小**」。
++  //   拿一条派生式去覆写一个外生根，与那条纪律直接抵触。
++  //
++  // 退役 = 同时拿掉**两处**，缺一处播种就抛错（不是静默回落）：
++  //   ① 本表这一条规格；
++  //   ② `synthetic/battery.ts` 的 `STATE_VAR_VALUE_REFS["Model|forecastBias"]` 登记 ——
++  //      `deriveSeedBaseSnapshot` 会把「登记了 valueRef 却解不到 ACTIVE 规格」判为 `brokenRefs`
++  //      并**抛错**（那正是它设计上要防的「静默回落哈希」）。只删①不删② ⇒ 整条 SEED_DEMO 播种路炸。
++  //
++  // ⚠ 退役后 `forecastBias` 回到 `sim/seed-world.ts` 的哈希占位档
++  //   （`round(seedHash01(...) × 100)` ∈ **[0,100]**），出处章随之变为 "derived"（哈希占位不是实测，如实）。
++  //   ⚠ 上界是 **100 不是 99**：`seedHash01` 返回 `((h>>>0) % 1000)/1000` ∈ [0,0.999]，
++  //     `round(0.999 × 100) = 100`。`seed.ts` ③ 段写的「∈ [0,99]」差一档 —— 不影响「恒非负」这个
++  //     结论，但别照抄那个上界。
++  //   **遗留缺口（本单不修，如实登记）**：该式恒非负 ⇒ 唯一入流 `−0.6 × forecastBias` 恒 ≤ 0，
++  //   而 `demandPressure` 是压力族（`min = restPoint = 0` 硬地板）⇒ 边注释写的
++  //   「低估(−) ⇒ 需求压力上冲」那一支**仍然进不去**。退役把「恒 0」换成了「恒非负」，
++  //   缺口从「边完全不传导」缩到「边只单向传导」——**变好但没闭合**。
++  //   要闭合得给 `forecastBias` 一个**带负区间**的诚实来源，那是改种子生成器，另单。
++  //   ⛔ 在此之前不许再往 `Order.demandPressure` 补负边（`seed.ts` ③ 段同款理由）。
+   // Model.supplyRisk：供应风险 = 各物料缺料风险的均值（0–100 压力族，天然入域）。
+   //   出处：链 model_uses_material（42 实例，from=Model ⇒ 用 `out()`）。⚠ DSL 聚合内不许算术
+   //   （`SUM(x.prop + 100)` 会抛 `expected ")" got "+"`）⇒ 用 AVG 而非「SUM/(SUM+100)」那种归一 ——

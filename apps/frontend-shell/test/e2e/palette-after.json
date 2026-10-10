@@ -1,0 +1,101 @@
+{
+  "phase": "after",
+  "at": "2026-09-07T13:41:29.876Z",
+  "canary": {
+    "loginInputTyped": "4680",
+    "loginInputGot": "4680",
+    "ok": true,
+    "note": "尺子成立：同一 type()+inputValue() 在已知好控件上留住了 4 个字符"
+  },
+  "typing": [
+    {
+      "typed": "4680",
+      "got": "4680",
+      "ok": true,
+      "focusBefore": "INPUT",
+      "focusAfter": "INPUT"
+    },
+    {
+      "typed": "S02",
+      "got": "S02",
+      "ok": true,
+      "focusBefore": "INPUT",
+      "focusAfter": "INPUT"
+    },
+    {
+      "typed": "abc",
+      "got": "abc",
+      "ok": true,
+      "focusBefore": "INPUT",
+      "focusAfter": "INPUT"
+    },
+    {
+      "typed": "常州20",
+      "got": "常州20",
+      "ok": true,
+      "focusBefore": "INPUT",
+      "focusAfter": "INPUT"
+    }
+  ],
+  "panel": {
+    "backend": {
+      "total": 20,
+      "itemCount": 20
+    },
+    "emptyQuery": {
+      "rowCountByTestId": 20,
+      "rowCountByText": 20,
+      "ids": [
+        "S01",
+        "S02",
+        "S03",
+        "S04",
+        "S05",
+        "S06",
+        "S07",
+        "S08",
+        "S09",
+        "S10",
+        "S11",
+        "S12",
+        "S13",
+        "S14",
+        "S15",
+        "S16",
+        "S17",
+        "S18",
+        "S19",
+        "S20"
+      ],
+      "scrollH": 736,
+      "clientH": 360,
+      "scrollable": true
+    },
+    "reachLast": {
+      "lastId": "S20",
+      "lastText": "S20 | 碳足迹核算 | 4680-NCM 出口欧盟的碳足迹达标吗？",
+      "lastVisibleAfterScroll": true,
+      "scrollTop": 376,
+      "scrollH": 736,
+      "clientH": 360
+    },
+    "dialogFits": {
+      "dialogHeight": 511,
+      "viewportHeight": 1050,
+      "fits": true
+    }
+  },
+  "mock": {
+    "ok": true,
+    "realHits": 5,
+    "sample": [
+      "200 POST http://127.0.0.1:4001/a/v1/auth/login",
+      "200 GET http://127.0.0.1:4001/a/v1/me/workspace",
+      "200 GET http://127.0.0.1:4001/a/v1/history/watermark",
+      "200 GET http://127.0.0.1:4001/a/v1/data-health",
+      "200 GET http://127.0.0.1:4002/b/v1/scenarios"
+    ]
+  },
+  "loginShot": "PU-after-01-after-login.png",
+  "panelShot": "PU-after-02-palette-empty.png"
+}

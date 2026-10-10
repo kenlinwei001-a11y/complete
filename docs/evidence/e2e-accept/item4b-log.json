@@ -1,0 +1,440 @@
+{
+  "counters": {
+    "steps": 9,
+    "clicks": 13,
+    "navs": 5
+  },
+  "portsHit": {
+    "127.0.0.1:5181": 191,
+    "127.0.0.1:4051": 32,
+    "127.0.0.1:4052": 3
+  },
+  "netCalls": [
+    {
+      "port": "4051",
+      "path": "/a/v1/auth/refresh",
+      "status": 401,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/auth/login",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/me/workspace",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/history/watermark",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/data-health",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/scenarios",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/tenants/demo/features",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/mapping/registries",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/object-types",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/domains",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/versions",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/propagation-rules",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/view-config",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/publish-requests",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/rules",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/invariants",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/link-types",
+      "status": 201,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/mapping/registries",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/view-config",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/outbox",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/outbox",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/link-types",
+      "status": 201,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/mapping/registries",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/view-config",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/link-types",
+      "status": 201,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/mapping/registries",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/view-config",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/link-types",
+      "status": 201,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/mapping/registries",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/view-config",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/link-types",
+      "status": 201,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/mapping/registries",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/view-config",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/outbox",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/outbox",
+      "status": 200,
+      "method": "GET"
+    }
+  ],
+  "log": [
+    {
+      "t": "2026-09-04T02:46:23.422Z",
+      "kind": "STEP",
+      "msg": "#1 打开应用入口（唯一允许输入的 URL）"
+    },
+    {
+      "t": "2026-09-04T02:46:23.440Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:46:24.140Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:46:24.185Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "t": "2026-09-04T02:46:24.197Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "t": "2026-09-04T02:46:24.197Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/login"
+    },
+    {
+      "t": "2026-09-04T02:46:25.942Z",
+      "kind": "STEP",
+      "msg": "#2 在登录页填 demo / admin / demo1234"
+    },
+    {
+      "t": "2026-09-04T02:46:26.022Z",
+      "kind": "CLICK",
+      "msg": "#1 登录"
+    },
+    {
+      "t": "2026-09-04T02:46:26.188Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:46:29.568Z",
+      "kind": "LOGIN",
+      "msg": "登录后 URL",
+      "url": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:46:29.568Z",
+      "kind": "STEP",
+      "msg": "#3 侧边栏 →「本体关系」"
+    },
+    {
+      "t": "2026-09-04T02:46:29.573Z",
+      "kind": "CLICK",
+      "msg": "#2 侧边栏 →「本体关系」"
+    },
+    {
+      "t": "2026-09-04T02:46:29.610Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/admin/ontology-relations"
+    },
+    {
+      "t": "2026-09-04T02:46:37.643Z",
+      "kind": "STEP",
+      "msg": "#4 金丝雀：先建一条合法边，证明建边这条路是通的"
+    },
+    {
+      "t": "2026-09-04T02:46:39.540Z",
+      "kind": "CLICK",
+      "msg": "#4 建结构边 · 金丝雀·合法 Order→WorkOrder key=e2e_ok"
+    },
+    {
+      "t": "2026-09-04T02:46:43.166Z",
+      "kind": "CASE",
+      "msg": "金丝雀·合法 Order→WorkOrder key=e2e_ok",
+      "按钮禁用": false,
+      "弹窗": null,
+      "新文本": [
+        "结构边 118",
+        "先选来源与去向类型",
+        "域：产品（24）",
+        "e2e_ok\tOrder → WorkOrder\t1:N\t启用\t",
+        "e2e_ok"
+      ]
+    },
+    {
+      "t": "2026-09-04T02:46:43.166Z",
+      "kind": "STEP",
+      "msg": "#5 非法①：key 留空"
+    },
+    {
+      "t": "2026-09-04T02:46:44.827Z",
+      "kind": "CASE",
+      "msg": "key 留空",
+      "按钮禁用": true,
+      "弹窗": null,
+      "新文本": []
+    },
+    {
+      "t": "2026-09-04T02:46:44.828Z",
+      "kind": "STEP",
+      "msg": "#6 非法②：key 重名（e2e_ok 已存在）"
+    },
+    {
+      "t": "2026-09-04T02:46:46.615Z",
+      "kind": "CLICK",
+      "msg": "#7 建结构边 · key 重名 e2e_ok"
+    },
+    {
+      "t": "2026-09-04T02:46:50.207Z",
+      "kind": "CASE",
+      "msg": "key 重名 e2e_ok",
+      "按钮禁用": false,
+      "弹窗": null,
+      "新文本": [
+        "先选来源与去向类型",
+        "结构边 e2e_ok 已建（v2）；未选实现属性 ⇒ 0 条实例边，多跳检索遍历不到"
+      ]
+    },
+    {
+      "t": "2026-09-04T02:46:50.207Z",
+      "kind": "STEP",
+      "msg": "#7 非法③：方向反了（WorkOrder→Order 用同一个 key）"
+    },
+    {
+      "t": "2026-09-04T02:46:52.052Z",
+      "kind": "CLICK",
+      "msg": "#9 建结构边 · 方向反 · 同 key"
+    },
+    {
+      "t": "2026-09-04T02:46:55.637Z",
+      "kind": "CASE",
+      "msg": "方向反 · 同 key",
+      "按钮禁用": false,
+      "弹窗": null,
+      "新文本": [
+        "先选来源与去向类型",
+        "域：工艺（16）",
+        "e2e_ok\tWorkOrder → Order\t1:N\t启用\t",
+        "域：产品（23）",
+        "结构边 e2e_ok 已建（v3）；未选实现属性 ⇒ 0 条实例边，多跳检索遍历不到"
+      ]
+    },
+    {
+      "t": "2026-09-04T02:46:55.637Z",
+      "kind": "STEP",
+      "msg": "#8 非法④：key 带非法字符"
+    },
+    {
+      "t": "2026-09-04T02:46:57.489Z",
+      "kind": "CLICK",
+      "msg": "#11 建结构边 · key 带空格与中文「订单 兑现!!」"
+    },
+    {
+      "t": "2026-09-04T02:47:01.102Z",
+      "kind": "CASE",
+      "msg": "key 带空格与中文「订单 兑现!!」",
+      "按钮禁用": false,
+      "弹窗": null,
+      "新文本": [
+        "结构边 119",
+        "先选来源与去向类型",
+        "域：产品（24）",
+        "订单 兑现!!\tOrder → WorkOrder\t1:N\t启用\t",
+        "订单 兑现!!"
+      ]
+    },
+    {
+      "t": "2026-09-04T02:47:01.103Z",
+      "kind": "STEP",
+      "msg": "#9 非法⑤：来源=去向（自环）"
+    },
+    {
+      "t": "2026-09-04T02:47:02.843Z",
+      "kind": "CLICK",
+      "msg": "#13 建结构边 · 自环 Order→Order"
+    },
+    {
+      "t": "2026-09-04T02:47:06.468Z",
+      "kind": "CASE",
+      "msg": "自环 Order→Order",
+      "按钮禁用": false,
+      "弹窗": null,
+      "新文本": [
+        "结构边 120",
+        "先选来源与去向类型",
+        "域：产品（25）",
+        "e2e_selfloop\tOrder → Order\t1:N\t启用\t",
+        "e2e_selfloop"
+      ]
+    },
+    {
+      "t": "2026-09-04T02:47:06.473Z",
+      "kind": "NOTE",
+      "msg": "端点不存在",
+      "结论": "来源/去向是限定下拉（99 个选项），UI 层无法输入不存在的端点 —— 这是 UI 挡住了，不是错误处理",
+      "选项数": 99
+    },
+    {
+      "t": "2026-09-04T02:47:06.636Z",
+      "kind": "SHOT",
+      "msg": "i4b-invalid"
+    },
+    {
+      "t": "2026-09-04T02:47:06.661Z",
+      "kind": "DUMP",
+      "msg": "i4b-invalid",
+      "chars": 344689
+    }
+  ]
+}

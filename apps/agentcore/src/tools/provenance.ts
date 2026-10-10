@@ -10,7 +10,7 @@ import { resolvePath } from "../util/jsonpath.js";
  * Everything else stays TOOL_RESULT.
  */
 
-export type ProvenanceEnrichment = Pick<ProvenanceRef, "source"> & Partial<Pick<ProvenanceRef, "tsAgg" | "kb">>;
+export type ProvenanceEnrichment = Pick<ProvenanceRef, "source"> & Partial<Pick<ProvenanceRef, "tsAgg" | "kb" | "formula" | "valueLabel">>;
 
 interface TsAggMeta {
   aggRunId: string;
@@ -85,6 +85,23 @@ export function enrichProvenance(
           ...(hit.score !== undefined ? { score: hit.score } : {}),
         },
       };
+    }
+  }
+
+  if (toolName === "invoke_solver") {
+    // PRD-CAP-DEMANDDELTA：若求解器输出带了 per-field provenance{formula,valueLabel}，
+    // 按 outputPath 命中对应字段并透传，使 render_answer 的 KPI 块 popover 能展示公式与口径。
+    const prov = data?.provenance;
+    if (prov && typeof prov === "object") {
+      const key = outputPath?.replace(/^\$\.data\.?/, "");
+      if (key && typeof (prov as Record<string, unknown>)[key] === "object") {
+        const meta = (prov as Record<string, unknown>)[key] as Record<string, unknown>;
+        const formula = typeof meta.formula === "string" ? meta.formula : undefined;
+        const valueLabel = typeof meta.valueLabel === "string" ? meta.valueLabel : undefined;
+        if (formula || valueLabel) {
+          return { source: "TOOL_RESULT", ...(formula ? { formula } : {}), ...(valueLabel ? { valueLabel } : {}) };
+        }
+      }
     }
   }
 

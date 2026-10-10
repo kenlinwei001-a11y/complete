@@ -1,0 +1,15 @@
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/agent-acfb64964c994ea5d/apps/agentcore
+
+ ✓ test/dsh-poc-acceptance.test.ts > E1 · 配置驱动行为（request/header 为观测点） > 改 persona/finalAnswer ⇒ header.system/header.tools 随之变；还原即复原 17285ms
+ ✓ test/dsh-poc-acceptance.test.ts > E2 · 规则闸（PRE_CHECK deny ⇒ 执行计数 0 + 拦截入流） > deny ⇒ count 0 且 tool/result isError 带 deny 理由；基线 ⇒ count 1 8066ms
+ ✓ test/dsh-poc-acceptance.test.ts > E3/E3′ · 租户密钥路由（credentialRef 前缀白名单） > E3：本租户 ref 解析并注入 Bearer 1ms
+ ✓ test/dsh-poc-acceptance.test.ts > E3/E3′ · 租户密钥路由（credentialRef 前缀白名单） > E3′：租户 t2 持 t1 的 ref ⇒ undefined ⇒ MISSING_CREDENTIAL 类抛错（fail-closed） 2ms
+ ✓ test/dsh-poc-acceptance.test.ts > E4 · MCP 工具名零迁移（与上游 dist 逐字节对拍） > 全语料逐字节相等（含规整/截断/压线边界） 2ms
+ ✓ test/dsh-poc-acceptance.test.ts > E6 · 三档 verdict 表（帧 → 外壳语义） > tier1 帧可映射且形状正确；tier2/tier3 帧 createSseMapper 返回 undefined 1ms
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  13:36:04
+   Duration  32.37s (transform 2.59s, setup 0ms, collect 5.86s, tests 25.36s, environment 0ms, prepare 342ms)
+

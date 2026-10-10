@@ -1,0 +1,85 @@
+# 五次扰动根因扫查  BASE=http://127.0.0.1:4019
+# 序列：建会话 → tick 3 → [scale ×1.5] → tick 20；两臂对照
+# 契约 5 种 kind 各取一次（PerturbationKindSchema）
+
+【金丝雀】两条对照臂差异格 = 0 / 6375  ⇒ ✅ 世界确定（后续差异全部归因于扰动）
+
+══ cost_shock  al_foil.priceShock  [原料涨价50%] ══
+  差异格 248 / 6375
+  源格自身  Δ=1.000000  (扰动臂 3 / 对照 2)
+  波及类型  arinvoice(51) customer(17) customerlocation(27) material(1) order(150) overduerecord(2)
+  钱相关格  247
+      obj_arinvoice_arinvoice_0_0.overduePressure  Δ=0.000673  (0.860451104749 / 对照 0.85977788301)
+      obj_arinvoice_arinvoice_0_1.overduePressure  Δ=0.000673  (0.861760969325 / 对照 0.861087747586)
+      obj_arinvoice_arinvoice_0_2.overduePressure  Δ=0.000673  (0.860475361501 / 对照 0.859802139761)
+      obj_arinvoice_arinvoice_1_0.overduePressure  Δ=0.000167  (0.215374416166 / 对照 0.215207727825)
+      obj_arinvoice_arinvoice_1_1.overduePressure  Δ=0.000167  (0.216854078002 / 对照 0.216687389661)
+      obj_arinvoice_arinvoice_1_2.overduePressure  Δ=0.000167  (0.21612637546 / 对照 0.215959687119)
+      obj_arinvoice_arinvoice_10_0.overduePressure  Δ=0.000140  (0.210192970983 / 对照 0.210052679906)
+      obj_arinvoice_arinvoice_10_1.overduePressure  Δ=0.000140  (0.210581079005 / 对照 0.210440787928)
+  饱和自报  撞下界 162 格 · 撞上界 0 格
+  s2n userContribution=1.012694963481 worldDrift=92090.99684298488 changedCells=248
+
+══ supply_disruption  SUP-001.deliveryDelay  [供应商到货延迟50%] ══
+  差异格 237 / 6375
+  源格自身  Δ=1.000000  (扰动臂 3 / 对照 2)
+  波及类型  incominginspection(8) material(2) materialalternative(2) materialbalance(2) materialbatch(6) model(6) order(150) orderpromise(50) purchaseorder(8) supplier(3)
+  钱相关格  200
+      obj_order_SO-3391.shortageRisk  Δ=0.012256  (5.709459914329 / 对照 5.697204371186)
+      obj_order_SO-3402.shortageRisk  Δ=0.012256  (5.708925500642 / 对照 5.6966699575)
+      obj_order_SO-3415.shortageRisk  Δ=0.012256  (5.708999036053 / 对照 5.69674349291)
+      obj_order_SO-3420.shortageRisk  Δ=0.012256  (5.708925500642 / 对照 5.6966699575)
+      obj_order_SO-3431.shortageRisk  Δ=0.012256  (5.821013328642 / 对照 5.808757785499)
+      obj_order_SO-3437.shortageRisk  Δ=0.012256  (5.821013328642 / 对照 5.808757785499)
+      obj_order_SO-3445.shortageRisk  Δ=0.012256  (5.768557343613 / 对照 5.756301800469)
+      obj_order_SO-3452.shortageRisk  Δ=0.008535  (6.025920353844 / 对照 6.017385590627)
+  饱和自报  撞下界 162 格 · 撞上界 0 格
+  s2n userContribution=5.606185215256 worldDrift=92090.99684298488 changedCells=237
+
+══ capacity_loss  LINE-WS-changzhou-assembly-assembly-E1.equipmentFailure  [设备故障率上升50%] ══
+  差异格 224 / 6375
+  源格自身  Δ=8.500000  (扰动臂 25.5 / 对照 17)
+  波及类型  arinvoice(42) customer(14) customerlocation(22) defectrecord(1) equipment(1) exceptionevent(1) line(1) model(2) order(116) orderpromise(15) overduerecord(2) process(1) qualitylot(2) wiplot(2) workorder(2)
+  钱相关格  211
+      obj_arinvoice_arinvoice_0_0.overduePressure  Δ=0.000023  (0.859800648438 / 对照 0.85977788301)
+      obj_arinvoice_arinvoice_0_1.overduePressure  Δ=0.000023  (0.861110513014 / 对照 0.861087747586)
+      obj_arinvoice_arinvoice_0_2.overduePressure  Δ=0.000023  (0.859824905189 / 对照 0.859802139761)
+      obj_arinvoice_arinvoice_1_0.overduePressure  Δ=0.000004  (0.215211256534 / 对照 0.215207727825)
+      obj_arinvoice_arinvoice_1_1.overduePressure  Δ=0.000004  (0.21669091837 / 对照 0.216687389661)
+      obj_arinvoice_arinvoice_1_2.overduePressure  Δ=0.000004  (0.215963215828 / 对照 0.215959687119)
+      obj_arinvoice_arinvoice_10_0.overduePressure  Δ=0.000001  (0.210053261983 / 对照 0.210052679906)
+      obj_arinvoice_arinvoice_10_1.overduePressure  Δ=0.000001  (0.210441370006 / 对照 0.210440787928)
+  饱和自报  撞下界 162 格 · 撞上界 0 格
+  s2n userContribution=10.466971036246 worldDrift=92090.99684298488 changedCells=224
+
+══ demand_shift  SO-3402.orderChurn  [订单变更压力上升50%] ══
+  差异格 2 / 6375
+  源格自身  Δ=33.000000  (扰动臂 99 / 对照 66)
+  波及类型  order(1) orderline(1)
+  钱相关格  2
+      obj_order_SO-3402.orderChurn  Δ=33.000000  (99 / 对照 66)
+      obj_orderline_SO-3402-L1.splitPressure  Δ=10.827075  (32.485254342285 / 对照 21.658179765351)
+  饱和自报  撞下界 162 格 · 撞上界 0 格
+  s2n userContribution=43.827074576934 worldDrift=92090.99684298488 changedCells=2
+
+══ quality_event  QLOT-WO-LINE-WS-changzhou-assembly-0.inspectBacklog  [在检积压上升50%] ══
+  差异格 1 / 6375
+  源格自身  Δ=0.001005  (扰动臂 1.739558020443 / 对照 1.738552666005)
+  波及类型  qualitylot(1)
+  钱相关格  0
+  饱和自报  撞下界 162 格 · 撞上界 0 格
+  s2n userContribution=0.001005354438 worldDrift=92090.99684298488 changedCells=1
+
+══ 横向对比 ═══════════════════════════════════════════
+扰动              差异格  源格动?  钱格  撞下界  撞上界
+cost_shock          248   是     247    162      0
+supply_disruption   237   是     200    162      0
+capacity_loss       224   是     211    162      0
+demand_shift          2   是       2    162      0
+quality_event         1   是       0    162      0
+
+只有源格动（完全没传出去）：quality_event
+传了但一格钱格都没到：    （无）
+到达钱格：                cost_shock(247), supply_disruption(200), capacity_loss(211), demand_shift(2)
+
+原始落盘：/tmp/wo-console-e2e/evidence-1002/5pert-raw.json

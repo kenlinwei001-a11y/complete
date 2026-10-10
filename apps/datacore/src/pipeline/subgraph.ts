@@ -25,7 +25,9 @@ export function buildTypeDefs(wf: OntologyWorkflow): TypeInput[] {
     if (n.kind !== "SUBGRAPH_ENTITY") continue;
     const m = n.modeling;
     const props = new Map<string, PropertyDef>();
-    props.set(m.primaryKey, { propKey: m.primaryKey, dataType: "string", isPrimaryKey: true });
+    // WO-UNIT-KWH · 子图建模输入（OntologyWorkflow）不带量纲元数据 ⇒ 显式「已知无量纲」。
+    // 主键是 string，结构上本就无量纲。
+    props.set(m.primaryKey, { propKey: m.primaryKey, dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" });
     for (const p of m.properties ?? []) {
       const key = String((p as { propKey?: unknown }).propKey ?? "");
       if (!key || props.has(key)) continue;
@@ -33,14 +35,17 @@ export function buildTypeDefs(wf: OntologyWorkflow): TypeInput[] {
         propKey: key,
         dataType: dt(String((p as { dataType?: unknown }).dataType ?? "String")),
         isPrimaryKey: !!(p as { isPrimaryKey?: unknown }).isPrimaryKey,
+        // 建模输入无单位字段 ⇒ 显式无量纲（缺口同 modeling.ts，不在这里凭字段名猜）。
+        unit: "dimensionless",
+        scale: "absolute",
       });
     }
     for (const sv of m.stateVariables ?? []) {
       if (props.has(sv.propKey)) continue;
-      props.set(sv.propKey, { propKey: sv.propKey, dataType: dt(sv.dataType), isPrimaryKey: false });
+      props.set(sv.propKey, { propKey: sv.propKey, dataType: dt(sv.dataType), isPrimaryKey: false, unit: "dimensionless", scale: "absolute" });
     }
     const derived: DerivedPropertyDef[] = (m.derived ?? [])
-      .map((d) => ({ propKey: String((d as { propKey?: unknown }).propKey ?? ""), formula: String((d as { formula?: unknown }).formula ?? "") }))
+      .map((d) => ({ propKey: String((d as { propKey?: unknown }).propKey ?? ""), formula: String((d as { formula?: unknown }).formula ?? ""), unit: "dimensionless" as const, scale: "absolute" as const }))
       .filter((d) => d.propKey && d.formula);
     out.push({
       key: m.typeKey,

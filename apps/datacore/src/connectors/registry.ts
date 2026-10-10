@@ -3,6 +3,7 @@ import type { BlobStore } from "../blob.js";
 import { parseCsv, parseJsonRows, parseXlsx } from "./parsers.js";
 import { profileRows } from "./profiler.js";
 import { validationError } from "../errors.js";
+import { extractPrototypeDatasets } from "../databuilder/prototype-intake.js";
 
 /** Unified adapter interface (PRD §2.1). */
 export interface SourceAdapter {
@@ -112,6 +113,18 @@ export const CONNECTOR_TYPES: ConnectorType[] = [
     capabilities: { batch: true, incremental: false, schemaDiscovery: true },
   },
   {
+    // prototype-intake P3：把上传的原型 HTML 当"文件型数据源"——内嵌数据表（const NAME=[...]）
+    // 多表落 RawDataset，前端 数据连接器可见此"导入文件"+ 在线查看每张表（值与原型一致）。
+    key: "prototype_html",
+    category: "PROTOTYPE",
+    configSchema: {
+      type: "object",
+      required: ["blobKey"],
+      properties: { blobKey: { type: "string" }, filename: { type: "string" } },
+    },
+    capabilities: { batch: true, incremental: false, schemaDiscovery: true },
+  },
+  {
     key: "mock_erp",
     category: "ERP",
     configSchema: { type: "object", properties: {} },
@@ -123,6 +136,13 @@ export const CONNECTOR_TYPES: ConnectorType[] = [
     configSchema: { type: "object", properties: {} },
     capabilities: { batch: true, incremental: false, schemaDiscovery: true },
   },
+  {
+    // 外部域（EXT_SIG）：出厂样例环境信号连接器（生产走 external_feed/rest_api）。
+    key: "mock_external",
+    category: "EXTERNAL",
+    configSchema: { type: "object", properties: {} },
+    capabilities: { batch: true, incremental: false, schemaDiscovery: true },
+  },
 ];
 
 /** Config fields treated as credentials (AES-256-GCM at rest, never echoed). */
@@ -130,6 +150,11 @@ export const CREDENTIAL_FIELDS = new Set(["password", "clientSecret", "apiKey", 
 
 export function getConnectorType(key: string): ConnectorType | undefined {
   return CONNECTOR_TYPES.find((t) => t.key === key);
+}
+
+/** A11：注册表内置 category 并集（连接器类型 category 去重排序）——前端 chip/筛选枚举来源（R14 非内联）。 */
+export function connectorCategories(): string[] {
+  return [...new Set(CONNECTOR_TYPES.map((t) => t.category).filter(Boolean) as string[])].sort();
 }
 
 // ---------------------------------------------------------------------------
@@ -169,8 +194,26 @@ export class FileUploadAdapter extends RowsAdapter {
     const fmt = this.config.format;
     if (fmt === "csv") return { [this.config.datasetName]: parseCsv(buf.toString("utf8")) };
     if (fmt === "json") return { [this.config.datasetName]: parseJsonRows(buf.toString("utf8")) };
-    if (fmt === "xlsx") return { [this.config.datasetName]: parseXlsx(buf) }; // OntoFlow P2
-    throw validationError(`unsupported file format: ${fmt}`);
+    if (fmt === "xlsx") return { [this.config.datasetName]: parseXlsx(buf) }; // G-6：xlsx 经 node-xlsx 解析
+    throw validationError(`unsupported file format: ${fmt} (csv/json/xlsx supported)`);
+  }
+}
+
+/** prototype-intake P3：原型 HTML blob → 多数据表（内嵌 const 字面量，全量行）。解析纯函数（R6）。 */
+export class PrototypeHtmlAdapter extends RowsAdapter {
+  constructor(
+    private blob: BlobStore,
+    private config: { blobKey: string },
+  ) {
+    super();
+  }
+
+  protected async loadAll(): Promise<Record<string, Record<string, unknown>[]>> {
+    const buf = await this.blob.get(this.config.blobKey);
+    const { dataSources } = extractPrototypeDatasets(buf.toString("utf8"));
+    const out: Record<string, Record<string, unknown>[]> = {};
+    for (const d of dataSources) out[d.name] = d.rows;
+    return out;
   }
 }
 
@@ -205,8 +248,8 @@ export const MOCK_ERP_DATA: Record<string, Record<string, unknown>[]> = {
     { po: "PO-1002", model: "4680-NCM", baseId: "hefei", qty: 800, status: "RELEASED", startDate: "2026-05-04" },
     { po: "PO-1003", model: "L300-LFP", baseId: "changzhou", qty: 1500, status: "PLANNED", startDate: "2026-05-10" },
     { po: "PO-1004", model: "L300-LFP", baseId: "yibin", qty: 950, status: "PLANNED", startDate: "2026-05-12" },
-    { po: "PO-1005", model: "P28-NCM", baseId: "xian", qty: 400, status: "COMPLETED", startDate: "2026-04-21" },
-    { po: "PO-1006", model: "S192-LFP", baseId: "qingdao", qty: 700, status: "RELEASED", startDate: "2026-05-15" },
+    { po: "PO-1005", model: "方形-NCM", baseId: "xian", qty: 400, status: "COMPLETED", startDate: "2026-04-21" },
+    { po: "PO-1006", model: "圆柱-LFP", baseId: "qingdao", qty: 700, status: "RELEASED", startDate: "2026-05-15" },
     { po: "PO-1007", model: "4680-NCM", baseId: "changzhou", qty: 600, status: "PLANNED", startDate: "2026-05-18" },
     { po: "PO-1008", model: "M50-NCA", baseId: "liyang", qty: 300, status: "RELEASED", startDate: "2026-05-20" },
   ],
@@ -228,11 +271,27 @@ export const MOCK_CRM_DATA: Record<string, Record<string, unknown>[]> = {
   ],
   sales_orders: [
     { so: "SO-90001", custId: "CUST-01", model: "4680-NCM", qty: 2000, due: "2026-07-01", amount: 9000000 },
-    { so: "SO-90002", custId: "CUST-02", model: "S192-LFP", qty: 1500, due: "2026-07-15", amount: 5200000 },
+    { so: "SO-90002", custId: "CUST-02", model: "圆柱-LFP", qty: 1500, due: "2026-07-15", amount: 5200000 },
     { so: "SO-90003", custId: "CUST-01", model: "L300-LFP", qty: 1800, due: "2026-08-01", amount: 6100000 },
     { so: "SO-90004", custId: "CUST-03", model: "4680-NCM", qty: 600, due: "2026-08-10", amount: 2700000 },
-    { so: "SO-90005", custId: "CUST-04", model: "P28-NCM", qty: 350, due: "2026-08-20", amount: 1600000 },
+    { so: "SO-90005", custId: "CUST-04", model: "方形-NCM", qty: 350, due: "2026-08-20", amount: 1600000 },
     { so: "SO-90006", custId: "CUST-02", model: "L300-LFP", qty: 900, due: "2026-09-01", amount: 3050000 },
+  ],
+};
+
+/**
+ * 外部域环境信号样例（EXT_SIG）：市场/政策/汇率等可影响规划敏感性的外部信号。
+ * 确定性（R6）；带 source/unit/asOf 供 R13 溯源；impact 标注其影响的规划指标（P2 敏感性接入）。
+ */
+// elasticity（敏感性弹性）：信号每变动 1% → impact 指标变动的百分点（pp）。确定性、随信号数据下发（R14）。
+export const MOCK_EXTERNAL_DATA: Record<string, Record<string, unknown>[]> = {
+  external_signals: [
+    { signalKey: "li_carbonate_price", name: "电池级碳酸锂价", category: "原料价格", value: 96000, unit: "元/吨", asOf: "2026-06-15", source: "上海有色网", trend: "down", impact: "毛利", elasticity: -0.08, eventRef: "EVT-Li-20260615" },
+    { signalKey: "nickel_price", name: "镍价(LME)", category: "原料价格", value: 18600, unit: "USD/吨", asOf: "2026-06-15", source: "LME", trend: "flat", impact: "毛利", elasticity: -0.03, eventRef: "EVT-Ni-20260615" },
+    { signalKey: "usd_cny", name: "美元兑人民币", category: "汇率", value: 7.18, unit: "CNY/USD", asOf: "2026-06-15", source: "中国外汇交易中心", trend: "up", impact: "出口营收", elasticity: 0.9, eventRef: "EVT-FX-20260615" },
+    { signalKey: "ev_demand_index", name: "新能源车需求指数", category: "需求", value: 112.4, unit: "index(2025=100)", asOf: "2026-06-01", source: "乘联会", trend: "up", impact: "需求", elasticity: 0.6, eventRef: "EVT-DEM-20260601" },
+    { signalKey: "ess_subsidy_signal", name: "储能补贴政策强度", category: "政策", value: 0.72, unit: "0–1", asOf: "2026-06-10", source: "发改委公告解析", trend: "up", impact: "需求", elasticity: 0.25, eventRef: "EVT-POL-20260610" },
+    { signalKey: "industrial_power_price", name: "工业电价", category: "能源", value: 0.78, unit: "元/kWh", asOf: "2026-06-01", source: "国网", trend: "flat", impact: "成本", elasticity: 0.12, eventRef: "EVT-POW-20260601" },
   ],
 };
 
@@ -255,12 +314,16 @@ export function createAdapter(
   switch (connectorTypeKey) {
     case "file_upload":
       return new FileUploadAdapter(blob, config as { blobKey: string; format: string; datasetName: string });
+    case "prototype_html":
+      return new PrototypeHtmlAdapter(blob, config as { blobKey: string });
     case "rest_api":
       return new RestApiAdapter(config as { url: string; datasetName?: string }, fetchImpl);
     case "mock_erp":
       return new StaticAdapter(MOCK_ERP_DATA);
     case "mock_crm":
       return new StaticAdapter(MOCK_CRM_DATA);
+    case "mock_external":
+      return new StaticAdapter(MOCK_EXTERNAL_DATA);
     default:
       throw validationError(
         `connector type '${connectorTypeKey}' is registered but has no adapter implementation yet`,

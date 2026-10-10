@@ -1,5 +1,5 @@
-import type { ActionDraft, AdminTenant, AdminUser, AdminViewConfig, AgentDefinition, ConnectionInstance, IntentDefinition, LlmProvider, McpServerConfig, PurposeBinding, RuleEntry, SceneEntryConfig, SkillDefinition, WorkflowDefinition } from "@platform/contracts";
-import type { SimClockVM, SopVersionVM, TickReportVM } from "@/api/types";
+import type { BuildPipeline, BuildPipelineKind, ActionDraft, AdminTenant, AdminUser, AdminViewConfig, AgentDefinition, ConnectionInstance, IntentDefinition, LlmProvider, McpServerConfig, PlanBuilderCanvas, PurposeBinding, RuleEntry, Scenario, SceneEntryConfig, SkillDefinition, WorkflowDefinition, FactoryCalendar, VirtualPersona, OpsPlaybook, OpsTickReport } from "@platform/contracts";
+import type { SimClockVM, SopVersionVM, TickReportVM, ScheduledJobVM, SchedulerRunVM } from "@/api/types";
 import { seedSopVersions } from "./simSolvers";
 import type { RuleCandidateVM, RuleDocVM } from "@/api/endpoints";
 import type { ModelingDraftVM } from "@/api/endpoints";
@@ -7,6 +7,13 @@ import type { TaskScriptPlan } from "./sseScripts";
 import {
   ACCOUNTS,
   ACTION_DRAFTS,
+  ACTION_EVENTS,
+  SCHEDULED_JOBS,
+  SCHEDULER_RUNS,
+  FACTORY_CALENDARS,
+  OPS_PERSONAS,
+  OPS_PLAYBOOK,
+  OPS_TICK_REPORTS,
   ADMIN_TENANTS,
   ADMIN_USERS,
   ADMIN_VIEWS,
@@ -20,7 +27,10 @@ import {
   RULE_CANDIDATES,
   RULE_DOC,
   RULES,
+  PLANS,
+  PLAN_BUILDER_FIXTURES,
   SCENES,
+  SCENARIOS,
   SKILLS,
   TENANT_ID,
   WORKFLOWS,
@@ -55,20 +65,66 @@ interface MockDb {
   agents: AgentDefinition[];
   workflows: WorkflowDefinition[];
   skills: SkillDefinition[];
+  /**
+   * G-4：可绑定执行计划（自助创建写入；GET plans 读此，保证测试隔离）。
+   * WO-BEFE-E：形状对齐契约 `ExecutionPlan`（补 `packageId` + `steps`）——
+   * 后端 `listPlans` 吐的就是完整行，少字段会让计划编辑器在 mock 态永远看不到步骤。
+   */
+  plans: { id: string; packageId: string; key: string; version: number; status: string; steps: Record<string, unknown>[] }[];
   mcpConfigs: McpServerConfig[];
   scenes: SceneEntryConfig[];
+  scenarios: Scenario[];
   actionDrafts: ActionDraft[];
+  /**
+   * WO-BEFE-B · R4 留痕事件流（`GET /a/v1/action-drafts/:id/audit` 的 `events` 段来源）。
+   * **由真实变更追加**（decision / cancel 处 `pushActionEvent`），不是静态清单 ——
+   * 这样"审批面没真打后端"时留痕会当场为空，而不是照样好看。
+   */
+  actionEvents: { event: string; payload: Record<string, unknown>; at: string; status?: string }[];
+  schedulerJobs: ScheduledJobVM[];
+  schedulerRuns: SchedulerRunVM[];
+  calendars: FactoryCalendar[];
+  opsPersonas: VirtualPersona[];
+  opsPlaybook: OpsPlaybook | null;
+  opsTickReports: OpsTickReport[];
   sopVersions: SopVersionVM[];
   // 管理平台增量
   rules: RuleEntry[];
   // LLM Provider 增量 §1
   llmProviders: (LlmProvider & { usage7dTokens?: number })[];
   llmBindings: PurposeBinding[];
+  /**
+   * WO-BEFE-F · OC7 成本配额账本（真后端 `repos.llmBudgets`·`lbg_<tenant>` 单行）。
+   * 只存**原始三元组**，`state`/`softLimitTokens`/`degrade` 一律由 handler 现算 —— 与真后端
+   * `budgetStatus()`（`apps/datacore/src/app.ts:1269`）同一套口径，mock 里不许存派生值，
+   * 否则改了硬线而 state 不动，测试会绿在一个真后端上不可能出现的态。
+   */
+  llmBudget: { hardLimitTokens: number; softLimitPct: number; usedTokens: number };
+  /**
+   * WO-BEFE-F · S4 知识库（挂 `knowledge_base` 连接器）。docs 按 connId 归属；
+   * chunks 只留检索需要的文本片段。**不存任何凭据**。
+   */
+  kbDocs: { id: string; connId: string; filename: string; chunkCount: number; text: string }[];
   tenants: AdminTenant[];
   adminUsers: AdminUser[];
   adminViews: AdminViewConfig[];
   // 回放编排器 §6：运营自动化配置（租户级，缺省空）
   opsSchedule: { forecasts: unknown[]; tenantId: string; updatedAt: string; updatedBy: string } | null;
+  // WO-CAPLIVE-2（依赖 WO-LIVE-SCENARIO·桩）：产能活台方案快照（存/分支/横比·复用沙盘存档语义）
+  liveScenarios: {
+    id: string; baseId: string; name: string; parentId?: string;
+    apply: { objectType: string; objectId: string; prop: string; value: number }[];
+    kpis: { capGain: number; affected: number }; createdAt: string;
+  }[];
+  /**
+   * WO-FE-WIRE-2 件一：databuilder pipeline 的**租户覆盖**（缺 = 出厂默认 factory:true）。
+   * 与真后端同语义：PUT 落一条即覆盖、DELETE 抹掉即回出厂；`intake` 处理链**按此表跑**
+   * （见 handlers.ts 的 intake 处理器）——这样"改 pipeline ⇒ 处理行为跟着变"在 mock 态也是真的，
+   * 而不是只测了 CRUD 存取。
+   */
+  buildPipelines: Partial<Record<BuildPipelineKind, BuildPipeline>>;
+  // WO-A · PlanBuilder 画布内存存储（测试隔离）。
+  planBuilders: PlanBuilderCanvas[];
 }
 
 function freshDb(): MockDb {
@@ -83,9 +139,19 @@ function freshDb(): MockDb {
     syntheticJobPolls: new Map(),
     syncJobPolls: new Map(),
     connections: [
+      // 推演数据的真实来源（与真后端 SEED_DEMO 一致）：合成数据源 → RawDataset → 图谱 → 对象 → 求解器
+      { id: "conn-synth", tenantId: TENANT_ID, connectorTypeKey: "mock_erp", name: "合成数据源（确定性生成）", config: {}, status: "ACTIVE", lastSyncAt: "2026-06-12T02:00:00Z" },
       { id: "conn-erp", tenantId: TENANT_ID, connectorTypeKey: "mock_erp", name: "ERP 主数据", config: {}, status: "ACTIVE", lastSyncAt: "2026-06-11T22:00:00Z" },
       { id: "conn-crm", tenantId: TENANT_ID, connectorTypeKey: "rest_api", name: "CRM 订单", config: {}, status: "ERROR", lastSyncAt: "2026-06-10T22:00:00Z", lastError: "401 unauthorized" },
       { id: "conn-iot", tenantId: TENANT_ID, connectorTypeKey: "rest_api", name: "IoT 时序通道", config: {}, status: "ACTIVE", lastSyncAt: "2026-06-12T01:00:00Z" },
+      // Phase 2 产品工程主数据：PLM / MES / QMS / SRM 连接器（与 backend BINDINGS 对齐）
+      { id: "conn-plm", tenantId: TENANT_ID, connectorTypeKey: "rest_api", name: "PLM 产品生命周期管理", config: {}, status: "ACTIVE", lastSyncAt: "2026-06-12T03:00:00Z" },
+      { id: "conn-mes", tenantId: TENANT_ID, connectorTypeKey: "rest_api", name: "MES 制造执行系统", config: {}, status: "ACTIVE", lastSyncAt: "2026-06-12T02:30:00Z" },
+      { id: "conn-qms", tenantId: TENANT_ID, connectorTypeKey: "rest_api", name: "QMS 质量管理系统", config: {}, status: "ACTIVE", lastSyncAt: "2026-06-12T01:30:00Z" },
+      { id: "conn-srm", tenantId: TENANT_ID, connectorTypeKey: "rest_api", name: "SRM 供应商关系管理", config: {}, status: "ACTIVE", lastSyncAt: "2026-06-11T23:00:00Z" },
+      // WO-BEFE-F · S4 知识库连接（`knowledge_base` 类型）——`/a/v1/kb/:connId/*` 的挂载点。
+      // 没有这一条，KB 面板在 mock 态永远是空壳：「接了线没数据」而不是「接了线」（铁律 0.5 三态之二）。
+      { id: "conn-kb", tenantId: TENANT_ID, connectorTypeKey: "knowledge_base", name: "制度与工艺知识库", config: {}, status: "ACTIVE", lastSyncAt: "2026-06-12T04:00:00Z" },
     ],
     ruleDocs: [structuredClone(RULE_DOC)],
     candidates: structuredClone(RULE_CANDIDATES),
@@ -94,17 +160,33 @@ function freshDb(): MockDb {
     agents: structuredClone(AGENTS),
     workflows: structuredClone(WORKFLOWS),
     skills: structuredClone(SKILLS),
+    plans: structuredClone(PLANS),
     mcpConfigs: structuredClone(MCP_CONFIGS),
     scenes: structuredClone(SCENES),
+    scenarios: structuredClone(SCENARIOS),
     actionDrafts: structuredClone(ACTION_DRAFTS),
+    actionEvents: structuredClone(ACTION_EVENTS),
+    schedulerJobs: structuredClone(SCHEDULED_JOBS),
+    schedulerRuns: structuredClone(SCHEDULER_RUNS),
+    calendars: structuredClone(FACTORY_CALENDARS),
+    opsPersonas: structuredClone(OPS_PERSONAS),
+    opsPlaybook: structuredClone(OPS_PLAYBOOK),
+    opsTickReports: structuredClone(OPS_TICK_REPORTS),
     sopVersions: seedSopVersions(),
     rules: structuredClone(RULES),
     llmProviders: structuredClone(LLM_PROVIDERS),
     llmBindings: structuredClone(LLM_BINDINGS),
+    // 演示态：8,000,000 硬线 / 80% 软线 / 已用 5,120,000（=64%，故意落在 OK 区，
+    // 让「调硬线 → state 翻到 SOFT_EXCEEDED」这条真实交互在 mock 态也跑得出来）。
+    llmBudget: { hardLimitTokens: 8_000_000, softLimitPct: 0.8, usedTokens: 5_120_000 },
+    kbDocs: [],
     tenants: structuredClone(ADMIN_TENANTS),
     adminUsers: structuredClone(ADMIN_USERS),
     adminViews: structuredClone(ADMIN_VIEWS),
     opsSchedule: null,
+    liveScenarios: [],
+    planBuilders: structuredClone(PLAN_BUILDER_FIXTURES),
+    buildPipelines: {}, // 缺省空 = 三 kind 全走出厂默认（与真后端 factory:true 同语义）
   };
 }
 

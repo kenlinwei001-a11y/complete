@@ -1,0 +1,332 @@
+[
+  {
+    "port": "4051",
+    "path": "/a/v1/auth/refresh",
+    "status": 401,
+    "method": "POST"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/auth/login",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/me/workspace",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/history/watermark",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/data-health",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/scenarios",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/scenes",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/tenants/demo/features",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/objects",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/sim/propagation-rules",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/objects",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/sim/sessions",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/objects",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/objects",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/cross_object_occupancy/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/optimize_whatif/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/portfolio/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/cross_object_occupancy/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/optimize_whatif/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/cross_object_occupancy/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/optimize_whatif/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/outbox",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/outbox",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/cross_object_occupancy/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/optimize_whatif/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/cross_object_occupancy/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/optimize_whatif/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/optimize_whatif/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/cross_object_occupancy/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/cross_object_occupancy/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/optimize_whatif/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/outbox",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/outbox",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/portfolio/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/portfolio/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/portfolio/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/portfolio/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/outbox",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/outbox",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/data-health",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/portfolio/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/portfolio/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/portfolio/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/portfolio/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/outbox",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/outbox",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/portfolio/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/portfolio/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/portfolio/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/portfolio/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/outbox",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/outbox",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/portfolio/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/portfolio/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/portfolio/run",
+    "status": 200,
+    "method": "POST"
+  }
+]

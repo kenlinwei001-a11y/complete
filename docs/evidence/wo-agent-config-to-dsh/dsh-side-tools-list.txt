@@ -1,0 +1,45 @@
+── DSH 侧 tools/list 原文（DSH 的 mcp-client 逐条注册成 mcp__<server>__<tool>）──
+[
+  {
+    "name": "evaluate_rules",
+    "description": "[MCP·规则] 按规则库评估给定 payload 是否违反业务规则（C01–C23）。在给出结论或生成草稿前调用。",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ruleIds": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "string",
+              "const": "ALL_APPLICABLE"
+            }
+          ],
+          "description": "要评估的规则 key 列表，或字面量 ALL_APPLICABLE（本 agent 适用的全部规则）"
+        },
+        "payload": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {},
+          "description": "待评估的业务载荷（字段名按各规则的表达式口径）"
+        }
+      },
+      "required": [
+        "ruleIds",
+        "payload"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  }
+]
+── 注册后的模型面全名（harness publicToolName = mcp__{serverName}__{rawName}）──
+  mcp__rules__evaluate_rules

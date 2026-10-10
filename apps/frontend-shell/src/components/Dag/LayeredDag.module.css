@@ -4,7 +4,7 @@
 }
 
 .layerTitle {
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 1px;
   fill: var(--muted2);
   text-anchor: middle;
@@ -27,13 +27,56 @@
   opacity: 0.35;
 }
 
+/*
+  判据 U4b · 被排除项：**可见地降级**，不是消失。
+  0.62 而不是 `.dim` 的 0.35 —— 判据要的是「还看得清被排除的是谁」，
+  压到 0.35 等于只留一团灰影，与"从图上消失"在实用上没区别。
+*/
+.excluded {
+  opacity: 0.62;
+}
+
+/*
+  ⚠ 12px 是 `check-text-legibility.mjs` 的 FLOOR_PX，**不许再往下调**。
+  初稿写的 10px 被 `ui-first-layer:check` 的 D3 棘轮当场咬出来
+  （字号层级 1 → 2 · R-UI-2）—— 机器先说话，不是人想起来。
+*/
+.excludedTag {
+  font-size: 12px;
+  font-weight: 700;
+  fill: var(--muted2);
+  letter-spacing: 0.5px;
+}
+
+.excludedLegend {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+/* 左侧那条虚线小样走 `::before`（**不占一个信息块**）：与图上被排除节点的边框同一路编码，让图例与图对得上。 */
+.excludedLegend li::before {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  margin-right: 6px;
+  border-top: 1.4px dashed var(--muted2);
+  transform: translateY(-3px);
+}
+
 .label {
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
 }
 
 .sub {
-  font-size: 9.5px;
+  font-size: 12px;
   fill: var(--muted);
   font-family: var(--font-mono);
 }

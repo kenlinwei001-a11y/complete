@@ -2,11 +2,9 @@ import { z } from "zod";
 import {
   ErrorCodes,
   ExecutionPlanSchema,
+  ExtendedPlanStepSchema,
   IntentDefinitionSchema,
-  OnErrorSchema,
-  PlanStepSchema,
   SlotDefSchema,
-  TemplateValueSchema,
   type ExecutionPlan,
   type IntentDefinition,
   type PlanRef,
@@ -14,26 +12,19 @@ import {
 } from "@platform/contracts";
 import { newId } from "../ids.js";
 import type { Repos } from "../persistence/repos.js";
-import { planStepRuleRefs, type RefReporter } from "../refs/report.js";
+import { planStepRuleRefs, planStepSliceRefs, type RefReporter } from "../refs/report.js";
 import { HttpError } from "../router/orchestrator.js";
 import { validatePlanSteps } from "../workflow/validate.js";
 
 /**
- * Additive plan step types (A8.4 query_timeseries_agg / S4.1 search_knowledge).
- * CONTRACT GAP workaround: contracts PlanStepSchema is a closed discriminated
- * union without these two read tools; we accept them locally (same shape as the
- * other tool steps) so QOS plans can use them — see workflow/executor.ts
- * ExtendedPlanStep for the executor side.
+ * WO-STEP-VOCAB-UPLIFT：`AnyPlanStepSchema` 就是契约层的 `ExtendedPlanStepSchema`
+ * （= `PlanStepSchema` ∪ `ExtraToolStepSchema`，单一出处在
+ * `packages/contracts/src/skill-compile.ts`；本体 §8 `G-STEP-VOCAB-SPLIT-TWO-HOMES` 根治）。
+ * 本地曾持有的 `ExtraToolStepSchema`（"CONTRACT GAP workaround"）已删除 ——
+ * 三类 additive 步骤（query_timeseries_agg / search_knowledge / plan_slice）改由契约层供给。
+ * 保留 `AnyPlanStepSchema` 这个导出名只是保既有引用点；**不许**在本包再造第二份步骤 schema。
  */
-const ExtraToolStepSchema = z.object({
-  id: z.string(),
-  type: z.enum(["query_timeseries_agg", "search_knowledge"]),
-  params: z.record(z.string(), TemplateValueSchema),
-  onError: OnErrorSchema.optional(),
-  timeoutMs: z.number().int().optional(),
-});
-
-export const AnyPlanStepSchema = z.union([PlanStepSchema, ExtraToolStepSchema]);
+export const AnyPlanStepSchema = ExtendedPlanStepSchema;
 
 export const CreateIntentBodySchema = IntentDefinitionSchema.omit({
   id: true,
@@ -234,7 +225,8 @@ export class CatalogService {
     if (!pkg) throw new HttpError(404, ErrorCodes.PACKAGE_NOT_FOUND, `package not found: ${packageId}`);
     const existing = await this.repos.plans.listByPackage(packageId);
     const version = Math.max(0, ...existing.filter((p) => p.key === body.key).map((p) => p.version)) + 1;
-    // ExtraToolStep widening is local (contract gap workaround) — stored as ExecutionPlan
+    // steps 元素是 ExtendedPlanStep（含 ExtraToolStep 三类），比 ExecutionPlan.steps 的
+    // PlanStep[] 宽 —— 词表单一出处在契约层（WO-STEP-VOCAB-UPLIFT），此处仅落库透传，故保留收窄 cast。
     const plan = { ...body, id: newId("plan"), packageId, version, status: "DRAFT" } as ExecutionPlan;
     await this.repos.plans.insert(plan);
     return plan;
@@ -279,13 +271,14 @@ export class CatalogService {
     const published: ExecutionPlan = { ...plan, status: "PUBLISHED" };
     await this.repos.plans.update(published);
     const impact = await this.planImpact(published);
-    // §2.3：plan 出向规则引用上报 A（影响面反查事实源）
+    // §2.3 + §2.4：plan 出向引用上报 A（影响面反查事实源；resolve_slice→slice 同上路，
+    // 闭 G-SLICE-REF-PRODUCER-EMPTY 的 plan 半 —— 十六层②决策意图 认 refKind=plan）
     const pkg = await this.repos.packages.get(plan.packageId);
-    const ruleRefs = planStepRuleRefs(published.steps);
-    if (this.reportRefs && pkg && ruleRefs.length > 0) {
+    const refs = [...planStepRuleRefs(published.steps), ...planStepSliceRefs(published.steps)];
+    if (this.reportRefs && pkg && refs.length > 0) {
       void this.reportRefs(pkg.tenantId, {
         source: { kind: "plan", key: published.key, name: published.key },
-        refs: ruleRefs,
+        refs,
       });
     }
     return { ...published, impact };

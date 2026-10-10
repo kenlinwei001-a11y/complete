@@ -1,0 +1,32 @@
+HEAD=e853a3f85 START=09-27 12:22:40
+cmd: solo-only A/B (2 文件逐个 maxWorkers=1)
+== solo test/runtime-workflow.test.ts ==
+
+ RUN  v3.2.6 /Users/apple/deploy/wo-edge-wire/apps/agentcore
+
+ ✓ test/runtime-workflow.test.ts (9 tests) 3065ms
+   ✓ 增量 §2 · Workflow 执行语义 > §2-1 发布校验：Σ步骤超时 > 5 分钟 → 拒绝发布  1200ms
+   ✓ R10 · 工具并行执行（增量 §5） > 含 COMPUTE 的混合轮全部串行  1060ms
+
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+   Start at  12:22:44
+   Duration  12.31s (transform 4.51s, setup 0ms, collect 7.92s, tests 3.07s, environment 0ms, prepare 503ms)
+
+SOLO_RC[test/runtime-workflow.test.ts]=0
+== solo test/solver-cancel-seam.test.ts ==
+
+ RUN  v3.2.6 /Users/apple/deploy/wo-edge-wire/apps/agentcore
+
+ ✓ test/solver-cancel-seam.test.ts (3 tests) 4986ms
+   ✓ WO-D1 · 求解取消（超时/断开 → 底层作业真停，非仅不再等待） > ① 超时 504 后底层作业不再 finish（对照：不超时则 finish=1）  1946ms
+   ✓ WO-D1 · B→A 真 HTTP 接缝（取消跨进程传到 DataCore 侧，非只在 B 内部打转） > ② 超时 → 真 fetch 被 abort → DataCore 侧观察到断链且底层作业不再 finish  1529ms
+   ✓ WO-D1 · B→A 真 HTTP 接缝（取消跨进程传到 DataCore 侧，非只在 B 内部打转） > ③ 客户端主动断开（前端 AbortController 同款）→ 同一条取消路径（超时阈值远未到）  1502ms
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  12:22:59
+   Duration  12.99s (transform 3.41s, setup 0ms, collect 6.99s, tests 4.99s, environment 0ms, prepare 411ms)
+
+SOLO_RC[test/solver-cancel-seam.test.ts]=0
+SOLO_RC=0 END=09-27 12:23:13

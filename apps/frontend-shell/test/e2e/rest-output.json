@@ -1,0 +1,391 @@
+{
+  "sandbox": {
+    "shot": "08-sandbox.png",
+    "url": "http://127.0.0.1:5173/v/sim-sandbox",
+    "selects": [
+      {
+        "testid": "sandbox-perturbation-kind",
+        "label": null,
+        "count": 5,
+        "disabled": false,
+        "optgroups": [],
+        "sample": [
+          "demand_shift",
+          "supply_disruption",
+          "capacity_loss",
+          "cost_shock",
+          "quality_event"
+        ]
+      },
+      {
+        "testid": "sandbox-perturbation-object",
+        "label": null,
+        "count": 100,
+        "disabled": false,
+        "optgroups": [],
+        "sample": [
+          "obj_araging_ar-90plus",
+          "obj_araging_ar-total",
+          "obj_arinvoice_arinvoice_0_0",
+          "obj_arinvoice_arinvoice_0_1",
+          "obj_arinvoice_arinvoice_0_2"
+        ]
+      },
+      {
+        "testid": "sandbox-perturbation-statevar",
+        "label": null,
+        "count": 41,
+        "disabled": false,
+        "optgroups": [],
+        "sample": [
+          "blockedPressure",
+          "changeoverPressure",
+          "clearanceQueueDays",
+          "collectionPressure",
+          "costPressure"
+        ]
+      },
+      {
+        "testid": "sandbox-perturbation-mode",
+        "label": null,
+        "count": 3,
+        "disabled": false,
+        "optgroups": [],
+        "sample": [
+          "delta",
+          "scale",
+          "set"
+        ]
+      },
+      {
+        "testid": "sandbox-plays-metric",
+        "label": null,
+        "count": 8,
+        "disabled": false,
+        "optgroups": [],
+        "sample": [
+          "",
+          "cash",
+          "demand_attain",
+          "gm_rate",
+          "gross_profit"
+        ]
+      },
+      {
+        "testid": "drill-event-kind",
+        "label": "发生了什么",
+        "count": 12,
+        "disabled": false,
+        "optgroups": [],
+        "sample": [
+          "",
+          "ORDER_RESCHEDULE",
+          "ORDER_CANCEL",
+          "ORDER_INSERT",
+          "ORDER_RELOCATE"
+        ]
+      }
+    ],
+    "text": "跳到主内容\n全域数字化智能决策支撑系统\n全域数字化智能决策支撑系统\n🕐\n健康度\n🌙\nA\nadmin\n▾\n⚡ 场景启动器\n经营驾驶舱\n事件影响与对策\n▾\n规划与平衡\n年度规划\n季度规划\n月度规划\n规划体检\n规划建议\n运营复盘\n▾\n推演\n统一推演控制台\n推演沙盘\n接单可行性\n接单组合优选\n产能推演\n订单进展与卡因\n▾\n台账与地图\n订单台账\n基地地理视图\n▾\n数据接入\n连接器与上传\n规则文档审核\n合成数据\n外部信号\n隔离区\n▾\n建模与图谱\n本体图谱\n本体建模\n对象/类型浏览\n域管理\n对象接口\n本体关系\n本体切片\n切片库\n实体合并\n边界册治理\n原型 intake\n▾\n图谱体系\n▾\n规则与校准\n规则库\n校准报告\n▾\n构建与成长\n数据构建发动机\n构建 Pipeline 配置\n自成长发动机\nAgent 评测\n求解器目录\n求解器审核台\n▾\n编排与场景\n意图目录\nAgent\nWorkflow\nSkill 库\nMCP\n场景入口\n智能资源治理\n计划构建画布\n兜底统计\n视图配置\n▾\n运营与审批\nAction 审批\n组织世界\n运营自动化\n定时任务\n工厂日历\n通知中心\n闭环验证(VLE)\n▾\n平台与系统\n用户管理\n权限策略\n功能开通\nLLM Provider\n配置迁移\n系统自我\n现状\n→\n归因\n→\n试一手\n→\n求最优\n→\n影响半径\n1\n会话与配置\n2\n施加扰动\n3\n世界传播\n4\n影响带读数\n?\n⬇ 导出\n?\n现在到底怎么样？（全链线路图 / 物理拓扑 / 阻滞点 / 节点检视）\n当前范围（切模式保持）：全部基地\nⓘ 订单锚点 / 时窗尚未提为壳级上下文\n?\n◐ 尚未通过就绪认证 —— 现在推演出的结论仅供参考\n为什么不能推演（缺件清单前几条）：NO_SLICE · GLOBAL — 图查询覆盖 97/100 对象，切片 107 < minQueries 1\n查看详情 →\n推演沙盘\n端到端产销 · 后端 5 段 / 本次载荷 18 节点\n30D\n60D\n90D\n?\n全部基地 · 业务线/产品未接线\n全局态 · tick 0 50.0\n◐ 合成·占位\n?\n批次周转压力 50.4\n设备负荷压力 50.4\n采购到货延迟 49.6\n其余 38 项\n?\n前置期 85.4D · 增值 1.4%\n本体链\n诊断 · 1 项待办\n真实性标注\n① 扰动因素\n我要试什么？\n要施加什么\n｜\n已施加 0 条\n｜\n传导边 46 条（其中启用 46 条）\n展开配置 ▾\n方案环 · 扰动 → 方案 → 平行世界 → 比对 → 采纳\n左边拨一条扰动让指标动起来，这里向决策推演求解器要 N 个对症方案；每个方案开一个平行世界（从同一个检查点分支），并排比出差异，再把选中的那个送进 Action 审批。\n指标\n引擎自选（缺口最大的越线指标）\n经营现金（cash · 亿）\n需求达成率（demand_attain · %）\n毛利率（gm_rate · %）\n毛利（gross_profit · 亿）\n市场份额（market_share · %）\n物料保障率（material_cov · %）\n营收（revenue · 亿）\n求方案\n红线：沙盘改的只是这个推演世界，不会写到真实数据上。「采纳」只生成一份待审批的行动草稿，审批通过之后才由正式流程去改真值。\nAI 指挥台 · 自然语言驱动推演\n?\n指挥\n推进 tick\n更多动作 · 3\ntick 时间轴（全局态轨迹 · 模拟态，采纳才经 Action 正门写真值 R4）\n范围 · 全部基地 · 业务线/产品未接线\n存档与回滚\n还没有存档。\n?\n多场景对比\nAI 指挥台\n推演演习 · 卡点扫描\n推演演习 · 扫端到端卡点\n\n输入一件业务上发生的事（不是拨数值），沿真实求解器算出卡点 / 堵点 / 脆弱点。 阈值取该变量在本世界的 P90/P95 分位，零配置。\n\n推演天数\n发生了什么\n（不输事件·只扫卡点）\n订单改交期\n订单取消\n临时插单\n改交付地点\n订单改价\n物料到货延迟\n物料短缺\n物料价格变动\n设备故障\n产能损失\n预测偏差\n开始演习\n企业状态快照\n快照分叉与比对\n因果图（本会话）\n产销线路图 · 站 = 环节 · 站圈 ∝ 该环节吃掉的全链损失占比\n线路图\n物理拓扑\n链路阶段\n本体拓扑\n业务流程\n在途批次图层\n产品族同心环\n点节点 → 右栏检视\n?\n\n?\n范围：未限定（全域）\n\n↻\n＋\n－\n⤢\n1.00×\n图例 · 图元说明（含 AND ≠ OR 警示）\n锚点：SO-3391\n损失守恒 Σ = 100.000%（残差 2.8e-14 · 容差 ±0.001）\n站 28 · 停运 16 · 换乘 4 · 增值 10 · 返工 0\n图上按损失占比标了前 9 个站名（共 28 站，其余悬浮出）——减的是标签不是站；停运站位不参与减标；标出来的站名上下交替摆放，同侧再撞则分层\n主线 · 需求 → 订单 → 产能 → 交付（右端回流箭头 = 闭环回需求）\n支线 · 物料（下方平行线，经齐套 AND 闸门汇入主线）\n▶ 起点\n▶ 起点\n↩ 折行续接 · 同一条线，接下一行左端\n↩ 折行续接 · 同一条线，接下一行左端\n↻ 闭环（结构推定）：回款 → 再投入需求\n∧\n齐套 AND · 全到齐才放行\n客户预告接收\n停运\n询报价\n停运\n等订单评审节拍\n停运\n等开票对账 / 月结节拍\n停运\n返工\n停运\n产能与瓶颈复核\n停运\n工单下达\n停运\n成品入库\n停运\n干线运输在途\n停运\n客户验收\n停运\n清关（申报 → 海关放行）\n停运\n等MRP 运行节拍\n停运\n等发运节拍节拍\n停运\n齐套发料\n停运\n请购\n停运\n采购下单\n停运\n等S&OP 共识会节拍\n8.31%\n账期等待（回款）\n71.26%\n化成·换型准备\n0.05%\n老化静置\n5.94%\n等过程质检攒批节拍\n0.59%\n等主计划排产节拍\n0.59%\n供应商到货周期\n5.94%\n入厂在途（供应商发货 → 到厂/到港）\n2.38%\n到货检验（到货待检 → 检验放行）\n4.75%\n\n悬停（或 Tab 聚焦）任一站"
+  },
+  "roles": {
+    "planner": {
+      "loginOk": true,
+      "home": "http://127.0.0.1:5173/",
+      "navTexts": [
+        "⚡ 场景启动器",
+        "经营驾驶舱",
+        "事件影响与对策",
+        "年度规划",
+        "季度规划",
+        "月度规划",
+        "规划体检",
+        "规划建议",
+        "运营复盘",
+        "统一推演控制台",
+        "推演沙盘",
+        "接单可行性",
+        "接单组合优选",
+        "产能推演",
+        "订单进展与卡因",
+        "订单台账",
+        "基地地理视图",
+        "外部信号",
+        "本体图谱",
+        "图谱·全景",
+        "图谱·主干分级",
+        "图谱·产能推演网络",
+        "图谱·数据来源",
+        "图谱·求解器",
+        "图谱·MVP",
+        "图谱·智能体网络",
+        "图谱·学习闭环",
+        "校准报告",
+        "组织世界",
+        "通知中心"
+      ],
+      "hasUnifiedInNav": true,
+      "url": "http://127.0.0.1:5173/v/sim-unified",
+      "tabs": {
+        "verdict": [
+          {
+            "disabled": true,
+            "title": "这次推演的结论是什么、凭哪几条证据 —— 这次推演的结论页还没有做好，所以现在点不动 —— 三个后端接口已经好了，缺的是这一档的版面",
+            "testid": "usim-tab-verdict"
+          }
+        ],
+        "canaryLiveTab": [
+          {
+            "disabled": false,
+            "title": "扰动沿哪条链传下去、每一跳被谁挡住"
+          }
+        ],
+        "allTabs": [
+          {
+            "testid": "usim-tab-now",
+            "text": "指标态势",
+            "disabled": false
+          },
+          {
+            "testid": "usim-tab-conduction",
+            "text": "传导识别",
+            "disabled": false
+          },
+          {
+            "testid": "usim-tab-attribution",
+            "text": "损失归因",
+            "disabled": false
+          },
+          {
+            "testid": "usim-tab-optimize",
+            "text": "方案寻优",
+            "disabled": false
+          },
+          {
+            "testid": "usim-tab-verdict",
+            "text": "演习结论",
+            "disabled": true
+          },
+          {
+            "testid": "usim-tab-linemap",
+            "text": "产销线路图",
+            "disabled": false
+          },
+          {
+            "testid": "usim-tab-edges",
+            "text": "传导边册",
+            "disabled": true
+          },
+          {
+            "testid": "usim-tab-readiness",
+            "text": "本体与就绪",
+            "disabled": true
+          }
+        ]
+      },
+      "shot": "09-verdict-planner.png",
+      "selects": [
+        {
+          "testid": "rail-statevar",
+          "label": "扰什么 · 根源优先",
+          "count": 10,
+          "disabled": false,
+          "optgroups": [
+            {
+              "label": "根源（2）· 没人喂它，扰它才是从源头扰",
+              "n": 2
+            },
+            {
+              "label": "枢纽 / 末端（8）· 半路插入",
+              "n": 8
+            }
+          ],
+          "sample": [
+            "forecastBias",
+            "orderChurn",
+            "costPressure",
+            "deliveryHoldRisk",
+            "demandPressure"
+          ]
+        },
+        {
+          "testid": "rail-typekey",
+          "label": "落点对象类型",
+          "count": 1,
+          "disabled": false,
+          "optgroups": [],
+          "sample": [
+            "Model"
+          ]
+        },
+        {
+          "testid": "rail-objectid",
+          "label": "落点对象",
+          "count": 6,
+          "disabled": false,
+          "optgroups": [],
+          "sample": [
+            "obj_model_2170-NCM",
+            "obj_model_4680-LFP",
+            "obj_model_4680-NCM",
+            "obj_model_圆柱-LFP",
+            "obj_model_方形-LFP"
+          ]
+        },
+        {
+          "testid": "rail-mode",
+          "label": "怎么扰",
+          "count": 3,
+          "disabled": false,
+          "optgroups": [],
+          "sample": [
+            "set",
+            "delta",
+            "scale"
+          ]
+        },
+        {
+          "testid": "rail-kind",
+          "label": "事情的类别",
+          "count": 5,
+          "disabled": false,
+          "optgroups": [],
+          "sample": [
+            "demand_shift",
+            "supply_disruption",
+            "capacity_loss",
+            "cost_shock",
+            "quality_event"
+          ]
+        }
+      ]
+    },
+    "base_manager": {
+      "loginOk": false,
+      "err": "page.waitForSelector: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[data-testid=\"home-page\"]') to be visible\u001b[22m\n",
+      "shot": "ERR-base_manager.png"
+    }
+  },
+  "moneyCanary": {
+    "shot": "07-dashboard-money-canary.png",
+    "url": "http://127.0.0.1:5173/v/dash",
+    "yuan": 0,
+    "yi": 10,
+    "wan": 19,
+    "hits": [
+      "毛利总额 (亿)",
+      "118.85亿",
+      "AOP 基准营收 (亿)",
+      "601.50亿",
+      "现金垫 C18 (亿)",
+      "58亿",
+      "影响 44 单 · 56 亿 ›",
+      "影响 37 单 · 28 亿 ›",
+      "影响 6 单 · 6 亿 ›",
+      "影响 118 单 · 137 亿 ›"
+    ]
+  },
+  "trail": {
+    "homeUrl": "http://127.0.0.1:5173/",
+    "homeHasUnifiedEntry": false,
+    "homeEntryTexts": [
+      "经营驾驶舱",
+      "本体图谱",
+      "产能推演",
+      "订单台账",
+      "规划体检",
+      "规划建议",
+      "接单可行性",
+      "月度规划",
+      "接单组合优选",
+      "全链线路图",
+      "在途与在制",
+      "物理拓扑",
+      "节点检视",
+      "全链阻滞点",
+      "流程等待态",
+      "采购四段腿分解",
+      "运营复盘",
+      "年度规划",
+      "季度规划",
+      "订单进展与卡因",
+      "基地地理视图",
+      "图谱·全景",
+      "图谱·主干分级",
+      "图谱·产能推演网络",
+      "图谱·数据来源",
+      "图谱·求解器",
+      "图谱·MVP",
+      "图谱·智能体网络",
+      "图谱·学习闭环",
+      "推演指控台",
+      "传导识别",
+      "损失归因",
+      "方案寻优",
+      "⚡ 全部场景启动器 →"
+    ],
+    "simGroupState": [],
+    "unifiedUrl": "http://127.0.0.1:5173/v/sim-unified",
+    "runButton": {
+      "text": "施加并推演",
+      "disabled": false
+    },
+    "afterRunShot": "06-after-run-perturbation.png",
+    "afterRunText": "跳到主内容\n全域数字化智能决策支撑系统\n全域数字化智能决策支撑系统\n🕐\n健康度\n🌙\nA\nadmin\n▾\n⚡ 场景启动器\n经营驾驶舱\n事件影响与对策\n▾\n规划与平衡\n年度规划\n季度规划\n月度规划\n规划体检\n规划建议\n运营复盘\n▾\n推演\n统一推演控制台\n推演沙盘\n接单可行性\n接单组合优选\n产能推演\n订单进展与卡因\n▾\n台账与地图\n订单台账\n基地地理视图\n▾\n数据接入\n连接器与上传\n规则文档审核\n合成数据\n外部信号\n隔离区\n▾\n建模与图谱\n本体图谱\n本体建模\n对象/类型浏览\n域管理\n对象接口\n本体关系\n本体切片\n切片库\n实体合并\n边界册治理\n原型 intake\n▾\n图谱体系\n▾\n规则与校准\n规则库\n校准报告\n▾\n构建与成长\n数据构建发动机\n构建 Pipeline 配置\n自成长发动机\nAgent 评测\n求解器目录\n求解器审核台\n▾\n编排与场景\n意图目录\nAgent\nWorkflow\nSkill 库\nMCP\n场景入口\n智能资源治理\n计划构建画布\n兜底统计\n视图配置\n▾\n运营与审批\nAction 审批\n组织世界\n运营自动化\n定时任务\n工厂日历\n通知中心\n闭环验证(VLE)\n▾\n平台与系统\n用户管理\n权限策略\n功能开通\nLLM Provider\n配置迁移\n系统自我\n指标态势\n扰动后\n传导识别\n损失归因\n方案寻优\n演习结论\n图\n产销线路图\n底账\n传导边册\n本体与就绪\n会话 sims_demo_seed_world\n自动选中最近一条正在推演的会话\n世界态出处：结构派生的占位读数，不是实测 · 种子世界的 tick0 读数由本体结构派生（确定性占位），不是实测：推演状态变量（loadIndex/demandPressure…）在本平台不是对象属性，对象上取不到值 —— 「实测格」一项计的就是每次播种现场探到的真读数格数。凡拿它当起点算出的差值，量级不可当实测读。 · 实测格 0/7295\n状态 推演中 —— 世界会随拍推进，可施加扰动\n暂停\n恢复\n结束\n扰动\n收起\n销售与客户\n8\n产品与工程\n6\n采购与供应\n7\n计划与排产\n3\n生产制造\n4\n质量管理\n3\n设备与维护\n2\n基地与仓储交付\n4\n财务与成本\n2\n未归域\n7\n\n世界现在在 第 4 拍 · 点「施加并推演」会推到 第 5 拍\n\n扰什么 · 根源优先\n销售预测偏差（正=高估） · forecastBias\n订单变更压力 · orderChurn\n成本压力 · costPressure\n收货暂扣风险 · deliveryHoldRisk\n需求压力 · demandPressure\n交期承诺风险 · promiseRisk\n应收压力 · receivablePressure\n短缺风险 · shortageRisk\n订单行拆分压力 · splitPressure\n供应风险 · supplyRisk\n\n层级「根源」 —— 由后端按传导图入度/出度现算\n\n落点对象类型\nModel\n落点对象\nobj_model_2170-NCM\nobj_model_4680-LFP\nobj_model_4680-NCM\nobj_model_圆柱-LFP\nobj_model_方形-LFP\nobj_model_方形-NCM\n怎么扰\n设为\n增减\n乘以\n幅度\n起始拍（不早于第 4 拍）\n\n第 5 拍 = 下一拍 —— 正是这次「施加并推演」要推的那一拍（默认值）\n\n持续拍数（留空 = 永久）\n事情的类别\n需求突变\n供应中断\n产能损失\n成本冲击\n质量事件\n\n销售预测偏差（正=高估） +10 · 第 5 拍起 · 永久\n\n施加并推演\n\n已落地在第",
+    "steps": [
+      {
+        "step": 1,
+        "act": "打开站点（浏览器地址栏只输站点根）",
+        "nav": 1,
+        "click": 0,
+        "url": "/"
+      },
+      {
+        "step": 2,
+        "act": "填写 租户 demo",
+        "nav": 0,
+        "click": 0
+      },
+      {
+        "step": 3,
+        "act": "填写 账号 admin",
+        "nav": 0,
+        "click": 0
+      },
+      {
+        "step": 4,
+        "act": "填写 密码",
+        "nav": 0,
+        "click": 0
+      },
+      {
+        "step": 5,
+        "act": "点【登录】按钮",
+        "nav": 1,
+        "click": 1,
+        "url": "http://127.0.0.1:5173/"
+      },
+      {
+        "step": 6,
+        "act": "点侧栏【统一推演控制台】",
+        "nav": 1,
+        "click": 1,
+        "url": "http://127.0.0.1:5173/v/sim-unified"
+      },
+      {
+        "step": 7,
+        "act": "点【施加并推演】（用默认扰动，未改任何参数）",
+        "nav": 0,
+        "click": 1
+      }
+    ]
+  },
+  "objCanary": {
+    "status": 401,
+    "bytes": 104,
+    "unitPriceHits": 0,
+    "unitPriceSample": [],
+    "yuanInBody": 0,
+    "tokenFound": false
+  }
+}

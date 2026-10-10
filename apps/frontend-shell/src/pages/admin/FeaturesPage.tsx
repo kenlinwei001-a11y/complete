@@ -230,7 +230,7 @@ function FeatureRow({
       </label>
       <span className={`badge ${def.level === "VIEW" ? "blue" : def.level === "BLOCK" ? "amber" : "green"}`}>{def.level}</span>
       <span className="zh">{def.name}</span>
-      <span className="mono" style={{ fontSize: 10.5, color: "var(--muted2)" }}>
+      <span className="mono" style={{ fontSize: 12, color: "var(--muted2)" }}>
         {def.key}
       </span>
       {(intents > 0 || solvers > 0) && (
@@ -257,7 +257,7 @@ function PreviewModal({ tenantId, role, onClose }: { tenantId: string; role: str
           <div className="section-title">导航</div>
           {data.navigation.map((n) => (
             <div key={n.key} style={{ fontSize: 12.5, padding: "3px 0" }}>
-              {n.label} <span className="mono" style={{ color: "var(--muted2)", fontSize: 10.5 }}>{n.key}</span>
+              {n.label} <span className="mono" style={{ color: "var(--muted2)", fontSize: 12 }}>{n.key}</span>
             </div>
           ))}
           <div className="section-title" style={{ marginTop: 10 }}>

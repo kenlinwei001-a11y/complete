@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import type { AgentDefinition, QueryTask, SkillDefinition } from "@platform/contracts";
 import { ADMIN, createTestApp, debugHeaders, PKG, PLANNER, submitQuery, TENANT, waitForTask, type TestApp } from "./helpers.js";
 import { text } from "../src/llm/mock.js";
+import { OUTSOURCE_REDLINE } from "@platform/contracts";
+
+// DF.13：C08 传播测试的载荷/新阈值一律**相对现行红线**派生，不写死 0.25/0.2——
+// 否则红线一变，这条"阈值变更 → 判定翻转"的测试会静默退化成"改前改后都一样"的空跑。
+const UNDER_REDLINE = OUTSOURCE_REDLINE.maxRatio * 0.75; // 红线内（v1 应 PASS）
+const TIGHTENED = OUTSOURCE_REDLINE.maxRatio * 0.5; // 收紧后的新红线（UNDER_REDLINE 越线 → WARN）
 
 /**
  * 统一引用模式增量（Part 2）：L5 规则变更传播留痕 / L6 planRef latest vs pin /
@@ -18,7 +24,7 @@ async function createRefPlan(t: TestApp, key: string, markdown: string): Promise
     payload: {
       key,
       steps: [
-        { id: "s1", type: "evaluate_rules", params: { ruleIds: ["C08"], payload: { outsourceRatio: 0.25 } } },
+        { id: "s1", type: "evaluate_rules", params: { ruleIds: ["C08"], payload: { outsourceRatio: UNDER_REDLINE } } },
         { id: "render", type: "render_answer", params: { blocks: [{ type: "text", markdown }] } },
       ],
     },
@@ -145,15 +151,15 @@ describe("L5 · 规则变更传播：下一次求值用新阈值；既有任务�
     const task1 = await runIntent(t, "rule_intent");
     expect(task1.status).toBe("COMPLETED");
     expect(task1.resolvedRefs).toContainEqual({ kind: "rule", key: "C08", version: 1 });
-    // v1 阈值 0.3：payload 0.25 → 通过（正常 render）
+    // v1 = 现行红线：payload 在红线内 → 通过（正常 render）
     expect(task1.answer?.blocks?.[0]).toMatchObject({ markdown: "规则评估完成" });
 
-    // 源头一改（C08 阈值 0.3 → 0.2，版本 +1），引用方零动作
-    t.dataCore.rules.publishC08(0.2);
+    // 源头一改（C08 红线收紧至 TIGHTENED，版本 +1），引用方零动作
+    t.dataCore.rules.publishC08(TIGHTENED);
 
     const task2 = await runIntent(t, "rule_intent");
     expect(task2.status).toBe("COMPLETED");
-    // 新阈值生效：0.25 > 0.2 → WARN（非 BLOCK，不拦截），留痕 v2
+    // 新阈值生效：UNDER_REDLINE > TIGHTENED → WARN（非 BLOCK，不拦截），留痕 v2
     expect(task2.resolvedRefs).toContainEqual({ kind: "rule", key: "C08", version: 2 });
 
     // 既有任务留痕仍显示旧版本号

@@ -1,0 +1,41 @@
+npm warn Unknown env config "side-effects-cache". This will stop working in the next major version of npm.
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/agent-adfaa59886e57c31c/apps/agentcore
+
+ ❯ test/arm-failure-visible.seam.test.ts (12 tests | 1 failed) 750ms
+   ✓ WO-DSH-ARM-FAILURE-VISIBLE · ① 收尾支可判 + 溯源口径（对照实验） > ① final_answer 支：provenance 声明落在范围内 ⇒ provenance.length>0 且 unverifiedNumerics=false 11ms
+   ✓ WO-DSH-ARM-FAILURE-VISIBLE · ① 收尾支可判 + 溯源口径（对照实验） > ② 同一夹具只把 ref 改成越界（⟦ref:99⟧）⇒ unverifiedNumerics=true（① 与 ② 必须同时成立） 1ms
+   ✓ WO-DSH-ARM-FAILURE-VISIBLE · ① 收尾支可判 + 溯源口径（对照实验） > ③ 软收尾支：可判（closing=SOFT_CLOSE）+ provenance 恒空；final_answer 支可判为 FINAL_ANSWER 2ms
+   ✓ WO-DSH-ARM-FAILURE-VISIBLE · ④ 工具失败可点名（哪次调用 + 哪道门） > ④a final_answer 支：答案里必须**指名**两个失败调用（工具名 + outcome + 门/原因原文） 2ms
+   ✓ WO-DSH-ARM-FAILURE-VISIBLE · ④ 工具失败可点名（哪次调用 + 哪道门） > ④b 软收尾支：同一条判据（失败披露不只在 final_answer 支） 1ms
+   ✓ WO-DSH-ARM-FAILURE-VISIBLE · ④ 工具失败可点名（哪次调用 + 哪道门） > ④c 反向金丝雀：零失败的夹具**不许**长出披露块（否则它只是噪声，不是信号） 1ms
+   × WO-DSH-ARM-FAILURE-VISIBLE · Q2 复现：原生臂求解器 MCP 工具必须真到 dataCore.solver.invoke > 归一后 binding 必须落 BUILTIN ⇒ 调用真到求解器（修前：0ms ERROR、DataCore 零请求） 409ms
+     → dsh 路要求 DataCore 用途绑定（dcp:{providerId}:{modelId} spec），拒绝非 dcp spec: claude-opus-4-8
+   ✓ WO-ARM-FAILURE-VISIBLE · ⑤ 原生臂：失败在答案里可点名（活服务跑的就是这条臂） > ⑤a 一次 DENIED + 一次 ERROR ⇒ 逐条点名（工具名 + 四态 + 门/原因原文） 128ms
+   ✓ WO-ARM-FAILURE-VISIBLE · ⑤ 原生臂：失败在答案里可点名（活服务跑的就是这条臂） > ⑤b 反向金丝雀：零失败的运行不许长出披露块（否则它只是噪声，不是信号） 65ms
+   ✓ WO-ARM-FAILURE-VISIBLE · ⑥ 两臂同判据：同一份失败集合渲染出的披露块**逐字同** > 原生臂的披露块 == DSH 臂（帧流）的披露块 55ms
+   ✓ WO-ARM-FAILURE-VISIBLE · ⑦ 广告面审计（工具面 vs 提示词面） > ⑦a 工具面：`expandAgentTools` 严格吃 toolFilter ⇒ cockpit_kpi **不**在模型可调清单里 68ms
+   ✓ WO-ARM-FAILURE-VISIBLE · ⑦ 广告面审计（工具面 vs 提示词面） > ⑦b 提示词面：导航切片的「全部可调用求解器目录」**已收到 toolFilter 上** ⇒ cockpit_kpi 不再被点名 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/arm-failure-visible.seam.test.ts > WO-DSH-ARM-FAILURE-VISIBLE · Q2 复现：原生臂求解器 MCP 工具必须真到 dataCore.solver.invoke > 归一后 binding 必须落 BUILTIN ⇒ 调用真到求解器（修前：0ms ERROR、DataCore 零请求）
+Error: dsh 路要求 DataCore 用途绑定（dcp:{providerId}:{modelId} spec），拒绝非 dcp spec: claude-opus-4-8
+ ❯ LlmSettings.resolveConnectionFacts src/llm/providers.ts:435:13
+    433|     const dc = parseDataCoreSpec(spec);
+    434|     if (!dc) {
+    435|       throw new Error(`dsh 路要求 DataCore 用途绑定（dcp:{providerId}:{modelId…
+       |             ^
+    436|     }
+    437|     if (!this.directory) throw new Error("DataCore provider directory …
+ ❯ ExecutionEngine.runRegisteredAgent src/engine.ts:1312:49
+ ❯ test/arm-failure-visible.seam.test.ts:221:7
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 11 passed (12)
+   Start at  18:01:21
+   Duration  6.97s (transform 2.73s, setup 0ms, collect 5.46s, tests 750ms, environment 0ms, prepare 156ms)
+

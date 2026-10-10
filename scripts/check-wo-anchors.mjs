@@ -1,0 +1,326 @@
+#!/usr/bin/env node
+/**
+ * WO 派单锚点校验门 —— **派单前**把工单里引用的每个 `path:line (symbol)` / 裸 `path` 现场验一遍。
+ *
+ * ── 来历：2026-08-13 一天之内，我（审核方）写的工单里连出三处事实错误，全部由 dev 顶回来 ────
+ *
+ * | # | 我在工单里写的 | 实测 | 若 dev 信了 |
+ * |---|---|---|---|
+ * | 1 | 「源分支 @9a54d5da，最后提交是『wip 被中途叫停·未完成未验证』」 | tip 是 `dfd42b06`；wip 那句属于两个**共享祖先**提交，且该分支**早已全并入 canonical** | 在一张空单上花一整轮 |
+ * | 2 | 「`apps/agentcore/src/workflow/workflow-engine.ts:194` 有 PAUSED」 | agentcore **没有这个文件**（全树 PAUSED 零命中）；真身是 `apps/datacore/src/databuilder/workflow-engine.ts:194` —— **行号恰好对、路径错**，比全错更能骗人 | 去 agentcore 里找一个不存在的东西 |
+ * | 3 | 「canonical 缺的整文件：`BuildPipelinesPage.tsx`」 | 文件确实缺，但**能力早已存在**（`PipelineConfigPage.tsx` + `/admin/pipelines` 三处注册齐全） | 重复造一整个页，同一能力两套 DOM 契约 |
+ *
+ * **三次同一个形态**（CLAUDE.md 铁律 0.6 句式）：
+ *   **「我用『我记忆/审计快照里的 file:line』当作『今天的接线』的证据，而前者并不度量后者。」**
+ *
+ * 已达第 3 次 ⇒ 必须建机制、且机制的判据是「**下次同样的错发生时，是机器先说话，不是人先想起来**」。
+ * 检查清单不算机制（本仓自己的第 11 条错账原话：写在文档里的纪律不是机制）。
+ *
+ * ── 用法 ────────────────────────────────────────────────────────────────────
+ *   node scripts/check-wo-anchors.mjs <工单文件>                    # 按**当前工作目录**校验
+ *   cat prompt.txt | node scripts/check-wo-anchors.mjs -            # 校验 stdin（派 agent 前的提示词）
+ *   node scripts/check-wo-anchors.mjs <文件|-> --rev <git-ref>      # 按**工单声明的基线**校验
+ *
+ * ⚠️ `--rev` 不是可选的方便功能，是**判据正确性**问题（2026-08-13 实测）：
+ *    收编循环里的工单，基线常常不是 canonical（例如「基于 verify-reclaim-6 开工」）。
+ *    不带 --rev 时本门按当前 checkout 验，会把「基线上有、canonical 上没有」的文件
+ *    一律报成 FILE_MISSING —— **假红**，而且方向恰好相反：它会让人以为工单在瞎写路径。
+ *    形态：「我用『canonical 上有没有这个文件』当作『工单基线上有没有』的证据。」
+ *    凡工单里写了 `git checkout -B ... origin/<X>`，就该带 `--rev origin/<X>`。
+ *
+ * ── 退出码三分（与本仓其它门同口径）────────────────────────────────────────
+ *   0 = 全部锚点现场可验证
+ *   1 = 有锚点对不上（**别派这张单**，先改）
+ *   2 = **门自己坏了**（金丝雀不中 / 读不到仓库）⇒ 本次结论作废，不许读成「锚点都对」
+ *
+ * ⚠️ 本门**不**声称能查出第 3 类错（「文件缺 ≠ 能力缺」）—— 那要语义判断，机器给不出。
+ *    它只关死第 1、2 类（路径不存在 / 符号不在该行附近 / 分支已并入）。
+ *    第 3 类的对策写在工单模板里：**凡以「canonical 缺某文件」立单，必须先复核该能力是否已有别的承载物**。
+ *    这条边界必须诚实说出来，否则本门自己就变成「我用『锚点门绿了』当作『工单没错』的证据」。
+ */
+
+/* ── 退出码纪律 · 顶层兜底（WO-R9-GATE-CLOSEOUT）───────────────────────────────
+ * 本门上面已经写明退出码三分（0 干净 / 1 锚点对不上 / 2 门自己坏了），也已经有 `die2()`
+ * 这个 RC=2 出口 —— 但那只堵住了**已知**的失败路径。而「已知」永远不完整：
+ * 只读 FS / 权限 / OOM / node 版本差异 / `git` 不在 PATH / 本地 `./x.mjs` 被删，
+ * 全都会抛未捕获异常，而 **node 对未捕获异常一律退 1** —— 恰好撞上「锚点对不上」这个码。
+ * 于是「门根本没跑起来」被读成「这张单在瞎写路径」，方向**正好相反**。
+ * 形态（CLAUDE.md 铁律 0.6 句式）：
+ *   > 「我用『进程非 0 退出』当作『工单有错』的证据，而前者并不度量后者。」
+ *
+ * 照 `scripts/check-ui-first-layer.mjs` / `scripts/check-gate-exit-discipline.mjs` 的现成写法补，
+ * 不自创：同步 throw 走 `uncaughtException`、顶层 await 之后的 throw 走 `unhandledRejection`，
+ * **两个都要挂**，只挂一个有洞；再加一层顶层 `try/catch` 包住主流程（栈更短、提示更准，
+ * 且让「有兜底」这件事在**源码结构上**也成立 —— `check-gate-exit-discipline.mjs` 的判据②认的就是这个结构）。
+ *
+ * ⚠ 反向判据（做坏了比不做更糟）：兜底**不许**把真违规也吞成 2，那是拿更糟的假绿换掉假红。
+ *   本门的 RC=1 只由 `main()` 末尾那条 `process.exit(1)` 产生，而 `process.exit` 是**终止**不是抛出，
+ *   顶层 `catch` 碰不到它 —— 三向退出码由下面 `WO_ANCHORS_FORCE_BOOM` 的故障注入**机器验**，
+ *   不靠这段注释保证（写在注释里的约定不是机制）。 */
+process.on("uncaughtException", (e) => bail(e));
+process.on("unhandledRejection", (e) => bail(e));
+function bail(e) {
+  console.error(`⛔ 门自己坏了：check-wo-anchors.mjs 未预期异常（${e?.message || e}）`);
+  console.error("   本次结论作废 —— **不许**读成「锚点都对」，也**不许**读成「这张单有错」：");
+  console.error("   本门这次根本没跑完，它什么都没证明。RC=2");
+  console.error("   " + String(e?.stack || "").split("\n").slice(1, 4).join("\n   "));
+  process.exit(2); // 2 = 工具自己坏了（1 留给「锚点真对不上」那一条路径，两者处置相反，不许合并）
+}
+
+import { readFileSync, existsSync, statSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import path from "node:path";
+import process from "node:process";
+
+const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+
+/** 容差：代码会漂，锚点指到 ±N 行内认对；超出即报漂移（与 ontology-anchors 门同精神）。 */
+const LINE_TOLERANCE = 40;
+
+function die2(msg) {
+  console.error(`⛔ 门自己坏了：${msg}`);
+  console.error("   本次结论作废 —— **不许**读成「锚点都对」。RC=2");
+  process.exit(2);
+}
+
+/** 抽取形如 `apps/x/src/y.ts:123 (symbol)` 或 `apps/x/src/y.ts:123` 或裸 `apps/x/src/y.ts` 的引用。 */
+function extractAnchors(text) {
+  const out = [];
+  // ⚠ 扩展名的交替顺序**是判据不是风格**：正则交替是**最左优先**，写成 `ts|tsx` 会把
+  //   `BuildPipelinesPage.tsx` 截成 `BuildPipelinesPage.ts` ⇒ 门去查一个不存在的路径、
+  //   报出**假的** FILE_MISSING。本门第一次跑就犯了（2026-08-13 实测），形态正是它自己要防的那句：
+  //   「我用『我截出来的那个路径』当作『工单写的那个路径』的证据。」长的必须排前面。
+  //   ⚠️ 第一版只把 `tsx` 挪到 `ts` 前面 —— **只修了看见的那一半**：`js|json` 同病，
+  //   `scripts/gate-ledger.json` 照样被截成 `.js`（2026-08-13 第二次实测，门自己咬出来的）。
+  //   光靠排序是「撞见一个补一个」，故补 `(?![A-Za-z0-9])`：**任何**扩展名都不许只匹前缀。
+  //   两层都留着 —— 断言是判据，排序是冗余。金丝雀三条分别钉住 tsx / json / 未列出的 mdx。
+  const re = /`?((?:apps|packages|scripts|docs)\/[A-Za-z0-9_./@-]+\.(?:tsx|ts|mjs|json|jsonc|js|sql|md|css|sh)(?![A-Za-z0-9]))(?::(\d+))?`?(?:\s*\(([A-Za-z0-9_$.]+)\))?/g;
+  for (const m of text.matchAll(re)) {
+    out.push({ file: m[1], line: m[2] ? Number(m[2]) : null, symbol: m[3] ?? null, raw: m[0] });
+  }
+  return out;
+}
+
+/** 抽取形如 `origin/claude/xxx` 或 `claude/handoff-wo-xxx` 的分支引用。 */
+function extractBranches(text) {
+  const out = new Set();
+  for (const m of text.matchAll(/`?((?:origin\/)?claude\/[a-z0-9][a-z0-9/-]*)`?/g)) out.add(m[1]);
+  return [...out];
+}
+
+function git(args) {
+  try {
+    return { ok: true, out: execFileSync("git", args, { cwd: ROOT, encoding: "utf8" }).trim() };
+  } catch (e) {
+    return { ok: false, out: String(e.stdout ?? "") + String(e.stderr ?? ""), rc: e.status };
+  }
+}
+
+// ── 金丝雀：抽取器与 git 都必须先自证，否则「零命中」读成「工单干净」就是本仓的老病 ──────
+function canary() {
+  let passed = 0, total = 0;
+  const check = (label, ok, why) => { total++; if (ok) passed++; else die2(`${label} 失败：${why}`); };
+
+  const positives = extractAnchors("见 `apps/datacore/src/app.ts:100 (foo)` 与 scripts/gate.sh 两处");
+  check("正金丝雀·锚点", positives.length === 2, `必中样例应抽出 2 个锚点，实得 ${positives.length}`);
+  const negatives = extractAnchors("这段话里没有任何文件路径，只有 foo.bar 和 100:200");
+  check("负金丝雀·锚点", negatives.length === 0, `不可能样例抽出了 ${negatives.length} 个 ⇒ 正则过宽`);
+  // .tsx 专项金丝雀：钉死「交替最左优先」那个 bug（本门第一次跑就犯过，见 extractAnchors 注释）。
+  const tsx = extractAnchors("`apps/frontend-shell/src/pages/admin/BuildPipelinesPage.tsx`");
+  check("正金丝雀·tsx 不被截断", tsx.length === 1 && tsx[0].file.endsWith(".tsx"), `抽出 ${JSON.stringify(tsx.map((a) => a.file))} ⇒ 扩展名被截`);
+  const js = extractAnchors("`scripts/gate-ledger.json` 与 `scripts/x.js`");
+  check("正金丝雀·json 不被截断", js.length === 2 && js[0].file.endsWith(".json") && js[1].file.endsWith(".js"),
+        `抽出 ${JSON.stringify(js.map((a) => a.file))} ⇒ 扩展名被截`);
+  // 第三条专钉**边界断言**本身。上面两条其实是「长优先排序」在挡，把断言删掉它们照样绿 ——
+  // 那样金丝雀只是在给排序背书，断言这一层等于没测（2026-08-13 实测：删断言后 RC 仍 0）。
+  // `docs/x.mdx` 是排序挡不住的形态：清单里没有 mdx，`md` 会匹上前缀，只有断言拦得住。
+  const mdx = extractAnchors("见 `docs/x.mdx`");
+  check("负金丝雀·未列出的扩展名不许匹前缀", mdx.length === 0,
+        `抽出 ${JSON.stringify(mdx.map((a) => a.file))} ⇒ 边界断言失效，会报出假的 FILE_MISSING`);
+  const br = extractBranches("基线 `origin/claude/inspiring-gates-aqczjg`，交回 claude/handoff-wo-x");
+  check("金丝雀·分支抽取", br.length === 2, `应抽出 2 条，实得 ${br.length}`);
+  // git 自证：判据必须落在 **RC** 上，不是输出非空 —— `git rev-parse` 不带 `--verify -q` 时
+  // 路径不存在会把输入串**原样打到 stdout**（git 2.43 实测 RC=128），只看输出的调用会被骗。
+  check("git 正金丝雀", git(["rev-parse", "--verify", "-q", "HEAD:package.json"]).ok, "读不到 HEAD:package.json");
+  check("git 负金丝雀", !git(["rev-parse", "--verify", "-q", "HEAD:__no_such_file_zzz__"]).ok, "不存在的路径也报成功 ⇒ 判据恒真");
+
+  return { passed, total, detail: "锚点正/负 · tsx/json 不截断 · mdx 前缀不匹 · 分支抽取 · git 正/负" };
+}
+
+/** 子进程跑自己校验单份工单，取**退出码**（不解析 stdout —— 那正是本门在防的取值方式）。 */
+function spawnSelf(file) {
+  const r = spawnSync(process.execPath, [new URL(import.meta.url).pathname, file], { cwd: ROOT, encoding: "utf8" });
+  return r.status ?? 2;
+}
+
+function main() {
+  // 故障注入开关：只给三向退出码机验用 —— 验「未预期异常 ⇒ RC=2 而不是 node 默认的 1」。
+  // 故意不 catch：这就是「未预期」的定义。（写在注释里的约定不是机制，只有机器跑得到的才是。）
+  if (process.env.WO_ANCHORS_FORCE_BOOM === "1") {
+    throw new TypeError("（故障注入）未预期异常，验顶层兜底 —— 期望 RC=2");
+  }
+  const argv = process.argv.slice(2);
+  const revIdx = argv.indexOf("--rev");
+  const REV = revIdx >= 0 ? argv[revIdx + 1] : null;
+  // ⚠ 不能写成 `i !== revIdx && i !== revIdx + 1`：`--rev` 缺省时 revIdx = -1，
+  //   `i !== revIdx + 1` 退化成 `i !== 0`，**把工单文件名自己滤掉**，门当场报「用法」并退 2。
+  //   形态：「我用『哨兵值参与算术后仍是哨兵』当作真的，而 -1+1=0 恰好是合法下标。」
+  const arg = argv.filter((a, i) => revIdx < 0 || (i !== revIdx && i !== revIdx + 1))[0];
+  if (REV && !git(["rev-parse", "--verify", "-q", `${REV}^{commit}`]).ok) {
+    console.error(`⛔ 门自己坏了：--rev ${REV} 解析不到（先 git fetch origin）。本次结论作废。RC=2`);
+    process.exit(2);
+  }
+  // 无参 = **门链模式**：扫「相对 canonical 有变更的 `docs/WO-*.md`」。
+  // 这是把本门从「靠人记得跑」变成机器入口的那一步（门账里那笔 disposition=WIRE 的待办）。
+  // 范围**刻意不是全量**：47 份历史工单里 23 份锚点早已漂移，全扫恒红 = 又一个装饰品门；
+  // 只咬「这条分支新写/改过的工单」才是可达成、且真的在防那件事（新工单误导下一个 dev）。
+  if (!arg) {
+    const CANON = "origin/claude/inspiring-gates-aqczjg";
+    if (!git(["rev-parse", "--verify", "-q", `${CANON}^{commit}`]).ok) {
+      console.error(`⛔ 门自己坏了：读不到 canonical ${CANON}（先 git fetch origin）。本次结论作废。RC=2`);
+      process.exit(2);
+    }
+    const changed = git(["diff", "--name-only", CANON, "HEAD", "--", "docs/WO-*.md"]).out
+      .split("\n").map((x) => x.trim()).filter((x) => x && existsSync(path.join(ROOT, x)));
+    // 金丝雀：diff 工具本身必须活着 —— 拿一个必然有差异的路径验（docs/ 整体必有变更时才有意义，
+    // 故这里改为验「命令本身可执行且 canonical 可解析」，并在零命中时明说是零命中而非"干净"。
+    console.log(`· 门链模式：相对 ${CANON} 变更的 WO 文档 ${changed.length} 份`);
+    if (changed.length === 0) { console.log("✅ check-wo-anchors：本分支未新增/修改任何 WO 文档，无可校验对象（这是**零命中**，不是「都对」）。RC=0"); process.exit(0); }
+    let bad = 0;
+    for (const f of changed) {
+      const r = spawnSelf(f);
+      console.log(`  ${r === 0 ? "✓" : "✗"} ${f}${r === 0 ? "" : `（RC=${r}）`}`);
+      if (r !== 0) bad++;
+    }
+    if (bad) { console.log(`\n✗ check-wo-anchors：${bad}/${changed.length} 份工单的锚点对不上 —— 逐份单跑看详情：node scripts/check-wo-anchors.mjs <文件>`); process.exit(1); }
+    console.log(`✅ check-wo-anchors：${changed.length} 份变更工单锚点全部现场可验证。RC=0`);
+    process.exit(0);
+  }
+  const c = canary();
+  const text = arg === "-" ? readFileSync(0, "utf8") : readFileSync(path.resolve(arg), "utf8");
+  if (!text.trim()) die2("输入为空 —— 空输入必然零命中，那不是「工单干净」");
+
+  // 显式豁免：`<!-- wo-anchors: allow-missing: a/b.ts, c/d.ts -->`（可多行，累加）
+  // 前瞻型工单会引用**还不存在**的路径（那正是它要求造的东西）。门若一律报 FILE_MISSING，
+  // 就把「按计划要新建」误判成「路径写错了」—— 又一次「我用 X 当作 Y 的证据」。
+  // 用**显式声明**不用启发式猜（猜会在两个方向上各错一半）。
+  const allowMissing = new Set();
+  for (const m of text.matchAll(/<!--\s*wo-anchors:\s*allow-missing:\s*([^>]*?)-->/g)) {
+    for (const one of m[1].split(",")) { const v = one.trim().replace(/^`|`$/g, ""); if (v) allowMissing.add(v); }
+  }
+  const exempted = [], staleExempt = [];
+
+  const problems = [];
+  const anchors = extractAnchors(text);
+  const seen = new Set();
+  let checkedFiles = 0, checkedLines = 0;
+
+  for (const a of anchors) {
+    const key = `${a.file}:${a.line ?? ""}:${a.symbol ?? ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const abs = path.join(ROOT, a.file);
+    const present = REV
+      ? git(["rev-parse", "--verify", "-q", `${REV}:${a.file}`]).ok   // 判据落在 RC 上，不是输出非空
+      : existsSync(abs) && statSync(abs).isFile();
+    // 豁免仍**逐条列出**（豁免 ≠ 隐身）；声明了却已存在 ⇒ 反过来点名，防止豁免表烂在那儿挡真错。
+    if (!present && allowMissing.has(a.file)) { exempted.push(a.file); continue; }
+    if (present && allowMissing.has(a.file)) staleExempt.push(a.file);
+    if (!present) {
+      problems.push({
+        kind: "FILE_MISSING",
+        raw: a.raw,
+        msg: `路径不存在：${a.file}`,
+        hint: `别急着说「这个能力没有」—— 先找同名/近名文件：git ls-files | grep -i ${path.basename(a.file, path.extname(a.file))}`,
+      });
+      continue;
+    }
+    checkedFiles++;
+    const contentOf = () => (REV ? execFileSync("git", ["show", `${REV}:${a.file}`], { cwd: ROOT, encoding: "utf8" }) : readFileSync(abs, "utf8"));
+    if (a.symbol) {
+      const lines = contentOf().split("\n");
+      const hits = [];
+      lines.forEach((l, i) => { if (l.includes(a.symbol)) hits.push(i + 1); });
+      if (hits.length === 0) {
+        problems.push({ kind: "SYMBOL_MISSING", raw: a.raw, msg: `符号 \`${a.symbol}\` 在 ${a.file} 里零命中`, hint: `git grep -n "${a.symbol}" -- 'apps/*/src/*' 'packages/*/src/*' 看它真在哪个包` });
+      } else if (a.line != null) {
+        checkedLines++;
+        const nearest = hits.reduce((b, h) => (Math.abs(h - a.line) < Math.abs(b - a.line) ? h : b), hits[0]);
+        if (Math.abs(nearest - a.line) > LINE_TOLERANCE) {
+          problems.push({ kind: "LINE_DRIFT", raw: a.raw, msg: `锚点漂了 ${Math.abs(nearest - a.line)} 行：声称 :${a.line}，\`${a.symbol}\` 实际最近在 :${nearest}`, hint: "改成实际行号；漂 >40 行说明工单是照旧快照写的" });
+        }
+      }
+    } else if (a.line != null) {
+      const total = contentOf().split("\n").length;
+      checkedLines++;
+      if (a.line > total) {
+        problems.push({ kind: "LINE_OOB", raw: a.raw, msg: `${a.file} 只有 ${total} 行，锚点却指 :${a.line}`, hint: "裸行号锚点无法自动重算 —— 补上 (symbol) 再验" });
+      }
+    }
+  }
+
+  // 分支：既验存在，也验**是否已全并入 canonical**（判据是祖先关系，不是文件存在性）。
+  const CANON = "origin/claude/inspiring-gates-aqczjg";
+  const canonOk = git(["rev-parse", "--verify", "-q", `${CANON}^{commit}`]).ok;
+  let checkedBranches = 0;
+  if (!canonOk) {
+    problems.push({ kind: "CANON_UNREACHABLE", raw: CANON, msg: `读不到 canonical ${CANON}（先 git fetch origin）`, hint: "本项判据本次未评估" });
+  } else {
+    for (const b of extractBranches(text)) {
+      const ref = b.startsWith("origin/") ? b : `origin/${b}`;
+      // canonical 平凡地是自己的祖先 —— 不排除它，每张单都会被误报「已并入 ⇒ 空单」。
+      // 这是本门第一次跑就自曝的第二个 bug（2026-08-13 实测：拿一份真工单跑，唯一那条
+      // 「问题」就是它把基线分支本身当成了空单来源）。
+      if (ref === CANON) continue;
+      if (!git(["rev-parse", "--verify", "-q", `${ref}^{commit}`]).ok) continue; // 待建分支，不算错
+      checkedBranches++;
+      if (git(["merge-base", "--is-ancestor", ref, CANON]).ok) {
+        problems.push({
+          kind: "BRANCH_ALREADY_MERGED",
+          raw: b,
+          msg: `${ref} **已全并入 canonical**（祖先关系成立）⇒ 以它立单多半是空单`,
+          hint: `git rev-list --count ${CANON}..${ref}  # 应为 0`,
+        });
+      }
+    }
+  }
+
+  // ⚠ 这行数字**现算**，不写死分母。原写「N/5」而 N 只加了 2+2=4 —— 屏上永远显示「4/5」，
+  //   看的人会以为有一条金丝雀没过。分母写死是本仓点过名的病（gate.sh 那句「13 条治理门」）。
+  console.log(`· 金丝雀 ${c.passed}/${c.total} 通过（${c.detail}）`);
+  console.log(`· 基线：${REV ?? "当前工作目录（未传 --rev）"}`);
+  if (allowMissing.size) {
+    console.log(`· 声明为「本单要新建」而豁免 ${new Set(exempted).size}/${allowMissing.size} 条：${[...new Set(exempted)].join(" · ") || "（声明了但正文没引用）"}`);
+  }
+  for (const f of new Set(staleExempt)) {
+    problems.push({ kind: "STALE_EXEMPT", raw: f, msg: `${f} 在豁免表里，但它**已经存在** ⇒ 豁免过期`, hint: "从 allow-missing 删掉它，否则这条豁免会一直挡着真错" });
+  }
+  console.log(`· 现场核过：文件 ${checkedFiles} · 行号 ${checkedLines} · 分支 ${checkedBranches}`);
+  console.log("· ⚠️ 本门查不出「文件缺 ≠ 能力缺」那一类（需语义判断）——");
+  console.log("     凡以「canonical 缺某文件」立单，仍须人工复核该能力有没有别的承载物。");
+
+  if (problems.length === 0) {
+    console.log("✅ check-wo-anchors：工单引用的路径/符号/分支现场全部可验证。RC=0");
+    process.exit(0);
+  }
+  console.log(`\n✗ check-wo-anchors 未通过（${problems.length} 条）—— **别派这张单，先改**：`);
+  for (const p of problems) {
+    console.log(`  - [${p.kind}] ${p.msg}`);
+    console.log(`        原文：${p.raw}`);
+    console.log(`        查法：${p.hint}`);
+  }
+  process.exit(1);
+}
+
+/*
+ * ── 兜底之二：把主流程也包起来 ──────────────────────────────────────────────
+ * 上面的两个 `process.on` 钩子已覆盖同步与异步两侧，这里再包一层不是冗余：
+ * 它让「兜底」在**源码结构上**也成立（`check-gate-exit-discipline.mjs` 判据②认的就是这个结构），
+ * 且异常在这里被拿住时栈更短。`main()` 里的 `process.exit(0|1)` 是终止不是抛出，走不到这里 ——
+ * 真违规仍然是 RC=1，没有被吞成 2。
+ */
+try {
+  main();
+} catch (e) {
+  bail(e);
+}

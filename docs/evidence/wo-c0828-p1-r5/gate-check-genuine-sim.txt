@@ -1,0 +1,3 @@
+· genuine-sim：risk_timeline/capacity_forecast/bottleneck_matrix 输出带 dataMode；前端 RiskBoardView/ProjectSimView 消费 dataMode/live 显估算/实测；bottleneck 前端传 LIVE。
+· genuine-sim（AUDIT 2026-07-24 扩门）：audit_timeline 契约+求解器标 dataMode:MOCK/provenanceSynthetic；extended 删写死 series+缺数标 EMPTY；generic_inference 无派生边标 dataMode:EMPTY 不静默 0。
+✓ genuine-sim:check 通过（保守哨兵：钉死轨M 增量1/1b 诚实通道 + AUDIT P0-P2 假·哈希/写死/静默 0 回潮防线）。

@@ -3,6 +3,10 @@ import { Link } from "react-router-dom";
 import type { AnswerBlock } from "@platform/contracts";
 import { Markdown, renderInline } from "@/components/ui/markdown";
 import { ProvHoverArea, ProvMark } from "@/components/Provenance/ProvTrigger";
+import { GapCard } from "./GapCard";
+import { KitProcurementLegs } from "./KitProcurementLegs";
+import { buildKitOrderVMs, kitReadableRows } from "./kitProcurement";
+import { REF_RE } from "./refToken";
 import zh from "@/locales/zh";
 import styles from "./AnswerBlocks.module.css";
 
@@ -13,16 +17,18 @@ export function AnswerBlockView({
   block,
   taskId,
   provIndex,
+  onRetry,
 }: {
   block: AnswerBlock;
   taskId: string;
   provIndex: (provId: string) => number;
+  onRetry?: () => void;
 }) {
   switch (block.type) {
     case "text":
       return <TextBlock markdown={block.markdown} taskId={taskId} provIndex={provIndex} />;
     case "table":
-      return <TableBlock columns={block.columns} rows={block.rows} provId={block.provId} taskId={taskId} provIndex={provIndex} />;
+      return <TableBlockOrKit columns={block.columns} rows={block.rows} provId={block.provId} taskId={taskId} provIndex={provIndex} />;
     case "kpi":
       return <KpiBlock label={block.label} value={block.value} unit={block.unit} provId={block.provId} taskId={taskId} />;
     case "rule_violation":
@@ -38,14 +44,42 @@ export function AnswerBlockView({
       );
     case "action_draft":
       return <ActionDraftBlock draftId={block.draftId} actionType={block.actionType} summary={block.summary} />;
+    case "gap":
+      return <GapCard report={block.report} onRetry={onRetry} />;
     default:
       return null;
   }
 }
 
-const REF_RE = /⟦ref:([^⟧]+)⟧/g;
+/**
+ * WO-S08-KIT-PROCUREMENT-FE：`kit_readiness` 的行投影是一张**普通 table 块**
+ * （QOS 的 `AnswerBlockSchema` 没有结构化的齐套块），而 `shortItems` 这一列被 agentcore 的
+ * `cellOf()` 兜底成**整项 JSON 字符串** —— 采购四段就躺在那坨转义 JSON 里，用户读不出来。
+ *
+ * 这里在 table 分支上加一道识别：认出来 ⇒ ① 表格里那一列换成可读摘要 ② 下方接四段面板；
+ * 认不出来（列名不符 / 解析不过）⇒ **原样渲染普通表格**，回落到今天的行为，绝不因为接了新渲染把信息弄丢。
+ */
+function TableBlockOrKit(props: {
+  columns: string[];
+  rows: (string | number | null)[][];
+  provId: string;
+  taskId: string;
+  provIndex: (provId: string) => number;
+}) {
+  const { columns, rows, provId, taskId, provIndex } = props;
+  const kitOrders = buildKitOrderVMs(columns, rows);
+  if (kitOrders === null) {
+    return <TableBlock columns={columns} rows={rows} provId={provId} taskId={taskId} provIndex={provIndex} />;
+  }
+  return (
+    <>
+      <TableBlock columns={columns} rows={kitReadableRows(columns, rows, kitOrders)} provId={provId} taskId={taskId} provIndex={provIndex} />
+      <KitProcurementLegs orders={kitOrders} provId={provId} provIndex={provIndex} />
+    </>
+  );
+}
 
-/** text：markdown + ⟦ref:provId⟧ → 上标引用角标 */
+/** text：markdown + ⟦ref:provId⟧ → 上标引用角标（REF_RE 见 ./refToken，会话页同源） */
 export function TextBlock({
   markdown,
   taskId,
@@ -64,7 +98,11 @@ export function TextBlock({
     while ((m = REF_RE.exec(line)) !== null) {
       if (m.index > last) parts.push(<Fragment key={`${key}t${i}`}>{renderInline(line.slice(last, m.index), `${key}t${i}`)}</Fragment>);
       const provId = m[1]!;
-      parts.push(<ProvMark key={`${key}r${i}`} provId={provId} taskId={taskId} index={provIndex(provId)} />);
+      // 找得到才印数字角标；找不到印「?」—— ⛔ **不印 `[0]`**：
+      // 0 是 `provIndex` 里 `indexOf` 未命中的哨兵值，不是第 0 条出处。照印就是「有个角标」冒充
+      // 「指得出出处」（活服务实测满屏 `[0]` 的那一幕）。
+      const idx = provIndex(provId);
+      parts.push(<ProvMark key={`${key}r${i}`} provId={provId} taskId={taskId} index={idx} resolved={idx > 0} />);
       last = m.index + m[0].length;
       i++;
     }
@@ -97,7 +135,7 @@ export function TableBlock({
     <div className={styles.tableWrap} data-testid="answer-table">
       <div className={styles.tableHead}>
         <span />
-        <ProvMark provId={provId} taskId={taskId} index={provIndex(provId)} />
+        <ProvMark provId={provId} taskId={taskId} index={provIndex(provId)} resolved={provIndex(provId) > 0} />
       </div>
       <table className="cmp">
         <thead>
@@ -169,7 +207,7 @@ export function RuleViolationBlock({
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span className="badge red">{ruleId}</span>
         <span className="badge">{severity}</span>
-        <ProvMark provId={provId} taskId={taskId} index={provIndex(provId)} />
+        <ProvMark provId={provId} taskId={taskId} index={provIndex(provId)} resolved={provIndex(provId) > 0} />
       </div>
       <p style={{ marginTop: 6, lineHeight: 1.6 }}>{explanation}</p>
     </div>
@@ -182,8 +220,8 @@ export function ActionDraftBlock({ draftId, actionType, summary }: { draftId: st
     <div className={styles.draft} data-testid="action-draft">
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span className="badge amber">{zh.dock.pendingApproval}</span>
-        <span className="mono" style={{ fontSize: 11 }}>{actionType}</span>
-        <span className="mono" style={{ fontSize: 10.5, color: "var(--muted2)" }}>{draftId}</span>
+        <span className="mono" style={{ fontSize: 12 }}>{actionType}</span>
+        <span className="mono" style={{ fontSize: 12, color: "var(--muted2)" }}>{draftId}</span>
       </div>
       <p style={{ margin: "6px 0", lineHeight: 1.6 }}>{summary}</p>
       <Link to="/admin/actions" className={styles.draftLink}>

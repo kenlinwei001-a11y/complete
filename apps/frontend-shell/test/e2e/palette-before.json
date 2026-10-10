@@ -1,0 +1,54 @@
+{
+  "_provenance": {
+    "note": "修前实测原始输出。取自本分支提交 81adb092（Modal.tsx/CommandPalette.tsx 尚未改动，即 canonical 75d9b222 的行为），真后端 SEED_DEMO=1 + vite preview + 真 Chromium，从登录页走起，未用 VITE_MOCK。",
+    "commit": "81adb092",
+    "capturedAt": "2026-09-07T13:27Z",
+    "howToReproduce": "git checkout 81adb092 && pnpm --filter frontend-shell build && bash apps/frontend-shell/test/e2e/serve.sh && PHASE=before node apps/frontend-shell/test/e2e/verify-palette-usable.mjs"
+  },
+  "phase": "before",
+  "canary": {
+    "loginInputTyped": "4680",
+    "loginInputGot": "4680",
+    "ok": true,
+    "note": "尺子成立：同一 type()+inputValue() 在已知好控件（登录用户名框）上留住了 4 个字符 ⇒ 下面报的「留不住」是功能坏了，不是量法坏了"
+  },
+  "typing": [
+    { "typed": "4680", "got": "4", "ok": false, "focusBefore": "INPUT", "focusAfter": "BUTTON" },
+    { "typed": "S02", "got": "S", "ok": false, "focusBefore": "INPUT", "focusAfter": "BUTTON" },
+    { "typed": "abc", "got": "a", "ok": false, "focusBefore": "INPUT", "focusAfter": "BUTTON" },
+    { "typed": "常州20", "got": "常州", "ok": false, "focusBefore": "INPUT", "focusAfter": "BUTTON" }
+  ],
+  "panel": {
+    "backend": { "total": 20, "itemCount": 20 },
+    "emptyQuery": {
+      "rowCountByTestId": 8,
+      "rowCountByText": 8,
+      "ids": ["S01", "S02", "S03", "S04", "S05", "S06", "S07", "S08"],
+      "scrollH": 292,
+      "clientH": 292,
+      "scrollable": false
+    },
+    "reachLast": {
+      "lastId": "S08",
+      "lastText": "S08 | 物料齐套分析 | 下周哪些订单缺料开不了工？",
+      "lastVisibleAfterScroll": true,
+      "scrollTop": 0,
+      "scrollH": 292,
+      "clientH": 292
+    },
+    "dialogFits": { "dialogHeight": 420, "viewportHeight": 1050, "fits": true }
+  },
+  "mock": {
+    "ok": true,
+    "realHits": 5,
+    "sample": [
+      "200 POST http://127.0.0.1:4001/a/v1/auth/login",
+      "200 GET http://127.0.0.1:4001/a/v1/me/workspace",
+      "200 GET http://127.0.0.1:4001/a/v1/history/watermark",
+      "200 GET http://127.0.0.1:4001/a/v1/data-health",
+      "200 GET http://127.0.0.1:4002/b/v1/scenarios"
+    ]
+  },
+  "loginShot": "PU-before-01-after-login.png",
+  "panelShot": "PU-before-02-palette-empty.png"
+}

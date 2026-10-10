@@ -1,0 +1,32 @@
+WO-BUILTIN-BATCH5 · 批次 5 · 判据①②③⑤ 原始读数（sim_world / sim_certify / discover_growth_tickets / claim_growth_ticket / submit_growth_ticket）
+========================================================================================================================
+原始出处：`apps/agentcore` 下 `npx vitest run test/dsh-builtin-rest-mcp.seam.test.ts --reporter=verbose`
+（全文见同目录 `b5-seam.txt`，Test Files 1 passed (1) / Tests 25 passed (25) / RC=0）
+
+── 判据② DSH 真 tools/list（真 spawn 真握手，A1）──
+── A1 DSH 侧真 tools/list（25 件 · 真 spawn 子进程）──
+  本批（模型面名）：query_objects=mcp__builtin__query_objects · get_object=mcp__builtin__get_object · aggregate_objects=mcp__builtin__aggregate_objects · search_knowledge=mcp__builtin__search_knowledge · query_timeseries_agg=mcp__builtin__query_timeseries_agg · search_experience=mcp__builtin__search_experience · discover=mcp__builtin__discover · retrieve_knowledge=mcp__builtin__retrieve_knowledge · query_ontology=mcp__builtin__query_ontology · query_system_ontology=mcp__builtin__query_system_ontology · get_breakpoint=mcp__builtin__get_breakpoint · impact_of=mcp__builtin__impact_of · read_skill_resource=mcp__builtin__read_skill_resource · create_action_draft=mcp__builtin__create_action_draft · invoke_solver=mcp__builtin__invoke_solver · fill_data=mcp__builtin__fill_data · run_synthetic=mcp__builtin__run_synthetic · build_domain=mcp__builtin__build_domain · sim_init=mcp__builtin__sim_init · sim_tick=mcp__builtin__sim_tick · sim_world=mcp__builtin__sim_world · sim_certify=mcp__builtin__sim_certify · discover_growth_tickets=mcp__builtin__discover_growth_tickets · claim_growth_ticket=mcp__builtin__claim_growth_ticket · submit_growth_ticket=mcp__builtin__submit_growth_ticket
+  仍未迁（同 server 也广告，但出厂 agent 未授予 ⇒ 反向通道）：(无 —— 收尾批：花名册已全迁；反向通道上只剩规则面那件 evaluate_rules)
+
+── 判据① 迁前/迁后 run 记录对照（同一条 query · 同一个 agent agt_general · 只有载体变）──
+── 判据① 迁前/迁后 run 记录对照（同一条 query · 同一个 agent agt_general · 只有载体变）──
+  载体（模型面名）  迁前=discover_growth_tickets  迁后=mcp__builtin__discover_growth_tickets   ← 唯一变的一格
+  审计行名          迁前=discover_growth_tickets  迁后=discover_growth_tickets
+  outcome           迁前=OK  迁后=OK
+  实参              {}
+                    byteEqual=true
+  审计回执(前 200)  {"items":[{"id":"gtk_wo_builtin_rest_probe","fromQuestion":"探针工单 wo-builtin-rest-probe","gapCode":"NO_PLAN","status":"OPEN","ioContract":{"inputs":["Model"],"outputShape":["value","provenance"]},"onto
+                    迁前迁后 byteEqual=true（len=308）
+  模型面回执(内层)  迁前迁后 byteEqual=true
+
+── 判据③ 反向对照（e2e · E3：授予面拿掉 ⇒ DSH 侧读不到它 ∧ 宿主零数据面调用）──
+── E3 反向对照 · 模型面里的内置工具面 ──
+  mcp__builtin__aggregate_objects, mcp__builtin__build_domain, mcp__builtin__claim_growth_ticket, mcp__builtin__create_action_draft, mcp__builtin__discover, mcp__builtin__fill_data, mcp__builtin__get_breakpoint, mcp__builtin__get_object, mcp__builtin__impact_of, mcp__builtin__invoke_solver, mcp__builtin__query_objects, mcp__builtin__query_ontology, mcp__builtin__query_system_ontology, mcp__builtin__query_timeseries_agg, mcp__builtin__read_skill_resource, mcp__builtin__retrieve_knowledge, mcp__builtin__run_synthetic, mcp__builtin__search_experience, mcp__builtin__search_knowledge, mcp__builtin__sim_certify, mcp__builtin__sim_init, mcp__builtin__sim_tick, mcp__builtin__sim_world, mcp__builtin__submit_growth_ticket
+  ── 审计行 ──
+  []
+
+── 判据⑤ 归一（B1/B2）+ 门一道不松（B3 对象域门 / B3b 工具 scope 门 / B4 截断豁免 / B6 失败点名 / C 三面同改）──
+── B2 逐件真跑（全名调用 → 审计行裸名）──
+  query_objects/OK · get_object/ERROR · aggregate_objects/OK · search_knowledge/OK · query_timeseries_agg/OK · search_experience/OK · discover/OK · retrieve_knowledge/OK · query_ontology/OK · query_system_ontology/OK · get_breakpoint/OK · impact_of/OK · read_skill_resource/ERROR · create_action_draft/OK · invoke_solver/OK · fill_data/OK · run_synthetic/OK · build_domain/OK · sim_init/OK · sim_tick/ERROR · sim_world/ERROR · sim_certify/ERROR · discover_growth_tickets/OK · claim_growth_ticket/OK · submit_growth_ticket/OK
+
+── C4 通用 agent 原生臂模型面 · 内置工具面 25 件（已迁全量）· 收窄面 8 件 ──
