@@ -1,0 +1,9 @@
+target="2170 三元圆柱"
+  solverRuns = finance_world_projection:ok capacity_forecast:FAIL supply_demand_gap_attribution:ok risk_timeline:ok
+  appliedStateEffects = 0
+  finance: available=true COST.delta=0
+  ✗ capacity_forecast: model 2170 三元圆柱 has no certified lines
+target="2170-NCM"
+  solverRuns = finance_world_projection:ok capacity_forecast:ok supply_demand_gap_attribution:ok risk_timeline:ok
+  appliedStateEffects = 1 ⇒ {"applied":true,"var":"forecastBias","downstream":["Order.demandPressure ×-0.222"]}
+  finance: available=true COST.delta=0

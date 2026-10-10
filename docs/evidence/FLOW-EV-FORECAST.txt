@@ -1,0 +1,19 @@
+0 登录 OK
+1 dc 外壳=1 · 金丝雀 dc-go=1
+1b 飞行前自检: hasFinance=true hasCanary=false
+2 已展开「预测偏差」 · tplOpen=1
+3a (select分支) 一级选了 value=2170-NCM
+4 payload: number 输入数=1，全填 20
+5 「加进去」disabled? false
+6 已加进去 · 已经加了 1 件事
+7 已点「算一下」，等 dc-finance（≤240s）…
+8 dc-finance 命中 5 处（稳态 ✓）：
+   [dc-finance] 新增成本：0.00 万元毛利差额：0.00 万元收入变化：0.00 万元口径财务投影（非实测）· 求解器 finance_world_projection · {"kind":"PROJECTION","pressureUnit":"pp","divisor":100,"source":"DEFAULT_DECLARED","note":"金额 = 基线 ×（1 + 压力**偏离** ÷ 100），压力偏离 = 世界态值 − 静息值（静
+   [dc-finance-COST] 新增成本：0.00 万元
+   [dc-finance-MARGIN] 毛利差额：0.00 万元
+   [dc-finance-REVENUE] 收入变化：0.00 万元
+   [dc-finance-basis] 财务投影（非实测）· 求解器 finance_world_projection · {"kind":"PROJECTION","pressureUnit":"pp","divisor":100,"source":"DEFAULT_DECLARED","note":"金额 = 基线 ×（1 + 压力**偏离** ÷ 100），压力偏离 = 世界态值 − 静息值（静息值取本世界开局快照同一格）。压力指数按百分点(pp)读；这是**推演投影*
+9 dc-money="58亿 · 这 30 天交不出去的货估"
+9b dc-plans 命中=1 · dc-invariant-note=1
+9d 出边回执: 这一格的出边（顺着往下推的第一跳）：Order.demandPressure ×-0.222
+10 结论=财务段已上屏

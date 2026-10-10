@@ -184,6 +184,15 @@ describe("① 事件主体：范围、id 形态、进不进算式", () => {
     expect(targetIdOf(specOf("ORDER_RESCHEDULE"), order, "so")).toBe("SO-3391");
     const material = { id: "obj_material_pos_lfp", props: { matId: "pos_lfp" } };
     expect(targetIdOf(specOf("MATERIAL_REPRICE"), material, "name")).toBe("obj_material_pos_lfp");
+    /**
+     * ⚠ FORECAST_BIAS（2026-10-10 真机实咬）：业务键取契约声明的 `stateEffect.keyProp`
+     * （= modelId），⛔ 不是呈现表的 nameProp —— 送显示名 "2170 三元圆柱" 实测让
+     * `capacity_forecast` 回 "model 2170 三元圆柱 has no certified lines"、
+     * 世界态落点解析不上（appliedStateEffects=[]）且财务给出**假 0**。
+     * 靶：把 targetIdOf 的 keyProp 改回 nameProp ⇒ 本断言当场红。
+     */
+    const model = { id: "obj_model_2170-NCM", props: { modelId: "2170-NCM", name: "2170 三元圆柱" } };
+    expect(targetIdOf(specOf("FORECAST_BIAS"), model, "name")).toBe("2170-NCM");
   });
 
   it("「你选的主体进不进算式」由 catalog 现算（进不了就必须在屏上说一句）", () => {

@@ -1,0 +1,43 @@
+=== WO-AB-DRILL-MULTIEVENT-ROUND（2026-10-10）：另外三个扰动因素的全流屏验 + 修复「送显示名」潜伏 bug ===
+
+### 测了哪三个（覆盖三种主体选择器形态）
+  · 设备故障（EQUIPMENT_FAILURE）—— **两级**下拉（基地→产线），从未在 UI 走通过的分支
+  · 订单改交期（ORDER_RESCHEDULE）—— **搜索**分支（填单号点候选）
+  · 预测偏差（FORECAST_BIAS）—— 单级下拉（型号）；此事件牵出下面那个真 bug
+
+  探针：FLOW-EV.mjs（通用版；含飞行前自检 + 稳态双采样；证据 FLOW-EV-{EQUIP,RESCHED,FORECAST}.txt + 同名 .rc/截图）
+
+### 结果一：设备故障（常州 · LINE-WS-changzhou-assembly × 停机 7 天）
+  屏上：新增成本 17.18 万元 · 毛利差额 -17.18 万元 · 收入变化 0.00
+  后端直调对拍（同目标同参）：COST=0.001718 亿（= 17.18 万元）**逐位一致**
+  出边回执：Process.queuePressure ×0.14942302、WorkOrder.releasePressure ×0.13875（与后端 downstream 逐字同）
+  两级体验：选基地后提示语正确 ——「还需选「哪条线」—— 只选哪个基地还不够；「停机天数」还没填；填齐后才能加进去。」
+
+### 结果二：订单改交期（SO-3391 提前 10 天）
+  屏上：三行如实 0.00（这条链走履约风险侧，本就不动成本）
+  后端直调对拍：COST/MARGIN/REVENUE = 0/0/0 ✓
+  出边回执：OrderPromise.promiseRisk ×0.2775 ✓
+
+### 结果三：预测偏差（2170 三元圆柱 +20%）—— 首跑咬出一个真 bug（已修）
+  **症状（修复前）**：流能走完，但 ① 屏上「已生效」卡不出（显示空态「没有一件会直接改数」）
+  ② 顶部「3/4 这次问了 4 路算，有 1 路没跑通」③ 财务三行 0.00。
+  **根因（直调 API 对拍，两条命令）**：UI 的下拉把**显示名**当业务键送：
+    target="2170 三元圆柱" ⇒ capacity_forecast FAIL「model 2170 三元圆柱 has no certified lines」、
+      appliedStateEffects=0（落点解析不上）、COST.delta=0（**假 0** —— 什么都没落）
+    target="2170-NCM"     ⇒ 4/4 全通、appliedStateEffects=1（var=forecastBias，出边 Order.demandPressure ×-0.222）、COST.delta=0（**真 0** —— 这条链本来就不动成本）
+    ⇒ 同一个「0.00」在两种 target 下含义完全不同（假零 vs 真零）—— 又一种「看起来一样的数」。
+  **修**：decisionConsoleModel.ts 的 `targetIdOf` 业务键改取**契约声明的** `spec.stateEffect.keyProp`
+    （FORECAST_BIAS = modelId；契约注释自己写着「4680-NCM（capacity_forecast 要的就是它），
+    世界态落点按 keyProp: modelId 也找得到」）。nameProp 只作兜底与**显示**（选项文字仍显示「2170 三元圆柱」）。
+  **防回归**：DC-MODEL-29-green.txt（29/29）+ 变异红（靶：keyProp 改回 nameProp ⇒
+    `expected '2170 三元圆柱' to be '2170-NCM'`，DC-MODEL-mutation-red.txt rc=1）+ cp 备份还原复绿。
+  **修复后 E2E**：下拉送出值=2170-NCM；「4/4 全部跑通」；出边回执 Order.demandPressure ×-0.222；财务 0.00（真零，与后端对拍一致）。
+
+### 本轮探针自己踩的坑（同族第二次，记下防传染）
+  `input[type="text"]` **匹配不到没有 type 属性的 input** —— 搜索框是裸 `<input>`，
+  于是第一次跑「订单改交期」把「SO-3391」填进了 payload 的「新交期」文本框，搜索框没动、
+  没发请求（4052 日志零请求为证），读出「候选=0」。修：用 `input[id^="q-"]` 精确点名 +
+  填后读回值自证（输出第 3 行）。
+
+### 状态
+  FE_BUILD_RC=0（tsc --noEmit + vite build）。后端 4052 未动（仍是 88338，含回执修复）。

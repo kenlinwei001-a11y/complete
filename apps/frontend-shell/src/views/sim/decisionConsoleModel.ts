@@ -195,10 +195,20 @@ export function needsLeafPick(scope: SubjectScope | null, spec: DrillEventSpec):
   return subjectIsRead(spec);
 }
 
-/** 屏上给这条事件用的 id（对象 id 或业务键），由上面两条判据决定。 */
+/**
+ * 屏上给这条事件用的 id（对象 id 或业务键），由上面两条判据决定。
+ *
+ * ⚠ 业务键取**契约声明的** `spec.stateEffect.keyProp`，⛔ **不是**呈现表的 `nameProp` ——
+ * 对 FORECAST_BIAS 两者不是一回事：`nameProp` 是显示名（`name` = "2170 三元圆柱"），
+ * 而求解器与世界态落点要的是 `modelId`（"2170-NCM"）。2026-10-10 真机实咬：
+ * 送显示名 ⇒ `capacity_forecast` 回 "model 2170 三元圆柱 has no certified lines"、
+ * 落点解析不上 ⇒ `appliedStateEffects=[]` ⇒ 屏上「没有一件会直接改数」+ 财务三个**假 0**。
+ * `nameProp` 只作兜底（11 类事件在契约里全部声明了 keyProp —— 模型测试有断言）。
+ */
 export function targetIdOf(spec: DrillEventSpec, picked: { id: string; props: Record<string, unknown> }, nameProp: string): string {
   if (subjectIdFormFor(spec) === "OBJECT_ID") return picked.id;
-  const key = picked.props[nameProp];
+  const keyProp = spec.stateEffect?.keyProp ?? nameProp;
+  const key = picked.props[keyProp];
   return typeof key === "string" && key.length > 0 ? key : picked.id;
 }
 
