@@ -1,0 +1,47 @@
+WO-MULTIHOP-TRACE · 证据档索引（原始读数，未加工）
+
+taskId: task_01M4JD5ZV67RMXRE896TSMQM59
+受理: 15:59:32 HTTP:202 → 终态 COMPLETED @16:00:39（约 67s，轮询 17 轮）
+服务: agentcore 127.0.0.1:4002（X-Debug-User: demo:admin:admin）
+packageId: pkg_battery_manufacturing · context.view: cockpit
+
+关键读数（出处见对应文件）:
+  path: AGENT（routing.completed note=角色 agent（production））
+  classification: {"candidates":[],"outOfCatalog":true,"extractedSlots":{},"latencyMs":0,"model":"agent:role:production"}
+  run: kernel=EXTERNAL agentKey=capacity_planner iterations=4（iter0=3 工具 / iter1=3 工具 / iter2=0 / iter3=0）
+       budgetExhausted=false totalInputTokens=58349 totalOutputTokens=9260 origin=ROOT
+  agent_think 帧 5595 · 思考段 3 · 工具调用 6 次 / 4 种工具名
+  answer: trustLevel=AGENT_EXPLORATORY provenance=0 条 unverifiedNumerics=true humanReviewRequired=true
+          blocks=2（block0 正文含 7 处 ⟦ref:N⟧ 用 N=1,3,4,5；block1=平台自陈「已知不足」）
+
+文件清单:
+  00-manifest.txt            本索引
+  01-request-body.json       提交的请求体原文（query 未改字）
+  01-submit.json             提交回执原文
+  01-submit.rc               HTTP 码（202）
+  02-poll-log.txt            轮询日志（逐轮状态）
+  02-final.json              终态 detail 原文
+  03-agent-runs.json         run 记录原文（含 iterations[].toolCalls[].input 入参）
+  03-agent-runs.rc           HTTP 码（200）
+  03-decision-trace.json     决策轨迹原文（toolCalls 仅 tool/outcome/durationMs/at，无入参）
+  03-decision-trace.rc       HTTP 码（200）
+  03-events.sse              SSE 全量事件流原文（6182 帧）
+  03-events.rc               HTTP 码（200）
+  04-events-stats.txt        帧型统计 + 判据①金丝雀（agent_think 5595 帧 > 0，正对照=总帧数 6182）
+  04-think-segments.txt      思考段原文（3 段，agent_think delta 按 stepId 依序拼接）
+  04-timeline.txt            非思考帧时间线（路由/工具 started-completed/answer.final）
+  05-summary.txt             汇总（classification / runs / decision-trace / answer 原文）
+
+探针脚本（probe/）:
+  query.txt          本单 query 原文（唯一一句，未改）
+  01-submit.sh       POST /api/v1/queries
+  02-poll.sh         GET /api/v1/queries/:id 轮询到终态
+  03-collect.sh      GET agent-runs / decision-trace / events(SSE)
+  04-render-think.js SSE 解析 → 帧型统计 + 思考段拼接 + 时间线
+  05-extract.js      汇总提取
+
+回执可得性（本次实测）:
+  工具入参 = 可得（agent-runs → iterations[].toolCalls[].input）
+  工具回执正文 = 不可得：events 只记 step.started{stepId,type} / step.completed{stepId,status}；
+    decision-trace 无入参无正文；/conversations/:id、/conversations/:id/messages、
+    /:id/artifacts、/steps、/tool-calls、/spans 均 404（探针能分辨「路由不存在」与「空结果」）。

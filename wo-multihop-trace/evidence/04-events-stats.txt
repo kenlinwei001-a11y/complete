@@ -1,0 +1,26 @@
+SSE 文件: /Users/apple/deploy/complete/.claude/worktrees/agent-a6f48549542bfca01/wo-multihop-trace/evidence/03-events.sse
+总帧数: 6182
+解析失败帧: 0
+
+— 按 event 行分类 —
+  step.completed: 6173
+  step.started: 6
+  task.accepted: 1
+  routing.completed: 1
+  answer.final: 1
+
+— 按 data.type 分类 —
+  agent_think: 5595
+  agent_narration: 572
+  (event:step.completed): 6
+  mcp__solvers__affected_orders: 3
+  (event:task.accepted): 1
+  (event:routing.completed): 1
+  mcp__solvers__bottleneck_matrix: 1
+  mcp__solvers__base_capacity_outlook: 1
+  mcp__builtin__query_objects: 1
+  (event:answer.final): 1
+
+— 金丝雀 —
+agent_think 帧数: 5595  (判据①: 必须 > 0；正对照=总帧数 6182 > 0，说明解析器能出数)
+agent_think 段数(按 stepId 归段): 3

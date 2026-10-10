@@ -1,0 +1,174 @@
+===== 思考段 1 | stepId=think-1-1-0 | 帧=588 | 字符=2239 =====
+The user asks: 常州基地的化成工序停线检修 3 天，会波及哪些订单和客户？哪些订单本来已有延期风险？按处置优先级给出顺序，并说明每一步依赖哪条数据。
+
+I should call affected_orders (disturbance given) — but does affected_orders have a process parameter? It has baseId, day, peak, condition, etc. There's no process param. Bottleneck_matrix gives base×process. Hmm, the question involves a process (化成 = formation) outage at 常州 base.
+
+Best: call affected_orders with baseId=常州, day event, and bottleneck_matrix for 常州 base, plus base_capacity_outlook for 常州. Let's do parallel calls in one round.
+
+Note the scope: I'm a production role limited to Base/Line/Process/Model. Orders and customers... affected_orders returns order lists with customers presumably. The user asks for orders and customers — affected_orders output includes rootChain which may include customers. Let's just call.
+
+Round 1: parallel: affected_orders(baseId=常州, day=? ). We need a day. Hmm the outage day — the question doesn't give a date. Maybe use day parameter unspecified → window default 0-180? Let's call affected_orders with baseId="常州" (single base mode requires day for window [day-7, day+14]); if no day, maybe default. Also call bottleneck_matrix baseIds=["常州"], base_capacity_outlook baseId="常州".
+
+Also maybe load skill capacity-analysis? The skill is about capacity 口径/P50/P90 — marginally relevant. Probably fine to skip, but instructions say load if task matches. This task is about disruption impact, not P50 meaning. Skip? The guidance: "If the user names a skill or the task clearly matches that skill's description". It doesn't clearly match. I'll skip to save budget... Actually loading the skill is a separate tool, cheap-ish but counts as round-trip. I'll skip.
+
+Let me make round 1 parallel calls.
+
+For affected_orders: I'll pass baseId="常州" without day first? The description: baseId given = single base detail mode. day: 事件日（单基地模式）：给了则窗口 = [day−7, day+14]. Without day maybe default window 0..180 or something. Let's pass baseId and day maybe not. I'll try baseId="常州" and horizon 180? horizon is aggregate mode. Hmm. Let's just do baseId="常州" and day=0? day=0 means window [-7, +14] which could be weird.
+
+Safer: call affected_orders with baseId="常州" and no day → hope default. If error, retry.
+
+Let's do it.
+
+===== 思考段 2 | stepId=think-1-2-0 | 帧=725 | 字符=2813 =====
+The affected_orders result was truncated. I need narrower filters. Let me re-query affected_orders with baseId="常州" and condition qty>? Hmm. Maybe limit via toDay narrow window. The formation outage = 3 days. There's no process parameter. Perhaps the affected_orders solver has a "rootChain" field with process info.
+
+Key evidence needed: which affected orders ALREADY had delay risk. The truncated output shows "delay" per order (1-3 days). But "本来就已经有延期风险" = orders that already at risk before the outage — maybe those with delay already? Hmm, the "delay" field indicates the delay caused. Actually maybe there's a field like "alreadyDelayed" or "atRisk". We need more data. Let me call affected_orders with a narrower window: use day (event day) with window [day-7, day+14] which gives up to 21 days of orders — narrower than 180 days. Use day=13? Actually forecastStart=2026-06-10, so outage around then. dueDay of first orders =3 (2026-06-13). Window default seems broad.
+
+Better: use fromDay/toDay to narrow. Call affected_orders(baseId="常州", fromDay=0, toDay=21). That should give fewer orders, hopefully full (untruncated) list including any "atRisk"/"alreadyDelayed" flags and rootChain.
+
+Also I could query Order objects for 常州 model with status to see delay info. But scope: Order is in the allowed object domain per nav map (对象类型: Order). The production role says 取证限于 Base/Line/Process/Model 对象域... but nav map lists Order chain. The question asks about orders and customers, so Order queries are allowed presumably.
+
+Let me run round 2: affected_orders with narrow window, and query_objects for orders with filter maybe firstBase=changzhou? Unknown property names. Let's try query_objects objectType Order filter {} limit 200? That's heavy. Maybe filter with {"base": "changzhou"}? Unknown.
+
+Let's do: affected_orders(baseId="常州", fromDay=0, toDay=21) and affected_orders(baseId="常州", fromDay=0, toDay=10) — two calls to get narrower untruncated slices. Plus maybe query_objects Order with filter {"model":"4680-LFP"}? Hmm.
+
+Actually the truncation is on the tool output size overall. Smaller window → smaller output. Let's try toDay=10 first plus toDay=21.
+
+Also "already had delay risk" — perhaps the Order object has a field like "delayRisk" or "status": "延期". Let's query Order objects with filter {"status":"..."}? I don't know status values. Let me try query_objects objectType="Order", filter={}, limit=5 to see the shape/schema. That would help identify fields. Actually a small limit returns field structure.
+
+Round 2 parallel:
+1. affected_orders baseId=常州, fromDay=0, toDay=10
+2. affected_orders baseId=常州, fromDay=11, toDay=21
+3. query_objects objectType=Order, filter={}, limit=3 (to see schema)
+
+Hmm but orders not filtered by base might give arbitrary. Still reveals fields.
+
+Let's go.
+
+===== 思考段 3 | stepId=think-1-3-0 | 帧=4282 | 字符=11291 =====
+I now have good data. Two rounds used. Budget ~4 rounds. I have enough:
+
+- affected_orders 常州, day windows 0-9 (6 orders) and 10-20 (10 orders) = 16 orders total within D+3 to D+19. Note the first (wide, default) call showed more orders out to D+39 — the default window seems wider/180 days, but the "affected" list per that call has 35+ orders up to D+39. Hmm, the default window is wider. But the 3-day formation outage: the relevant window? The delay amounts are 1-3 days which matches 3-day outage. The 0-20 window gives 16 orders with delay 1-3.
+
+Actually the first (default) call was truncated, showing orders up to dueDay 39 with delays 1-3. So impact extends further. But time budget: I should probably note that at least 16 orders in D+3..D+19 window, and more beyond (truncated). Better to be honest: the wider default window returned more (truncated at D+39), so the full affected set is larger.
+
+Key: 本来就已经有延期风险 orders — those with DELIVERY category "交期风险订单" (SO-900191, SO-900181, SO-900239) — 3 orders whose due falls into the 化成柜 越线窗口 (风险越线日 D+20), predicted delay 2-3 days, rule C03. Also crossDay=1 from base_capacity_outlook indicates cumulative demand crosses available capacity at day 1.
+
+Also KIT 齐套缺口 SO-900428 (material arrival 11 days late, C06/C16), MARGIN 毛利承压 SO-900137/SO-900433/SO-900400 (C15), CREDIT 超限 (C13) multiple.
+
+Bottleneck matrix: 常州 primary 瓶颈工序 tightness 90; hardCapacity processId LINE-WS-changzhou-filling-formation processName 化成, units 1849 化成柜位, unitDailyThroughput 93, capacityPerDay 167486.12, requiredPerDay 166768, shortfallPerDay 0, binding false, tightness 0. Note dataMode MOCK — should flag.
+
+So: 化成 is the named 约束工序 with hard capacity headroom essentially zero (required 166768 vs capacity 167486 → 余量 718/日, 0.43%). Losing 3 days = 3 × 167486.12 ≈ 502,458 柜位·产能 units lost. Hmm, careful: that's a computed number—multiplication is arithmetic from tool figures. The rule says every business number must come from tool results. I'd rather reference the per-day figures and the 30-day gap 164839.67 rather than compute. Actually computing 3×167486 = 502,458 is derived arithmetic; risky but it's a simple derivation from tool data. I'll present the per-day capacity and note that 3 days of lost throughput ≈ 3×167486.12 ≈ 502,459 柜位 — hmm, better to avoid. I can say "按该口径日产能 167486.12 柜位/日，停 3 天即损失约三个日产" and cite ref. Maybe fine to state 3× number as arithmetic explicitly labeled as derived. I'll keep it minimal and label as 推算.
+
+Now build priority order for 处置, each step depending on which data:
+
+Priority: 
+1. 交期已落入化成越线窗口的 3 单（SO-900191/900181/900239，D+17~D+19, 预计延误 2–3 天，规则 C03）→ 数据依赖：affected_orders problems DELIVERY rootChains + bottleneck_matrix 化成 hardCapacity。
+2. 停线窗口内先到期的当日/次日到期单（SO-900269/900428 D+3, SO-900223/900499 D+4）— 外加这些单同时有齐套/信用问题（SO-900428 齐套晚 11 天；信用超限 1.2/1.27/1.04）→ 数据：affected_orders delay/impact + problems KIT/CREDIT。
+3. D+9~D+11（SO-900137, SO-900245, SO-900433）毛利承压（储能毛利13%<13.5% C15）。
+4. 其余 D+13~D+19 单（广汽埃安/小鹏/国家电网等）按 impact 0.4–0.5 排序。
+5. 用 base_capacity_outlook dayPlan 三步处置：D+1 加班上浮15% 收窄 950.4；D+4 跨基地调剂吸收60% 收窄 98333.56（前置3天，InterBaseTransfer XFER-changzhou-chengdu-4680-NCM）；D+13 外协补足 65555.71（前置12天 Supplier SUP-015）。
+
+Wait, the dayPlan appears twice in output (inside horizons[0] and at root). The 30-day window dayPlan: day1 closesGap 950.4, day4 98333.56, day13 65555.71. Root-level dayPlan seems from a different horizon (60/90?) with bigger gap 270340. I'll cite the 30-day window one (available 6336 vs demand 171175.67, gap 164839.67, crossDay 1).
+
+The first day's gap 164839.67 → 加班 15% only closes 950.4 (capacityDaily 211.2/日) — clearly trivial. So recommends 跨基地 (need 3-day lead) and 外协 (12-day lead).
+
+Note: 3 days of 化成 outage — the dayPlan doesn't model outage directly; I should flag that as an assumption: I passed no "outage" parameter to base_capacity_outlook, so the dayPlan reflects the already-existing gap, not the incremental 3-day loss. Honesty: the incremental impact of 3-day outage is approximated by affected_orders delay figures (delay 1-3 days).
+
+Customers involved: 广汽埃安, 小鹏汽车, 现代, 宇通客车, 国家电网, 广汽集团, 长安汽车, 东风汽车, 深蓝汽车, 吉利汽车, 国家电投 — from the wide call. Within the two narrow windows: 广汽埃安, 小鹏汽车, 现代, 宇通客车, 国家电网, 广汽集团.
+
+Also whether any writes: user asks for a 顺序 (处置优先级) — that's an advisory, not necessarily a write action. Could offer create_action_draft? The user asked "按处置优先级给出一个顺序" — that's analysis, not a command to modify. I think no draft needed; but I could mention a draft option. Instructions: 涉写→create_action_draft. This is not a write request. I'll skip to save budget (only 4 rounds, I've used 2... actually 2 rounds used).
+
+Hmm, should I do one more round? Maybe to get 常州 Line/Process objects to confirm 化成 line count/capacity? The bottleneck_matrix already gives processId and units. Maybe query Line objects with filter base=changzhou to see capacityDaily for 化成 lines? That could strengthen. But truncation risk and budget. I think data is sufficient. Let me consider whether I need Process objects for 化成 at 常州 — bottleneck gives 1849 化成柜位 × 93/日 = 167486.12/日. Good.
+
+One more consideration: "本来就已经有延期风险" — the DELIVERY category (3 orders) is exactly "交期风险订单" from the solver; but is it pre-existing or caused by outage? Its rootCause says "常州基地 化成柜 紧张，越线窗口内产出不足" with 风险越线日 D+20 — that's the pre-existing tightness independent of the 3-day stop. Also base_capacity_outlook crossDay=1 shows cumulative demand crosses capacity from day 1 — pre-existing gap. I'll frame it as: pre-existing risk = orders whose due falls in the 化成 越线窗口 (C03) + crossDay=1 gap, before adding 3-day loss.
+
+Now the provenance refs. I need to map refs to toolCallId + outputPath. Let me define:
+
+ref 0: tc_01M4JD6ZKXTW16BD6RM7J8W9EF (affected_orders D0-9) → data/affected
+ref 1: same → data/problems
+ref 2: tc_01M4JD6ZQ3AJR90C014ZCE6RMD (D10-20) → data/affected
+ref 3: same → data/problems
+ref 4: tc_01M4JD6TGXGJ286RGXC39QP9BF (bottleneck_matrix) → data/rows/0
+ref 5: tc_01M4JD6TV7VPZT8W1AEQKSVM97 (base_capacity_outlook) → data/horizons/0 (gap, available, demand, crossDay, dayPlan)
+ref 6: same → data/dayPlan? That's the root-level dayPlan (second one) which is for a wider horizon. I'll use data/horizons/0 for the 30-day figures.
+ref 7: tc_01M4JD6TD529EHJRR0PNPPH2T6 (the wide affected_orders truncated) → data/affected for customers beyond D+20 (长安/东风/深蓝/吉利/国家电投).
+
+Provenance entries must have toolCallId and outputPath. Let me assign indices:
+
+0: tc_01M4JD6ZKXTW16BD6RM7J8W9EF / data/affected
+1: tc_01M4JD6ZKXTW16BD6RM7J8W9EF / data/problems
+2: tc_01M4JD6ZQ3AJR90C014ZCE6RMD / data/affected
+3: tc_01M4JD6ZQ3AJR90C014ZCE6RMD / data/problems
+4: tc_01M4JD6TGXGJ286RGXC39QP9BF / data/rows/0
+5: tc_01M4JD6TV7VPZT8W1AEQKSVM97 / data/horizons/0
+6: tc_01M4JD6TV7VPZT8W1AEQKSVM97 / data/summary
+7: tc_01M4JD6TD529EHJRR0PNPPH2T6 / data/affected
+
+Numbers mapping:
+- 常州 化成 hardCapacity: capacityPerDay 167486.12, requiredPerDay 166768, 柜位 1849, 每日吞吐 93, shortfall 0 ⟦4⟧
+- 主瓶颈/张力 90 ⟦4⟧
+- 30天窗: available 6336, inProduction 11912.67, futureOrders 159263, demand 171175.67, gap -164839.67, crossDay 1 ⟦5⟧
+- dayPlan: day1 加班 +15% 收窄 950.4; day4 跨基地 60% 收窄 98333.56 前置3天; day13 外协 65555.71 前置12天 ⟦5⟧
+- affected D0-9: 6 单 / 总数6 ⟦0⟧; delays: SO-900269 delay3 impact0.5 qty2941 due 6-13; SO-900428 delay1 impact0.3 qty7453; SO-900223 delay3 6399; SO-900499 delay3 7583; SO-900137 delay2 1512; SO-900245 delay1 5501 ⟦0⟧
+- problems D0-9: CREDIT 4单 超限 (广汽埃安1.2, 现代1.27, 宇通1.04, 广汽埃安1.06) financeImpact 4.63; KIT 1单 SO-900428 齐套晚11天 financeImpact 1.6397; MARGIN 1单 SO-900137 毛利13%<13.5% 0.2117 ⟦1⟧
+- affected D10-20: 10 单 ⟦2⟧
+- problems D10-20: DELIVERY 3单 (SO-900191 delay3, SO-900181 delay2, SO-900239 delay3) 越线日 D+20 C03; MARGIN 2单 (SO-900433, SO-900400) 储能毛利13%; CREDIT 5单 广汽埃安1.29, 国家电网1.09, 小鹏1.16, 广汽埃安1.13, 小鹏1.23 ⟦3⟧
+- 客户 list beyond: 长安汽车/东风汽车/吉利汽车/深蓝汽车/国家电投 ⟦7⟧
+
+Now build the answer. Blocks: text sections + table + maybe rule_violation + action_draft? The user asked for a priority order — I'll present a table of priority steps.
+
+Should I include action_draft? Not requested a write. I'll skip and mention it's available. Actually offering a draft could be good practice but instructions say create_action_draft is the only write exit when user requests modification. Not requested. Skip.
+
+Structure:
+① 结论: 停 3 天会波及…；化成是常州硬约束工序且已无余量（required 166768 vs capacity 167486）；30 天窗本就有 164839.67 套缺口、crossDay=1，说明"延期风险"不是停线造成的，停线只是放大。
+② 波及范围: 16 单在 D+3~D+19（两个窗口 6+10），delay 1–3 天；客户 6 家；D+20 以外还有更多（首轮宽窗被截断至 D+39，含长安/东风/吉利/深蓝/国家电投）。
+③ 本来就有延期风险的: 3 单 DELIVERY (SO-900191/900181/900239, 越线日 D+20, C03) + crossDay=1 全局缺口 + 齐套 SO-900428 (晚11天) + 毛利/信用类。
+④ 处置优先级表：5 步，每步依赖数据。
+⑤ 风险/不确定: bottleneck_matrix dataMode=MOCK（非实测，需 LIVE 复核）；base_capacity_outlook 未建模"停线3天"这一扰动（dayPlan 反映的是既有缺口），3 天增量损失未单独求解；affected_orders 宽窗被截断；信用/毛利属财务口径，超出我生产视角，需财务角色确认；若需正式下达排产/检修调整须走审批草稿。
+
+Include a rule_violation block? There's C03 in the solver output (交期风险) — I can include as rule_violation block with the relation. Let's include one rule_violation for C03 交期风险 (预计延误 2–3 天) and maybe C05 NOT_APPLICABLE... skip C05.
+
+Let me write the final answer in Chinese.
+
+Priority order (生产视角，按"停线窗口内不可逆程度"排序):
+
+P0 — 停线窗口内(D0–D+3)到期且已被停线直接命中的单：SO-900269(广汽埃安,2941,6-13,delay3)、SO-900428(小鹏,7453,6-13,delay1)、SO-900223(现代,6399,6-14,delay3)、SO-900499(宇通,7583,6-14,delay3)。理由：交期在停线窗内，无缓冲；且 4 单里 3 单信用超限、1 单齐套晚 11 天，属"停线+非产能阻塞"叠加。依赖：affected_orders.affected(delay/impact) + problems(KIT/CREDIT)。
+
+P1 — 已在化成越线窗口、停线后会转成确定延误的 3 单：SO-900191(广汽集团,5270,6-27)、SO-900181(广汽埃安,5387,6-29)、SO-900239(广汽埃安,7314,6-29)。依赖：problems.DELIVERY (C03, 越线日 D+20) + bottleneck_matrix 化成 hardCapacity。
+
+P2 — 化成柜专项消解（唯一能整体收口的产能动作）：按 dayPlan 三步：D+1 加班上浮15%（仅收窄950.4，不够）、D+4 跨基地调剂吸收60%（收窄98333.56，前置3天，XFER-changzhou-chengdu-4680-NCM）、D+13 外协补足（65555.71，前置12天，SUP-015）。依赖 base_capacity_outlook dayPlan + InterBaseTransfer.transitDays + Supplier.leadTime。注意：跨基地前置3天 = 与停线3天同量级，必须今天起启动。
+
+P3 — 低毛利但未破线的储能单（SO-900137/900433/900400，毛利13%<13.5% 底线，C15）——延误追加成本会直接破线，排在信用类之后、普通单之前。依赖 problems.MARGIN。
+
+P4 — 其余 D+13~D+19 的 4680-LFP/NCM 单按 impact 0.4–0.5 顺序（SO-900341/900272/900400/900402/900280/900331 等）。依赖 affected.impact。
+
+Hmm, needs care to not misattribute. Fine.
+
+Also mention credit-limited orders (C13) need 财务 release before 排产 — that's a dependency not in my domain.
+
+Write it now. Keep numbers with refs.
+
+Delays: 3 天 delay for many, 2, 1. Range 1–3 天 ⟦0⟧⟦2⟧.
+
+Total quantity affected in D0–9: 2941+7453+6399+7583+1512+5501 = 31389. That's arithmetic sum — I could avoid or label as 合计(算术). Better skip to avoid unsourced. Actually sums are derived from tool data; I think it's acceptable but the redline says every business number must come from tool result. I'll avoid raw sums except clearly labeled. Safer: don't sum.
+
+Let me produce final_answer with blocks.
+
+Blocks:
+- text: 结论
+- text: 波及范围与客户
+- table: 处置优先级
+- rule_violation: C03
+- text: 关键分析? maybe merge
+- text: 证据
+- text: 建议
+- text: 风险/不确定
+
+Provenance array as listed.
+
+For rule_violation block, schema unknown — I'll use fields: ruleKey, name, severity, evidence/detail, refs? Use {"type":"rule_violation","ruleKey":"C03",...}. Text content with ⟦ref:N⟧ inline in text blocks.
+
+Table block format: {"type":"table","columns":[...],"rows":[[...]]}. I'll use that.
+
+Go.
