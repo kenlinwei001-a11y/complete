@@ -656,9 +656,20 @@ export function reassembleDshRun(events: readonly DshSessionEvent[], opts: Reass
   // 只按帧 id 回填 ⇒ 每一条都落 `"unknown"`（有表、但每条都指不出是哪件工具）。
   // 故再用宿主侧表（帧 callId → 宿主 tc_ id）补一张反向表，**两种 id 都认**。
   // ⛔ 只补不覆盖：帧 id 命中优先（同一条调用两个 id 都指同一工具，先到先得即可）。
-  for (const [frameCallId, host] of opts.hostToolCalls ?? []) {
-    const name = toolNameByCallId.get(frameCallId);
-    if (name !== undefined && !toolNameByCallId.has(host.toolCallId)) toolNameByCallId.set(host.toolCallId, name);
+  //
+  // ⚠️ 侧表的**键不是帧 callId**（本仓实测 2026-10-10）：内置 MCP 反向通道的 callId 由**桥进程自铸**
+  // （`mcp-host-bridge.ts` `nextCallId`：`{模型面全名}@{自增序号}`，MCP wire 上带不了 DSH 帧 id）
+  // ⇒ 原「按帧 callId 取值」这一路**恒不命中**，值（宿主 `tc_…` 审计行 id）就永远拿不到名字。
+  // 桥铸造的键**前缀本身就是模型面全名**，故此处从键前缀取回，并**要求它逐字出现在本 run 帧流的
+  // 工具名集合里**（自证）：形态一变只会退回 `"unknown"`，**绝不会把名字安到另一次调用头上**。
+  const frameToolNames = new Set(calls.map((c) => c.name));
+  for (const [bridgeCallId, host] of opts.hostToolCalls ?? []) {
+    if (toolNameByCallId.has(host.toolCallId)) continue;
+    const at = bridgeCallId.lastIndexOf("@");
+    const fromKey = at > 0 ? bridgeCallId.slice(0, at) : undefined;
+    const name =
+      toolNameByCallId.get(bridgeCallId) ?? (fromKey !== undefined && frameToolNames.has(fromKey) ? fromKey : undefined);
+    if (name !== undefined) toolNameByCallId.set(host.toolCallId, name);
   }
   // sketch：loop.ts:1146 同口径 —— 元工具（final_answer/技能加载器）不进 sketch。
   // 技能加载器名 = dsh 臂真名 `skill`（上游常量，@deepseek-ai/dsh-tool-skill，不可配）；
