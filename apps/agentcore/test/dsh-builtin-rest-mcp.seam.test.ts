@@ -102,6 +102,12 @@ const MIGRATED: readonly string[] = [
   "read_skill_resource",
   "create_action_draft",
   "invoke_solver",
+  // 批次 4（本单）：合规合成/建域（CL.2 三件）+ 推演指挥台（SIM_COMMANDER_TOOLS 四件里的前三件）
+  "fill_data",
+  "run_synthetic",
+  "build_domain",
+  "sim_init",
+  "sim_tick",
 ];
 
 /** 专属面（各自的内置 server 承载，不在内置工具 server 上）：本体两件 + 规则一件。 */
@@ -148,6 +154,13 @@ const MIN_INPUT: Record<string, Record<string, unknown>> = {
   read_skill_resource: { skillId: "skl_seed_capacity", resourceName: "x" },
   create_action_draft: { actionType: "capacity_action", payload: { probe: "b2" } },
   invoke_solver: { solverKey: "gap_attribution", args: { probe: "b2" } },
+  fill_data: { typeKey: "PlanTarget", fields: ["period", "value"], rows: 6 },
+  run_synthetic: { industry: "battery-manufacturing", scale: "M", seed: 42 },
+  build_domain: { story: "本月计划未达成原因" },
+  sim_init: { scope: { view: "risk" } },
+  // sim_tick 必须有会话才走得通；最小装置里没有前置 sim_init ⇒ 诚实落 ERROR（B2 只咬归一与审计名，
+  // 不咬业务的四态 —— 同批的 get_object / read_skill_resource 在批次 1/3 也是 ERROR）。
+  sim_tick: { sessionId: "sims_probe", n: 1 },
 };
 
 /** 同批：`discover` 一族走**探索配额**（`DISCOVER_TOOLS`）—— 归一后配额判据必须仍咬得住。 */
@@ -161,14 +174,14 @@ const FINAL_ANSWER_ARGS = JSON.stringify({
 /**
  * e2e 探针（入参带 probe 标记 ⇒ 数据面实参统计只认这一条）。
  * ⚠ 每进一批把它换成**本批**的一件：判据① 要的是「本批的这件」迁前迁后逐键相同。
- * 批次 3 = `invoke_solver`（本单的硬骨头：三处按裸名认它的判据已改按身份；数据面落
- * `dataCore.solver.invoke(ctx, solverKey, args)` —— 入参可辨认）。
+ * 批次 4 = `fill_data`（CL.2 合规合成首件；数据面落
+ * `dataCore.ontology.fillData(ctx, {typeKey, fields, rows})` —— 入参可辨认）。
  */
-const PROBE_RAW = "invoke_solver";
-/** 探针实参：`probe` 是**数据面实参统计的识别标记**（只认这一条，免得把内部调用算进来）。 */
+const PROBE_RAW = "fill_data";
+/** 探针实参：`fields` 里这个串是**数据面实参统计的识别标记**（只认这一条，免得把内部调用算进来）。 */
 const PROBE_MARKER = "wo-builtin-rest-probe";
-const PROBE_SOLVER_KEY = "gap_attribution";
-const PROBE_ARGS = JSON.stringify({ solverKey: PROBE_SOLVER_KEY, args: { probe: PROBE_MARKER } });
+const PROBE_TYPE_KEY = "Order";
+const PROBE_ARGS = JSON.stringify({ typeKey: PROBE_TYPE_KEY, fields: [PROBE_MARKER], rows: 3 });
 /**
  * 探针件的**持有者**（出厂种子里第一个授予它的 agent）。判据① 必须用它跑 ——
  * 用一个没被授予该件的 agent 跑，模型面压根没有它（那量的是别的东西）。
@@ -179,9 +192,13 @@ const PROBE_AGENT_ID: string = (() => {
   return holder.id;
 })();
 
-/** 数据面读法：`invoke_solver` 落到 `dataCore.solver.invoke(ctx, solverKey, args)`。 */
+/** 数据面读法：`fill_data` 落到 `dataCore.ontology.fillData(ctx, {typeKey, fields, rows})`。 */
 const probeCallsOf = (spy: { mock: { calls: unknown[][] } }) =>
-  spy.mock.calls.filter((c) => c[1] === PROBE_SOLVER_KEY && (c[2] as { probe?: string }).probe === PROBE_MARKER);
+  spy.mock.calls.filter(
+    (c) =>
+      (c[1] as { typeKey?: string } | undefined)?.typeKey === PROBE_TYPE_KEY &&
+      ((c[1] as { fields?: string[] } | undefined)?.fields ?? []).includes(PROBE_MARKER),
+  );
 
 interface CapturedReq {
   runToken?: string;
@@ -616,6 +633,29 @@ describe("WO-BUILTIN-MIGRATE-REST · B 组：MCP 全名归一回同一具执行�
     }
   });
 
+  it("B3b 工具 scope 门按**调用原名**判（本批耦合）：本批件以全名调用、声明面不含它 ⇒ DENIED 且拒绝行记**全名**；声明面补上全名即放行", async () => {
+    // ⚠ 这一条与 B3 的区别是**门不同、拒绝行记法也不同**：B3 是对象域门（在归一**之后** ⇒ 记裸名），
+    // 本条是步骤 0 的工具 scope 门（在归一**之前** ⇒ 记调用原名）。本批要证的是：`fill_data` 换了载体
+    // 之后，门既不因「名字里多了前缀」而**误拒**（声明面记全名即放行），也不因载体而**放行越界**。
+    const repos = createMemoryRepos();
+    const mk = (taskId: string, scopeToolNames: string[]) =>
+      new GuardedToolExecutor(
+        { repos, dataCore: createMockDataCore(), metrics: new Metrics() } as never,
+        { taskId, ctx: CTX, scopeToolNames } as never,
+      );
+    const denied = await mk("task_tool_scope", [full("query_objects")]).run(full(PROBE_RAW), MIN_INPUT[PROBE_RAW]!);
+    expect(denied.outcome, "声明面不含它 ⇒ 全名形态照样被门咬住").toBe("DENIED");
+    const deniedRow = await repos.toolCalls.get(denied.toolCallId);
+    expect(deniedRow!.toolName, "工具 scope 门在归一之前 ⇒ 拒绝行记**调用原名**").toBe(full(PROBE_RAW));
+    expect(JSON.stringify(deniedRow!.output), "拒绝 payload 带越界事实").toContain("AGENT_SCOPE_VIOLATION");
+    // 对照实验：声明面换成它的**全名** ⇒ 同一入参放行（结果按可预言方式变，不是「门恒拒」）
+    const allowed = await mk("task_tool_scope_ok", [full(PROBE_RAW)]).run(full(PROBE_RAW), MIN_INPUT[PROBE_RAW]!);
+    expect(allowed.outcome, "声明面记全名 ⇒ 不被 scope 门误拒（这才是迁移要的形态）").not.toBe("DENIED");
+    // 金丝雀：同一条门对**裸名**形态同样咬得住（证明上面不是「只认全名」的新病）
+    const bareDenied = await mk("task_tool_scope_bare", ["sim_world"]).run(PROBE_RAW, MIN_INPUT[PROBE_RAW]!);
+    expect(bareDenied.outcome, "裸名形态同样被拒（门不因载体而换判据）").toBe("DENIED");
+  });
+
   it("B4 截断豁免集按**身份**判：全名形态照样豁免 ∧ 非豁免件不豁免", () => {
     expect(isTruncationExemptTool(full("query_timeseries_agg")), "时序聚合：全名形态仍豁免").toBe(true);
     expect(isTruncationExemptTool("query_timeseries_agg"), "裸名形态（反向通道）同样豁免").toBe(true);
@@ -894,7 +934,7 @@ describe("WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁
     const { t, close } = await startToolExecApp({ stubUrl: `${stub.url}/v1`, serviceToken: SERVICE_TOKEN });
     try {
       await seedWorld(t, seedAgent(PROBE_AGENT_ID));
-      const solverSpy = vi.spyOn(t.dataCore.solver, "invoke");
+      const fillSpy = vi.spyOn(t.dataCore.ontology, "fillData");
       const result = await runAgent(t, "task_rest_e1", PROBE_AGENT_ID);
       expect(result.run.kernel, "真走 DSH 分叉").toBe("EXTERNAL");
 
@@ -906,9 +946,10 @@ describe("WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁
       expect(visible.find((x) => x.name === full(PROBE_RAW))?.description, "描述逐字 = MCP 广告文本").toBe(advertised.description);
       expect(names.length, "金丝雀：模型面没空掉").toBeGreaterThan(5);
 
-      const probeCalls = probeCallsOf(solverSpy);
-      expect(probeCalls.length, "模型那一次求解恰一次").toBe(1);
-      expect((probeCalls[0]![2] as { probe?: string }).probe, "入参逐键 = 模型给的").toBe(PROBE_MARKER);
+      const probeCalls = probeCallsOf(fillSpy);
+      expect(probeCalls.length, "模型那一次合成恰一次").toBe(1);
+      expect((probeCalls[0]![1] as { fields: string[] }).fields, "入参逐键 = 模型给的").toContain(PROBE_MARKER);
+      expect((probeCalls[0]![1] as { typeKey: string }).typeKey, "入参逐键 = 模型给的").toBe(PROBE_TYPE_KEY);
 
       const rows = await t.repos.toolCalls.listByTask("task_rest_e1");
       const row = rows.find((r) => r.toolName === PROBE_RAW);
@@ -947,7 +988,7 @@ describe("WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁
     const { t, close } = await startToolExecApp({ stubUrl: `${stub.url}/v1`, serviceToken: SERVICE_TOKEN });
     try {
       await seedWorld(t, preMigrationOne(seedAgent(PROBE_AGENT_ID), PROBE_RAW));
-      const solverSpy = vi.spyOn(t.dataCore.solver, "invoke");
+      const fillSpy = vi.spyOn(t.dataCore.ontology, "fillData");
       const result = await runAgent(t, "task_rest_e2", PROBE_AGENT_ID);
       expect(result.run.kernel, "真走 DSH 分叉").toBe("EXTERNAL");
 
@@ -962,8 +1003,8 @@ describe("WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁
           .sort(),
       );
       expect(stillMigrated.length, "金丝雀：单变量臂不是「整台 server 撤了」").toBeGreaterThan(0);
-      const probeCalls = probeCallsOf(solverSpy);
-      expect(probeCalls.length, "迁前臂：模型那一次求解恰一次").toBe(1);
+      const probeCalls = probeCallsOf(fillSpy);
+      expect(probeCalls.length, "迁前臂：模型那一次合成恰一次").toBe(1);
       const rows = await t.repos.toolCalls.listByTask("task_rest_e2");
       const preRow = rows.find((r) => r.toolName === PROBE_RAW);
       expect(preRow?.outcome, "同一只 host executor、同一行审计名").toBe("OK");
@@ -1006,14 +1047,14 @@ describe("WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁
     const { t, close } = await startToolExecApp({ stubUrl: `${stub.url}/v1`, serviceToken: SERVICE_TOKEN });
     try {
       await seedWorld(t, ungrantedOne(seedAgent(PROBE_AGENT_ID), PROBE_RAW));
-      const solverSpy = vi.spyOn(t.dataCore.solver, "invoke");
+      const fillSpy = vi.spyOn(t.dataCore.ontology, "fillData");
       const result = await runAgent(t, "task_rest_e3", PROBE_AGENT_ID);
       expect(result.run.kernel, "真走 DSH 分叉").toBe("EXTERNAL");
       const names = stubVisibleTools(stub).map((x) => x.name);
       expect(names, `授予面拿掉 ⇒ DSH 侧看不到 ${PROBE_RAW}`).not.toContain(full(PROBE_RAW));
       expect(names, `裸名形态也不在`).not.toContain(PROBE_RAW);
       expect(names, "金丝雀：同 server 换授的那件在模型面").toContain(builtinMcpToolName(UNGRANTED_SWAP));
-      expect(probeCallsOf(solverSpy).length, "宿主零数据面调用（fail-closed）").toBe(0);
+      expect(probeCallsOf(fillSpy).length, "宿主零数据面调用（fail-closed）").toBe(0);
       const rows = await t.repos.toolCalls.listByTask("task_rest_e3");
       expect(rows.some((r) => r.toolName === PROBE_RAW && r.outcome === "OK"), "不许有 OK 审计行").toBe(false);
       expect(names.length, "金丝雀：模型面没空掉").toBeGreaterThan(5);
