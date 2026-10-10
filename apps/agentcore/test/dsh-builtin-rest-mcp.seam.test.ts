@@ -102,7 +102,7 @@ const MIGRATED: readonly string[] = [
   "read_skill_resource",
   "create_action_draft",
   "invoke_solver",
-  // 批次 4（本单）：合规合成/建域（CL.2 三件）+ 推演指挥台（SIM_COMMANDER_TOOLS 四件里的前三件）
+  // 批次 4（本单）：合规合成/建域（CL.2 三件）+ 推演指挥台（SIM_COMMANDER_TOOLS 四件里的前两件）
   "fill_data",
   "run_synthetic",
   "build_domain",

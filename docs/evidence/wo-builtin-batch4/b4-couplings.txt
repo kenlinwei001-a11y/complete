@@ -1,7 +1,7 @@
 WO-BUILTIN-BATCH4 · 批次 4 · 第 3 节四条结构性耦合逐条交代
 ============================================================
 批次 4 = fill_data · run_synthetic · build_domain · sim_init · sim_tick
-（CL.2 合规合成/建域三件 + 增量4 §5 推演指挥台 `SIM_COMMANDER_TOOLS` 四件里的前三件）
+（CL.2 合规合成/建域三件 + 增量4 §5 推演指挥台 `SIM_COMMANDER_TOOLS` 四件里的前两件）
 
 扫描方法（先自证工具，再报否定结论）：
   cd apps/agentcore

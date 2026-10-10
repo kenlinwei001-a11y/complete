@@ -1921,7 +1921,8 @@ const BUILTIN_MIGRATED_B2 = ["discover", "retrieve_knowledge", "query_ontology",
  * `agent/reflect.ts` 的 `calledSolverOk`；漏一处就是**静默少东西**而不是报错）。
  */
 const BUILTIN_MIGRATED_B3 = ["get_breakpoint", "impact_of", "read_skill_resource", "create_action_draft", "invoke_solver"] as const;
-/** 批次 4：合成/建域 + 推演指挥台（`SIM_COMMANDER_TOOLS` 四件里的前三件，见下一批）。 */
+/** 批次 4：合规合成/建域三件（CL.2）+ 推演指挥台 `SIM_COMMANDER_TOOLS` 四件里的**前两件**
+ *  （`sim_world` / `sim_certify` 留给下一批 —— 同族分批只为「红在哪一批」分得清，不是能力差异）。 */
 const BUILTIN_MIGRATED_B4 = ["fill_data", "run_synthetic", "build_domain", "sim_init", "sim_tick"] as const;
 /** 通用 agent 的**累计**迁移集（它的语义 = 平台全部内置工具 ⇒ 跟着台账长，不另抄一份）。 */
 const BUILTIN_MIGRATED = [
