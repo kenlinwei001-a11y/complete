@@ -495,6 +495,13 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
    *    也不许把「某件工具的名字」安到另一次调用头上 —— 那是本仓最忌的「两套真相源」形态。
    * ⛔ 归一解析器**全部复用既有单源**，不在本文件另写一份前缀规则（抄第二份必漂）。
    */
+  function auditIdentityOf(modelFacing: string): string {
+    // executor 的 A1 shim 把求解器族一律归一到身份 `invoke_solver`；
+    // 本体/规则/内置三族的审计名 = 裸名；其余（workflow 面）审计名即全名。
+    if (parseSolverMcpToolName(modelFacing) !== undefined) return "invoke_solver";
+    return parseOntologyMcpToolName(modelFacing) ?? parseRulesMcpToolName(modelFacing) ?? parseBuiltinMcpToolName(modelFacing) ?? modelFacing;
+  }
+
   function modelFacingToolName(
     row: { toolName: string; input: unknown },
     byId: string | undefined,
@@ -502,12 +509,47 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   ): string | undefined {
     if (byId !== undefined && byId !== row.toolName) return byId;
     if (byOrder === undefined || byOrder === row.toolName) return undefined;
-    const solverKey = parseSolverMcpToolName(byOrder);
-    const auditIdentity =
-      solverKey !== undefined
-        ? "invoke_solver" // executor 的 A1 shim 把求解器族一律归一到这个身份
-        : (parseOntologyMcpToolName(byOrder) ?? parseRulesMcpToolName(byOrder) ?? parseBuiltinMcpToolName(byOrder) ?? byOrder);
-    return auditIdentity === row.toolName ? byOrder : undefined;
+    return auditIdentityOf(byOrder) === row.toolName ? byOrder : undefined;
+  }
+
+  /**
+   * 同序配对（**按审计身份分组**，比全表同序稳）：分组后各身份内部 k↔k 对齐，
+   * 于是「两条序列之间插了几条没有审计行的调用」（如 dsh 的 `skill` 技能加载器不过宿主执行体）
+   * 不会把后面所有行的名字整体错位一档。
+   *
+   * ⛔ 两层 fail-closed（缺一层就可能把名字安错）：
+   *   ① 某身份在审计行里**一个都没有** ⇒ 该身份的调用**不主张**（如 `skill`：它本来就没有审计行）；
+   *   ② 某身份两侧**条数不等** ⇒ **整表返回 undefined**（对不齐就不可能知道哪个是哪个）。
+   * 与 `modelFacingToolName` 的 id 直连合并：id 命中优先，order 只在无 id 命中时补。
+   */
+  function pairModelFacingNames(
+    rows: { id: string; toolName: string }[],
+    iters: { toolCallId: string; toolName: string }[],
+  ): Map<string, string> | undefined {
+    const byIdentity = new Map<string, { toolCallId: string; toolName: string }[]>();
+    for (const c of iters) {
+      const id = auditIdentityOf(c.toolName);
+      const arr = byIdentity.get(id);
+      if (arr) arr.push(c);
+      else byIdentity.set(id, [c]);
+    }
+    const rowCounts = new Map<string, number>();
+    for (const r of rows) rowCounts.set(r.toolName, (rowCounts.get(r.toolName) ?? 0) + 1);
+    for (const [id, list] of byIdentity) {
+      const n = rowCounts.get(id);
+      if (n === undefined) continue; // ① 该身份无审计行 ⇒ 不主张
+      if (n !== list.length) return undefined; // ② 条数不等 ⇒ 整表不出
+    }
+    const out = new Map<string, string>();
+    const cursor = new Map<string, number>();
+    for (const r of rows) {
+      const list = byIdentity.get(r.toolName);
+      if (!list) continue;
+      const k = cursor.get(r.toolName) ?? 0;
+      cursor.set(r.toolName, k + 1);
+      out.set(r.id, list[k]!.toolName);
+    }
+    return out;
   }
 
   // 实时验证审计层：统一决策痕迹导出（聚合 task/answer/toolCalls → 单一可导出 JSON）。
@@ -527,8 +569,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const runs = await deps.repos.agentRuns.listByTask(taskId);
     const runCalls = runs.flatMap((r) => (r.iterations ?? []).flatMap((it) => it.toolCalls ?? []));
     const runNameById = new Map(runCalls.map((c) => [c.toolCallId, c.toolName]));
-    // 同序配对的前提 = 两侧条数一致（不一致 ⇒ 不用这一路，见 modelFacingName 的 fail-closed 判据）。
-    const orderPairable = runCalls.length === toolCalls.length;
+    const orderNames = pairModelFacingNames(toolCalls, runCalls);
     const verdict = task.answer?.validationTrace?.crossValidation?.verdict;
     const ontologyValidation = !task.answer?.validationTrace
       ? "NONE"
@@ -549,8 +590,8 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       provenanceCount: task.answer?.provenance?.length ?? 0,
       ontologyValidation,
       humanReviewRequired,
-      toolCalls: toolCalls.map((tc, i) => {
-        const invokedAs = modelFacingToolName(tc, runNameById.get(tc.id), orderPairable ? runCalls[i]?.toolName : undefined);
+      toolCalls: toolCalls.map((tc) => {
+        const invokedAs = modelFacingToolName(tc, runNameById.get(tc.id), orderNames?.get(tc.id));
         return {
           tool: tc.toolName, // 审计身份（不动）
           ...(invokedAs ? { invokedAs } : {}),
