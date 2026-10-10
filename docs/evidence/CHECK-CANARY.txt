@@ -1,0 +1,5 @@
+0 登录 OK
+1 页面 body 含金丝雀标记? false（此时尚无结果区 —— 对照用）
+2 testid 计数: dc-money=0 canary=0 fin*=0
+3 页面 fetch 模块: status=200 hasCanary=true len=468711
+4 performance 里 DecisionConsoleView 资源: ["http://127.0.0.1:5294/src/views/sim/DecisionConsoleView.tsx?t=1791545504026","http://127.0.0.1:5294/src/views/sim/DecisionConsoleView.module.css","http://127.0.0.1:5294/src/views/sim/DecisionConsoleView.tsx"]

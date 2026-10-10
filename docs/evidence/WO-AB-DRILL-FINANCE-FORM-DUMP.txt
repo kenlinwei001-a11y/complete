@@ -1,0 +1,48 @@
+0 登录 OK
+1 事件按钮数 = 11
+   [0] 加一件「订单改交期」
+   [1] 加一件「订单取消」
+   [2] 加一件「临时插单」
+   [3] 加一件「改交付地点」
+   [4] 加一件「订单改价」
+   [5] 加一件「物料到货延迟」
+   [6] 加一件「物料短缺」
+   [7] 加一件「物料价格变动」
+   [8] 加一件「设备故障」
+   [9] 加一件「产能损失」
+   [10] 加一件「预测偏差」
+2 目标按钮命中 = 1
+3 已点击展开，等 2.5s
+4 tplOpen 命中 = 1
+── 表单可见文本 ──
+   | 哪种料
+   | 请选一个（共 8 个）
+   | 铝箔
+   | 电芯壳体
+   | 铜箔
+   | 电解液
+   | 石墨负极
+   | 磷酸铁锂正极
+   | 三元正极
+   | 隔膜
+   | 涨跌百分比：+15 = 涨 15%，-8 = 跌 8% · 必填
+   | 从第 0 天起 · 一直持续（改时间 ▸）
+   | 加进去
+   | 请选择哪种料；「涨跌百分比：+15 = 涨 15%，-8 = 跌 8%」还没填；填齐后才能加进去。
+   | 这件事会真的改到数上，所以它要求主体是一个真实存在的对象。
+5 input 数 = 1
+   in[0] type=number id=p-MATERIAL_REPRICE-pctChange value=""
+6 select 数 = 1
+   sel[0] id=sel-MATERIAL_REPRICE options=9
+      opt[0] value="" text="请选一个（共 8 个）"
+      opt[1] value="obj_material_al_foil" text="铝箔"
+      opt[2] value="obj_material_cell_case" text="电芯壳体"
+      opt[3] value="obj_material_cu_foil" text="铜箔"
+      opt[4] value="obj_material_elyte" text="电解液"
+      opt[5] value="obj_material_neg_graphite" text="石墨负极"
+      opt[6] value="obj_material_pos_lfp" text="磷酸铁锂正极"
+      opt[7] value="obj_material_pos_ncm" text="三元正极"
+      opt[8] value="obj_material_sep_film" text="隔膜"
+7 表单内按钮数 = 2
+   btn[0] "从第 0 天起 · 一直持续（改时间 ▸）" disabled=false
+   btn[1] "加进去" disabled=true

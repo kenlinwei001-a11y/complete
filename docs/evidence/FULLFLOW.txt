@@ -1,0 +1,10 @@
+0 登录 OK
+1 dc 外壳=1 · 金丝雀 dc-go=1
+2a 第 8 个事件按钮文本="订单改价＋"
+2 已展开（第 8 个）
+2b input[0] type=null ⇒ 本事件无搜索框，跳过主体搜索
+3 候选 = 0
+4 input 数=2 · payload(number)下标=1
+5 「加进去」disabled? true
+⛔ 仍禁用 ⇒ 停
+FATAL: Error: add disabled

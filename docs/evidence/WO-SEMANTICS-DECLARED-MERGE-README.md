@@ -58,3 +58,21 @@
 `finance` 是**新增报告字段** ⇒ 读它的屏/前端若按老 schema 解析不会报错（`.optional()`），
 但要**显示**它得同步加渲染。而**时序是语义**：`finance` 必须在 `tickSimSessionWorld` **之后**取，
 `worldId` 必须用 **`drillWorldId`**（用 `s.id` 会拿到没推演过的世界 —— 那正是 WO-DRILL-WORLD 修过的坑）。
+
+---
+
+## 追加（2026-10-10 第三轮）：屏上验收通过（取代此前「⛔ 屏上未验」）
+
+```
+✅ 全流真机跑通（真前端 5294 + 真 datacore 4052），同一事件三幅度：
+   物料价格变动·电芯壳体 pctChange=3/30/300
+     ⇒ 屏上 dc-finance-COST = 98.75 / 987.51 / 9875.05（万元），比值 10.0001 · 9.99995
+     ⇒ 与后端直调回包逐位一致（0.009875 / 0.987505 亿），口径浮层（<details>）随行
+   证据：docs/evidence/FLOW-MAT-{3,30,300}.txt + .rc + 截图；BACKEND-CROSSCHECK.txt
+✅ canAdd 无需改动：上轮「物料价格变动没有主体选择器」是探针假阴性（LIST 档 <select>
+   对旧探针不可见）——实据 FORM-DUMP.txt（sel-MATERIAL_REPRICE，8 种料全在）
+⛔ 全量门仍 NOT-MEASURED（不变）
+```
+
+复跑方法与两个假象的排查（vite 旧 transform 档 / 探针选择器盲区）见 `WO-AB-DRILL-FINANCE-SCREEN.txt`。
+本轮**零源码改动**（探针金丝雀已移除，工作树与 58aede7ab 的源码逐字节同）。

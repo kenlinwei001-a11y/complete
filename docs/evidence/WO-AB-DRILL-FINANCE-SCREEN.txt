@@ -1,22 +1,55 @@
-=== WO-DRILL-FINANCE 上屏（2026-10-09）===
+=== WO-DRILL-FINANCE 上屏（2026-10-09 写代码；2026-10-10 屏上验收通过）===
 
-### 改了什么
+### 改了什么（代码不变，摘 2026-10-09 版）
   DecisionConsoleView.tsx（「事件影响与对策」结论区，dc-money/dc-bigCaption 之后）插入：
     · dc-finance 段：三行（新增成本 / 毛利差额 / 收入变化），取 report.finance.lines[].delta
       显示换算：delta（亿）× 1e4 ⇒ 万元（前端只做【显示】换算，不做业务折算）
     · 口径降到第二层：<details><summary>口径</summary>（原生折叠，⛔ 不用 hover/title）
       内容 = solverKey + basis（divisor/摊销集合/基线来源，原样）
     · available:false ⇒ 如实显示「本次无法计算 —— 原因」，⛔ 不显示 0
-  FE_BUILD_RC=0 ✅
 
-### ⛔ 屏上未验（NOT-MEASURED，如实标）
-  判据现成（同事件三幅度 ⇒ dc-finance-COST 按 1:10:100 变），但**没跑**。
-  原因：真机验证需要走 UI「加一件事 + 算一下」，而那条交互我在本会话试过多轮未走通
-  （canAdd 需选主体+填齐必填；已定位到真实控件结构但未打通完整流程）。
-  ⇒ 不得把这句读成「上屏成功」—— 目前的证据只到「代码编译过」。
+### ✅ 屏上验收（2026-10-10 完成 —— 本节取代上版「⛔ 屏上未验」）
 
-### 验收判据（留给下一轮）
-  ① 起真前端（5294，带 VITE_DATACORE_URL=4052 + VITE_AGENTCORE_URL=4055）
-  ② /v/decision-console ⇒ 加「物料价格变动 · 电芯壳体」⇒ 填 pctChange ⇒ 加进去 ⇒ 算一下
-  ③ dump [data-testid^="dc-finance"] 的真实文本
-  ④ 三幅度（3/30/300）⇒ 三行数按 1:10:100 变
+判据：同一事件（物料价格变动 · 电芯壳体）三幅度 ⇒ dc-finance-COST 按 1:10:100 变。
+证据：FLOW-MAT-{3,30,300}.txt（各配同名 .rc 与 -shot.png），探针 FLOW-MAT.mjs（带飞行前自检）。
+
+  pctChange=  3 ⇒ 新增成本  98.75 万元 · 毛利差额  -98.75 万元 · 收入变化 0.00 万元
+  pctChange= 30 ⇒ 新增成本 987.51 万元 · 毛利差额 -987.51 万元 · 收入变化 0.00 万元
+  pctChange=300 ⇒ 新增成本 9875.05 万元 · 毛利差额 -9875.05 万元 · 收入变化 0.00 万元
+  比值 30/3 = 10.0001 · 300/30 = 9.99995（两位小数显示取整后的残差；后端此前已验 9.9995/10.0000）
+  口径浮层随行（<details>）：求解器 finance_world_projection + basis 原文（divisor/基线来源）
+
+  与后端直调互证（WO-AB-DRILL-FINANCE-DIRECT.mjs ⇒ BACKEND-CROSSCHECK.txt，UI 同会话）：
+    mag=300 ⇒ COST.delta = 0.987505 亿（= 9875.05 万元，与屏上逐位一致；两次完全一致）
+    mag=3   ⇒ COST.delta = 0.009875 亿（= 98.75 万元，与屏上一致）
+    回包自带 formula 原文：581.1 ×（1 + 偏离 0.169937 ÷ 100）
+
+  全流（每跑含）：登录 → /v/decision-console → 展开「物料价格变动」→ select 选「电芯壳体」→
+    填 pctChange → 加进去（disabled=false）→ 算一下 → 结果区含 dc-money / dc-plans / dc-finance 三行。
+
+### 本轮踩掉的两个假象（均为探针侧，非产品缺陷 —— 记下来防传染）
+① 上版结论「物料价格变动没有主体选择器 ⇒ canAdd 恒 false ⇒ 那条路是断的」**作废**。
+   实据（FORM-DUMP.txt）：该表单有 <select id="sel-MATERIAL_REPRICE">，8 种料全在；
+   「加进去」当时禁用只是因为还没选择/没填 —— 那正是 canAdd 该做的事（正确行为）。
+   假阴性成因：旧探针（FULLFLOW.mjs）只找 [aria-pressed] 搜索候选与 text 输入
+   ⇒ LIST 档的 <select> 对它不可见。⇒ canAdd 判据（pickedId.length>0 无条件）无需改动，
+   契约对 targetObjectId 本就全 kind 必填（min(1)），改动反而会 400。
+② 上版结论「vite 跑的还是旧代码 ⇒ 不是缓存」机制要说准：vite dev 的**内存 transform 缓存**
+   按 URL（含 ?t= 失效时间戳）分档，能出现「磁盘源码已有 dc-finance 块、页面却执行旧档」——
+   同 PID、同磁盘、页面就是旧行为（今天实测两次：一次 0 处全无、一次 dc-money 出而 finance 段整段无）。
+   判据与处置（见 CHECK-CANARY.txt）：
+     · 判据：页面在跑的 module 内查「dc-finance」与「dc-finance-canary」字符串（字符串判定，
+       绕开选择器）+ testid 对照（dc-money 出而 dc-finance 不出 = 旧档，不是数据没到）
+     · 处置：kill + 重起（--force 清缓存）；首屏要等预打包完成（3.5s 不够，先空跑一次预热）
+   ⇒ FLOW-MAT.mjs 自此带**飞行前自检**（输出第 1b 行）：先证「页面在跑的模块
+     hasFinance=true 且 hasCanary=false」，不满足直接判废本跑（第 1c 行）。
+     ⛔ 没有这一步，「0 处」永远分不清「代码没上屏」与「数据没到」。
+
+### 复跑方法（任何人可照做）
+  ① 起真前端 5294：cwd=apps/frontend-shell，
+     VITE_DATACORE_URL=http://127.0.0.1:4052 VITE_AGENTCORE_URL=http://127.0.0.1:4055
+     node node_modules/vite/bin/vite.js --port 5294 --host 127.0.0.1 --force
+     ⚠ 改过 .tsx 后若行为与源码不符，先重起 vite（见上②）—— 探针的自检会自动判废旧档跑
+  ② cd docs/evidence && FF_MAG=30 node FLOW-MAT.mjs ⇒ 看 txt 第 1b（自检）与第 8/10 行（三行）
+  ③ 共享机负载下 drill POST 实测 21.6s / 75.1s / 99.8s / 157.3s（4052 日志 responseTime）
+     ⇒ 探针谓词超时设 240s；超时先看 4052 日志再归因，别报「算不出来」
