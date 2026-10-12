@@ -1,0 +1,23 @@
+npm warn Unknown env config "side-effects-cache". This will stop working in the next major version of npm.
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/agent-a96e04bb9399acdf2/apps/agentcore
+
+stdout | test/wo-grant-mismatch.probe.test.ts > WO-GRANT-MISMATCH 探针 > B · 授予面/声明面/挂载面原始读数（buildSessionSetup 真跑）
+
+[探针B] expanded=32 · BUILTIN 绑定=["evaluate_rules"]
+[探针B] hostTools=["evaluate_rules"]
+[探针B] 声明面裸名=["evaluate_rules"]
+[探针B] allow-list 裸名=["evaluate_rules","final_answer"] · 总长=33
+[探针B] allow-list 含 mcp__builtin__final_answer=false · 含 mcp__builtin__evaluate_rules=false · 含 mcp__rules__evaluate_rules=false
+[探针B] mcpServers=[{"s":"ontology"},{"s":"solvers"},{"s":"workflow"},{"s":"builtin","n":25}]
+[探针B] builtin allowlist=["mcp__builtin__discover","mcp__builtin__retrieve_knowledge","mcp__builtin__query_ontology","mcp__builtin__query_objects","mcp__builtin__query_system_ontology","mcp__builtin__get_breakpoint","mcp__builtin__impact_of","mcp__builtin__aggregate_objects","mcp__builtin__get_object","mcp__builtin__invoke_solver","mcp__builtin__search_knowledge","mcp__builtin__query_timeseries_agg","mcp__builtin__read_skill_resource","mcp__builtin__search_experience","mcp__builtin__fill_data","mcp__builtin__run_synthetic","mcp__builtin__build_domain","mcp__builtin__sim_init","mcp__builtin__sim_tick","mcp__builtin__sim_world","mcp__builtin__sim_certify","mcp__builtin__create_action_draft","mcp__builtin__discover_growth_tickets","mcp__builtin__claim_growth_ticket","mcp__builtin__submit_growth_ticket"]
+
+
+ ✓ test/wo-grant-mismatch.probe.test.ts (2 tests | 1 skipped) 364ms
+   ✓ WO-GRANT-MISMATCH 探针 > B · 授予面/声明面/挂载面原始读数（buildSessionSetup 真跑）  361ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 1 skipped (2)
+   Start at  23:29:07
+   Duration  7.36s (transform 3.05s, setup 0ms, collect 5.76s, tests 364ms, environment 0ms, prepare 274ms)
+

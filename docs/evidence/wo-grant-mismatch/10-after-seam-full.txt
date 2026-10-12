@@ -1,0 +1,60 @@
+npm warn Unknown env config "side-effects-cache". This will stop working in the next major version of npm.
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/agent-a96e04bb9399acdf2/apps/agentcore
+
+stdout | test/dsh-grant-mismatch.seam.test.ts > WO-GRANT-MISMATCH · 授予面/声明面读数（engine 真装配） > A1 通用 agent 的**裸名残留 = 空**（注册表 − 本体面 − 规则面 − 已迁台账）+ 三面同名记全名
+
+  ── A1 通用 agent 授予面 ──
+  BUILTIN 裸名绑定=[] · expanded=32
+  允许表裸名=["final_answer"] · 含 mcp__builtin__final_answer=true · 含 mcp__rules__evaluate_rules=true
+
+
+ ✓ test/dsh-grant-mismatch.seam.test.ts > WO-GRANT-MISMATCH · 授予面/声明面读数（engine 真装配） > A1 通用 agent 的**裸名残留 = 空**（注册表 − 本体面 − 规则面 − 已迁台账）+ 三面同名记全名 425ms
+stdout | test/dsh-grant-mismatch.seam.test.ts > WO-GRANT-MISMATCH · DSH 臂真跑（真分叉 + 真子进程 + stub LLM） > B1 判据② · 模型按族惯例调 mcp__builtin__final_answer ⇒ 真执行（回执原文）+ 交卷正文 = 模型那份 blocks
+
+  ── B1 回执原文 ──
+  final answer recorded
+  ── 交卷正文（前 120 字）──
+  【交卷·全名收尾】产能缺口 1.0147 万套。
+
+
+ ✓ test/dsh-grant-mismatch.seam.test.ts > WO-GRANT-MISMATCH · DSH 臂真跑（真分叉 + 真子进程 + stub LLM） > B1 判据② · 模型按族惯例调 mcp__builtin__final_answer ⇒ 真执行（回执原文）+ 交卷正文 = 模型那份 blocks 5849ms
+stdout | test/dsh-grant-mismatch.seam.test.ts > WO-GRANT-MISMATCH · DSH 臂真跑（真分叉 + 真子进程 + stub LLM） > B2 判据② · 规则面全名 mcp__rules__evaluate_rules ⇒ 规则引擎真执行（实参独立重算）+ 审计行归一
+
+  ── B2 审计行 ──
+  ["evaluate_rules/OK"]
+  ── B2 回执原文（前 200 字）──
+  <tool_data tool_call_id="tc_01M4RCBRECCYY6YCS74JRXY2M3">[{"ruleId":"C03","passed":true,"severity":"BLOCK","explanation":"需求增量在产能上限之内","ruleVersion":1}]</tool_data>
+
+
+stdout | test/dsh-grant-mismatch.seam.test.ts > WO-GRANT-MISMATCH · DSH 臂真跑（真分叉 + 真子进程 + stub LLM） > C1 判据③ · 软收尾对照臂：同一场景但模型**不调终止器** ⇒ 交卷正文 = 末次助手文本（判据有鉴别力）
+
+  ── C1 对照臂（软收尾）交卷正文（前 120 字）──
+  （模型沿路写下的过程文本——若它成了交卷正文，说明走的是软收尾）
+
+
+ ✓ test/dsh-grant-mismatch.seam.test.ts > WO-GRANT-MISMATCH · DSH 臂真跑（真分叉 + 真子进程 + stub LLM） > B2 判据② · 规则面全名 mcp__rules__evaluate_rules ⇒ 规则引擎真执行（实参独立重算）+ 审计行归一 4913ms
+stdout | test/dsh-grant-mismatch.seam.test.ts > WO-GRANT-MISMATCH · DSH 臂真跑（真分叉 + 真子进程 + stub LLM） > D1 判据④ · 反向金丝雀：不该被授予的名字仍然被门拒（原话逐字）
+
+  ── D1 反向金丝雀回执 ──
+  Error: tool mcp__builtin__evaluate_rules not in agent scope allow-list (scopeDeclaration ∪ granted)
+  Error: tool mcp__solvers__no_such_solver not in agent scope allow-list (scopeDeclaration ∪ granted)
+  final answer recorded
+
+
+ ✓ test/dsh-grant-mismatch.seam.test.ts > WO-GRANT-MISMATCH · DSH 臂真跑（真分叉 + 真子进程 + stub LLM） > C1 判据③ · 软收尾对照臂：同一场景但模型**不调终止器** ⇒ 交卷正文 = 末次助手文本（判据有鉴别力） 4243ms
+ ✓ test/dsh-grant-mismatch.seam.test.ts > WO-GRANT-MISMATCH · DSH 臂真跑（真分叉 + 真子进程 + stub LLM） > D1 判据④ · 反向金丝雀：不该被授予的名字仍然被门拒（原话逐字） 5085ms
+stdout | test/dsh-grant-mismatch.seam.test.ts > WO-GRANT-MISMATCH · DSH 臂真跑（真分叉 + 真子进程 + stub LLM） > E1 判据⑥ · 端到端工具账：被拒的 final_answer 不再出现（含失败披露块有无对照）
+
+  ── E1 端到端 ──
+  outcome=ANSWERED · 审计行=[]
+  披露块出现=false · 交卷=模型 blocks（含标记 true）
+
+
+ ✓ test/dsh-grant-mismatch.seam.test.ts > WO-GRANT-MISMATCH · DSH 臂真跑（真分叉 + 真子进程 + stub LLM） > E1 判据⑥ · 端到端工具账：被拒的 final_answer 不再出现（含失败披露块有无对照） 5743ms
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  23:40:16
+   Duration  35.54s (transform 3.78s, setup 0ms, collect 7.67s, tests 26.26s, environment 4ms, prepare 442ms)
+
