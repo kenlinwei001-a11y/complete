@@ -1,0 +1,613 @@
+<title>统一推演控制台 · 七页签</title>
+<style>
+:root{
+  --bg:#0a0f14; --panel:#111820; --panel2:#0d141b; --line:#1e2a36; --line2:#16212c;
+  --txt:#dfe7ee; --dim:#8b9bab; --dim2:#5f7183;
+  --acc:#2ee6a0; --acc2:#12805c; --warn:#ffb020; --bad:#ff5c5c; --info:#5aa9ff;
+  --nav:#080c11;
+}
+*{box-sizing:border-box}
+body{background:#05080b;color:var(--txt);font:13px/1.5 -apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;margin:0;padding:16px}
+.screen{width:1640px;margin:0 auto 42px;background:var(--bg);border:1px solid var(--line);border-radius:10px;overflow:hidden;display:grid;grid-template-columns:186px 1fr 300px}
+.screenlabel{width:1640px;margin:0 auto 6px;color:var(--dim2);font-size:12px;letter-spacing:.06em}
+
+/* ── 左导航 ── */
+.nav{background:var(--nav);border-right:1px solid var(--line);padding:14px 0;display:flex;flex-direction:column}
+.brand{display:flex;gap:9px;align-items:center;padding:0 14px 16px}
+.logo{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--acc),var(--acc2));flex:none}
+.brand b{font-size:12.5px;font-weight:600;letter-spacing:.02em;display:block}
+.brand span{font-size:9px;color:var(--dim2);letter-spacing:.14em}
+.navgrp{color:var(--dim2);font-size:9.5px;letter-spacing:.14em;padding:11px 14px 5px}
+.navi{display:flex;gap:8px;align-items:center;padding:6.5px 14px;color:var(--dim);font-size:12px;cursor:default}
+.navi i{width:13px;text-align:center;font-style:normal;opacity:.65;font-size:11px}
+.navi.on{color:var(--acc);background:linear-gradient(90deg,rgba(46,230,160,.11),transparent);box-shadow:inset 2px 0 0 var(--acc)}
+.navi.sub{padding-left:34px;font-size:11.5px}
+.navbtn{margin:auto 12px 4px;padding:8px;border-radius:7px;background:var(--acc);color:#04120c;font-weight:600;text-align:center;font-size:12px}
+
+/* ── 中栏 ── */
+.main{padding:15px 18px;min-width:0}
+.hd{display:flex;align-items:flex-start;gap:11px;margin-bottom:3px}
+.hd h1{font-size:18.5px;margin:0;font-weight:600;letter-spacing:.01em}
+.badge{font-size:10px;padding:2.5px 8px;border-radius:11px;background:rgba(46,230,160,.13);color:var(--acc);border:1px solid rgba(46,230,160,.24);margin-top:3px}
+.badge.w{background:rgba(255,176,32,.12);color:var(--warn);border-color:rgba(255,176,32,.25)}
+.hd .sp{flex:1}
+.btn{font-size:11.5px;padding:5.5px 11px;border:1px solid var(--line);border-radius:6px;color:var(--dim);background:var(--panel2)}
+.btn.p{background:var(--acc);color:#04120c;border-color:var(--acc);font-weight:600}
+.sub{color:var(--dim2);font-size:11px;margin-bottom:11px}
+.tabs{display:flex;gap:19px;border-bottom:1px solid var(--line);margin-bottom:13px}
+.tab{padding:7px 1px 8px;color:var(--dim);font-size:12.5px}
+.tab.on{color:var(--acc);box-shadow:inset 0 -2px 0 var(--acc);font-weight:600}
+
+/* KPI 条 */
+.kpis{display:grid;gap:9px;margin-bottom:12px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:9px 11px}
+.kpi .k{color:var(--dim2);font-size:10.5px;margin-bottom:3px}
+.kpi .v{font-size:21px;font-weight:600;letter-spacing:-.01em}
+.kpi .v small{font-size:11.5px;font-weight:400;color:var(--dim);margin-left:2px}
+.kpi .d{font-size:10px;margin-top:2px}
+.up{color:var(--acc)} .down{color:var(--bad)} .flat{color:var(--dim2)}
+.spark{display:flex;gap:1.5px;align-items:flex-end;height:19px;margin-top:6px}
+.spark i{flex:1;background:linear-gradient(180deg,var(--acc),rgba(46,230,160,.12));border-radius:1px;display:block}
+.spark.r i{background:linear-gradient(180deg,var(--bad),rgba(255,92,92,.12))}
+.spark.b i{background:linear-gradient(180deg,var(--info),rgba(90,169,255,.12))}
+
+/* 面板 */
+.grid{display:grid;gap:11px;margin-bottom:11px}
+.p{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:11px 13px;min-width:0}
+.p>h3{margin:0 0 9px;font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:7px}
+.p>h3 .sp{flex:1}
+.p>h3 em{font-style:normal;font-size:10px;color:var(--dim2);font-weight:400}
+.src{margin-top:9px;padding-top:7px;border-top:1px dashed var(--line2);color:var(--dim2);font-size:9.5px;letter-spacing:.02em}
+.src b{color:#7d8fa0;font-weight:500}
+.more{color:var(--acc);font-size:10.5px;text-align:right;margin-top:7px}
+
+table{width:100%;border-collapse:collapse;font-size:11px}
+th{color:var(--dim2);font-weight:500;text-align:left;padding:4px 6px;border-bottom:1px solid var(--line);font-size:10px}
+td{padding:4.5px 6px;border-bottom:1px solid var(--line2);color:var(--txt)}
+td.n{text-align:right;font-variant-numeric:tabular-nums}
+tr:last-child td{border-bottom:0}
+.pill{font-size:9.5px;padding:1.5px 6px;border-radius:9px;border:1px solid}
+.pill.g{color:var(--acc);border-color:rgba(46,230,160,.3);background:rgba(46,230,160,.08)}
+.pill.w{color:var(--warn);border-color:rgba(255,176,32,.3);background:rgba(255,176,32,.08)}
+.pill.r{color:var(--bad);border-color:rgba(255,92,92,.3);background:rgba(255,92,92,.08)}
+.pill.d{color:var(--dim2);border-color:var(--line)}
+
+/* 热力 */
+.heat{display:grid;gap:2px;font-size:9px}
+.heat .hl{color:var(--dim2);font-size:9.5px;padding-right:5px;text-align:right;line-height:17px}
+.heat i{height:17px;border-radius:2px;display:block}
+.bar{height:7px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:4px}
+.bar i{display:block;height:100%;background:var(--acc)}
+.lg{display:flex;gap:11px;flex-wrap:wrap;color:var(--dim2);font-size:9.5px;margin-top:8px}
+.lg s{width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:4px;text-decoration:none}
+
+/* 右 AI 栏 */
+.ai{background:var(--panel2);border-left:1px solid var(--line);padding:13px 12px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.aihd{display:flex;gap:8px;align-items:center;padding-bottom:10px;border-bottom:1px solid var(--line)}
+.aiic{width:24px;height:24px;border-radius:7px;background:rgba(46,230,160,.13);color:var(--acc);display:grid;place-items:center;font-size:12px}
+.aihd b{font-size:12px;display:block}.aihd span{font-size:9.5px;color:var(--dim2)}
+.bub{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:9px 10px;font-size:11px;line-height:1.62}
+.bub.me{background:rgba(46,230,160,.07);border-color:rgba(46,230,160,.18)}
+.who{color:var(--dim2);font-size:9.5px;margin-bottom:5px;letter-spacing:.04em}
+.ck{margin:6px 0 0;padding:0;list-style:none}
+.ck li{padding-left:15px;position:relative;margin-bottom:4px;color:var(--txt);font-size:10.5px;line-height:1.5}
+.ck li:before{content:"✓";position:absolute;left:0;color:var(--acc);font-size:10px}
+.ck.dot li:before{content:"›";color:var(--dim2)}
+.aiact{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:9px 10px}
+.aiact h4{margin:0 0 7px;font-size:11px;font-weight:600;color:var(--dim)}
+.aiin{margin-top:auto;border:1px solid var(--line);border-radius:8px;padding:7px 9px;color:var(--dim2);font-size:10.5px;display:flex;align-items:center;gap:7px}
+.aiin .sp{flex:1}
+.send{width:22px;height:22px;border-radius:6px;background:var(--acc);color:#04120c;display:grid;place-items:center;font-size:10px}
+.chips{display:flex;gap:5px;flex-wrap:wrap}
+.chip{font-size:9.5px;color:var(--dim2);border:1px solid var(--line);border-radius:11px;padding:2.5px 7px}
+.foot{color:var(--dim2);font-size:9.5px;padding-top:9px;border-top:1px solid var(--line2);display:flex;gap:15px;flex-wrap:wrap}
+.note{color:var(--warn);font-size:10px;background:rgba(255,176,32,.07);border:1px solid rgba(255,176,32,.18);border-radius:6px;padding:6px 9px;margin-bottom:10px}
+.note.g{color:var(--acc);background:rgba(46,230,160,.06);border-color:rgba(46,230,160,.18)}
+</style>
+
+<div class="screenlabel">页签 1 / 7 ——「现状」· 今天是什么情况</div>
+<div class="screen">
+  <div class="nav">
+    <div class="brand"><div class="logo"></div><div><b>全域决策支撑</b><span>DECISION PLATFORM</span></div></div>
+    <div class="navgrp">经营</div>
+    <div class="navi"><i>▤</i>经营驾驶舱</div>
+    <div class="navi on"><i>◎</i>统一推演控制台</div>
+    <div class="navi"><i>▦</i>订单进展与卡因</div>
+    <div class="navgrp">规划与平衡</div>
+    <div class="navi"><i>◷</i>年度规划</div>
+    <div class="navi"><i>◷</i>季度规划</div>
+    <div class="navi"><i>◷</i>月度规划 S&OP</div>
+    <div class="navi"><i>✓</i>规划体检</div>
+    <div class="navi"><i>✎</i>规划建议</div>
+    <div class="navgrp">台账与地图</div>
+    <div class="navi"><i>▤</i>订单台账</div>
+    <div class="navi"><i>◍</i>基地地理视图</div>
+    <div class="navgrp">建模与图谱</div>
+    <div class="navi"><i>◈</i>本体图谱</div>
+    <div class="navi"><i>⚙</i>系统管理</div>
+    <div class="navbtn">+ 新建推演</div>
+  </div>
+  <div class="main">
+    <div class="hd"><h1>统一推演控制台</h1><span class="badge">全网 · 13 基地</span><span class="sp"></span>
+      <span class="btn">范围：全网 ▾</span><span class="btn">窗口：30 天 ▾</span><span class="btn p">导出报告</span></div>
+    <div class="sub">快照 v3 · 2026-09-11 · 500 张在手订单 / 20 家客户 · 本次未调用 agent · 1,240 ms</div>
+    <div class="tabs"><span class="tab on">现状</span><span class="tab">计划与平衡</span><span class="tab">接单与优选</span><span class="tab">卡在哪</span><span class="tab">算一手</span><span class="tab">有几条路</span><span class="tab">落地与复盘</span></div>
+
+    <div class="kpis" style="grid-template-columns:repeat(5,1fr)">
+      <div class="kpi"><div class="k">在手订单总额</div><div class="v">454.64<small>亿</small></div><div class="d flat">500 张 · 20 家客户</div>
+        <div class="spark"><i style="height:48%"></i><i style="height:55%"></i><i style="height:51%"></i><i style="height:62%"></i><i style="height:58%"></i><i style="height:71%"></i><i style="height:66%"></i><i style="height:78%"></i></div></div>
+      <div class="kpi"><div class="k">计划年窗成交</div><div class="v">415.60<small>亿</small></div><div class="d down">达成 59.4% · 目标 700 亿</div>
+        <div class="spark r"><i style="height:40%"></i><i style="height:44%"></i><i style="height:41%"></i><i style="height:52%"></i><i style="height:49%"></i><i style="height:58%"></i><i style="height:55%"></i><i style="height:60%"></i></div></div>
+      <div class="kpi"><div class="k">认证供给产能</div><div class="v">322.2<small>万套/年</small></div><div class="d flat">铭牌 758.2 GWh · 13 基地</div>
+        <div class="spark b"><i style="height:62%"></i><i style="height:64%"></i><i style="height:66%"></i><i style="height:69%"></i><i style="height:72%"></i><i style="height:74%"></i><i style="height:77%"></i><i style="height:80%"></i></div></div>
+      <div class="kpi"><div class="k">产线平均利用率</div><div class="v">92.1<small>%</small></div><div class="d up">130 条线 · 区间 89.8–94.1</div>
+        <div class="spark"><i style="height:72%"></i><i style="height:75%"></i><i style="height:70%"></i><i style="height:78%"></i><i style="height:81%"></i><i style="height:77%"></i><i style="height:84%"></i><i style="height:82%"></i></div></div>
+      <div class="kpi"><div class="k">排程达成率</div><div class="v">91.1<small>%</small></div><div class="d flat">实测区间 87.9–94.9</div>
+        <div class="spark b"><i style="height:66%"></i><i style="height:70%"></i><i style="height:63%"></i><i style="height:72%"></i><i style="height:68%"></i><i style="height:75%"></i><i style="height:71%"></i><i style="height:74%"></i></div></div>
+    </div>
+
+    <div class="grid" style="grid-template-columns:1.45fr 1fr">
+      <div class="p"><h3>集团 → 基地 → 车间 → 产线<span class="sp"></span><em>四级下钻 · 点任意一格进下一层</em></h3>
+        <div class="heat" style="grid-template-columns:52px repeat(10,1fr)">
+          <div class="hl"></div><div style="color:var(--dim2);font-size:8.5px;text-align:center">制浆</div><div style="color:var(--dim2);font-size:8.5px;text-align:center">涂布</div><div style="color:var(--dim2);font-size:8.5px;text-align:center">辊压</div><div style="color:var(--dim2);font-size:8.5px;text-align:center">分切</div><div style="color:var(--dim2);font-size:8.5px;text-align:center">卷绕</div><div style="color:var(--dim2);font-size:8.5px;text-align:center">装配</div><div style="color:var(--dim2);font-size:8.5px;text-align:center">注液</div><div style="color:var(--dim2);font-size:8.5px;text-align:center">化成</div><div style="color:var(--dim2);font-size:8.5px;text-align:center">分容</div><div style="color:var(--dim2);font-size:8.5px;text-align:center">PACK</div>
+          <div class="hl">常州</div><i style="background:#2ee6a0"></i><i style="background:#ffb020"></i><i style="background:#2ee6a0"></i><i style="background:#1f9c70"></i><i style="background:#ff5c5c"></i><i style="background:#2ee6a0"></i><i style="background:#1f9c70"></i><i style="background:#2ee6a0"></i><i style="background:#1f9c70"></i><i style="background:#2ee6a0"></i>
+          <div class="hl">枣庄</div><i style="background:#ff5c5c"></i><i style="background:#ff5c5c"></i><i style="background:#ffb020"></i><i style="background:#1f9c70"></i><i style="background:#ffb020"></i><i style="background:#1f9c70"></i><i style="background:#2ee6a0"></i><i style="background:#1f9c70"></i><i style="background:#2ee6a0"></i><i style="background:#1f9c70"></i>
+          <div class="hl">金华</div><i style="background:#1f9c70"></i><i style="background:#2ee6a0"></i><i style="background:#ff5c5c"></i><i style="background:#ffb020"></i><i style="background:#1f9c70"></i><i style="background:#2ee6a0"></i><i style="background:#1f9c70"></i><i style="background:#2ee6a0"></i><i style="background:#1f9c70"></i><i style="background:#2ee6a0"></i>
+          <div class="hl">成都</div><i style="background:#2ee6a0"></i><i style="background:#1f9c70"></i><i style="background:#2ee6a0"></i><i style="background:#2ee6a0"></i><i style="background:#ffb020"></i><i style="background:#1f9c70"></i><i style="background:#2ee6a0"></i><i style="background:#1f9c70"></i><i style="background:#2ee6a0"></i><i style="background:#1f9c70"></i>
+          <div class="hl">眉山</div><i style="background:#1f9c70"></i><i style="background:#2ee6a0"></i><i style="background:#1f9c70"></i><i style="background:#ffb020"></i><i style="background:#2ee6a0"></i><i style="background:#1f9c70"></i><i style="background:#2ee6a0"></i><i style="background:#2ee6a0"></i><i style="background:#1f9c70"></i><i style="background:#2ee6a0"></i>
+          <div class="hl">武汉</div><i style="background:#2ee6a0"></i><i style="background:#1f9c70"></i><i style="background:#2ee6a0"></i><i style="background:#1f9c70"></i><i style="background:#1f9c70"></i><i style="background:#2ee6a0"></i><i style="background:#1f9c70"></i><i style="background:#2ee6a0"></i><i style="background:#2ee6a0"></i><i style="background:#1f9c70"></i>
+          <div class="hl">江门 等 7 地</div><i style="background:#1e2a36"></i><i style="background:#1e2a36"></i><i style="background:#1e2a36"></i><i style="background:#1e2a36"></i><i style="background:#1e2a36"></i><i style="background:#1e2a36"></i><i style="background:#1e2a36"></i><i style="background:#1e2a36"></i><i style="background:#1e2a36"></i><i style="background:#1e2a36"></i>
+        </div>
+        <div class="lg"><span><s style="background:#2ee6a0"></s>利用率 &lt;85%（有余量）</span><span><s style="background:#1f9c70"></s>85–92%</span><span><s style="background:#ffb020"></s>92–95% 逼近红线</span><span><s style="background:#ff5c5c"></s>&gt;95% 越线</span><span><s style="background:#1e2a36"></s>未展开</span></div>
+        <div class="src">源：<b>物理拓扑</b>（13 基地 × 10 工序，今天只能从沙盘二级模式进）＋ <b>基地地理视图</b>。四层实例：基地 13 / 车间 130 / 产线 130 / 工序 650</div>
+      </div>
+
+      <div class="p"><h3>本周关键发现<span class="sp"></span><em>按影响金额排序</em></h3>
+        <table>
+          <tr><td><span class="pill r">越线</span></td><td>枣庄产能超红线 <b>4.82 倍</b><div style="color:var(--dim2);font-size:9.5px">实测 2,985.92 / 红线 620.00 套·日</div></td></tr>
+          <tr><td><span class="pill w">集中</span></td><td>广汽集团敞口 <b>36.9%</b><div style="color:var(--dim2);font-size:9.5px">三个法人主体合计 167.8 亿 · 52 张单</div></td></tr>
+          <tr><td><span class="pill g">可处置</span></td><td>金华分切线可处置，<b>1 天见效</b><div style="color:var(--dim2);font-size:9.5px">4 种改法 · 可保住 44 张单</div></td></tr>
+          <tr><td><span class="pill d">仅观察</span></td><td><b>14 处</b>本体上无可拨杠杆<div style="color:var(--dim2);font-size:9.5px">已扫出 18 处卡点，可处置 4 处</div></td></tr>
+        </table>
+        <div class="more">查看完整发现 →</div>
+        <div class="src">源：<b>全链阻滞点</b>（三类互斥：卡点 5 / 堵点 6 / 断点 7）＋ <b>产能推演</b></div>
+      </div>
+    </div>
+
+    <div class="grid" style="grid-template-columns:1fr 1fr 1fr">
+      <div class="p"><h3>客户集团敞口</h3>
+        <table>
+          <tr><td>广汽集团</td><td class="n"><b>167.8 亿</b></td></tr><tr><td colspan="2"><div class="bar"><i style="width:100%"></i></div></td></tr>
+          <tr><td>国家电网</td><td class="n">60.7 亿</td></tr><tr><td colspan="2"><div class="bar"><i style="width:36%;background:var(--warn)"></i></div></td></tr>
+          <tr><td>长安汽车</td><td class="n">55.1 亿</td></tr><tr><td colspan="2"><div class="bar"><i style="width:33%;background:var(--warn)"></i></div></td></tr>
+          <tr><td>其余 17 家</td><td class="n">170.9 亿</td></tr><tr><td colspan="2"><div class="bar"><i style="width:51%;background:var(--info)"></i></div></td></tr>
+        </table>
+        <div class="src">源：<b>订单台账</b> Σ qty×unitPrice。集团归属层（三个广汽主体合并）＝ 已落盘待并的 WO-1</div>
+      </div>
+      <div class="p"><h3>订单状态分布</h3>
+        <table><tr><th>状态</th><th class="n">张数</th><th class="n">占比</th><th class="n">成交额</th></tr>
+          <tr><td>已完成交付</td><td class="n">350</td><td class="n">70.0%</td><td class="n">318.2 亿</td></tr>
+          <tr><td>在产</td><td class="n">100</td><td class="n">20.0%</td><td class="n">90.9 亿</td></tr>
+          <tr><td>已下待排产</td><td class="n">50</td><td class="n">10.0%</td><td class="n">45.5 亿</td></tr>
+        </table>
+        <div class="note" style="margin:9px 0 0">⚠ 这三个数**自播种起未变动过** —— 状态流转今天不随现场推进。已登记为需求缺口</div>
+        <div class="src">源：<b>订单台账</b>（`GET /objects?type=Order`，500 张）</div>
+      </div>
+      <div class="p"><h3>全链路指标<span class="sp"></span><em>预测→计划→供应→生产→交付</em></h3>
+        <table>
+          <tr><td>需求</td><td><span class="pill g">在册</span></td><td class="n" style="color:var(--dim2)">3 节点</td></tr>
+          <tr><td>订单</td><td><span class="pill w">无节拍</span></td><td class="n" style="color:var(--dim2)">3 节点</td></tr>
+          <tr><td>产能</td><td><span class="pill g">在册</span></td><td class="n" style="color:var(--dim2)">7 节点</td></tr>
+          <tr><td>物料</td><td><span class="pill w">无节拍</span></td><td class="n" style="color:var(--dim2)">8 节点</td></tr>
+          <tr><td>交付</td><td><span class="pill r">无指标</span></td><td class="n" style="color:var(--dim2)">3 节点</td></tr>
+        </table>
+        <div class="note" style="margin:9px 0 0">⚠ 交付段与回款段今天<b>没有指标</b>。⛔ 不画假数 —— 这一格如实缺着</div>
+        <div class="src">源：<b>经营驾驶舱</b> 链路 DAG（24 节点 / 5 段，其中 4 个有节拍真值）</div>
+      </div>
+    </div>
+    <div class="foot"><span>快照 5e1f365be4aa</span><span>数据源：合成（未接实测）</span><span>对象 12,745 / 关系 12,192</span><span>耗时 533 ms</span><span>本次未调用 agent</span></div>
+  </div>
+
+  <div class="ai">
+    <div class="aihd"><div class="aiic">◎</div><div><b>推演助手</b><span>就这一屏世界态与杠杆提问</span></div></div>
+    <div class="bub"><div class="who">助手 · 09:42</div>本次扰动共 <b>5,511</b> 格读数，影响集中在<b>常州与枣庄</b>两地（合计 61%）。已识别 <b>18</b> 处卡点，其中 <b>4</b> 处有可用改法。
+      <ul class="ck"><li>枣庄越线 4.82 倍且无对策 —— 建议优先复核红线是否已过期</li><li>广汽集团敞口 36.9%，单一集团依赖偏高</li></ul></div>
+    <div class="bub me"><div class="who">你 · 09:44</div>毛利下降的主要原因是什么？</div>
+    <div class="bub"><div class="who">助手 · 09:44</div>毛利影响 −4.62 亿，按贡献拆分：
+      <ul class="ck dot"><li>碳酸锂涨价 15% 传导至成本 <b>−3.18 亿</b>（BOM 用量占比 68%）</li><li>常州产能损失致订单后延、应收占压 <b>−1.44 亿</b></li></ul>
+      <div class="more">查看逐笔勾稽 →</div></div>
+    <div class="aiact"><h4>建议下一步</h4>
+      <ul class="ck dot"><li>先处置金华分切线（1 天见效，可保 44 张单）</li><li>复核枣庄红线口径 —— 4.82 倍更像红线本身过期</li><li>把广汽三主体的信用额度合并授信复审</li></ul>
+      <div class="more">生成行动计划 →</div></div>
+    <div class="aiin"><span class="sp">就本次推演继续提问……</span><span class="send">▶</span></div>
+    <div class="chips"><span class="chip"># 换个范围再算</span><span class="chip"># 对比上次推演</span><span class="chip"># 只看常州</span></div>
+  </div>
+</div>
+
+
+<div class="screenlabel">页签 2 / 7 ——「计划与平衡」· 下个月怎么排</div>
+<div class="screen">
+  <div class="nav">
+    <div class="brand"><div class="logo"></div><div><b>全域决策支撑</b><span>DECISION PLATFORM</span></div></div>
+    <div class="navgrp">经营</div><div class="navi"><i>▤</i>经营驾驶舱</div><div class="navi on"><i>◎</i>统一推演控制台</div><div class="navi"><i>▦</i>订单进展与卡因</div>
+    <div class="navgrp">规划与平衡</div><div class="navi"><i>◷</i>年度规划</div><div class="navi"><i>◷</i>季度规划</div><div class="navi"><i>◷</i>月度规划 S&OP</div><div class="navi"><i>✓</i>规划体检</div><div class="navi"><i>✎</i>规划建议</div>
+    <div class="navgrp">台账与地图</div><div class="navi"><i>▤</i>订单台账</div><div class="navi"><i>◍</i>基地地理视图</div>
+    <div class="navgrp">建模与图谱</div><div class="navi"><i>◈</i>本体图谱</div><div class="navi"><i>⚙</i>系统管理</div>
+    <div class="navbtn">+ 新建推演</div>
+  </div>
+  <div class="main">
+    <div class="hd"><h1>计划与平衡</h1><span class="badge w">2026-10 版本 V7 · 评审中</span><span class="sp"></span>
+      <span class="btn">切换版本 ▾</span><span class="btn">对比 V5</span><span class="btn p">推进到下一步</span></div>
+    <div class="sub">年度 → 季度 → 月度三层同屏 · 当前停在第 ③ 步「供应评审」 · 创建人 计划部-王 · 09-08 14:22</div>
+    <div class="tabs"><span class="tab">现状</span><span class="tab on">计划与平衡</span><span class="tab">接单与优选</span><span class="tab">卡在哪</span><span class="tab">算一手</span><span class="tab">有几条路</span><span class="tab">落地与复盘</span></div>
+
+    <div class="note">⚠ <b>需求这一行今天来自前端预置值，不来自系统里的预测</b> —— 两者相差 4.08 倍。已登记为需求缺口「预测→销售计划」，在补上之前这一格标注来源，不冒充已打通</div>
+
+    <div class="kpis" style="grid-template-columns:repeat(4,1fr)">
+      <div class="kpi"><div class="k">需求（本月）</div><div class="v">127.6<small>万套</small></div><div class="d flat">乘用 69.0 · 储能 45.0 · 商用 13.6</div>
+        <div class="spark b"><i style="height:60%"></i><i style="height:64%"></i><i style="height:61%"></i><i style="height:68%"></i><i style="height:66%"></i><i style="height:72%"></i><i style="height:70%"></i><i style="height:75%"></i></div></div>
+      <div class="kpi"><div class="k">可供给（V7）</div><div class="v">379<small>万套/年</small></div><div class="d up">产能 × 认证 × 检修 × 爬坡</div>
+        <div class="spark"><i style="height:52%"></i><i style="height:58%"></i><i style="height:63%"></i><i style="height:66%"></i><i style="height:71%"></i><i style="height:74%"></i><i style="height:79%"></i><i style="height:83%"></i></div></div>
+      <div class="kpi"><div class="k">产销缺口（V7）</div><div class="v">4<small>万套</small></div><div class="d up">V1 36 → V3 26 → V5 15 → V7 4</div>
+        <div class="spark r"><i style="height:88%"></i><i style="height:72%"></i><i style="height:64%"></i><i style="height:51%"></i><i style="height:44%"></i><i style="height:33%"></i><i style="height:21%"></i><i style="height:12%"></i></div></div>
+      <div class="kpi"><div class="k">毛利率（滚动）</div><div class="v">16.2<small>%</small></div><div class="d up">目标 16.0 · 下限 15.5</div>
+        <div class="spark"><i style="height:62%"></i><i style="height:59%"></i><i style="height:66%"></i><i style="height:64%"></i><i style="height:69%"></i><i style="height:67%"></i><i style="height:72%"></i><i style="height:74%"></i></div></div>
+    </div>
+
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <div class="p"><h3>五步评审 · 当前第 ③ 步<span class="sp"></span><em>DRAFT → 评审①–④ → 执委会⑤ → 定版</em></h3>
+        <table><tr><th>步</th><th>内容</th><th>负责职能</th><th>状态</th></tr>
+          <tr><td>①</td><td>基线确认</td><td style="color:var(--dim2)">计划</td><td><span class="pill g">已过</span></td></tr>
+          <tr><td>②</td><td>需求评审</td><td style="color:var(--dim2)">销售</td><td><span class="pill g">已过</span></td></tr>
+          <tr><td>③</td><td>供应评审</td><td style="color:var(--dim2)">生产</td><td><span class="pill w">进行中</span></td></tr>
+          <tr><td>④</td><td>财务校验</td><td style="color:var(--dim2)">财务</td><td><span class="pill d">待</span></td></tr>
+          <tr><td>⑤</td><td>执委会定版</td><td style="color:var(--dim2)">经管</td><td><span class="pill d">待</span></td></tr>
+        </table>
+        <div class="note" style="margin:9px 0 0">⚠「负责职能」这一列今天<b>不参与权限判定</b> —— 任一有权限的人都能推进任意一步。已登记为需求缺口</div>
+        <div class="src">源：<b>月度规划 S&OP</b>（状态机真实，1,111 行主组件驱动五步向导）</div>
+      </div>
+      <div class="p"><h3>年度 / 季度 / 月度三层勾稽</h3>
+        <table><tr><th>层</th><th class="n">口径</th><th class="n">营收</th><th>说明</th></tr>
+          <tr><td>年度 AOP</td><td class="n">供给侧计划</td><td class="n"><b>601.50 亿</b></td><td style="color:var(--dim2);font-size:9.5px">认证产能×52×均价</td></tr>
+          <tr><td>需求 P50</td><td class="n">市场预测</td><td class="n">700.00 亿</td><td style="color:var(--dim2);font-size:9.5px">仅作目标，非实际</td></tr>
+          <tr><td>订单簿</td><td class="n">已签成交</td><td class="n">454.64 亿</td><td style="color:var(--dim2);font-size:9.5px">500 张全簿</td></tr>
+          <tr><td>计划年窗</td><td class="n">成交侧</td><td class="n">415.60 亿</td><td style="color:var(--dim2);font-size:9.5px">458 张落窗</td></tr>
+        </table>
+        <div class="note g" style="margin:9px 0 0">✓ 四个营收数口径各自标注，<b>不可相互相除</b> —— 这一条今天已守住</div>
+        <div class="src">源：<b>年度规划</b> ＋ <b>季度规划</b> ＋ <b>经营驾驶舱</b> 指标条</div>
+      </div>
+    </div>
+
+    <div class="grid" style="grid-template-columns:1fr 1fr 1fr">
+      <div class="p"><h3>规划体检 · 命中 6 条</h3>
+        <table>
+          <tr><td><span class="pill r">R01</span></td><td>储能占比偏离基线 4.2 pt</td><td style="color:var(--dim2);font-size:9.5px">无修法</td></tr>
+          <tr><td><span class="pill w">R04</span></td><td>三季度产能富余 12 万套</td><td style="color:var(--acc);font-size:9.5px">有修法</td></tr>
+          <tr><td><span class="pill w">R07</span></td><td>物料覆盖率 93% &lt; 下限 95%</td><td style="color:var(--acc);font-size:9.5px">有修法</td></tr>
+          <tr><td><span class="pill d">R09</span></td><td>现金垫 58 亿 &gt; 下限 50</td><td style="color:var(--dim2);font-size:9.5px">观察</td></tr>
+        </table>
+        <div class="more">查看全部 6 条 →</div>
+        <div class="src">源：<b>规划体检</b>（今天 10 个体检项里 9 个带修法，R01 结构偏离无修法，已登记）</div>
+      </div>
+      <div class="p"><h3>经营目标达成</h3>
+        <table><tr><th>目标</th><th class="n">目标值</th><th class="n">当前</th><th></th></tr>
+          <tr><td>营收</td><td class="n">700 亿</td><td class="n">415.6</td><td><span class="pill r">59.4%</span></td></tr>
+          <tr><td>毛利</td><td class="n">112 亿</td><td class="n">—</td><td><span class="pill d">口径待统一</span></td></tr>
+          <tr><td>市占率</td><td class="n">23%</td><td class="n">21.4</td><td><span class="pill w">93%</span></td></tr>
+          <tr><td>物料覆盖</td><td class="n">100%</td><td class="n">93.0</td><td><span class="pill w">93%</span></td></tr>
+        </table>
+        <div class="note" style="margin:9px 0 0">⚠ 7 条目标今天<b>只有企业级一档</b>，不能按基地、不能按月设。已登记</div>
+        <div class="src">源：<b>年度规划</b> 目标册（7 条，带责任人与权重，年度四条权重和 = 1.00）</div>
+      </div>
+      <div class="p"><h3>规划建议 · 三方案</h3>
+        <table><tr><th>方案</th><th class="n">营收</th><th class="n">毛利率</th><th class="n">资本开支</th></tr>
+          <tr><td>A 保毛利</td><td class="n">×1.12</td><td class="n">+1.4pt</td><td class="n">0</td></tr>
+          <tr><td>B 保份额</td><td class="n">×1.16</td><td class="n">−0.3pt</td><td class="n">12 亿</td></tr>
+          <tr><td>C 扩产</td><td class="n">×1.20</td><td class="n">+0.2pt</td><td class="n">27 亿</td></tr>
+        </table>
+        <div class="note" style="margin:9px 0 0">⚠ 三方案今天由固定系数算出，<b>不读本体对象</b>。标注为「参考档位」不称推演</div>
+        <div class="src">源：<b>规划建议</b></div>
+      </div>
+    </div>
+    <div class="foot"><span>版本 2026-10 V7</span><span>创建 09-08 14:22</span><span>已发生 3 次修订</span><span>数据源：合成</span></div>
+  </div>
+
+  <div class="ai">
+    <div class="aihd"><div class="aiic">◎</div><div><b>推演助手</b><span>就本月计划提问</span></div></div>
+    <div class="bub"><div class="who">助手 · 10:02</div>V7 产销缺口已收到 <b>4 万套</b>（V1 时是 36 万套）。四个版本的缺口<b>不可累加</b>——累加会把已被后续版本修正掉的重复计入。
+      <ul class="ck"><li>当前缺口仅 4 万套，落在三季度</li><li>体检命中 6 条，其中 <b>R01 结构偏离无修法</b></li></ul></div>
+    <div class="bub me"><div class="who">你 · 10:04</div>R01 为什么没有修法？</div>
+    <div class="bub"><div class="who">助手 · 10:04</div>结构偏离这一项今天<b>只报不给改法</b>——建议清单只收带修法的条目，所以它每次都被过滤掉。这是已登记的需求缺口，不是本次数据问题。</div>
+    <div class="aiact"><h4>建议下一步</h4>
+      <ul class="ck dot"><li>推进到第 ④ 步财务校验</li><li>R04 产能富余 12 万套 → 试一手：能否接更多单</li><li>把 R01 结构偏离转人工议题</li></ul>
+      <div class="more">生成行动计划 →</div></div>
+    <div class="aiin"><span class="sp">就本月计划继续提问……</span><span class="send">▶</span></div>
+    <div class="chips"><span class="chip"># 对比 V5</span><span class="chip"># 只看储能</span><span class="chip"># 缺口落在哪</span></div>
+  </div>
+</div>
+
+
+<div class="screenlabel">页签 3 / 7 ——「接单与优选」· 这单接不接、排哪</div>
+<div class="screen">
+  <div class="nav">
+    <div class="brand"><div class="logo"></div><div><b>全域决策支撑</b><span>DECISION PLATFORM</span></div></div>
+    <div class="navgrp">经营</div><div class="navi"><i>▤</i>经营驾驶舱</div><div class="navi on"><i>◎</i>统一推演控制台</div><div class="navi"><i>▦</i>订单进展与卡因</div>
+    <div class="navgrp">规划与平衡</div><div class="navi"><i>◷</i>年度规划</div><div class="navi"><i>◷</i>季度规划</div><div class="navi"><i>◷</i>月度规划 S&OP</div><div class="navi"><i>✓</i>规划体检</div><div class="navi"><i>✎</i>规划建议</div>
+    <div class="navgrp">台账与地图</div><div class="navi"><i>▤</i>订单台账</div><div class="navi"><i>◍</i>基地地理视图</div>
+    <div class="navgrp">建模与图谱</div><div class="navi"><i>◈</i>本体图谱</div><div class="navi"><i>⚙</i>系统管理</div>
+    <div class="navbtn">+ 新建推演</div>
+  </div>
+  <div class="main">
+    <div class="hd"><h1>接单与优选</h1><span class="badge">176 行排产结果</span><span class="sp"></span>
+      <span class="btn">目标权重 ▾</span><span class="btn">方法：加权 ▾</span><span class="btn p">联合求解</span></div>
+    <div class="sub">500 张候选 · 6 型号 × 13 基地 · 求解 25 ms · 可行解（未证最优，需外部求解引擎）</div>
+    <div class="tabs"><span class="tab">现状</span><span class="tab">计划与平衡</span><span class="tab on">接单与优选</span><span class="tab">卡在哪</span><span class="tab">算一手</span><span class="tab">有几条路</span><span class="tab">落地与复盘</span></div>
+
+    <div class="kpis" style="grid-template-columns:repeat(5,1fr)">
+      <div class="kpi"><div class="k">按期交付（单）</div><div class="v">33</div><div class="d up">权重 delay=10 时</div>
+        <div class="spark"><i style="height:44%"></i><i style="height:52%"></i><i style="height:58%"></i><i style="height:64%"></i><i style="height:71%"></i><i style="height:76%"></i><i style="height:82%"></i><i style="height:88%"></i></div></div>
+      <div class="kpi"><div class="k">总延误</div><div class="v">1.56<small>M</small></div><div class="d up">较 delay=0 降 43.1%</div>
+        <div class="spark r"><i style="height:88%"></i><i style="height:80%"></i><i style="height:74%"></i><i style="height:66%"></i><i style="height:58%"></i><i style="height:52%"></i><i style="height:46%"></i><i style="height:40%"></i></div></div>
+      <div class="kpi"><div class="k">总代价</div><div class="v">2.26<small>M</small></div><div class="d down">较 delay=0 升 5.8%</div>
+        <div class="spark r"><i style="height:48%"></i><i style="height:52%"></i><i style="height:55%"></i><i style="height:59%"></i><i style="height:63%"></i><i style="height:67%"></i><i style="height:71%"></i><i style="height:75%"></i></div></div>
+      <div class="kpi"><div class="k">换型工时</div><div class="v">108.8<small>h</small></div><div class="d flat">跨 13 基地</div>
+        <div class="spark b"><i style="height:60%"></i><i style="height:63%"></i><i style="height:58%"></i><i style="height:66%"></i><i style="height:62%"></i><i style="height:68%"></i><i style="height:65%"></i><i style="height:70%"></i></div></div>
+      <div class="kpi"><div class="k">跨基地调拨</div><div class="v">17<small>笔</small></div><div class="d flat">含运输天数与运费</div>
+        <div class="spark b"><i style="height:35%"></i><i style="height:42%"></i><i style="height:38%"></i><i style="height:50%"></i><i style="height:46%"></i><i style="height:58%"></i><i style="height:54%"></i><i style="height:62%"></i></div></div>
+    </div>
+
+    <div class="note g">✓ <b>这五个数随目标权重滑杆实时变化</b> —— 拖动 delay 从 0 到 10，延误降 43.1%、代价升 5.8%，方向符合权衡常识。（今天这一行读的是不随权重变的那条回包，已登记为需求缺口「主读数接权重」）</div>
+
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <div class="p"><h3>目标权重<span class="sp"></span><em>拖动即重解 · 五目标</em></h3>
+        <table>
+          <tr><td>按期交付</td><td style="width:55%"><div class="bar"><i style="width:10%"></i></div></td><td class="n">1.0</td></tr>
+          <tr><td>最小延误</td><td><div class="bar"><i style="width:100%"></i></div></td><td class="n"><b>10.0</b></td></tr>
+          <tr><td>最小换型</td><td><div class="bar"><i style="width:10%"></i></div></td><td class="n">1.0</td></tr>
+          <tr><td>最小成本</td><td><div class="bar"><i style="width:10%"></i></div></td><td class="n">1.0</td></tr>
+          <tr><td>最小成品库存</td><td><div class="bar"><i style="width:10%"></i></div></td><td class="n">1.0</td></tr>
+        </table>
+        <div class="note" style="margin:9px 0 0">⚠ <b>利润不在目标里</b> —— 单价与单位成本分母不同（套 vs 电芯，比值 25.7–40.6 倍），毛利轴已被系统自行下架。这一格如实缺着</div>
+        <div class="src">源：<b>接单组合优选</b>（加权 / ε约束 / 字典序 三法，决策变量跨全部 13 基地）</div>
+      </div>
+      <div class="p"><h3>排产结果 · 前 8 行<span class="sp"></span><em>共 176 行</em></h3>
+        <table><tr><th>订单</th><th>客户</th><th class="n">数量</th><th>基地</th><th>窗口</th><th></th></tr>
+          <tr><td>SO-3391</td><td>广汽埃安</td><td class="n">12,400</td><td>常州</td><td>W1</td><td><span class="pill g">按期</span></td></tr>
+          <tr><td>SO-3402</td><td>国家电网</td><td class="n">8,800</td><td>枣庄</td><td>W2</td><td><span class="pill w">延 3 天</span></td></tr>
+          <tr><td>SO-3415</td><td>长安汽车</td><td class="n">6,200</td><td>金华</td><td>W1</td><td><span class="pill g">按期</span></td></tr>
+          <tr><td>SO-3428</td><td>小鹏汽车</td><td class="n">5,100</td><td>成都</td><td>W3</td><td><span class="pill g">按期</span></td></tr>
+          <tr><td>SO-3433</td><td>广汽乘用</td><td class="n">4,700</td><td>常州→眉山</td><td>W2</td><td><span class="pill w">调拨</span></td></tr>
+          <tr><td>SO-3447</td><td>南方电网</td><td class="n">4,200</td><td>武汉</td><td>W2</td><td><span class="pill g">按期</span></td></tr>
+        </table>
+        <div class="more">查看全部 176 行 →</div>
+        <div class="src">源：<b>接单组合优选</b> allocation。产能是硬约束（建变量剪枝 + 装入守恒，不可突破）</div>
+      </div>
+    </div>
+
+    <div class="grid" style="grid-template-columns:1.1fr 1fr 1fr">
+      <div class="p"><h3>接单可行性 · 单张速判</h3>
+        <table><tr><th>来源</th><th class="n">可承诺量</th><th>承诺日</th></tr>
+          <tr><td>成品现货</td><td class="n">3,200</td><td style="color:var(--dim2)">即时</td></tr>
+          <tr><td>在制未交</td><td class="n">5,600</td><td style="color:var(--dim2)">09-24</td></tr>
+          <tr><td>交期前可排产能</td><td class="n">3,600</td><td style="color:var(--dim2)">10-06</td></tr>
+          <tr><td><b>合计可承诺</b></td><td class="n"><b>12,400</b></td><td><b>10-06</b></td></tr>
+        </table>
+        <div class="note g" style="margin:9px 0 0">✓ 这是全系统唯一把「现货＋在制＋产能」算进一个数的地方。<b>今天没有任何屏消费它</b> —— 本次把它摆出来</div>
+        <div class="src">源：<b>接单可行性</b>（ATP 承诺求解器，今天零视图引用）</div>
+      </div>
+      <div class="p"><h3>未排与挤出</h3>
+        <table><tr><th>原因</th><th class="n">张数</th><th class="n">金额</th></tr>
+          <tr><td>产能不足</td><td class="n">28</td><td class="n">21.4 亿</td></tr>
+          <tr><td>物料卡死</td><td class="n">11</td><td class="n">8.7 亿</td></tr>
+          <tr><td>交期不可达</td><td class="n">6</td><td class="n">4.2 亿</td></tr>
+        </table>
+        <div class="note" style="margin:9px 0 0">⚠ 物料今天是<b>事后检查</b>，不进求解 —— 被卡死的单仍占着产能，未让给别的单。已登记</div>
+        <div class="src">源：<b>接单组合优选</b> displaced ＋ materialBlocked</div>
+      </div>
+      <div class="p"><h3>成本构成<span class="sp"></span><em>目标函数里的全部项</em></h3>
+        <table>
+          <tr><td>延期罚金</td><td class="n">0.92 M</td></tr>
+          <tr><td>换型成本</td><td class="n">0.78 M</td></tr>
+          <tr><td>成品持有</td><td class="n">0.41 M</td></tr>
+          <tr><td>拆批固定</td><td class="n">0.15 M</td></tr>
+          <tr><td style="color:var(--dim2)">运费</td><td class="n" style="color:var(--dim2)">解外加算</td></tr>
+        </table>
+        <div class="note" style="margin:9px 0 0">⚠ <b>不含物料 / 工时 / 能耗 / 折旧</b> ⇒ 成本只取决于「何时、在哪」，不取决于「造的是什么」。<b>需求缺口排第 1 位</b></div>
+        <div class="src">源：<b>接单组合优选</b> 成本项逐字抄出</div>
+      </div>
+    </div>
+    <div class="foot"><span>求解 25.1 ms</span><span>可行解 · 未证最优</span><span>产能守恒 ✓</span><span>规则 portfolio_optimize · 系数走代码兜底</span></div>
+  </div>
+
+  <div class="ai">
+    <div class="aihd"><div class="aiic">◎</div><div><b>推演助手</b><span>就本次排产提问</span></div></div>
+    <div class="bub"><div class="who">助手 · 11:15</div>本次共排入 <b>176 行</b>，未排 45 张（合计 34.3 亿）。把延误权重从 0 提到 10：
+      <ul class="ck"><li>总延误 <b>降 43.1%</b>（2.74M → 1.56M）</li><li>总代价 <b>升 5.8%</b>（2.14M → 2.26M）</li><li>方向符合权衡常识，非装饰</li></ul></div>
+    <div class="bub me"><div class="who">你 · 11:17</div>为什么利润不在目标里？</div>
+    <div class="bub"><div class="who">助手 · 11:17</div>单价与单位成本的<b>分母不同</b>——一个按「套」一个按「电芯」，实测比值 25.7–40.6 倍且逐行不同。相减会扭曲方案名次，所以系统主动把毛利轴下架并标注原因，<b>不是算不出来，是算出来不可信</b>。</div>
+    <div class="aiact"><h4>建议下一步</h4>
+      <ul class="ck dot"><li>把未排的 28 张（产能不足）送去「算一手」试扩能</li><li>物料卡死的 11 张转「卡在哪」查齐套</li><li>SO-3433 跨基地调拨，复核运费是否划算</li></ul>
+      <div class="more">生成行动计划 →</div></div>
+    <div class="aiin"><span class="sp">就本次排产继续提问……</span><span class="send">▶</span></div>
+    <div class="chips"><span class="chip"># 换个权重</span><span class="chip"># 只看广汽</span><span class="chip"># 未排的为什么</span></div>
+  </div>
+</div>
+
+
+<div class="screenlabel">页签 5 / 7 ——「算一手」· 如果改 X 会怎样（页签 4「卡在哪」见上一版稿）</div>
+<div class="screen">
+  <div class="nav">
+    <div class="brand"><div class="logo"></div><div><b>全域决策支撑</b><span>DECISION PLATFORM</span></div></div>
+    <div class="navgrp">经营</div><div class="navi"><i>▤</i>经营驾驶舱</div><div class="navi on"><i>◎</i>统一推演控制台</div><div class="navi"><i>▦</i>订单进展与卡因</div>
+    <div class="navgrp">规划与平衡</div><div class="navi"><i>◷</i>年度规划</div><div class="navi"><i>◷</i>季度规划</div><div class="navi"><i>◷</i>月度规划 S&OP</div><div class="navi"><i>✓</i>规划体检</div><div class="navi"><i>✎</i>规划建议</div>
+    <div class="navgrp">台账与地图</div><div class="navi"><i>▤</i>订单台账</div><div class="navi"><i>◍</i>基地地理视图</div>
+    <div class="navgrp">建模与图谱</div><div class="navi"><i>◈</i>本体图谱</div><div class="navi"><i>⚙</i>系统管理</div>
+    <div class="navbtn">+ 新建推演</div>
+  </div>
+  <div class="main">
+    <div class="hd"><h1>算一手</h1><span class="badge w">已加 3 件事</span><span class="sp"></span>
+      <span class="btn">清空</span><span class="btn">载入上次</span><span class="btn p">算一下</span></div>
+    <div class="sub">左栏加事情 → 一次算清 → 右侧看影响。本次引用 5,511 格读数 · 46 条规则 · 未调用 agent</div>
+    <div class="tabs"><span class="tab">现状</span><span class="tab">计划与平衡</span><span class="tab">接单与优选</span><span class="tab">卡在哪</span><span class="tab on">算一手</span><span class="tab">有几条路</span><span class="tab">落地与复盘</span></div>
+
+    <div class="grid" style="grid-template-columns:250px 1fr">
+      <div class="p"><h3>加几件事<span class="sp"></span><em>3 件</em></h3>
+        <table>
+          <tr><td><span class="pill r">物料</span></td><td>碳酸锂 <b>+15%</b><div style="color:var(--dim2);font-size:9.5px">09-11 起 · 持续 30 天</div></td></tr>
+          <tr><td><span class="pill w">产能</span></td><td>常州分切线 <b>停机 5 天</b><div style="color:var(--dim2);font-size:9.5px">09-15 起</div></td></tr>
+          <tr><td><span class="pill w">订单</span></td><td>广汽插单 <b>+8,000 套</b><div style="color:var(--dim2);font-size:9.5px">交期 10-20</div></td></tr>
+        </table>
+        <div class="more">+ 再加一件 →</div>
+        <div class="src">源：<b>假设推演</b>（四级表单：类型→对象→属性→假设值）＋ <b>优化推演</b>（参数扰动）＋ <b>断供影响半径</b></div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:11px;min-width:0">
+        <div class="kpis" style="grid-template-columns:repeat(4,1fr);margin:0">
+          <div class="kpi"><div class="k">毛利影响</div><div class="v down">−4.62<small>亿</small></div><div class="d down">较基线 ▼3.9%</div>
+            <div class="spark r"><i style="height:20%"></i><i style="height:32%"></i><i style="height:44%"></i><i style="height:56%"></i><i style="height:66%"></i><i style="height:74%"></i><i style="height:82%"></i><i style="height:88%"></i></div></div>
+          <div class="kpi"><div class="k">受影响订单敞口</div><div class="v">128.4<small>亿</small></div><div class="d flat">147 张 · 占订单簿 28.2%</div>
+            <div class="spark r"><i style="height:30%"></i><i style="height:40%"></i><i style="height:48%"></i><i style="height:58%"></i><i style="height:64%"></i><i style="height:72%"></i><i style="height:78%"></i><i style="height:84%"></i></div></div>
+          <div class="kpi"><div class="k">交付准时率</div><div class="v">87.7<small>%</small></div><div class="d down">▼3.4 pt（基线 91.1%）</div>
+            <div class="spark r"><i style="height:82%"></i><i style="height:79%"></i><i style="height:74%"></i><i style="height:70%"></i><i style="height:66%"></i><i style="height:61%"></i><i style="height:57%"></i><i style="height:53%"></i></div></div>
+          <div class="kpi"><div class="k">新增卡点</div><div class="v">18</div><div class="d flat">可处置 4 · 仅观察 14</div>
+            <div class="spark r"><i style="height:18%"></i><i style="height:28%"></i><i style="height:38%"></i><i style="height:50%"></i><i style="height:60%"></i><i style="height:70%"></i><i style="height:80%"></i><i style="height:90%"></i></div></div>
+        </div>
+
+        <div class="note">⚠ 本次基线为<b>派生占位</b>（非实测）⇒ 按诚实位规则，<b>只显示变化量 Δ，不显示绝对投影值</b>。绝对值需基线接实测后才渲染</div>
+
+        <div class="grid" style="grid-template-columns:1fr 1fr;margin:0">
+          <div class="p"><h3>影响链路<span class="sp"></span><em>逐边可反查到对象</em></h3>
+            <table>
+              <tr><td>①</td><td>碳酸锂 涨价 +15%</td><td class="n" style="color:var(--dim2)">规则 C34</td></tr>
+              <tr><td>②</td><td>→ 型号成本压力 ↑</td><td class="n" style="color:var(--dim2)">系数 0.65</td></tr>
+              <tr><td>③</td><td>→ 常州分切线 利用率 95.89</td><td class="n" style="color:var(--bad)">超红线</td></tr>
+              <tr><td>④</td><td>→ 广汽 44 张单交付后延</td><td class="n" style="color:var(--dim2)">合计 47.2 亿</td></tr>
+            </table>
+            <div class="src">源：<b>传导识别</b>（扰动树 + 影响锥）＋ <b>断供影响半径</b>（逐层扇出 DAG）</div>
+          </div>
+          <div class="p"><h3>这次算的时候做了什么<span class="sp"></span><em>可披露</em></h3>
+            <table>
+              <tr><td style="color:var(--dim2)">引用数据</td><td class="n">12,745 对象 / 12,192 边</td></tr>
+              <tr><td style="color:var(--dim2)">本体切片</td><td class="n">3 跳 · 217 节点</td></tr>
+              <tr><td style="color:var(--dim2)">命中规则</td><td class="n">46 条 · 系数来源：代码兜底</td></tr>
+              <tr><td style="color:var(--dim2)">约束来自</td><td class="n">C34.threshold</td></tr>
+              <tr><td style="color:var(--dim2)">是否调用 agent</td><td class="n"><b>否</b>（0 次）</td></tr>
+              <tr><td style="color:var(--dim2)">各环节耗时</td><td class="n">图 157 / 影 235 / 引擎 90 / 落库 15</td></tr>
+            </table>
+            <div class="note g" style="margin:9px 0 0">✓ 这六项今天在沙盘路已经全有，<b>只是没搬到主力页</b> —— 本次搬过来</div>
+            <div class="src">源：<b>推演披露</b>（沙盘路六段齐全，`agent.invoked` 为必填非可选）</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="foot"><span>基线：派生占位</span><span>只显示 Δ</span><span>规则 46 条</span><span>耗时 497 ms</span><span>未调用 agent</span></div>
+  </div>
+
+  <div class="ai">
+    <div class="aihd"><div class="aiic">◎</div><div><b>推演助手</b><span>就这三件事提问</span></div></div>
+    <div class="bub"><div class="who">助手 · 14:20</div>三件事叠加后毛利影响 <b>−4.62 亿</b>，其中：
+      <ul class="ck dot"><li>碳酸锂涨价贡献 <b>−3.18 亿</b>（BOM 用量占 68%）</li><li>常州停机致后延、应收占压 <b>−1.44 亿</b></li><li>广汽插单本身为正，但被产能挤占抵消</li></ul></div>
+    <div class="bub me"><div class="who">你 · 14:22</div>如果只做前两件呢？</div>
+    <div class="bub"><div class="who">助手 · 14:22</div>去掉插单后，毛利影响收窄到 <b>−3.96 亿</b>，卡点从 18 处降到 <b>13 处</b>，准时率回到 <b>89.4%</b>。插单本身带来 +0.66 亿毛利，但代价是 5 处新卡点。</div>
+    <div class="aiact"><h4>建议下一步</h4>
+      <ul class="ck dot"><li>先去「有几条路」看这 4 处可处置卡点的对策</li><li>把插单单独算一次，判断是否值得接</li><li>复核常州停机能否错峰到 09-22</li></ul>
+      <div class="more">生成行动计划 →</div></div>
+    <div class="aiin"><span class="sp">换一组假设继续算……</span><span class="send">▶</span></div>
+    <div class="chips"><span class="chip"># 去掉插单</span><span class="chip"># 只算碳酸锂</span><span class="chip"># 对比上次</span></div>
+  </div>
+</div>
+
+
+<div class="screenlabel">页签 7 / 7 ——「落地与复盘」· 批了没、做到没（页签 6「有几条路」见上一版稿）</div>
+<div class="screen">
+  <div class="nav">
+    <div class="brand"><div class="logo"></div><div><b>全域决策支撑</b><span>DECISION PLATFORM</span></div></div>
+    <div class="navgrp">经营</div><div class="navi"><i>▤</i>经营驾驶舱</div><div class="navi on"><i>◎</i>统一推演控制台</div><div class="navi"><i>▦</i>订单进展与卡因</div>
+    <div class="navgrp">规划与平衡</div><div class="navi"><i>◷</i>年度规划</div><div class="navi"><i>◷</i>季度规划</div><div class="navi"><i>◷</i>月度规划 S&OP</div><div class="navi"><i>✓</i>规划体检</div><div class="navi"><i>✎</i>规划建议</div>
+    <div class="navgrp">台账与地图</div><div class="navi"><i>▤</i>订单台账</div><div class="navi"><i>◍</i>基地地理视图</div>
+    <div class="navgrp">建模与图谱</div><div class="navi"><i>◈</i>本体图谱</div><div class="navi"><i>⚙</i>系统管理</div>
+    <div class="navbtn">+ 新建推演</div>
+  </div>
+  <div class="main">
+    <div class="hd"><h1>落地与复盘</h1><span class="badge">待审 3 · 已采纳 12</span><span class="sp"></span>
+      <span class="btn">只看我待办</span><span class="btn">导出审计</span><span class="btn p">批量审批</span></div>
+    <div class="sub">从推演结论到真值改动的唯一出口 · 两步审批链（计划员初审 → 管理员终审）</div>
+    <div class="tabs"><span class="tab">现状</span><span class="tab">计划与平衡</span><span class="tab">接单与优选</span><span class="tab">卡在哪</span><span class="tab">算一手</span><span class="tab">有几条路</span><span class="tab on">落地与复盘</span></div>
+
+    <div class="kpis" style="grid-template-columns:repeat(4,1fr)">
+      <div class="kpi"><div class="k">待审提案</div><div class="v">3</div><div class="d flat">最久等待 2 天</div>
+        <div class="spark b"><i style="height:30%"></i><i style="height:44%"></i><i style="height:38%"></i><i style="height:52%"></i><i style="height:46%"></i><i style="height:60%"></i><i style="height:54%"></i><i style="height:48%"></i></div></div>
+      <div class="kpi"><div class="k">已采纳对策</div><div class="v">12</div><div class="d up">本季度</div>
+        <div class="spark"><i style="height:22%"></i><i style="height:34%"></i><i style="height:41%"></i><i style="height:52%"></i><i style="height:60%"></i><i style="height:71%"></i><i style="height:80%"></i><i style="height:88%"></i></div></div>
+      <div class="kpi"><div class="k">已消解卡点</div><div class="v">8<small>/12</small></div><div class="d up">另 3 仍越线 · 1 本就不越线</div>
+        <div class="spark"><i style="height:30%"></i><i style="height:38%"></i><i style="height:48%"></i><i style="height:55%"></i><i style="height:62%"></i><i style="height:70%"></i><i style="height:76%"></i><i style="height:82%"></i></div></div>
+      <div class="kpi"><div class="k">预测准度 MAPE</div><div class="v">7.4<small>%</small></div><div class="d up">较上季 ▼3.8 pt</div>
+        <div class="spark r"><i style="height:88%"></i><i style="height:80%"></i><i style="height:74%"></i><i style="height:66%"></i><i style="height:58%"></i><i style="height:50%"></i><i style="height:44%"></i><i style="height:38%"></i></div></div>
+    </div>
+
+    <div class="grid" style="grid-template-columns:1.25fr 1fr">
+      <div class="p"><h3>待审提案<span class="sp"></span><em>推演结论要生效，必须走这道门</em></h3>
+        <table><tr><th>提案</th><th>来自</th><th class="n">效果</th><th class="n">见效</th><th>状态</th></tr>
+          <tr><td>常州 · 备选供应商切换</td><td style="color:var(--dim2)">算一手 14:22</td><td class="n">−9 张力</td><td class="n">5 天</td><td><span class="pill w">待初审</span></td></tr>
+          <tr><td>金华分切线 利用率下调至 89.92</td><td style="color:var(--dim2)">有几条路 13:51</td><td class="n">−12 张力</td><td class="n">1 天</td><td><span class="pill w">待终审</span></td></tr>
+          <tr><td>枣庄 · 提前备料</td><td style="color:var(--dim2)">卡在哪 11:08</td><td class="n">−12 张力</td><td class="n">2 天</td><td><span class="pill w">待初审</span></td></tr>
+        </table>
+        <div class="note g" style="margin:9px 0 0">✓ 每条提案在派出前已<b>干跑复核</b>：要求「处置后峰值 ≤ 处置前」，不接受「算出来了但没降」。选不到就诚实跳过</div>
+        <div class="src">源：<b>Action 审批中心</b>（11 个动作型全部接通，0 个未实现；兜底执行器显式失败不臆造）</div>
+      </div>
+      <div class="p"><h3>决策留痕<span class="sp"></span><em>谁提的 · 依据什么 · 结果如何</em></h3>
+        <table><tr><th>决策</th><th>提出</th><th>依据</th><th>结果</th></tr>
+          <tr><td>枣庄红线复核</td><td style="color:var(--dim2)">王 · 08-22</td><td style="color:var(--dim2)">归因树 3 层</td><td><span class="pill g">已兑现</span></td></tr>
+          <tr><td>广汽授信合并</td><td style="color:var(--dim2)">李 · 08-30</td><td style="color:var(--dim2)">集中度归因</td><td><span class="pill w">跟踪中</span></td></tr>
+          <tr><td>三季度扩线</td><td style="color:var(--dim2)">陈 · 09-02</td><td style="color:var(--dim2)">规划建议 C</td><td><span class="pill d">未回填</span></td></tr>
+        </table>
+        <div class="note" style="margin:9px 0 0">⚠ 今天这本台账<b>只能按 id 查，没有列表入口</b>；且「结果」这一列需运营人工回填，产品内无入口。均已登记</div>
+        <div class="src">源：<b>决策内核</b>（四项落库齐备：谁/何时/依据/结果，且创建时拒绝幽灵方案）</div>
+      </div>
+    </div>
+
+    <div class="grid" style="grid-template-columns:1fr 1fr 1fr">
+      <div class="p"><h3>参数校准史</h3>
+        <table><tr><th>参数</th><th class="n">旧</th><th class="n">新</th><th class="n">版本</th></tr>
+          <tr><td>工序良率基线</td><td class="n">0.962</td><td class="n">0.948</td><td class="n">v7</td></tr>
+          <tr><td>爬坡基数</td><td class="n">0.71</td><td class="n">0.74</td><td class="n">v7</td></tr>
+          <tr><td>设备健康常态</td><td class="n">0.88</td><td class="n">0.86</td><td class="n">v6</td></tr>
+        </table>
+        <div class="note g" style="margin:9px 0 0">✓ 回流回路真闭合：偏差 → 提案 → 审批 → 参数版本 +1 → 后续求解真用新值</div>
+        <div class="src">源：<b>校准报告</b>（今天覆盖 3 个参数 / 1 个求解器；销售·利润·需求三类偏差零回流，已登记）</div>
+      </div>
+      <div class="p"><h3>版本演进史</h3>
+        <table><tr><th>版本</th><th>状态</th><th class="n">缺口</th><th>定版</th></tr>
+          <tr><td>2026-10 V1</td><td><span class="pill d">已归档</span></td><td class="n">36 万套</td><td style="color:var(--dim2)">—</td></tr>
+          <tr><td>2026-10 V3</td><td><span class="pill d">已归档</span></td><td class="n">26 万套</td><td style="color:var(--dim2)">—</td></tr>
+          <tr><td>2026-10 V5</td><td><span class="pill d">已归档</span></td><td class="n">15 万套</td><td style="color:var(--dim2)">—</td></tr>
+          <tr><td>2026-10 V7</td><td><span class="pill w">评审中</span></td><td class="n">4 万套</td><td style="color:var(--dim2)">待</td></tr>
+        </table>
+        <div class="src">源：<b>运营复盘</b>（S&OP 版本史 · Action 审计史 · 规则演进，四张历史表）</div>
+      </div>
+      <div class="p"><h3>偏差回看<span class="sp"></span><em>目标 vs 实际</em></h3>
+        <table><tr><th>偏差</th><th class="n">目标</th><th class="n">实际</th><th></th></tr>
+          <tr><td>销售达成</td><td class="n">700 亿</td><td class="n">415.6</td><td><span class="pill r">59.4%</span></td></tr>
+          <tr><td>计划产出</td><td class="n">—</td><td class="n">—</td><td><span class="pill g">已接通</span></td></tr>
+          <tr><td>盈利目标</td><td class="n">112 亿</td><td class="n">—</td><td><span class="pill w">口径待统一</span></td></tr>
+          <tr><td style="color:var(--dim2)">需求预测</td><td class="n" colspan="2" style="color:var(--dim2)">本期不做</td><td><span class="pill d">—</span></td></tr>
+        </table>
+        <div class="src">源：<b>校准报告</b> ＋ <b>经营驾驶舱</b> 指标条。四类偏差里销售达成与计划产出已能真算</div>
+      </div>
+    </div>
+    <div class="foot"><span>审批链：计划员 → 管理员</span><span>11 个动作型全接通</span><span>采纳是唯一出口</span><span>效果分三态判定</span></div>
+  </div>
+
+  <div class="ai">
+    <div class="aihd"><div class="aiic">◎</div><div><b>推演助手</b><span>就落地与复盘提问</span></div></div>
+    <div class="bub"><div class="who">助手 · 16:05</div>本季度已采纳 <b>12</b> 条对策，其中 <b>8</b> 条已消解卡点、3 条仍越线、1 条本来就不越线。
+      <ul class="ck"><li>不把「本来就不越线」算成我消解的</li><li>预测准度 MAPE 从 11.2% 收敛到 7.4%</li></ul></div>
+    <div class="bub me"><div class="who">你 · 16:07</div>那 3 条仍越线的是什么原因？</div>
+    <div class="bub"><div class="who">助手 · 16:07</div>三条都在枣庄，处置效果确实产生了（张力各降 9–12），但<b>基准越线幅度 4.82 倍</b>，单条对策的效果量级不够。建议合并三条一起报，或先复核红线口径本身。</div>
+    <div class="aiact"><h4>建议下一步</h4>
+      <ul class="ck dot"><li>批掉待审的 3 条（最久已等 2 天）</li><li>枣庄三条合并重报</li><li>把「三季度扩线」的结果回填，闭合台账</li></ul>
+      <div class="more">生成行动计划 →</div></div>
+    <div class="aiin"><span class="sp">就落地情况继续提问……</span><span class="send">▶</span></div>
+    <div class="chips"><span class="chip"># 只看我待办</span><span class="chip"># 枣庄三条</span><span class="chip"># 校准曲线</span></div>
+  </div>
+</div>

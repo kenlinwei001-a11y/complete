@@ -1,0 +1,128 @@
+# 逐拍追踪（对照臂 session=sims_x7b1yj0vjb8h1m5q · 扰动臂 session=sims_2k0jzpad6edgphq2）
+# 扰动：obj_material_al_foil.priceShock scale×1.5 @ tick 3
+
+── 对照臂 sims_x7b1yj0vjb8h1m5q ──
+tick      al_foil.priceShock 4680-NCM.costPressure   4680-NCM.demandLoad 4680-NCM.forecastBias   4680-NCM.supplyRisk  SO-3391.costPressureSO-3391.demandPressure  SO-3391.shortageRiskcust_0.receivablePressarinvoice_0_0.overdueP
+   1                  2.0000                0.0000               18.5616               50.0000                0.0000               73.2620               26.7000               13.8799               93.1562                9.4500
+   2                  2.0000                0.0000                7.1611               50.0000                2.7421               46.1551                5.7210                8.7443               92.3689               12.3076
+   3                  2.0000                0.5446                0.0000               50.0000                6.7524               29.0777                0.0000                6.2699               88.4972               21.5409
+   4                  2.0000                1.4402                0.0000               50.0000               10.1940               18.4701                0.0000                5.8238               82.0520               27.2414
+   5                  2.0000                2.3886                0.0000               50.0000               13.0699               12.0358                0.0000                6.4978               70.1756               30.2596
+   6                  2.0000                3.0022                0.0000               50.0000               15.0508                8.2454                0.0000                7.7205               56.3745               31.2073
+   7                  2.0000                3.1747                0.0000               50.0000               16.1011                6.0277                0.0000                9.0405               44.1123               30.0466
+   8                  2.0000                2.9459                0.0000               50.0000               16.3504                4.6784                0.0000               10.1636               34.4175               27.2728
+   9                  2.0000                2.4151                0.0000               50.0000               15.9943                3.7649                0.0000               10.9403               27.1575               23.7105
+  10                  2.0000                1.6937                0.0000               50.0000               15.2362                3.0421                0.0000               11.3308               21.7717               20.0314
+  11                  2.0000                0.8801                0.0000               50.0000               14.2533                2.3865                0.0000               11.3664               17.6474               16.6391
+  12                  2.0000                0.0504                0.0000               50.0000               13.1835                1.7477                0.0000               11.1161               14.2822               13.7048
+  13                  2.0000                0.0000                0.0000               50.0000               12.1236                1.1150                0.0000               10.6616               11.3311               11.2459
+  14                  2.0000                0.0000                0.0000               50.0000               11.1347                0.7025                0.0000               10.0811                8.7213                9.1987
+  15                  2.0000                0.0000                0.0000               50.0000               10.2505                0.4426                0.0000                9.4410                6.5273                7.4722
+  16                  2.0000                0.0000                0.0000               50.0000                9.4844                0.2788                0.0000                8.7923                4.7629                5.9982
+  17                  2.0000                0.0000                0.0000               50.0000                8.8366                0.1757                0.0000                8.1711                3.4106                4.7449
+  18                  2.0000                0.0000                0.0000               50.0000                8.2996                0.1107                0.0000                7.5999                2.4069                3.6942
+  19                  2.0000                0.0000                0.0000               50.0000                7.8614                0.0697                0.0000                7.0911                1.6791                2.8321
+  20                  2.0000                0.0000                0.0000               50.0000                7.5085                0.0439                0.0000                6.6489                1.1603                2.1405
+  21                  2.0000                0.0000                0.0000               50.0000                7.2275                0.0277                0.0000                6.2725                0.7956                1.5970
+  22                  2.0000                0.0000                0.0000               50.0000                7.0058                0.0174                0.0000                5.9573                0.5419                1.1778
+  23                  2.0000                0.0000                0.0000               50.0000                6.8324                0.0110                0.0000                5.6972                0.3670                0.8598
+  钳制自报出现过的拍：
+    tick 1: 4680-NCM.costPressure=min(raw=-0.131620659603)  4680-NCM.supplyRisk=min(raw=-19.258660119067)  cust_0.receivablePressure=max(raw=141.323950986137)
+    tick 2: 4680-NCM.costPressure=min(raw=-1.25860848199)  cust_0.receivablePressure=max(raw=131.90160142202)
+    tick 3: 4680-NCM.demandLoad=min(raw=-0.658848523585)  SO-3391.demandPressure=min(raw=-7.49577)  cust_0.receivablePressure=max(raw=104.334640985374)
+    tick 4: 4680-NCM.demandLoad=min(raw=-5.074843897811)  SO-3391.demandPressure=min(raw=-11.1)  cust_0.receivablePressure=max(raw=84.822852645548)
+    tick 5: 4680-NCM.demandLoad=min(raw=-4.966670614408)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 6: 4680-NCM.demandLoad=min(raw=-4.885186619436)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 7: 4680-NCM.demandLoad=min(raw=-4.833851702603)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 8: 4680-NCM.demandLoad=min(raw=-4.801510704998)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 9: 4680-NCM.demandLoad=min(raw=-4.781135876507)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 10: 4680-NCM.demandLoad=min(raw=-4.768299734559)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 11: 4680-NCM.demandLoad=min(raw=-4.76021296513)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 12: 4680-NCM.demandLoad=min(raw=-4.75511830039)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 13: 4680-NCM.costPressure=min(raw=-0.743245384388)  4680-NCM.demandLoad=min(raw=-4.751908661604)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 14: 4680-NCM.costPressure=min(raw=-1.000686335922)  4680-NCM.demandLoad=min(raw=-4.749886589169)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 15: 4680-NCM.costPressure=min(raw=-1.185231381436)  4680-NCM.demandLoad=min(raw=-4.748612683535)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 16: 4680-NCM.costPressure=min(raw=-1.333839874196)  4680-NCM.demandLoad=min(raw=-4.747810122986)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 17: 4680-NCM.costPressure=min(raw=-1.452005544034)  4680-NCM.demandLoad=min(raw=-4.747304509839)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 18: 4680-NCM.costPressure=min(raw=-1.544949712299)  4680-NCM.demandLoad=min(raw=-4.746985973557)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 19: 4680-NCM.costPressure=min(raw=-1.617359525348)  4680-NCM.demandLoad=min(raw=-4.746785295701)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 20: 4680-NCM.costPressure=min(raw=-1.673288480243)  4680-NCM.demandLoad=min(raw=-4.746658868649)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 21: 4680-NCM.costPressure=min(raw=-1.716149735039)  4680-NCM.demandLoad=min(raw=-4.746579219608)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 22: 4680-NCM.costPressure=min(raw=-1.7487591309)  4680-NCM.demandLoad=min(raw=-4.746529040712)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 23: 4680-NCM.costPressure=min(raw=-1.773401752286)  4680-NCM.demandLoad=min(raw=-4.746497428006)  SO-3391.demandPressure=min(raw=-11.1)
+
+── 扰动臂 sims_2k0jzpad6edgphq2 ──
+tick      al_foil.priceShock 4680-NCM.costPressure   4680-NCM.demandLoad 4680-NCM.forecastBias   4680-NCM.supplyRisk  SO-3391.costPressureSO-3391.demandPressure  SO-3391.shortageRiskcust_0.receivablePressarinvoice_0_0.overdueP
+   1                  2.0000                0.0000               18.5616               50.0000                0.0000               73.2620               26.7000               13.8799               93.1562                9.4500
+   2                  2.0000                0.0000                7.1611               50.0000                2.7421               46.1551                5.7210                8.7443               92.3689               12.3076
+   3                  2.0000                0.5446                0.0000               50.0000                6.7524               29.0777                0.0000                6.2699               88.4972               21.5409
+   4                  3.0000                1.4410                0.0000               50.0000               10.1940               18.4701                0.0000                5.8238               82.0520               27.2414
+   5                  3.0000                2.3900                0.0000               50.0000               13.0699               12.0360                0.0000                6.4978               70.1756               30.2596
+   6                  3.0000                3.0039                0.0000               50.0000               15.0508                8.2459                0.0000                7.7205               56.3749               31.2073
+   7                  3.0000                3.1766                0.0000               50.0000               16.1011                6.0285                0.0000                9.0405               44.1134               30.0466
+   8                  3.0000                2.9480                0.0000               50.0000               16.3504                4.6795                0.0000               10.1636               34.4195               27.2728
+   9                  3.0000                2.4173                0.0000               50.0000               15.9943                3.7661                0.0000               10.9403               27.1606               23.7107
+  10                  3.0000                1.6959                0.0000               50.0000               15.2362                3.0435                0.0000               11.3308               21.7757               20.0318
+  11                  3.0000                0.8823                0.0000               50.0000               14.2533                2.3880                0.0000               11.3664               17.6523               16.6398
+  12                  3.0000                0.0526                0.0000               50.0000               13.1835                1.7493                0.0000               11.1161               14.2878               13.7059
+  13                  3.0000                0.0000                0.0000               50.0000               12.1236                1.1167                0.0000               10.6616               11.3369               11.2472
+  14                  3.0000                0.0000                0.0000               50.0000               11.1347                0.7035                0.0000               10.0811                8.7269                9.2004
+  15                  3.0000                0.0000                0.0000               50.0000               10.2505                0.4432                0.0000                9.4410                6.5322                7.4741
+  16                  3.0000                0.0000                0.0000               50.0000                9.4844                0.2792                0.0000                8.7923                4.7669                6.0003
+  17                  3.0000                0.0000                0.0000               50.0000                8.8366                0.1759                0.0000                8.1711                3.4136                4.7469
+  18                  3.0000                0.0000                0.0000               50.0000                8.2996                0.1108                0.0000                7.5999                2.4092                3.6961
+  19                  3.0000                0.0000                0.0000               50.0000                7.8614                0.0698                0.0000                7.0911                1.6807                2.8337
+  20                  3.0000                0.0000                0.0000               50.0000                7.5085                0.0440                0.0000                6.6489                1.1615                2.1418
+  21                  3.0000                0.0000                0.0000               50.0000                7.2275                0.0277                0.0000                6.2725                0.7964                1.5981
+  22                  3.0000                0.0000                0.0000               50.0000                7.0058                0.0175                0.0000                5.9573                0.5425                1.1787
+  23                  3.0000                0.0000                0.0000               50.0000                6.8324                0.0110                0.0000                5.6972                0.3674                0.8605
+  钳制自报出现过的拍：
+    tick 1: 4680-NCM.costPressure=min(raw=-0.131620659603)  4680-NCM.supplyRisk=min(raw=-19.258660119067)  cust_0.receivablePressure=max(raw=141.323950986137)
+    tick 2: 4680-NCM.costPressure=min(raw=-1.25860848199)  cust_0.receivablePressure=max(raw=131.90160142202)
+    tick 3: 4680-NCM.demandLoad=min(raw=-0.658848523585)  SO-3391.demandPressure=min(raw=-7.49577)  cust_0.receivablePressure=max(raw=104.334640985374)
+    tick 4: 4680-NCM.demandLoad=min(raw=-5.074843897811)  SO-3391.demandPressure=min(raw=-11.1)  cust_0.receivablePressure=max(raw=84.822852645548)
+    tick 5: 4680-NCM.demandLoad=min(raw=-4.966670614408)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 6: 4680-NCM.demandLoad=min(raw=-4.885186619436)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 7: 4680-NCM.demandLoad=min(raw=-4.833851702603)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 8: 4680-NCM.demandLoad=min(raw=-4.801510704998)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 9: 4680-NCM.demandLoad=min(raw=-4.781135876507)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 10: 4680-NCM.demandLoad=min(raw=-4.768299734559)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 11: 4680-NCM.demandLoad=min(raw=-4.76021296513)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 12: 4680-NCM.demandLoad=min(raw=-4.75511830039)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 13: 4680-NCM.costPressure=min(raw=-0.740948131158)  4680-NCM.demandLoad=min(raw=-4.751908661604)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 14: 4680-NCM.costPressure=min(raw=-0.999827897204)  4680-NCM.demandLoad=min(raw=-4.749886589169)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 15: 4680-NCM.costPressure=min(raw=-1.184372942718)  4680-NCM.demandLoad=min(raw=-4.748612683535)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 16: 4680-NCM.costPressure=min(raw=-1.332981435478)  4680-NCM.demandLoad=min(raw=-4.747810122986)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 17: 4680-NCM.costPressure=min(raw=-1.451147105316)  4680-NCM.demandLoad=min(raw=-4.747304509839)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 18: 4680-NCM.costPressure=min(raw=-1.544091273581)  4680-NCM.demandLoad=min(raw=-4.746985973557)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 19: 4680-NCM.costPressure=min(raw=-1.61650108663)  4680-NCM.demandLoad=min(raw=-4.746785295701)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 20: 4680-NCM.costPressure=min(raw=-1.672430041525)  4680-NCM.demandLoad=min(raw=-4.746658868649)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 21: 4680-NCM.costPressure=min(raw=-1.715291296321)  4680-NCM.demandLoad=min(raw=-4.746579219608)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 22: 4680-NCM.costPressure=min(raw=-1.747900692182)  4680-NCM.demandLoad=min(raw=-4.746529040712)  SO-3391.demandPressure=min(raw=-11.1)
+    tick 23: 4680-NCM.costPressure=min(raw=-1.772543313568)  4680-NCM.demandLoad=min(raw=-4.746497428006)  SO-3391.demandPressure=min(raw=-11.1)
+
+── 两臂差值（扰动 − 对照）──
+tick      al_foil.priceShock 4680-NCM.costPressure   4680-NCM.demandLoad 4680-NCM.forecastBias   4680-NCM.supplyRisk  SO-3391.costPressureSO-3391.demandPressure  SO-3391.shortageRiskcust_0.receivablePressarinvoice_0_0.overdueP
+   1                  0.0000                0.0000                0.0000                0.0000                0.0000                0.0000                0.0000                0.0000                0.0000                0.0000
+   2                  0.0000                0.0000                0.0000                0.0000                0.0000                0.0000                0.0000                0.0000                0.0000                0.0000
+   3                  0.0000                0.0000                0.0000                0.0000                0.0000                0.0000                0.0000                0.0000                0.0000                0.0000
+   4                  1.0000                0.0009                0.0000                0.0000                0.0000                0.0000                0.0000                0.0000                0.0000                0.0000
+   5                  1.0000                0.0014                0.0000                0.0000                0.0000                0.0002                0.0000                0.0000                0.0000                0.0000
+   6                  1.0000                0.0017                0.0000                0.0000                0.0000                0.0005                0.0000                0.0000                0.0004                0.0000
+   7                  1.0000                0.0020                0.0000                0.0000                0.0000                0.0008                0.0000                0.0000                0.0011                0.0000
+   8                  1.0000                0.0021                0.0000                0.0000                0.0000                0.0011                0.0000                0.0000                0.0021                0.0001
+   9                  1.0000                0.0022                0.0000                0.0000                0.0000                0.0012                0.0000                0.0000                0.0031                0.0002
+  10                  1.0000                0.0022                0.0000                0.0000                0.0000                0.0014                0.0000                0.0000                0.0040                0.0004
+  11                  1.0000                0.0023                0.0000                0.0000                0.0000                0.0015                0.0000                0.0000                0.0049                0.0007
+  12                  1.0000                0.0023                0.0000                0.0000                0.0000                0.0016                0.0000                0.0000                0.0056                0.0011
+  13                  1.0000                0.0000                0.0000                0.0000                0.0000                0.0016                0.0000                0.0000                0.0058                0.0014
+  14                  1.0000                0.0000                0.0000                0.0000                0.0000                0.0010                0.0000                0.0000                0.0056                0.0017
+  15                  1.0000                0.0000                0.0000                0.0000                0.0000                0.0006                0.0000                0.0000                0.0049                0.0019
+  16                  1.0000                0.0000                0.0000                0.0000                0.0000                0.0004                0.0000                0.0000                0.0040                0.0020
+  17                  1.0000                0.0000                0.0000                0.0000                0.0000                0.0003                0.0000                0.0000                0.0031                0.0020
+  18                  1.0000                0.0000                0.0000                0.0000                0.0000                0.0002                0.0000                0.0000                0.0023                0.0019
+  19                  1.0000                0.0000                0.0000                0.0000                0.0000                0.0001                0.0000                0.0000                0.0017                0.0016
+  20                  1.0000                0.0000                0.0000                0.0000                0.0000                0.0001                0.0000                0.0000                0.0012                0.0014
+  21                  1.0000                0.0000                0.0000                0.0000                0.0000                0.0000                0.0000                0.0000                0.0008                0.0011
+  22                  1.0000                0.0000                0.0000                0.0000                0.0000                0.0000                0.0000                0.0000                0.0006                0.0009
+  23                  1.0000                0.0000                0.0000                0.0000                0.0000                0.0000                0.0000                0.0000                0.0004                0.0007

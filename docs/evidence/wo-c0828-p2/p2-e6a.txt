@@ -1,0 +1,4 @@
+→ http://127.0.0.1:5174/v/sim-unified  (viewport 1680×900)
+scrollHeight=452 clientHeight=452 ratio=1.000
+PASS (≤ 1.15)
+CAPTURED_RC=0

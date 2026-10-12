@@ -1,0 +1,60 @@
+规则集 55 条，其中的落点格 39 个
+
+── 77a35c815 ──
+   登记了 valueRef 的格        : 26
+   其中**也有传导入边**（双所有者）: 17
+      · Base|loadIndex                             入边 1 条
+      · Customer|receivablePressure                入边 1 条
+      · DefectRecord|defectPressure                入边 1 条
+      · Line|blockedPressure                       入边 1 条
+      · Line|utilPressure                          入边 1 条
+      · MaterialBalance|gapPressure                入边 1 条
+      · Material|shortageRisk                      入边 6 条
+      · Model|costPressure                         入边 3 条
+      · Model|demandLoad                           入边 4 条
+      · Model|supplyRisk                           入边 2 条
+      · Order|costPressure                         入边 1 条
+      · Order|demandPressure                       入边 1 条
+      · Order|shortageRisk                         入边 1 条
+      · Process|queuePressure                      入边 3 条
+      · PurchaseOrder|expeditePressure             入边 2 条
+      · WIPLot|feedPressure                        入边 1 条
+      · WorkOrder|releasePressure                  入边 2 条
+
+── 495d25002 ──
+   登记了 valueRef 的格        : 43
+   其中**也有传导入边**（双所有者）: 34
+      · ARInvoice|overduePressure                  入边 1 条
+      · Base|loadIndex                             入边 1 条
+      · Certification|qualificationQueue           入边 1 条
+      · ChangeoverMatrix|changeoverPressure        入边 1 条
+      · Customer|receivablePressure                入边 1 条
+      · CustomsClearance|clearanceQueueDays        入边 1 条
+      · DefectRecord|defectPressure                入边 1 条
+      · FinishedGoodsInventory|drawdownPressure    入边 1 条
+      · IncomingInspection|queueDays               入边 1 条
+      · InterBaseTransfer|transferPressure         入边 1 条
+      · Line|blockedPressure                       入边 1 条
+      · Line|utilPressure                          入边 1 条
+      · MaintPlan|windowSqueeze                    入边 1 条
+      · MaterialAlternative|switchPressure         入边 1 条
+      · MaterialBalance|gapPressure                入边 1 条
+      · MaterialBatch|turnoverPressure             入边 1 条
+      · Material|shortageRisk                      入边 6 条
+      · Model|backlogPriceTop                      入边 1 条
+      · Model|backlogQtyTop                        入边 1 条
+      · Model|costPressure                         入边 3 条
+      · Model|demandLoad                           入边 4 条
+      · Model|supplyRisk                           入边 2 条
+      · OrderLine|splitPressure                    入边 2 条
+      · Order|costPressure                         入边 1 条
+      · Order|demandPressure                       入边 1 条
+      · Order|shortageRisk                         入边 1 条
+      · OverdueRecord|collectionPressure           入边 1 条
+      · Process|queuePressure                      入边 3 条
+      · PurchaseOrder|expeditePressure             入边 2 条
+      · QualityLot|inspectBacklog                  入边 1 条
+      · Shipment|inboundExpeditePressure           入边 1 条
+      · Supplier|reviewPressure                    入边 1 条
+      · WIPLot|feedPressure                        入边 1 条
+      · WorkOrder|releasePressure                  入边 2 条

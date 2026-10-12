@@ -1,0 +1,1190 @@
+HEAD=6e47c0efb START=09-27 12:23:37
+cmd: solo-only A/B (4 文件逐个 maxWorkers=1)
+== solo test/provenance-popover-legibility.test.tsx ==
+
+ RUN  v3.2.6 /Users/apple/deploy/wo-edge-wire/apps/frontend-shell
+
+ ✓ test/provenance-popover-legibility.test.tsx (35 tests) 14365ms
+   ✓ #104 ③接缝 · 五处溯源浮层的 DOM 节点真戴着这张表面 > <Provenance> 结论数字浮层（prov-tip）  1799ms
+   ✓ #104 ③接缝 · 五处溯源浮层的 DOM 节点真戴着这张表面 > <RuleRef> 两跳第二跳浮层（ruleref-pop）  882ms
+   ✓ #104 ③接缝 · 五处溯源浮层的 DOM 节点真戴着这张表面 > 全局唯一溯源弹窗（prov-popover · 走 portal 挂 body）  1210ms
+   ✓ #104 ③接缝 · 五处溯源浮层的 DOM 节点真戴着这张表面 > 全仓（frontend src）没有任何 role="tooltip" 还直接挂 className="panel"  1414ms
+   ✓ WO-HOVER-LAYER ⑥ 全仓浮层表面按**性质**判（③ 只咬 className="panel" 这个字符串，咬不住自写表面） > 幽灵令牌的写死颜色 fallback 落在 **background** 位上 = 换皮即不可读（token 门按设计放过带 fallback 的 var()）  354ms
+   ✓ WO-HOVER-LAYER ⑥ 全仓浮层表面按**性质**判（③ 只咬 className="panel" 这个字符串，咬不住自写表面） > 棘轮 · 原生 title= 承载口径的存量只许减不许增（规范 §2 R-UI-3 · §6 要求第三次复发即建门）  6798ms
+
+ Test Files  1 passed (1)
+      Tests  35 passed (35)
+   Start at  12:23:41
+   Duration  38.10s (transform 6.98s, setup 9.24s, collect 7.00s, tests 14.36s, environment 5.02s, prepare 822ms)
+
+SOLO_RC[test/provenance-popover-legibility.test.tsx]=0
+== solo test/sim-rail-forms.seam.test.tsx ==
+
+ RUN  v3.2.6 /Users/apple/deploy/wo-edge-wire/apps/frontend-shell
+
+ ❯ test/sim-rail-forms.seam.test.tsx (19 tests | 1 failed) 4211ms
+   ✓ WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ⓪ 金丝雀：子页数 = fixture 里 distinct 域数（失败 ⇒ 工具坏了，不是组件没渲染） 228ms
+   ✓ WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ① 来源臂：可选的量与中文名来自后端回包 —— 改回包，屏上跟着改  857ms
+   ✓ WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ② 层级臂：改边集让链首从根源掉成枢纽 ⇒ 屏上分组跟着变（前端没有第二套度数计算） 243ms
+   ✓ WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ③ 写口臂：点「施加」真发 POST，载荷逐字段对拍契约写入子集（键集完全相等）  528ms
+   ✓ WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ③' 写口臂 · 留空持续拍数 ⇒ `durationTicks: null`（契约的「永久」语义，等价于旧 /act） 257ms
+   × WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ④ 做不到臂：不在世界态里的量屏上标明、且提交时真的被拦住（不许静默提交） 65ms
+     → expected '设备OEE' to contain 'Equipment.oee_current'
+   ✓ WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ④' 「不知道」与「扰不动」分得开：世界态清单没回来时报 `STATE_VARS_UNKNOWN` 45ms
+   ✓ WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ⑤ 收起态臂：`onAppliedChange` 交出「已施加什么」，标签同样来自回包 68ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑥ 金丝雀 + 默认起始拍臂：默认值由**当前拍现算** —— 改 curTick 回包，默认值跟着变 91ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑥' 默认值真被发出去：不碰起始拍直接施加 ⇒ 载荷里的 startTick = 当前拍+1 165ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑥'' 过去拍臂：填 0（以及任何 < 当前拍的值）⇒ 拦住、说原因、一个请求都不发 258ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑥''' 「不知道当前拍」与「当前拍是 0」分得开 —— 前者拦住并说不知道，不许拿 0 兜底 128ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑦ 当前拍上屏臂：屏上写明世界在第几拍，且这个数来自回包（改回包就跟着变） 148ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑧ 回执臂 · 生效：说清落在第几拍、那一格变了多少、全世界变了几个格 252ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑧a 回执臂 · 数字长相与卡墙同一口径 —— 屏上不许出现 IEEE754 的减法余数 112ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑧' 回执臂 · `simWorld` 必须在 POST **之前**读 —— 否则左端已经是施加后的值 135ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑧'' 回执臂 · 排在未来：说「还没轮到它」并给出还差几拍，**不说**「没生效」 259ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑧''' 回执臂 · 到点却没动：给出**可执行**的原因，且一个劝退字都不许有 279ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑧'''' 回执臂 · 施加前那份世界态没拿到 ⇒ 说「没法比」，**不许**印成「变了 0 个格」 85ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/sim-rail-forms.seam.test.tsx > WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ④ 做不到臂：不在世界态里的量屏上标明、且提交时真的被拦住（不许静默提交）
+AssertionError: expected '设备OEE' to contain 'Equipment.oee_current'
+
+Expected: [32m"Equipment.oee_current"[39m
+Received: [31m"设备OEE"[39m
+
+ ❯ test/sim-rail-forms.seam.test.tsx:478:29
+    476|     const oee = screen.getByTestId("rail-blocked-oee_current");
+    477|     expect(oee.getAttribute("data-reason")).toBe("NOT_A_STATE_VAR");
+    478|     expect(oee.textContent).toContain("Equipment.oee_current");
+       |                             ^
+    479|     expect(screen.getByTestId("rail-blocked-reason").textContent).toCo…
+    480|     // ── ④b 基线里它压根进不了下拉（一条传导规则都不提它）──
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 18 passed (19)
+   Start at  12:24:23
+   Duration  18.98s (transform 4.76s, setup 10.24s, collect 819ms, tests 4.21s, environment 2.52s, prepare 373ms)
+
+undefined
+/Users/apple/deploy/wo-edge-wire/apps/frontend-shell:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run test/sim-rail-forms.seam.test.tsx --maxWorkers=1 --testTimeout=1500000
+SOLO_RC[test/sim-rail-forms.seam.test.tsx]=1
+== solo test/sandbox-config-ux.seam.test.tsx ==
+
+ RUN  v3.2.6 /Users/apple/deploy/wo-edge-wire/apps/frontend-shell
+
+ ❯ test/sandbox-config-ux.seam.test.tsx (17 tests | 1 failed) 20325ms
+   ✓ §0 · 纯模型：算式是**还原**不是编造，原生/派生判据只有一条 > 算式逐段对应引擎算术（sum / max / 延迟 / 衰减 / 夹值 / 系数引用），一段都不许省 6ms
+   ✓ §0 · 纯模型：算式是**还原**不是编造，原生/派生判据只有一条 > 原生量/派生量：判据是「有没有**参与推演**的边写它」——关掉最后一条写它的边，它退回原生量 27ms
+   ✓ §0 · 纯模型：算式是**还原**不是编造，原生/派生判据只有一条 > 环安全：租户建出 A→B→A 时不递归爆栈，图照画（白屏比画错一层严重得多） 5ms
+   ✓ §1 · 同屏：扰动输入与本体关系在**同一视口内**（不是两个 tab、不是两个路由） > 两侧同属左区、同在一个配置面板里；展开后不套任何 `<details>`（折一层，不许折两层）  695ms
+   ✓ §1 · 同屏：扰动输入与本体关系在**同一视口内**（不是两个 tab、不是两个路由） > 异构各占一卡：`要施加什么`（表单）与`已经施加了什么`（时间轴）是两张同时可见的卡  576ms
+   ✓ §1 · 同屏：扰动输入与本体关系在**同一视口内**（不是两个 tab、不是两个路由） > 图与表**同卡片**：图紧接表之下，不在另一个路由/tab/抽屉  313ms
+   ✓ §2 · 双向联动（判据落在**数**与**DOM 结构**上） > 左→右：换扰动落点/量纲 ⇒ 图**当场换一张**（节点数真的变）  456ms
+   ✓ §2 · 双向联动（判据落在**数**与**DOM 结构**上） > 🔴 右→左接缝：关掉一条边 ⇒ **下游读数真的变小** + 图**真的重画**（走生产那条路，不是直接改 prop）  337ms
+   × §2 · 双向联动（判据落在**数**与**DOM 结构**上） > 扰动施加后**结果区的数真的变**（不是只调了个函数） 15428ms
+     → Unable to find an element by: [data-testid="sandbox-perturbation-last-delta"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_viewStack_cc7813"[39m
+      [33mdata-testid[39m=[32m"sandbox-view"[39m
+    [36m>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"panel"[39m
+        [33mdata-mode[39m=[32m"now"[39m
+        [33mdata-testid[39m=[32m"sandbox-mode-switch"[39m
+        [33mstyle[39m=[32m"padding: 10px;"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33maria-label[39m=[32m"推演模式"[39m
+          [33mrole[39m=[32m"group"[39m
+          [33mstyle[39m=[32m"display: flex; gap: 6px; flex-wrap: wrap; align-items: center;"[39m
+        [36m>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"现状：现在到底怎么样？（全链线路图 / 物理拓扑 / 阻滞点 / 节点检视）"[39m
+              [33maria-pressed[39m=[32m"true"[39m
+              [33mclass[39m=[32m"btn sm primary"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-now"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m现状[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+            [36m>[39m
+              [0m→[0m
+            [36m</span>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"归因：为什么会这样？（共享瓶颈 / 隐性集中度 / 毛利倒挂）"[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"btn sm"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-attribute"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m归因[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+            [36m>[39m
+              [0m→[0m
+            [36m</span>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"试一手：改一个假设会怎样？（通用假设推演）"[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"btn sm"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-tryone"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m试一手[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+            [36m>[39m
+              [0m→[0m
+            [36m</span>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"求最优：最优解是什么？（参数扰动看目标 Δ）"[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"btn sm"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-optimize"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m求最优[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+            [36m>[39m
+              [0m→[0m
+            [36m</span>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"影响半径：万一断了，波及多大？（反向多跳逐层扇出）"[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"btn sm"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-radius"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m影响半径[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mdata-testid[39m=[32m"sandbox-steps-panel"[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 8px; min-width: 0;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"width: 1px; align-self: stretch; background: var(--line2); margin: 0px 2px;"[39m
+            [36m/>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_dense_4d41ae"[39m
+              [33mdata-testid[39m=[32m"sb-steps"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33maria-label[39m=[32m"推演步骤"[39m
+                [33mclass[39m=[32m"_track_4d41ae"[39m
+                [33mrole[39m=[32m"group"[39m
+              [36m>[39m
+                [36m<button[39m
+                  [33mclass[39m=[32m"_step_4d41ae _done_4d41ae"[39m
+                  [33mdata-state[39m=[32m"done"[39m
+                  [33mdata-step-key[39m=[32m"session"[39m
+                  [33mdata-testid[39m=[32m"sb-steps-step-1"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [36m<span[39m
+                    [33mclass[39m=[32m"_no_4d41ae"[39m
+                  [36m>[39m
+                    [0m1[0m
+                  [36m</span>[39m
+                  [0m会话与配置[0m
+                [36m</button>[39m
+                [36m<button[39m
+                  [33mclass[39m=[32m"_step_4d41ae _done_4d41ae"[39m
+                  [33mdata-state[39m=[32m"done"[39m
+                  [33mdata-step-key[39m=[32m"perturb"[39m
+                  [33mdata-testid[39m=[32m"sb-steps-step-2"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [36m<span[39m
+                    [33mclass[39m=[32m"_no_4d41ae"[39m
+                  [36m>[39m
+                    [0m2[0m
+                  [36m</span>[39m
+                  [0m施加扰动[0m
+                [36m</button>[39m
+                [36m<button[39m
+                  [33mclass[39m=[32m"_step_4d41ae _done_4d41ae"[39m
+                  [33mdata-state[39m=[32m"done"[39m
+                  [33mdata-step-key[39m=[32m"tick"[39m
+                  [33mdata-testid[39m=[32m"sb-steps-step-3"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [36m<span[39m
+               ...
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_viewStack_cc7813"[39m
+      [33mdata-testid[39m=[32m"sandbox-view"[39m
+    [36m>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"panel"[39m
+        [33mdata-mode[39m=[32m"now"[39m
+        [33mdata-testid[39m=[32m"sandbox-mode-switch"[39m
+        [33mstyle[39m=[32m"padding: 10px;"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33maria-label[39m=[32m"推演模式"[39m
+          [33mrole[39m=[32m"group"[39m
+          [33mstyle[39m=[32m"display: flex; gap: 6px; flex-wrap: wrap; align-items: center;"[39m
+        [36m>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"现状：现在到底怎么样？（全链线路图 / 物理拓扑 / 阻滞点 / 节点检视）"[39m
+              [33maria-pressed[39m=[32m"true"[39m
+              [33mclass[39m=[32m"btn sm primary"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-now"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m现状[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+            [36m>[39m
+              [0m→[0m
+            [36m</span>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"归因：为什么会这样？（共享瓶颈 / 隐性集中度 / 毛利倒挂）"[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"btn sm"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-attribute"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m归因[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+            [36m>[39m
+              [0m→[0m
+            [36m</span>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"试一手：改一个假设会怎样？（通用假设推演）"[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"btn sm"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-tryone"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m试一手[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+            [36m>[39m
+              [0m→[0m
+            [36m</span>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"求最优：最优解是什么？（参数扰动看目标 Δ）"[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"btn sm"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-optimize"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m求最优[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+            [36m>[39m
+              [0m→[0m
+            [36m</span>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"影响半径：万一断了，波及多大？（反向多跳逐层扇出）"[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"btn sm"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-radius"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m影响半径[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mdata-testid[39m=[32m"sandbox-steps-panel"[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 8px; min-width: 0;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"width: 1px; align-self: stretch; background: var(--line2); margin: 0px 2px;"[39m
+            [36m/>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_dense_4d41ae"[39m
+              [33mdata-testid[39m=[32m"sb-steps"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33maria-label[39m=[32m"推演步骤"[39m
+                [33mclass[39m=[32m"_track_4d41ae"[39m
+                [33mrole[39m=[32m"group"[39m
+              [36m>[39m
+                [36m<button[39m
+                  [33mclass[39m=[32m"_step_4d41ae _done_4d41ae"[39m
+                  [33mdata-state[39m=[32m"done"[39m
+                  [33mdata-step-key[39m=[32m"session"[39m
+                  [33mdata-testid[39m=[32m"sb-steps-step-1"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [36m<span[39m
+                    [33mclass[39m=[32m"_no_4d41ae"[39m
+                  [36m>[39m
+                    [0m1[0m
+                  [36m</span>[39m
+                  [0m会话与配置[0m
+                [36m</button>[39m
+                [36m<button[39m
+                  [33mclass[39m=[32m"_step_4d41ae _done_4d41ae"[39m
+                  [33mdata-state[39m=[32m"done"[39m
+                  [33mdata-step-key[39m=[32m"perturb"[39m
+                  [33mdata-testid[39m=[32m"sb-steps-step-2"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [36m<span[39m
+                    [33mclass[39m=[32m"_no_4d41ae"[39m
+                  [36m>[39m
+                    [0m2[0m
+                  [36m</span>[39m
+                  [0m施加扰动[0m
+                [36m</button>[39m
+                [36m<button[39m
+                  [33mclass[39m=[32m"_step_4d41ae _done_4d41ae"[39m
+                  [33mdata-state[39m=[32m"done"[39m
+                  [33mdata-step-key[39m=[32m"tick"[39m
+                  [33mdata-testid[39m=[32m"sb-steps-step-3"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [36m<span[39m
+               ...
+   ✓ §3 · 语义分层：派生可分 · 算式可见 · 切片有效 > 派生量与原生量视觉可分 —— 判据落在**计算样式**（`strokeDasharray`），不是类名  425ms
+   ✓ §3 · 语义分层：派生可分 · 算式可见 · 切片有效 > 算式**可见**（不是悬停才出），且全组件零 `<title>`（既有棘轮：SVG title 恒为 0）  389ms
+   ✓ §3 · 语义分层：派生可分 · 算式可见 · 切片有效 > 切片有效：不在当前片的行**不在 DOM 里**（判据落在可见性/存在性，不是 `<details>` 折叠）  915ms
+   ✓ §3 · 语义分层：派生可分 · 算式可见 · 切片有效 > 一屏摊开：每一片的行数都在个位数（生产实测 35 条 → 10 片 · 每片 2–7 行）  444ms
+   ✓ §4 · 变异反证：拆掉联动，必须红在「改了边但图没变」 > 同一焦点、只改 `disabledRuleKeys`：图必须不同（两次都要先证明组件在） 164ms
+   ✓ §4 · 变异反证：拆掉联动，必须红在「改了边但图没变」 > 反证②：焦点键拼错一个字 ⇒ 报「不在图上」而不是照画一张全图（证焦点真的被用了） 39ms
+   ✓ §5 · 判据 U4b（WO-U4B-U1-U8-SIM）：被关掉的边**留在图上并带理由** > U4b-C5 · 关掉 `b_to_c`：该边仍在图上、标 `data-active=false`、且屏上有可见的「本次推演已关掉」 41ms
+   ✓ §5 · 判据 U4b（WO-U4B-U1-U8-SIM）：被关掉的边**留在图上并带理由** > U4b-C5-反向哨兵 · 一条都没关时屏上不该出现「已关掉」（证上一条不是恒真） 56ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/sandbox-config-ux.seam.test.tsx > §2 · 双向联动（判据落在**数**与**DOM 结构**上） > 扰动施加后**结果区的数真的变**（不是只调了个函数）
+TestingLibraryElementError: Unable to find an element by: [data-testid="sandbox-perturbation-last-delta"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_viewStack_cc7813"[39m
+      [33mdata-testid[39m=[32m"sandbox-view"[39m
+    [36m>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"panel"[39m
+        [33mdata-mode[39m=[32m"now"[39m
+        [33mdata-testid[39m=[32m"sandbox-mode-switch"[39m
+        [33mstyle[39m=[32m"padding: 10px;"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33maria-label[39m=[32m"推演模式"[39m
+          [33mrole[39m=[32m"group"[39m
+          [33mstyle[39m=[32m"display: flex; gap: 6px; flex-wrap: wrap; align-items: center;"[39m
+        [36m>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"现状：现在到底怎么样？（全链线路图 / 物理拓扑 / 阻滞点 / 节点检视）"[39m
+              [33maria-pressed[39m=[32m"true"[39m
+              [33mclass[39m=[32m"btn sm primary"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-now"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m现状[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+            [36m>[39m
+              [0m→[0m
+            [36m</span>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"归因：为什么会这样？（共享瓶颈 / 隐性集中度 / 毛利倒挂）"[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"btn sm"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-attribute"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m归因[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+            [36m>[39m
+              [0m→[0m
+            [36m</span>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"试一手：改一个假设会怎样？（通用假设推演）"[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"btn sm"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-tryone"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m试一手[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+            [36m>[39m
+              [0m→[0m
+            [36m</span>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"求最优：最优解是什么？（参数扰动看目标 Δ）"[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"btn sm"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-optimize"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m求最优[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+            [36m>[39m
+              [0m→[0m
+            [36m</span>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"影响半径：万一断了，波及多大？（反向多跳逐层扇出）"[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"btn sm"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-radius"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m影响半径[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mdata-testid[39m=[32m"sandbox-steps-panel"[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 8px; min-width: 0;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"width: 1px; align-self: stretch; background: var(--line2); margin: 0px 2px;"[39m
+            [36m/>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_dense_4d41ae"[39m
+              [33mdata-testid[39m=[32m"sb-steps"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33maria-label[39m=[32m"推演步骤"[39m
+                [33mclass[39m=[32m"_track_4d41ae"[39m
+                [33mrole[39m=[32m"group"[39m
+              [36m>[39m
+                [36m<button[39m
+                  [33mclass[39m=[32m"_step_4d41ae _done_4d41ae"[39m
+                  [33mdata-state[39m=[32m"done"[39m
+                  [33mdata-step-key[39m=[32m"session"[39m
+                  [33mdata-testid[39m=[32m"sb-steps-step-1"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [36m<span[39m
+                    [33mclass[39m=[32m"_no_4d41ae"[39m
+                  [36m>[39m
+                    [0m1[0m
+                  [36m</span>[39m
+                  [0m会话与配置[0m
+                [36m</button>[39m
+                [36m<button[39m
+                  [33mclass[39m=[32m"_step_4d41ae _done_4d41ae"[39m
+                  [33mdata-state[39m=[32m"done"[39m
+                  [33mdata-step-key[39m=[32m"perturb"[39m
+                  [33mdata-testid[39m=[32m"sb-steps-step-2"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [36m<span[39m
+                    [33mclass[39m=[32m"_no_4d41ae"[39m
+                  [36m>[39m
+                    [0m2[0m
+                  [36m</span>[39m
+                  [0m施加扰动[0m
+                [36m</button>[39m
+                [36m<button[39m
+                  [33mclass[39m=[32m"_step_4d41ae _done_4d41ae"[39m
+                  [33mdata-state[39m=[32m"done"[39m
+                  [33mdata-step-key[39m=[32m"tick"[39m
+                  [33mdata-testid[39m=[32m"sb-steps-step-3"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [36m<span[39m
+               ...
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_viewStack_cc7813"[39m
+      [33mdata-testid[39m=[32m"sandbox-view"[39m
+    [36m>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"panel"[39m
+        [33mdata-mode[39m=[32m"now"[39m
+        [33mdata-testid[39m=[32m"sandbox-mode-switch"[39m
+        [33mstyle[39m=[32m"padding: 10px;"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33maria-label[39m=[32m"推演模式"[39m
+          [33mrole[39m=[32m"group"[39m
+          [33mstyle[39m=[32m"display: flex; gap: 6px; flex-wrap: wrap; align-items: center;"[39m
+        [36m>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"现状：现在到底怎么样？（全链线路图 / 物理拓扑 / 阻滞点 / 节点检视）"[39m
+              [33maria-pressed[39m=[32m"true"[39m
+              [33mclass[39m=[32m"btn sm primary"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-now"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m现状[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+            [36m>[39m
+              [0m→[0m
+            [36m</span>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"归因：为什么会这样？（共享瓶颈 / 隐性集中度 / 毛利倒挂）"[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"btn sm"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-attribute"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m归因[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+            [36m>[39m
+              [0m→[0m
+            [36m</span>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"试一手：改一个假设会怎样？（通用假设推演）"[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"btn sm"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-tryone"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m试一手[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+            [36m>[39m
+              [0m→[0m
+            [36m</span>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"求最优：最优解是什么？（参数扰动看目标 Δ）"[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"btn sm"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-optimize"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m求最优[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+            [36m>[39m
+              [0m→[0m
+            [36m</span>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"影响半径：万一断了，波及多大？（反向多跳逐层扇出）"[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"btn sm"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-radius"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m影响半径[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mdata-testid[39m=[32m"sandbox-steps-panel"[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 8px; min-width: 0;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"width: 1px; align-self: stretch; background: var(--line2); margin: 0px 2px;"[39m
+            [36m/>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_dense_4d41ae"[39m
+              [33mdata-testid[39m=[32m"sb-steps"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33maria-label[39m=[32m"推演步骤"[39m
+                [33mclass[39m=[32m"_track_4d41ae"[39m
+                [33mrole[39m=[32m"group"[39m
+              [36m>[39m
+                [36m<button[39m
+                  [33mclass[39m=[32m"_step_4d41ae _done_4d41ae"[39m
+                  [33mdata-state[39m=[32m"done"[39m
+                  [33mdata-step-key[39m=[32m"session"[39m
+                  [33mdata-testid[39m=[32m"sb-steps-step-1"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [36m<span[39m
+                    [33mclass[39m=[32m"_no_4d41ae"[39m
+                  [36m>[39m
+                    [0m1[0m
+                  [36m</span>[39m
+                  [0m会话与配置[0m
+                [36m</button>[39m
+                [36m<button[39m
+                  [33mclass[39m=[32m"_step_4d41ae _done_4d41ae"[39m
+                  [33mdata-state[39m=[32m"done"[39m
+                  [33mdata-step-key[39m=[32m"perturb"[39m
+                  [33mdata-testid[39m=[32m"sb-steps-step-2"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [36m<span[39m
+                    [33mclass[39m=[32m"_no_4d41ae"[39m
+                  [36m>[39m
+                    [0m2[0m
+                  [36m</span>[39m
+                  [0m施加扰动[0m
+                [36m</button>[39m
+                [36m<button[39m
+                  [33mclass[39m=[32m"_step_4d41ae _done_4d41ae"[39m
+                  [33mdata-state[39m=[32m"done"[39m
+                  [33mdata-step-key[39m=[32m"tick"[39m
+                  [33mdata-testid[39m=[32m"sb-steps-step-3"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [36m<span[39m
+               ...
+ ❯ waitForWrapper ../../node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/wait-for.js:163:27
+ ❯ ../../node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:86:33
+ ❯ test/sandbox-config-ux.seam.test.tsx:453:31
+    451|     await ready();
+    452|     await user.click(screen.getByTestId("sandbox-perturbation-apply-bt…
+    453|     const last = await screen.findByTestId("sandbox-perturbation-last-…
+       |                               ^
+    454|     const [b, a] = last.textContent!.split("→").map((s) => Number(s.tr…
+    455|     expect(Number.isFinite(b!) && Number.isFinite(a!)).toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 16 passed (17)
+   Start at  12:24:45
+   Duration  28.63s (transform 3.51s, setup 4.41s, collect 2.17s, tests 20.32s, environment 1.08s, prepare 145ms)
+
+undefined
+/Users/apple/deploy/wo-edge-wire/apps/frontend-shell:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run test/sandbox-config-ux.seam.test.tsx --maxWorkers=1 --testTimeout=1500000
+SOLO_RC[test/sandbox-config-ux.seam.test.tsx]=1
+== solo test/sandbox-three-zone.seam.test.tsx ==
+
+ RUN  v3.2.6 /Users/apple/deploy/wo-edge-wire/apps/frontend-shell
+
+ ❯ test/sandbox-three-zone.seam.test.tsx (19 tests | 4 failed) 5789ms
+   ✓ §1 · 三区各自存在且可定位（PRD §4.1） > 三个区 testid 都在，且三者互不嵌套（嵌套 = 还是一个区，只是多了几个 div）  584ms
+   ✓ §1 · 三区各自存在且可定位（PRD §4.1） > 主区的主画布 = 全链线路图；物理拓扑/链路阶段/本体拓扑是**同区内的档位**，不是平级页  334ms
+   ✓ §2 · D4 守恒：允许降层，绝不允许删除（PRD §2 逐行 · 两向都咬） > 清单本身非空且覆盖 PRD §2 里**需要本单动手**的那几行（空清单会让下面两向恒真） 5ms
+   ✓ §2 · D4 守恒：允许降层，绝不允许删除（PRD §2 逐行 · 两向都咬） > ① 默认**不可见**，但**仍在 DOM** —— 只咬「不可见」分不出降层与删除  1078ms
+   ✓ §2 · D4 守恒：允许降层，绝不允许删除（PRD §2 逐行 · 两向都咬） > ② 打开之后**同一批 testid、同样的文本**全部回来  483ms
+   ✓ §2 · D4 守恒：允许降层，绝不允许删除（PRD §2 逐行 · 两向都咬） > 第 2 行 · 四张计数卡：**四个数字仍在**（等于引擎 counts），但已搬进下区且不再各占一张大卡 163ms
+   ✓ §2 · D4 守恒：允许降层，绝不允许删除（PRD §2 逐行 · 两向都咬） > 第 1 行 · 16 个 stateVar 读数：第一层 3 个，其余在 `<details>` 里（③轮成果不许被本单撞掉）  558ms
+   ✓ §2 · D4 守恒：允许降层，绝不允许删除（PRD §2 逐行 · 两向都咬） > 折叠段 summary 上的数**不许撒谎**：写几项就必须真有几项（现数，不写死）  558ms
+   ✓ §2 · D4 守恒：允许降层，绝不允许删除（PRD §2 逐行 · 两向都咬） > 第 7 行 · 多场景对比 / AI 指挥台：**层不变**（仍是默认收起的折叠区），只是随左区搬了家 215ms
+   ✓ §3 · 输入唯一性：主区与下区**零输入控件**（PRD §4.4） > 主区 + 下区的输入控件集合 **等于** 白名单（等号，不是 toContain —— 后者在超集上恒真） 147ms
+   ✓ §3 · 输入唯一性：主区与下区**零输入控件**（PRD §4.4） > 扰动输入整套在左区，收起态仍在 DOM，点开横幅一次即全部可见  321ms
+   ✓ §3 · 输入唯一性：主区与下区**零输入控件**（PRD §4.4） > R4：左区没有任何直写本体真值的入口 —— 写真值只有「采纳」那一条，且它走 ActionDraft 122ms
+   ✓ §3 · 输入唯一性：主区与下区**零输入控件**（PRD §4.4） > 分层接缝：扰动说明的机制部分降进 `?`，R4 那句仍在第一层，且降层不是删除 219ms
+   ✓ §4 · 下区影响带 —— 扰动 × 影响传播的**接缝**（SEAM-GATE） > 两半都在下区：逐节点指标影响 ＋ 财务/世界态动态变化（PRD §1③「两半，左右分列」） 144ms
+   × §4 · 下区影响带 —— 扰动 × 影响传播的**接缝**（SEAM-GATE） > 🔴 接缝：施加扰动 ⇒ `runImpactAnalysis` 真被调用，且 worldId = 沙盘自己的会话、change = 那条扰动的真落点 161ms
+     → Cannot read properties of undefined (reading 'mb_001')
+   × §4 · 下区影响带 —— 扰动 × 影响传播的**接缝**（SEAM-GATE） > 世界态差分：未扰动时**逐项与基线相等**（是「比过了没动」不是「没比」） 211ms
+     → Unable to find an element by: [data-testid="sandbox-impact-delta-head"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_viewStack_cc7813"[39m
+      [33mdata-testid[39m=[32m"sandbox-view"[39m
+    [36m>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"panel"[39m
+        [33mdata-mode[39m=[32m"now"[39m
+        [33mdata-testid[39m=[32m"sandbox-mode-switch"[39m
+        [33mstyle[39m=[32m"padding: 10px;"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33maria-label[39m=[32m"推演模式"[39m
+          [33mrole[39m=[32m"group"[39m
+          [33mstyle[39m=[32m"display: flex; gap: 6px; flex-wrap: wrap; align-items: center;"[39m
+        [36m>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"现状：现在到底怎么样？（全链线路图 / 物理拓扑 / 阻滞点 / 节点检视）"[39m
+              [33maria-pressed[39m=[32m"true"[39m
+              [33mclass[39m=[32m"btn sm primary"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-now"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m现状[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+            [36m>[39m
+              [0m→[0m
+            [36m</span>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"归因：为什么会这样？（共享瓶颈 / 隐性集中度 / 毛利倒挂）"[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"btn sm"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-attribute"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m归因[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+            [36m>[39m
+              [0m→[0m
+            [36m</span>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"试一手：改一个假设会怎样？（通用假设推演）"[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"btn sm"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-tryone"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m试一手[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+            [36m>[39m
+              [0m→[0m
+            [36m</span>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"求最优：最优解是什么？（参数扰动看目标 Δ）"[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"btn sm"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-optimize"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m求最优[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+            [36m>[39m
+              [0m→[0m
+            [36m</span>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"影响半径：万一断了，波及多大？（反向多跳逐层扇出）"[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"btn sm"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-radius"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m影响半径[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mdata-testid[39m=[32m"sandbox-steps-panel"[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 8px; min-width: 0;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"width: 1px; align-self: stretch; background: var(--line2); margin: 0px 2px;"[39m
+            [36m/>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_dense_4d41ae"[39m
+              [33mdata-testid[39m=[32m"sb-steps"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33maria-label[39m=[32m"推演步骤"[39m
+                [33mclass[39m=[32m"_track_4d41ae"[39m
+                [33mrole[39m=[32m"group"[39m
+              [36m>[39m
+                [36m<button[39m
+                  [33mclass[39m=[32m"_step_4d41ae _done_4d41ae"[39m
+                  [33mdata-state[39m=[32m"done"[39m
+                  [33mdata-step-key[39m=[32m"session"[39m
+                  [33mdata-testid[39m=[32m"sb-steps-step-1"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [36m<span[39m
+                    [33mclass[39m=[32m"_no_4d41ae"[39m
+                  [36m>[39m
+                    [0m1[0m
+                  [36m</span>[39m
+                  [0m会话与配置[0m
+                [36m</button>[39m
+                [36m<button[39m
+                  [33mclass[39m=[32m"_step_4d41ae _done_4d41ae"[39m
+                  [33mdata-state[39m=[32m"done"[39m
+                  [33mdata-step-key[39m=[32m"perturb"[39m
+                  [33mdata-testid[39m=[32m"sb-steps-step-2"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [36m<span[39m
+                    [33mclass[39m=[32m"_no_4d41ae"[39m
+                  [36m>[39m
+                    [0m2[0m
+                  [36m</span>[39m
+                  [0m施加扰动[0m
+                [36m</button>[39m
+                [36m<button[39m
+                  [33mclass[39m=[32m"_step_4d41ae _done_4d41ae"[39m
+                  [33mdata-state[39m=[32m"done"[39m
+                  [33mdata-step-key[39m=[32m"tick"[39m
+                  [33mdata-testid[39m=[32m"sb-steps-step-3"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [36m<span[39m
+               ...
+   × §4 · 下区影响带 —— 扰动 × 影响传播的**接缝**（SEAM-GATE） > 世界态差分：扰动后只有被扰的那一项进第一层，且变化量**从屏上两个读数现算**（不写死） 174ms
+     → Cannot read properties of undefined (reading 'mb_001')
+   × §4 · 下区影响带 —— 扰动 × 影响传播的**接缝**（SEAM-GATE） > 🔴 金额型指标随扰动动：KPI 维（metricKey/unit/before→after）真的到达下区的屏上 104ms
+     → Cannot read properties of undefined (reading 'mb_001')
+   ✓ §4 · 下区影响带 —— 扰动 × 影响传播的**接缝**（SEAM-GATE） > 诚实位：金额口径为什么不在这一带 —— 第一层留记号，正文在浮层（两向） 200ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/sandbox-three-zone.seam.test.tsx > §4 · 下区影响带 —— 扰动 × 影响传播的**接缝**（SEAM-GATE） > 🔴 接缝：施加扰动 ⇒ `runImpactAnalysis` 真被调用，且 worldId = 沙盘自己的会话、change = 那条扰动的真落点
+TypeError: Cannot read properties of undefined (reading 'mb_001')
+ ❯ test/sandbox-three-zone.seam.test.tsx:636:67
+    634| 
+    635|     // 扰动把 costPressure 从基线抬到 88（下一条用例据此现算差分）
+    636|     perturbedState = { ...capturedBase, mb_001: { ...capturedBase.mb_0…
+       |                                                                   ^
+    637|     await applyPerturbation(user);
+    638| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  test/sandbox-three-zone.seam.test.tsx > §4 · 下区影响带 —— 扰动 × 影响传播的**接缝**（SEAM-GATE） > 世界态差分：未扰动时**逐项与基线相等**（是「比过了没动」不是「没比」）
+TestingLibraryElementError: Unable to find an element by: [data-testid="sandbox-impact-delta-head"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_viewStack_cc7813"[39m
+      [33mdata-testid[39m=[32m"sandbox-view"[39m
+    [36m>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"panel"[39m
+        [33mdata-mode[39m=[32m"now"[39m
+        [33mdata-testid[39m=[32m"sandbox-mode-switch"[39m
+        [33mstyle[39m=[32m"padding: 10px;"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33maria-label[39m=[32m"推演模式"[39m
+          [33mrole[39m=[32m"group"[39m
+          [33mstyle[39m=[32m"display: flex; gap: 6px; flex-wrap: wrap; align-items: center;"[39m
+        [36m>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"现状：现在到底怎么样？（全链线路图 / 物理拓扑 / 阻滞点 / 节点检视）"[39m
+              [33maria-pressed[39m=[32m"true"[39m
+              [33mclass[39m=[32m"btn sm primary"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-now"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m现状[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+            [36m>[39m
+              [0m→[0m
+            [36m</span>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"归因：为什么会这样？（共享瓶颈 / 隐性集中度 / 毛利倒挂）"[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"btn sm"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-attribute"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m归因[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+            [36m>[39m
+              [0m→[0m
+            [36m</span>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"试一手：改一个假设会怎样？（通用假设推演）"[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"btn sm"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-tryone"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m试一手[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+            [36m>[39m
+              [0m→[0m
+            [36m</span>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"求最优：最优解是什么？（参数扰动看目标 Δ）"[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"btn sm"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-optimize"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m求最优[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+            [36m>[39m
+              [0m→[0m
+            [36m</span>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"影响半径：万一断了，波及多大？（反向多跳逐层扇出）"[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"btn sm"[39m
+              [33mdata-testid[39m=[32m"sandbox-mode-radius"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m影响半径[0m
+            [36m</button>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mdata-testid[39m=[32m"sandbox-steps-panel"[39m
+            [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 8px; min-width: 0;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mstyle[39m=[32m"width: 1px; align-self: stretch; background: var(--line2); margin: 0px 2px;"[39m
+            [36m/>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_dense_4d41ae"[39m
+              [33mdata-testid[39m=[32m"sb-steps"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33maria-label[39m=[32m"推演步骤"[39m
+                [33mclass[39m=[32m"_track_4d41ae"[39m
+                [33mrole[39m=[32m"group"[39m
+              [36m>[39m
+                [36m<button[39m
+                  [33mclass[39m=[32m"_step_4d41ae _done_4d41ae"[39m
+                  [33mdata-state[39m=[32m"done"[39m
+                  [33mdata-step-key[39m=[32m"session"[39m
+                  [33mdata-testid[39m=[32m"sb-steps-step-1"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [36m<span[39m
+                    [33mclass[39m=[32m"_no_4d41ae"[39m
+                  [36m>[39m
+                    [0m1[0m
+                  [36m</span>[39m
+                  [0m会话与配置[0m
+                [36m</button>[39m
+                [36m<button[39m
+                  [33mclass[39m=[32m"_step_4d41ae _done_4d41ae"[39m
+                  [33mdata-state[39m=[32m"done"[39m
+                  [33mdata-step-key[39m=[32m"perturb"[39m
+                  [33mdata-testid[39m=[32m"sb-steps-step-2"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [36m<span[39m
+                    [33mclass[39m=[32m"_no_4d41ae"[39m
+                  [36m>[39m
+                    [0m2[0m
+                  [36m</span>[39m
+                  [0m施加扰动[0m
+                [36m</button>[39m
+                [36m<button[39m
+                  [33mclass[39m=[32m"_step_4d41ae _done_4d41ae"[39m
+                  [33mdata-state[39m=[32m"done"[39m
+                  [33mdata-step-key[39m=[32m"tick"[39m
+                  [33mdata-testid[39m=[32m"sb-steps-step-3"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [36m<span[39m
+               ...
+ ❯ Object.getElementError ../../node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ ../../node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+ ❯ ../../node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+ ❯ ../../node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ test/sandbox-three-zone.seam.test.tsx:655:19
+    653|     mount();
+    654|     await ready();
+    655|     expect(screen.getByTestId("sandbox-impact-delta-head").textContent…
+       |                   ^
+    656|     // 16 项一个不少（差分带不许只显示"有意思的那几个"）
+    657|     const rest = screen.getByTestId("sandbox-impact-delta-rest-list");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  test/sandbox-three-zone.seam.test.tsx > §4 · 下区影响带 —— 扰动 × 影响传播的**接缝**（SEAM-GATE） > 世界态差分：扰动后只有被扰的那一项进第一层，且变化量**从屏上两个读数现算**（不写死）
+TypeError: Cannot read properties of undefined (reading 'mb_001')
+ ❯ test/sandbox-three-zone.seam.test.tsx:670:67
+    668|     mount();
+    669|     await ready();
+    670|     perturbedState = { ...capturedBase, mb_001: { ...capturedBase.mb_0…
+       |                                                                   ^
+    671|     await applyPerturbation(user);
+    672| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  test/sandbox-three-zone.seam.test.tsx > §4 · 下区影响带 —— 扰动 × 影响传播的**接缝**（SEAM-GATE） > 🔴 金额型指标随扰动动：KPI 维（metricKey/unit/before→after）真的到达下区的屏上
+TypeError: Cannot read properties of undefined (reading 'mb_001')
+ ❯ test/sandbox-three-zone.seam.test.tsx:707:67
+    705|     mount();
+    706|     await ready();
+    707|     perturbedState = { ...capturedBase, mb_001: { ...capturedBase.mb_0…
+       |                                                                   ^
+    708|     await applyPerturbation(user);
+    709|     await waitFor(() => expect(runImpactFn).toHaveBeenCalled());
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 15 passed (19)
+   Start at  12:25:15
+   Duration  15.28s (transform 4.28s, setup 4.77s, collect 3.09s, tests 5.79s, environment 1.08s, prepare 211ms)
+
+undefined
+/Users/apple/deploy/wo-edge-wire/apps/frontend-shell:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run test/sandbox-three-zone.seam.test.tsx --maxWorkers=1 --testTimeout=1500000
+SOLO_RC[test/sandbox-three-zone.seam.test.tsx]=1
+SOLO_RC=1 END=09-27 12:25:31

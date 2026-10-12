@@ -9,10 +9,10 @@ describe("Phase8 生产侧认知能力（summarizer / embedder 接真实 provide
     const sum = llmRollingSummarizer(llm, "claude-opus-4-8");
     expect(await sum(["第1轮[query_objects:...]", "第2轮[invoke_solver:...]"])).toContain("受影响 45 单");
 
-    // compose 抛错 → 回退末 N 条拼接
+    // compose 抛错 → 回退确定性结构化 digest（与循环内 CI 默认同构·去重+有界+条目化）
     const bad = { compose: async () => { throw new Error("provider down"); } } as never;
     const sum2 = llmRollingSummarizer(bad, "m");
-    expect(await sum2(["第1轮[a]", "第2轮[b]"])).toBe("第1轮[a] ｜ 第2轮[b]");
+    expect(await sum2(["第1轮[a]", "第2轮[b]"])).toBe("- 第1轮[a]\n- 第2轮[b]");
   });
 
   it("PC2: embedBatch 走 OpenAI 兼容 /embeddings；buildProviderEmbedder 包成同步 Embedder", async () => {

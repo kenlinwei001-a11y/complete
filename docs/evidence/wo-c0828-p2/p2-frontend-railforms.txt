@@ -1,0 +1,49 @@
+
+ RUN  v3.2.6 /Users/apple/deploy/wo-edge-wire/.claude/worktrees/p2-self/apps/frontend-shell
+
+ ❯ test/sim-rail-forms.seam.test.tsx (19 tests | 1 failed) 3945ms
+   ✓ WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ⓪ 金丝雀：子页数 = fixture 里 distinct 域数（失败 ⇒ 工具坏了，不是组件没渲染）  332ms
+   ✓ WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ① 来源臂：可选的量与中文名来自后端回包 —— 改回包，屏上跟着改  618ms
+   ✓ WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ② 层级臂：改边集让链首从根源掉成枢纽 ⇒ 屏上分组跟着变（前端没有第二套度数计算） 193ms
+   ✓ WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ③ 写口臂：点「施加」真发 POST，载荷逐字段对拍契约写入子集（键集完全相等）  388ms
+   ✓ WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ③' 写口臂 · 留空持续拍数 ⇒ `durationTicks: null`（契约的「永久」语义，等价于旧 /act） 143ms
+   × WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ④ 做不到臂：不在世界态里的量屏上标明、且提交时真的被拦住（不许静默提交） 45ms
+     → expected '设备OEE' to contain 'Equipment.oee_current'
+   ✓ WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ④' 「不知道」与「扰不动」分得开：世界态清单没回来时报 `STATE_VARS_UNKNOWN` 47ms
+   ✓ WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ⑤ 收起态臂：`onAppliedChange` 交出「已施加什么」，标签同样来自回包 218ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑥ 金丝雀 + 默认起始拍臂：默认值由**当前拍现算** —— 改 curTick 回包，默认值跟着变 93ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑥' 默认值真被发出去：不碰起始拍直接施加 ⇒ 载荷里的 startTick = 当前拍+1 169ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑥'' 过去拍臂：填 0（以及任何 < 当前拍的值）⇒ 拦住、说原因、一个请求都不发  311ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑥''' 「不知道当前拍」与「当前拍是 0」分得开 —— 前者拦住并说不知道，不许拿 0 兜底 192ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑦ 当前拍上屏臂：屏上写明世界在第几拍，且这个数来自回包（改回包就跟着变） 96ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑧ 回执臂 · 生效：说清落在第几拍、那一格变了多少、全世界变了几个格 247ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑧a 回执臂 · 数字长相与卡墙同一口径 —— 屏上不许出现 IEEE754 的减法余数 135ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑧' 回执臂 · `simWorld` 必须在 POST **之前**读 —— 否则左端已经是施加后的值 176ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑧'' 回执臂 · 排在未来：说「还没轮到它」并给出还差几拍，**不说**「没生效」 132ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑧''' 回执臂 · 到点却没动：给出**可执行**的原因，且一个劝退字都不许有 260ms
+   ✓ WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执 > ⑧'''' 回执臂 · 施加前那份世界态没拿到 ⇒ 说「没法比」，**不许**印成「变了 0 个格」 136ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/sim-rail-forms.seam.test.tsx > WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门 > ④ 做不到臂：不在世界态里的量屏上标明、且提交时真的被拦住（不许静默提交）
+AssertionError: expected '设备OEE' to contain 'Equipment.oee_current'
+
+Expected: [32m"Equipment.oee_current"[39m
+Received: [31m"设备OEE"[39m
+
+ ❯ test/sim-rail-forms.seam.test.tsx:480:29
+    478|     const oee = screen.getByTestId("rail-blocked-oee_current");
+    479|     expect(oee.getAttribute("data-reason")).toBe("NOT_A_STATE_VAR");
+    480|     expect(oee.textContent).toContain("Equipment.oee_current");
+       |                             ^
+    481|     expect(screen.getByTestId("rail-blocked-reason").textContent).toCo…
+    482|     // ── ④b 基线里它压根进不了下拉（一条传导规则都不提它）──
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 18 passed (19)
+   Start at  18:42:51
+   Duration  14.98s (transform 3.43s, setup 7.08s, collect 626ms, tests 3.95s, environment 2.27s, prepare 292ms)
+

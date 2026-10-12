@@ -1,0 +1,2 @@
+ANCHOR_RC=0（Test Files 33 passed (33) / Tests 398 passed | 4 skipped (402) · Duration 453.47s）
+命令：apps/agentcore 下 npx vitest run test/dsh-*.test.ts --reporter=verbose

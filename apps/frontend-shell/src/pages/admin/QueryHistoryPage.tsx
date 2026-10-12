@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { fetchQueryHistory, submitQuery, type QueryHistoryItem } from "@/api/endpoints";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { toastError } from "@/store/toastStore";
+import { safeUuid } from "@/lib/uuid"; // P0 crypto 修复·嫁接自 integ-wave-10
 
 /** Phase9C 推演历史：浏览本租户最近的 QOS 推演任务（问句/路径/状态/结论摘要/时间），可查看详情或重放。 */
 export default function QueryHistoryPage() {
@@ -18,7 +19,7 @@ export default function QueryHistoryPage() {
     mutationFn: (item: QueryHistoryItem) =>
       submitQuery(
         { packageId, query: item.query, context: { view: item.view ?? "dash", selectedObjects: [], filters: {} } },
-        crypto.randomUUID(),
+        safeUuid(),
       ),
     onSuccess: (res) => navigate(`/tasks/${res.taskId}`),
     onError: toastError,

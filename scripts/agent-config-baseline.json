@@ -1,0 +1,39 @@
+{
+  "note": "agent-config-complete 棘轮基线：存量「agent 配置不完整 / 两侧键对不上」的具名豁免，只许降不许升。每条必须写 why。键 = `<侧>:<agent key>|<判据码>`。",
+  "generatedBy": "node scripts/check-agent-config-complete.mjs --update",
+  "exempt": {
+    "agentcore:code_assistant|C2_EMPTY_SCOPE": {
+      "why": "刻意为空且**有明确理由**：code_assistant 的 systemPrompt 白纸黑字写着「你不直接取业务对象；经 MCP 代码工具（lint_sql/review_script）接入代码仓库与文档」（apps/agentcore/src/mocks/seed.ts:1567）。它的能力边界不落在业务对象上，而落在 scopeDeclaration.toolNames 的三条（query_objects + 两个 mcp__code_tools__*）。空 objectTypes 在这里是**声明**不是遗漏。之所以仍进基线而不是从判据里剔除：本门守的是「能力边界有没有被声明成能跑的样子」，空对象域这个事实要可见；把它悄悄排除，就等于让门替人做了产品判断。"
+    },
+    "agentcore:code_assistant|C3_EMPTY_RULE_BINDINGS": {
+      "why": "同源：ruleBindings.ruleKeys = [] （seed.ts:1575）。业务规则集（C01–C33）全部作用在业务对象上，而该 agent 不取业务对象，绑上去也不会命中任何一条。这是与上一条同一个设计判断的第二个落点。⚠ 仍是可见的债：若哪天 code_assistant 被扩到能碰业务对象，这两条豁免必须同时删掉，否则规则后校验会静默关着。"
+    },
+    "datacore:learning-agent|C1_NO_TOOLS": {
+      "why": "AGENT_SEEDS 的记录类型是 `{key, displayName, summary}`，结构上就没有 tools/scope 字段——三条全部同因。它们是**图谱展示节点**（mapping.ts:57 → buildMappingRows → GET /a/v1/ontology/mapping 的 kind=\"agent\" 行 + GRAPH_EXTRA_NODES 的 agent 节点），不是能跑的 agent。真正的修法是让映射表从 AgentCore 注册表投影（见同批的 C4_ORPHAN_KEY 条目），属另一张 WO；在那之前先让这个事实可见。"
+    },
+    "datacore:learning-agent|C2_NO_SCOPE_FIELD": {
+      "why": "同上：AGENT_SEEDS 的记录类型没有 scopeObjectTypes 字段，能力边界从未声明。"
+    },
+    "datacore:learning-agent|C4_ORPHAN_KEY": {
+      "why": "**这条是本门追一层追出来的真缺口，不是形态问题**：AGENT_SEEDS 的三个 key（learning-agent / risk-agent / report-agent）与 AgentCore 注册表的十一个 key（analyst / explore_agent / risk_advisor / capacity_planner / quality_inspector / supply_chain / finance_analyst / carbon_auditor / external_market / code_assistant / coordinator）**交集为空**。而 AGENT_SEEDS 上的注释写着「静态种子清单；AgentCore 侧注册表为运行态来源」，读起来像是同一批 agent 的展示投影——它不是。后果：图谱映射表上展示的三个 agent 在运行态一个都不存在，真正存在的十一个一个都没展示。这不是死代码（app.ts:3141 真下发），是「接了线、有数据、内容是错的」。修法 = 让映射表从 AgentCore 注册表投影（跨 A/B 两系统，须一个 dev 整单做），属另一张 WO。"
+    },
+    "datacore:risk-agent|C1_NO_TOOLS": {
+      "why": "同 learning-agent：AGENT_SEEDS 记录类型无 tools 字段。"
+    },
+    "datacore:risk-agent|C2_NO_SCOPE_FIELD": {
+      "why": "同 learning-agent：AGENT_SEEDS 记录类型无 scopeObjectTypes 字段。"
+    },
+    "datacore:risk-agent|C4_ORPHAN_KEY": {
+      "why": "同 learning-agent 的 C4：`risk-agent` 在 AgentCore 注册表里不存在。⚠ 特别容易看走眼——AgentCore 里有个 `risk_advisor`（下划线、不同名），两者**不是**同一个东西，别据此以为「其实对得上、只是写法不同」。"
+    },
+    "datacore:report-agent|C1_NO_TOOLS": {
+      "why": "同 learning-agent：AGENT_SEEDS 记录类型无 tools 字段。"
+    },
+    "datacore:report-agent|C2_NO_SCOPE_FIELD": {
+      "why": "同 learning-agent：AGENT_SEEDS 记录类型无 scopeObjectTypes 字段。"
+    },
+    "datacore:report-agent|C4_ORPHAN_KEY": {
+      "why": "同 learning-agent 的 C4：`report-agent` 在 AgentCore 注册表里不存在，且没有任何近名 agent 可以对上。"
+    }
+  }
+}

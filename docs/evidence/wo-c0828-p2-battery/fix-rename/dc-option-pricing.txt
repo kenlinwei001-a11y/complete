@@ -1,0 +1,11 @@
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/apps/datacore
+
+ ✓ test/option-pricing.test.ts (25 tests) 33ms
+
+ Test Files  1 passed (1)
+      Tests  25 passed (25)
+   Start at  16:41:59
+   Duration  4.91s (transform 1.98s, setup 0ms, collect 3.93s, tests 33ms, environment 0ms, prepare 465ms)
+
+CAPTURED_RC=0

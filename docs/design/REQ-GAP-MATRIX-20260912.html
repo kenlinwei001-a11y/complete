@@ -1,0 +1,264 @@
+<title>需求缺口矩阵</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --ground:#f5f7fb; --surface:#ffffff; --raise:#eef2f8; --line:#d9e1ec;
+  --ink:#1a2438; --body:#3c4a63; --mute:#6a7b96; --faint:#8a99b3;
+  --brand:#3b5bdb; --brand-2:#4c90f0;
+  --crit:#c9384a; --high:#e8590c; --mid:#c08a1e; --ok:#2f8f52; --cyan:#1e8fb0;
+  --chip:#e9eef7;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#1c2942; --surface:#223251; --raise:#26375a; --line:#2f4166;
+    --ink:#e6edf8; --body:#c4d2e6; --mute:#93a5c2; --faint:#7386a5;
+    --brand:#6f8ef0; --brand-2:#4c90f0;
+    --crit:#e0626c; --high:#f0813c; --mid:#e8b54a; --ok:#62be77; --cyan:#43b7d7;
+    --chip:#2b3d61;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#1c2942; --surface:#223251; --raise:#26375a; --line:#2f4166;
+  --ink:#e6edf8; --body:#c4d2e6; --mute:#93a5c2; --faint:#7386a5;
+  --brand:#6f8ef0; --brand-2:#4c90f0;
+  --crit:#e0626c; --high:#f0813c; --mid:#e8b54a; --ok:#62be77; --cyan:#43b7d7;
+  --chip:#2b3d61;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--body);
+  font-family:"IBM Plex Sans","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  font-size:14px; line-height:1.6;
+}
+.wrap{max-width:1180px; margin:0 auto; padding-inline:20px; padding-block:32px 56px}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums}
+
+/* ── 头 ───────────────────────────── */
+header{border-bottom:2px solid var(--ink); padding-bottom:18px; margin-bottom:24px}
+.eyebrow{font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--mute); margin-bottom:6px}
+h1{font-size:30px; line-height:1.2; margin:0 0 8px; color:var(--ink); font-weight:700; text-wrap:balance}
+.lede{margin:0; max-width:66ch; color:var(--body)}
+.lede b{color:var(--ink)}
+
+/* ── 统计条 ───────────────────────── */
+.stats{display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--line);
+  border:1px solid var(--line); margin:22px 0 28px}
+.stat{background:var(--surface); padding:14px 16px}
+.stat .k{font-size:11px; color:var(--mute); letter-spacing:.05em; margin-bottom:3px}
+.stat .v{font-size:26px; font-weight:700; color:var(--ink); line-height:1.1}
+.stat .n{font-size:11.5px; color:var(--faint); margin-top:3px}
+.stat.alarm .v{color:var(--crit)}
+
+/* ── 断链 ─────────────────────────── */
+.seams{background:var(--surface); border:1px solid var(--line); border-left:3px solid var(--crit);
+  padding:16px 18px; margin-bottom:28px}
+.seams h2{margin:0 0 4px; font-size:16px; color:var(--ink)}
+.seams .sub{font-size:12.5px; color:var(--mute); margin-bottom:12px}
+.chain{display:flex; align-items:stretch; gap:0; flex-wrap:wrap; font-size:12.5px}
+.node{background:var(--raise); border:1px solid var(--line); padding:7px 12px; color:var(--ink); font-weight:500}
+.link{display:flex; align-items:center; padding:0 9px; font-weight:700; letter-spacing:-.02em}
+.link.broken{color:var(--crit)}
+.link.weak{color:var(--mid)}
+.legend{display:flex; gap:16px; font-size:11.5px; color:var(--faint); margin-top:10px; flex-wrap:wrap}
+
+/* ── 象限 ─────────────────────────── */
+.quad{display:grid; grid-template-columns:repeat(2,1fr); gap:12px; margin-bottom:30px}
+.q{background:var(--surface); border:1px solid var(--line); padding:14px 16px}
+.q.now{border-color:var(--crit); border-width:1px 1px 1px 3px}
+.q h3{margin:0 0 2px; font-size:14px; color:var(--ink)}
+.q .qs{font-size:11.5px; color:var(--mute); margin-bottom:9px}
+.q ul{margin:0; padding-left:0; list-style:none; display:flex; flex-wrap:wrap; gap:5px}
+.q li{background:var(--chip); border-radius:2px; padding:2px 7px; font-size:11.5px; color:var(--body)}
+
+/* ── 表 ───────────────────────────── */
+.tablewrap{overflow-x:auto; border:1px solid var(--line)}
+table{width:100%; border-collapse:collapse; font-size:13px; background:var(--surface); min-width:720px}
+thead th{background:var(--raise); color:var(--mute); font-size:11px; letter-spacing:.08em;
+  text-transform:uppercase; text-align:left; padding:9px 10px; border-bottom:1px solid var(--line); font-weight:600}
+td{padding:9px 10px; border-bottom:1px solid var(--line); vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+tr.grp td{background:var(--raise); font-weight:600; color:var(--ink); font-size:12px;
+  letter-spacing:.04em; padding:7px 10px}
+td.id{width:74px; color:var(--mute); font-size:12px}
+td.nm{color:var(--ink); font-weight:500}
+td.gap{color:var(--body); font-size:12.5px}
+tr.missing td.nm::before{content:""; display:inline-block; width:5px; height:5px; border-radius:50%;
+  background:var(--crit); margin-right:7px; vertical-align:middle}
+.pill{display:inline-block; padding:1px 8px; border-radius:2px; font-size:11px; font-weight:600; white-space:nowrap}
+.v-hi{background:color-mix(in srgb,var(--crit) 16%,transparent); color:var(--crit)}
+.v-md{background:color-mix(in srgb,var(--mid) 20%,transparent); color:var(--mid)}
+.v-lo{background:var(--chip); color:var(--mute)}
+.d-0{background:color-mix(in srgb,var(--ok) 18%,transparent); color:var(--ok)}
+.d-xs{background:color-mix(in srgb,var(--ok) 14%,transparent); color:var(--ok)}
+.d-s{background:color-mix(in srgb,var(--cyan) 16%,transparent); color:var(--cyan)}
+.d-m{background:color-mix(in srgb,var(--high) 16%,transparent); color:var(--high)}
+.d-l{background:color-mix(in srgb,var(--crit) 16%,transparent); color:var(--crit)}
+td.val,td.dif{width:66px}
+
+/* ── 脚 ───────────────────────────── */
+.key{display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:22px; font-size:12.5px; color:var(--mute)}
+.key h4{margin:0 0 5px; font-size:12px; color:var(--ink); letter-spacing:.05em; text-transform:uppercase}
+.key p{margin:0 0 5px}
+.key b{color:var(--body)}
+.note{margin-top:24px; padding:14px 16px; background:var(--surface); border:1px solid var(--line);
+  border-left:3px solid var(--brand); font-size:12.5px}
+.note h4{margin:0 0 6px; font-size:13px; color:var(--ink)}
+.note p{margin:0 0 6px}
+.note p:last-child{margin:0}
+@media (max-width:760px){
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .quad,.key{grid-template-columns:1fr}
+  h1{font-size:24px}
+}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">客户需求原文 12 句 · 逐句拆 53 行 · 实测判定</div>
+  <h1>需求缺口矩阵</h1>
+  <p class="lede">53 行需求里 <b>12 行已满足</b>，其余 <b>41 行</b>在此逐条列出，各给两个评估：<b>客户价值</b>（按场景敞口 = 单次金额 × 年频次，不按技术难度）与<b>开发难度</b>（按修法类别，不报人天 —— 人天是拍的，类别是查出来的）。</p>
+</header>
+
+<div class="stats">
+  <div class="stat"><div class="k">需求总行数</div><div class="v mono">53</div><div class="n">12 句 bullet 逐句拆</div></div>
+  <div class="stat"><div class="k">已满足</div><div class="v mono" style="color:var(--ok)">12</div><div class="n">22.6%</div></div>
+  <div class="stat"><div class="k">部分满足</div><div class="v mono" style="color:var(--mid)">34</div><div class="n">多数只差最后一步</div></div>
+  <div class="stat alarm"><div class="k">整条未满足</div><div class="v mono">6</div><div class="n">其中 3 条是端到端接缝</div></div>
+</div>
+
+<section class="seams">
+  <h2>最硬的差距：端到端链条断在三处</h2>
+  <p class="sub">需求原文：「完成<b>预测-销售计划-供应-生产-交付</b>的端到端全链条」。6 条整条未满足里，有 3 条就是这条链上的接缝。</p>
+  <div class="chain">
+    <div class="node">预测</div><div class="link broken">╳</div>
+    <div class="node">销售计划</div><div class="link broken">╳</div>
+    <div class="node">供应</div><div class="link broken">╳</div>
+    <div class="node">生产</div><div class="link weak">◐</div>
+    <div class="node">交付</div>
+  </div>
+  <div class="legend">
+    <span><b style="color:var(--crit)">╳ 断</b> — 下游读的不是上游的数</span>
+    <span><b style="color:var(--mid)">◐ 半通</b> — 能算但没上屏</span>
+  </div>
+  <p style="margin:12px 0 0; font-size:12.5px">
+    断得最狠的是 <b>供应→生产</b>：<b>工单的量 = 它所在产线 ID 的哈希值</b>；型号、开工日、工期、状态全部哈希派生；本体 116 条边里<b>没有一条把物料接进工单</b>。
+  </p>
+</section>
+
+<div class="quad">
+  <div class="q now">
+    <h3>高价值 · 低难度 <span class="mono" style="color:var(--mute);font-weight:400">9 条</span></h3>
+    <div class="qs">先做这批 —— 后端算得对，只差接上屏或加一个控件</div>
+    <ul>
+      <li>2.4 单→线指派</li><li>2.3 跨基地调剂</li><li>2.6 产销两模型互联</li>
+      <li>3.2 缺口随杠杆动</li><li>3.3 需求侧杠杆上屏</li><li>3.9 决策→未来损益</li>
+      <li>1.1-d 排程引擎入口</li><li>2.10 求解自动重算</li><li>1.2④ ATP 承诺上屏</li>
+    </ul>
+  </div>
+  <div class="q">
+    <h3>高价值 · 高难度 <span class="mono" style="color:var(--mute);font-weight:400">6 条</span></h3>
+    <div class="qs">要排期 —— 动数据模型或求解模型结构</div>
+    <ul>
+      <li>1.2③ 工单由订单/物料驱动</li><li>2.13 物料进解内约束</li>
+      <li>3.6 四维利润透视</li><li>1.2② 净需求由订单簿×BOM</li>
+      <li>1.1-e 交付事务对象</li><li>1.2① 预测→计划接线</li>
+    </ul>
+  </div>
+  <div class="q">
+    <h3>中价值 <span class="mono" style="color:var(--mute);font-weight:400">22 条</span></h3>
+    <div class="qs">口径、维度、披露 —— 影响可信度不影响能否决策</div>
+    <ul>
+      <li>2.1 集团抬头口径</li><li>2.14 目标加基地维</li><li>3.13 库存安全线</li>
+      <li>3.14 世界时钟</li><li>3.17 反向迭代扩面</li><li>…另 17 条见下表</li>
+    </ul>
+  </div>
+  <div class="q">
+    <h3>低价值 / 已翻案 <span class="mono" style="color:var(--mute);font-weight:400">4 条</span></h3>
+    <div class="qs">复核后工作量归零或大幅缩小</div>
+    <ul>
+      <li>3.21 溯源（已挂着，工作量 0）</li><li>2.9 缺的是埋点不是速度</li>
+      <li>1.1-a 预测段（你已定不做）</li><li>2.0 AI 预测模型（你已定不做）</li>
+    </ul>
+  </div>
+</div>
+
+<div class="tablewrap">
+<table>
+  <thead><tr>
+    <th style="width:74px">编号</th><th>需求项</th><th>今天缺什么</th>
+    <th style="width:66px">价值</th><th style="width:66px">难度</th>
+  </tr></thead>
+  <tbody>
+
+  <tr class="grp"><td colspan="5">目标 1 · 计划体系端到端落地（9 行）</td></tr>
+  <tr class="missing"><td class="id mono">1.1-a</td><td class="nm">预测段有承载</td><td class="gap">需求锚是 3 行硬编码常量（Σ=375 万套/年）；`DemandForecast` 零实例</td><td class="val"><span class="pill v-lo">低</span></td><td class="dif"><span class="pill d-xs">XS</span></td></tr>
+  <tr><td class="id mono">1.1-d</td><td class="nm">生产段</td><td class="gap">容器部署已接最优化引擎（复核翻案）；缺的是 5 个求解器的屏上入口</td><td class="val"><span class="pill v-hi">高</span></td><td class="dif"><span class="pill d-s">S</span></td></tr>
+  <tr><td class="id mono">1.1-e</td><td class="nm">交付段</td><td class="gap">`Shipment` 是入厂物料在途（13 条、单位吨），不是客户发运；无交付事实</td><td class="val"><span class="pill v-hi">高</span></td><td class="dif"><span class="pill d-m">M</span></td></tr>
+  <tr class="missing"><td class="id mono">1.2①</td><td class="nm">预测 → 销售计划</td><td class="gap">年度需求 = 认证产能 × 52；计划员看到的需求是系统预测的 <b>4.08 倍</b></td><td class="val"><span class="pill v-hi">高</span></td><td class="dif"><span class="pill d-m">M</span></td></tr>
+  <tr class="missing"><td class="id mono">1.2②</td><td class="nm">销售计划 → 供应</td><td class="gap">默认屏读 9 行手写常量，零订单读取 ⇒ <b>订单簿砍一半，这条线一个字节不动</b></td><td class="val"><span class="pill v-hi">高</span></td><td class="dif"><span class="pill d-m">M</span></td></tr>
+  <tr class="missing"><td class="id mono">1.2③</td><td class="nm">供应 → 生产</td><td class="gap"><b>工单的量 = 产线 ID 的哈希值</b>；116 条边里没有一条把物料接进工单</td><td class="val"><span class="pill v-hi">高</span></td><td class="dif"><span class="pill d-l">L</span></td></tr>
+  <tr><td class="id mono">1.2④</td><td class="nm">生产 → 交付</td><td class="gap">ATP 能算出承诺日/缺口/瓶颈，<b>零前端引用</b>；成品库存与订单零边</td><td class="val"><span class="pill v-hi">高</span></td><td class="dif"><span class="pill d-s">S</span></td></tr>
+  <tr><td class="id mono">1.3</td><td class="nm">端到端走得通</td><td class="gap">不用换系统 ✓；但预测段与交付段无导航入口，S&amp;OP 三处要手工敲数</td><td class="val"><span class="pill v-md">中</span></td><td class="dif"><span class="pill d-s">S</span></td></tr>
+  <tr><td class="id mono">2.0</td><td class="nm">AI 需求预测模型</td><td class="gap">你已定「先不做」，仅存档结论</td><td class="val"><span class="pill v-lo">—</span></td><td class="dif"><span class="pill d-0">0</span></td></tr>
+
+  <tr class="grp"><td colspan="5">目标 2 · 产能统筹与多目标优化（16 行）</td></tr>
+  <tr><td class="id mono">2.1</td><td class="nm">集团产能模型</td><td class="gap">四层真派生 ✓；抬头「总共能产多少」走 13 个手写字面量求和</td><td class="val"><span class="pill v-md">中</span></td><td class="dif"><span class="pill d-xs">XS</span></td></tr>
+  <tr><td class="id mono">2.2</td><td class="nm">多基地负荷实时监控</td><td class="gap">负荷率是 13 个手写常数；视图不刷新</td><td class="val"><span class="pill v-md">中</span></td><td class="dif"><span class="pill d-s">S</span></td></tr>
+  <tr><td class="id mono">2.3</td><td class="nm">跨基地统筹调度 ★</td><td class="gap">决策变量真实 ✓；腾出的产能<b>恒落第一个基地</b>，跨基地调剂是平标量 0.6</td><td class="val"><span class="pill v-hi">高</span></td><td class="dif"><span class="pill d-s">S</span></td></tr>
+  <tr><td class="id mono">2.4</td><td class="nm">供需智能匹配</td><td class="gap">单→线的字段与求解<b>早已写完</b>（复核翻案）；只差一个复选框把开关传下去</td><td class="val"><span class="pill v-hi">高</span></td><td class="dif"><span class="pill d-xs">XS</span></td></tr>
+  <tr><td class="id mono">2.5</td><td class="nm">最大化产能利用率</td><td class="gap">5 个目标函数里没有利用率，只算给人看</td><td class="val"><span class="pill v-md">中</span></td><td class="dif"><span class="pill d-s">S</span></td></tr>
+  <tr><td class="id mono">2.6</td><td class="nm">产销匹配模型</td><td class="gap">两个模型<b>其实是连的</b>（复核翻案）；缺一次 `SopVersionRow` 回写</td><td class="val"><span class="pill v-hi">高</span></td><td class="dif"><span class="pill d-s">S</span></td></tr>
+  <tr><td class="id mono">2.7</td><td class="nm">线上 S&amp;OP 协同</td><td class="gap">版本 ✓ 留痕 ◐ 角色 ✗ —— 五步只查功能开关不查角色</td><td class="val"><span class="pill v-md">中</span></td><td class="dif"><span class="pill d-s">S</span></td></tr>
+  <tr><td class="id mono">2.8</td><td class="nm">What-if 仿真</td><td class="gap">已满足</td><td class="val"><span class="pill v-lo">—</span></td><td class="dif"><span class="pill d-0">0</span></td></tr>
+  <tr class="missing"><td class="id mono">2.9</td><td class="nm">产销快速匹配</td><td class="gap"><b>缺的不是速度</b>（实测 p50 17–25ms），缺的是 SLO 与耗时埋点</td><td class="val"><span class="pill v-lo">低</span></td><td class="dif"><span class="pill d-s">S</span></td></tr>
+  <tr><td class="id mono">2.10</td><td class="nm">业务变动实时响应</td><td class="gap">沙盘路<b>已是事件驱动自动重解</b>（复核翻案）；缺的是给 portfolio 补事件标签</td><td class="val"><span class="pill v-hi">高</span></td><td class="dif"><span class="pill d-xs">XS</span></td></tr>
+  <tr><td class="id mono">2.13</td><td class="nm">综合考量 · 产能约束</td><td class="gap">产能是硬约束 ✓；<b>物料只做事后扣减</b>；运费有路但没进 portfolio 目标函数</td><td class="val"><span class="pill v-hi">高</span></td><td class="dif"><span class="pill d-l">L</span></td></tr>
+  <tr><td class="id mono">2.14</td><td class="nm">综合考量 · 经营目标</td><td class="gap">期间维<b>早已有</b>（`PlanTarget` 真播 17 行，复核翻案）；只缺 `baseId`</td><td class="val"><span class="pill v-md">中</span></td><td class="dif"><span class="pill d-s">S</span></td></tr>
+  <tr><td class="id mono">2.15</td><td class="nm">综合考量 · 运营成本</td><td class="gap">portfolio 只有 4+1 项罚金；真 BOM 成本在<b>另一个求解器里已算</b>，没接进来</td><td class="val"><span class="pill v-hi">高</span></td><td class="dif"><span class="pill d-m">M</span></td></tr>
+  <tr><td class="id mono">2.16</td><td class="nm">输出最优计划结果</td><td class="gap">真帕累托前沿 ✓；可披露性在主力页缺席（六项披露的机制<b>已建成并在用</b>）</td><td class="val"><span class="pill v-hi">高</span></td><td class="dif"><span class="pill d-m">M</span></td></tr>
+
+  <tr class="grp"><td colspan="5">目标 3 · 全链路洞察与决策支撑（16 行）</td></tr>
+  <tr><td class="id mono">3.1</td><td class="nm">全链路指标集中展示</td><td class="gap">24 节点在册但只 4 个有节拍真值；驾驶舱交付段 0 个、回款段 0 个</td><td class="val"><span class="pill v-md">中</span></td><td class="dif"><span class="pill d-s">S</span></td></tr>
+  <tr><td class="id mono">3.2</td><td class="nm">需求-供给动态平衡</td><td class="gap">缺口 81 万套是真算的 ✓；但<b>改任何杠杆这个数逐字节不动</b></td><td class="val"><span class="pill v-hi">高</span></td><td class="dif"><span class="pill d-s">S</span></td></tr>
+  <tr><td class="id mono">3.3</td><td class="nm">辅助产销策略</td><td class="gap">13 条杠杆<b>全是供给侧</b>，`Customer` 在杠杆册 0 命中；需求侧场景卡已存在但不在同一面板</td><td class="val"><span class="pill v-hi">高</span></td><td class="dif"><span class="pill d-s">S</span></td></tr>
+  <tr><td class="id mono">3.4</td><td class="nm">辅助产能策略</td><td class="gap">枚举器真实 ✓；四类只真支持「换产」，检修 `writable:false`</td><td class="val"><span class="pill v-md">中</span></td><td class="dif"><span class="pill d-s">S</span></td></tr>
+  <tr><td class="id mono">3.5</td><td class="nm">释放产能价值</td><td class="gap">有会动的 Δ 且已上屏 ✓；唯一金额字段自带「不可当真实毛利读」声明</td><td class="val"><span class="pill v-md">中</span></td><td class="dif"><span class="pill d-m">M</span></td></tr>
+  <tr class="missing"><td class="id mono">3.6</td><td class="nm">四维利润与成本透视 ★</td><td class="gap"><b>事业部维整条缺</b>；基地/客户无收入字段；损益求解器只回 3 行零维度</td><td class="val"><span class="pill v-hi">高</span></td><td class="dif"><span class="pill d-l">L</span></td></tr>
+  <tr><td class="id mono">3.7</td><td class="nm">推演利润最优方案</td><td class="gap">5 个目标无利润轴；毛利轴因分母不一致（套 vs 电芯，25.7×–40.6×）被系统自己下架</td><td class="val"><span class="pill v-hi">高</span></td><td class="dif"><span class="pill d-m">M</span></td></tr>
+  <tr><td class="id mono">3.8</td><td class="nm">模型输出优化建议</td><td class="gap">数字真算 ✓；3 条标题是字面量写死，源码自认「与根因语义无关」</td><td class="val"><span class="pill v-md">中</span></td><td class="dif"><span class="pill d-s">S</span></td></tr>
+  <tr><td class="id mono">3.8注</td><td class="nm">支撑管理层科学决策</td><td class="gap">沙盘路六项披露全有 ✓；60 个求解器里<b>只有 1 个</b>有披露块</td><td class="val"><span class="pill v-hi">高</span></td><td class="dif"><span class="pill d-m">M</span></td></tr>
+  <tr><td class="id mono">3.9</td><td class="nm">经营结果可预判</td><td class="gap">四个营收数各就各位 ✓；「今天做这个决定 → 未来某期结果」答不出。投影求解器<b>已存在</b></td><td class="val"><span class="pill v-hi">高</span></td><td class="dif"><span class="pill d-s">S</span></td></tr>
+  <tr><td class="id mono">3.11</td><td class="nm">订单状态映射现场</td><td class="gap">`fulfills` 覆盖率至多 52%；但<b>订单两跳即可追到产线，100% 覆盖</b>（复核翻案）</td><td class="val"><span class="pill v-md">中</span></td><td class="dif"><span class="pill d-xs">XS</span></td></tr>
+  <tr><td class="id mono">3.13</td><td class="nm">库存水位映射</td><td class="gap">水位有 ✓；物料无基地维（8 条全局单份）；<b>安全线整条缺</b>（418 个属性键里零个）</td><td class="val"><span class="pill v-md">中</span></td><td class="dif"><span class="pill d-m">M</span></td></tr>
+  <tr><td class="id mono">3.14</td><td class="nm">「实时」兑现</td><td class="gap">后端 30s 调度、前端 20s 双源轮询<b>都在跑</b>（复核翻案）；只有<b>世界时钟</b>成立</td><td class="val"><span class="pill v-md">中</span></td><td class="dif"><span class="pill d-s">S</span></td></tr>
+  <tr><td class="id mono">3.15a</td><td class="nm">需求预测偏差</td><td class="gap">差算得出 ✓；「目标」与「预测 P50」逐项全等 ⇒ 两种偏差数值上不可区分</td><td class="val"><span class="pill v-md">中</span></td><td class="dif"><span class="pill d-s">S</span></td></tr>
+  <tr><td class="id mono">3.15d</td><td class="nm">盈利目标偏差</td><td class="gap">目标半边真且单一来源 ✓；实际半边走需求 P50 口径，源码自述「不可相除」</td><td class="val"><span class="pill v-md">中</span></td><td class="dif"><span class="pill d-m">M</span></td></tr>
+  <tr><td class="id mono">3.17</td><td class="nm">反向迭代优化模型</td><td class="gap"><b>有一条真闭合回路</b> ✓（偏差→提案→审批→参数版本+1→MAPE 收敛）；只覆盖 3 参数 / 1 求解器</td><td class="val"><span class="pill v-md">中</span></td><td class="dif"><span class="pill d-m">M</span></td></tr>
+  <tr><td class="id mono">3.18</td><td class="nm">数据与决策资产沉淀</td><td class="gap">四项落库齐备 ✓；只能按 id 查（无列表路由）；提交后零派工单 —— 根因是<b>两个域无映射，非技术故障</b></td><td class="val"><span class="pill v-md">中</span></td><td class="dif"><span class="pill d-m">M</span></td></tr>
+  <tr><td class="id mono">3.19</td><td class="nm">风险预警（事前）</td><td class="gap">阈值 ✓ 触发 ✓；事件<b>每 5 秒真投递给租户 webhook</b>（复核翻案）；缺的是平台自带的人向通道</td><td class="val"><span class="pill v-hi">高</span></td><td class="dif"><span class="pill d-m">M</span></td></tr>
+  <tr><td class="id mono">3.21</td><td class="nm">溯源定位</td><td class="gap"><b>整条翻案</b>：归因 DAG 已挂在风险看板，且能下钻到对象主键</td><td class="val"><span class="pill v-lo">—</span></td><td class="dif"><span class="pill d-0">0</span></td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="key">
+  <div>
+    <h4>价值怎么定的</h4>
+    <p><b>高</b> — 挂得到有金额有频次的经营场景，不做会直接少一个决策。订单簿总额 454.64 亿是场景敞口的基数。</p>
+    <p><b>中</b> — 影响数字的可信度或可解释性，但不决定能不能做决策。</p>
+    <p><b>低 / —</b> — 追不到任何有金额的场景，或你已明确不做。</p>
+  </div>
+  <div>
+    <h4>难度怎么定的</h4>
+    <p><b>XS</b> 改一处声明 / 加一个控件 · <b>S</b> 接一条已有的线（两端都在） · <b>M</b> 复用已有机制但要参数化或补数据源 · <b>L</b> 真要新建，会动数据模型或求解模型结构 · <b>0</b> 已做完或已定不做。</p>
+    <p>⚠ 不报人天。人天是拍的，类别是查出来的。</p>
+  </div>
+</div>
+
+<div class="note">
+  <h4>这张表订正过一次，值得你知道</h4>
+  <p>29 条原本判定为「系统做不到」的条目，回代码逐条复核后只剩 <b>2 条完全成立</b>：5 条整条被推翻、22 条是「事实对但『要从零造』错了」。表里标「复核翻案」的都属这一类。</p>
+  <p>形态是同一个：<b>我用「我在屏上找不到这个」当作「系统里没有这个能力」的证据。</b>三条隐形路径 grep 一次都看不见 —— 字符串键分发、queryKey 驱动重算、语义检索选中。</p>
+  <p>另有两条今日新查实、不在原表里：<b>受阻环节求解器根本不吃扰动</b>（屏上 18 处卡点加不加扰动一模一样），以及<b>严重度只算了公式两个因子里的一个</b>（已修，修前两处卡点双双顶格 100 不可区分）。</p>
+</div>
+</div>

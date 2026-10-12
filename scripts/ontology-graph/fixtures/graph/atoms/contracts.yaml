@@ -1,0 +1,53 @@
+# 夹具原子 · @platform/contracts 包。
+# ⚠ 这里**故意**留了一个与 datacore 同名的原子 `lineGranularity`（契约侧 zod 字段）——
+#   真仓里它确实两处都有（portfolio.ts:55 的 TS 字段 + global-sim.ts:128 的 zod 字段）。
+#   同名原子会让「入边归属」被拆开，premise-check 必须在第四列把这件事说出来，
+#   否则读表的人会以为「图谱说只有 1 处」而不是「图谱把 6 处拆到了两个同名条目上」。
+- id: sym:packages/contracts/src/global-sim.ts#lineGranularity
+  name: lineGranularity
+  kind: property
+  file: packages/contracts/src/global-sim.ts
+  line: 128
+  brief: "GlobalSimArgs 的线级粒度开关（zod 契约侧）：产线粒度 + 换型按小时"
+  docSource: jsdoc
+  tags: [contracts, solver-args, lever]
+  wo: null
+  state: wired
+  reexportOf: null
+  inbound:
+    src:
+      - { file: apps/datacore/src/solvers/service.ts, line: 3512 }
+    test: []
+
+- id: sym:packages/contracts/src/solver-args.ts#SOLVER_ARGS_SCHEMAS
+  name: SOLVER_ARGS_SCHEMAS
+  kind: const
+  file: packages/contracts/src/solver-args.ts
+  line: 111
+  brief: "求解器 args zod schema 注册表（组合器输入模式的机器可读单一来源）：11 条"
+  docSource: jsdoc
+  tags: [contracts, registry, solver-args]
+  wo: null
+  state: wired
+  reexportOf: null
+  inbound:
+    src:
+      - { file: packages/contracts/src/solver-args.ts, line: 130 }
+      - { file: packages/contracts/src/solver-args.ts, line: 138 }
+      - { file: apps/datacore/src/solvers/args-schemas.ts, line: 18 }
+    test: []
+
+- id: sym:packages/contracts/src/solver-args.ts#argsSatisfiable
+  name: argsSatisfiable
+  kind: function
+  file: packages/contracts/src/solver-args.ts
+  line: 136
+  brief: "判断给定 args 是否满足该求解器的必填集"
+  docSource: jsdoc
+  tags: [contracts, solver-args]
+  wo: null
+  state: no-ref
+  reexportOf: null
+  inbound:
+    src: []
+    test: []

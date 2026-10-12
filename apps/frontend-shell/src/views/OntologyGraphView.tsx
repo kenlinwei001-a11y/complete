@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { GraphOptionsSchema, type GraphOptions } from "@platform/contracts";
-import { fetchOntologyGraph } from "@/api/endpoints";
+import { GraphOptionsSchema, GraphViewDescSchema, type GraphOptions, type GraphViewDesc } from "@platform/contracts";
+import { fetchObjectTypes, fetchOntologyGraph } from "@/api/endpoints";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { useSessionStore } from "@/store/sessionStore";
 import type { GraphEdgeVM, GraphNodeVM } from "@/api/types";
@@ -22,6 +22,13 @@ const DOMAIN_COLORS: Record<string, string> = {
   quality: "var(--c-quality)",
   capacity: "var(--c-capacity)",
   forecast: "var(--c-forecast)",
+  // PRD-IND-map 缺口①：补 6 业务域配色（与 GRAPH_DOMAIN 14 域对齐，配置驱动 R14）。
+  sales: "#7E8BEE",
+  material: "#BC9A63",
+  finance: "#DF747E",
+  plan: "#B07FD8",
+  external: "#D08A66",
+  decision: "#54B5C4",
   solver: "var(--c-solver)",
   agent: "var(--c-agent)",
 };
@@ -35,6 +42,13 @@ const DOMAIN_LABELS: Record<string, string> = {
   quality: "质量",
   capacity: "产能",
   forecast: "预测",
+  // PRD-IND-map 缺口①：6 业务域中文名。
+  sales: "销售",
+  material: "物料",
+  finance: "财务",
+  plan: "计划",
+  external: "外部",
+  decision: "决策应用",
   solver: "求解器",
   agent: "Agent",
 };
@@ -68,8 +82,15 @@ export default function OntologyGraphView({ view }: ViewRendererProps) {
     const parsed = GraphOptionsSchema.safeParse((view.options as { graphOptions?: unknown } | undefined)?.graphOptions);
     return parsed.success ? parsed.data : DEFAULT_OPTIONS;
   }, [view.options]);
-  const desc = (view.options as { desc?: string } | undefined)?.desc;
-  const descLink = (view.options as { descLink?: { to: string; label: string } } | undefined)?.descLink;
+  // 描述卡（§7.18）：容器/字段名以契约 `GraphViewDescSchema` 为准 —— 不再手写 `as` 断言。
+  // G-GRAPH-DESC-CONTRACT-SPLIT：后端一度写在 `layout.description`/`layout.descriptionLink`（裸字符串），
+  // 与此处读的 `options.desc`/`options.descLink{to,label}` 双重错位 ⇒ 生产态八视角一张卡都不渲染，
+  // 而 MSW mock 恰好写对形状 ⇒ 全绿。改用共享 schema 后，两侧同源，任一侧写错即 tsc/解析当场暴露。
+  // 与 graphOptions 分开 parse：一侧载荷坏掉不连累另一侧（描述卡坏不该让整张图退回默认视角）。
+  const { desc, descLink } = useMemo<GraphViewDesc>(() => {
+    const parsed = GraphViewDescSchema.safeParse(view.options ?? {});
+    return parsed.success ? parsed.data : {};
+  }, [view.options]);
 
   const [selected, setSelected] = useState<GraphNodeVM | null>(null);
   const [hiddenDomains, setHiddenDomains] = useState<Set<string>>(new Set());
@@ -450,8 +471,49 @@ function NodeShape({ kind, color, dashed }: { kind: GraphNodeVM["kind"]; color: 
 }
 
 /** 右侧检查器面板：属性 / 源系统 / 适用规则（点击看 expression）/ 派生公式 */
+/** 字段全建模覆盖（R12）：节点属性中映射自数据源字段 / 派生 / 手工 的占比；CSV 模版列。 */
+function fieldCoverage(node: GraphNodeVM): { total: number; mapped: number; derived: number; manual: number; fully: boolean; sourceFor: Map<string, string>; templateCols: string[] } {
+  const props = node.properties ?? [];
+  const derivedKeys = new Set((node.derivations ?? []).map((d) => d.propKey));
+  const sourceFor = new Map<string, string>(); // propKey → 源字段
+  for (const sb of node.sourceBindings ?? []) {
+    for (const [propKey, srcField] of Object.entries(sb.fieldMappings ?? {})) sourceFor.set(propKey, srcField);
+  }
+  let mapped = 0, derived = 0, manual = 0;
+  for (const p of props) {
+    if (sourceFor.has(p.propKey)) mapped++;
+    else if (derivedKeys.has(p.propKey)) derived++;
+    else manual++;
+  }
+  // CSV 数据模版列 = 源字段名（有则用源名，否则用 propKey）——导入该对象时应具备的列。
+  const templateCols = props.map((p) => sourceFor.get(p.propKey) ?? p.propKey);
+  return { total: props.length, mapped, derived, manual, fully: props.length > 0 && manual === 0, sourceFor, templateCols };
+}
+
+function downloadCsvTemplate(node: GraphNodeVM, cols: string[]): void {
+  const header = cols.join(",");
+  const sample = cols.map(() => "").join(",");
+  const blob = new Blob([`${header}\n${sample}\n`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${node.key}-template.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 function Inspector({ node, onClose }: { node: GraphNodeVM; onClose: () => void }) {
   const [openRule, setOpenRule] = useState<string | null>(null);
+  const cov = fieldCoverage(node);
+  const isObject = node.kind === "object";
+  // WO-SCHEMA-ZH：属性中文业务名的单一真值 = 后端 PropertyDef.displayName。
+  // /ontology/graph 的节点投影只带 propKey/dataType，故此处读**权威类型表**（/ontology/object-types）取名——
+  // 仍是后端单源，前端**不内联任何中文名映射**；查不到即诚实回落 propKey（不渲染 undefined/空白）。
+  const typesQ = useQuery({ queryKey: ["a", "object-types"], queryFn: fetchObjectTypes });
+  const propZh = (k: string): string =>
+    typesQ.data?.find((t) => t.key === node.key)?.properties?.find((p) => p.propKey === k)?.displayName ?? k;
   return (
     <aside className={styles.inspector} data-testid="graph-inspector">
       <div className={styles.inspectorHead}>
@@ -464,20 +526,45 @@ function Inspector({ node, onClose }: { node: GraphNodeVM; onClose: () => void }
         </button>
       </div>
 
+      {/* 字段全建模覆盖徽章（R12 · 借鉴参考原型"每个字段100%本体建模覆盖"） */}
+      {isObject && cov.total > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "6px 0" }}>
+          <span className={`badge ${cov.fully ? "green" : "amber"}`} data-testid="graph-coverage-badge">
+            {cov.fully ? `字段全建模 ✓ ${cov.total} 字段` : `${cov.manual} 字段未映射 / 共 ${cov.total}`}
+          </span>
+          <span style={{ fontSize: 12, color: "var(--muted2)" }}>
+            源 {cov.mapped} · 派生 {cov.derived} · 手工 {cov.manual}
+          </span>
+          {cov.templateCols.length > 0 && (
+            <button className="btn sm" style={{ marginLeft: "auto" }} data-testid="graph-csv-template" onClick={() => downloadCsvTemplate(node, cov.templateCols)}>
+              ⬇ CSV 模版
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="section-title">{zh.graph.inspectorProps}</div>
       <table className="cmp">
         <tbody>
-          {(node.properties ?? []).map((p) => (
-            <tr key={p.propKey}>
-              <td>
-                {p.isPrimaryKey && <span title="主键">★ </span>}
-                {p.propKey}
-              </td>
-              <td className="zh" style={{ color: "var(--muted)" }}>
-                {p.dataType}
-              </td>
-            </tr>
-          ))}
+          {(node.properties ?? []).map((p) => {
+            const src = cov.sourceFor.get(p.propKey);
+            const derived = (node.derivations ?? []).some((d) => d.propKey === p.propKey);
+            return (
+              <tr key={p.propKey}>
+                <td title={p.propKey}>
+                  {p.isPrimaryKey && <span title="主键">★ </span>}
+                  {propZh(p.propKey)}
+                </td>
+                <td className="zh" style={{ color: "var(--muted)" }}>
+                  {p.dataType}
+                </td>
+                {/* 该字段建模来源：源字段 / 派生 / 手工（去死路：每字段可溯到来源） */}
+                <td className="mono" style={{ fontSize: 12, color: src ? "var(--ok-txt)" : derived ? "var(--c-forecast-txt)" : "var(--amber-txt)" }}>
+                  {src ? `← ${src}` : derived ? "派生" : "手工"}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
 
@@ -485,10 +572,14 @@ function Inspector({ node, onClose }: { node: GraphNodeVM; onClose: () => void }
         {zh.graph.inspectorSources}
       </div>
       {(node.sourceBindings ?? []).map((s, i) => (
-        <div key={i} className="mono" style={{ fontSize: 11, color: "var(--muted)" }}>
+        <div key={i} className="mono" style={{ fontSize: 12, color: "var(--muted)" }}>
           {s.connId} · {s.dataset}
+          {s.fieldMappings && ` · ${Object.keys(s.fieldMappings).length} 字段映射`}
         </div>
       ))}
+      {isObject && (node.sourceBindings ?? []).length === 0 && (
+        <div style={{ fontSize: 12, color: "var(--muted2)" }}>纯派生/无外部数据源</div>
+      )}
 
       <div className="section-title" style={{ marginTop: 12 }}>
         {zh.graph.inspectorRules}
@@ -499,7 +590,7 @@ function Inspector({ node, onClose }: { node: GraphNodeVM; onClose: () => void }
             {r.key} · {r.name}
           </button>
           {openRule === r.key && (
-            <div className="mono" style={{ fontSize: 11, color: "var(--muted)", padding: "4px 8px", background: "var(--bg2)", borderRadius: 6, marginTop: 4 }}>
+            <div className="mono" style={{ fontSize: 12, color: "var(--muted)", padding: "4px 8px", background: "var(--bg2)", borderRadius: 6, marginTop: 4 }}>
               {r.expression}
             </div>
           )}
@@ -510,7 +601,7 @@ function Inspector({ node, onClose }: { node: GraphNodeVM; onClose: () => void }
         {zh.graph.inspectorDerived}
       </div>
       {(node.derivations ?? []).map((d) => (
-        <div key={d.propKey} className="mono" style={{ fontSize: 11, color: "var(--muted)", marginBottom: 3 }}>
+        <div key={d.propKey} className="mono" style={{ fontSize: 12, color: "var(--muted)", marginBottom: 3 }}>
           {d.propKey} = {d.formula}
         </div>
       ))}

@@ -1,11 +1,22 @@
 .mark {
-  color: var(--accent);
+  color: var(--accent-txt);
   font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-size: 12px;
   cursor: pointer;
   margin-left: 1px;
   user-select: none;
 }
 .mark:hover {
   text-decoration: underline;
+}
+/* 指不出出处的角标：**不可点**（没有出处可弹），且与真角标可分辨 ——
+   真角标是强调色可点的 `[n]`，这条是灰的、非交互的 `?`。 */
+.unresolvedMark {
+  color: var(--txt-dim, #8a8f98);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  margin-left: 1px;
+  user-select: none;
+  cursor: help;
+  opacity: 0.75;
 }

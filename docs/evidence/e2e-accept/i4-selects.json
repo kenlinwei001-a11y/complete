@@ -1,0 +1,2670 @@
+[
+  {
+    "i": 0,
+    "value": "",
+    "n": 99,
+    "first": [
+      "",
+      "Base",
+      "Model"
+    ],
+    "ctx": "来源类型… Base Model ProductPlatform ProductSeries ProductVersion BOMHeade"
+  },
+  {
+    "i": 1,
+    "value": "",
+    "n": 99,
+    "first": [
+      "",
+      "Base",
+      "Model"
+    ],
+    "ctx": "去向类型… Base Model ProductPlatform ProductSeries ProductVersion BOMHeade"
+  },
+  {
+    "i": 2,
+    "value": "1:N",
+    "n": 4,
+    "first": [
+      "1:1",
+      "1:N",
+      "N:1"
+    ],
+    "ctx": "1:1 1:N N:1 N:N"
+  },
+  {
+    "i": 3,
+    "value": "",
+    "n": 1,
+    "first": [
+      ""
+    ],
+    "ctx": "先选来源与去向类型"
+  },
+  {
+    "i": 4,
+    "value": "",
+    "n": 99,
+    "first": [
+      "",
+      "Base",
+      "Model"
+    ],
+    "ctx": "来源类型… Base Model ProductPlatform ProductSeries ProductVersion BOMHeade"
+  },
+  {
+    "i": 5,
+    "value": "",
+    "n": 117,
+    "first": [
+      "",
+      "alarm_for_equip",
+      "alt_for_material"
+    ],
+    "ctx": "经由结构边… alarm_for_equip alt_for_material att_for_line base_data_health "
+  },
+  {
+    "i": 6,
+    "value": "",
+    "n": 99,
+    "first": [
+      "",
+      "Base",
+      "Model"
+    ],
+    "ctx": "去向类型… Base Model ProductPlatform ProductSeries ProductVersion BOMHeade"
+  },
+  {
+    "i": 7,
+    "value": "PUBLISHED",
+    "n": 2,
+    "first": [
+      "PUBLISHED",
+      "DRAFT"
+    ],
+    "ctx": "启用（进推演） 停用（在册不生效）"
+  },
+  {
+    "i": 8,
+    "value": "Customer",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 9,
+    "value": "receivablePressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 10,
+    "value": "OverdueRecord",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 11,
+    "value": "collectionPressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 12,
+    "value": "customer_has_overdue_record",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 13,
+    "value": "Customer",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 14,
+    "value": "receivablePressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 15,
+    "value": "ARInvoice",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 16,
+    "value": "overduePressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 17,
+    "value": "customer_has_invoice",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 18,
+    "value": "Customer",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 19,
+    "value": "receivablePressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 20,
+    "value": "CustomerLocation",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 21,
+    "value": "deliveryHoldRisk",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 22,
+    "value": "customer_has_location",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 23,
+    "value": "Equipment",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 24,
+    "value": "equipmentFailure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 25,
+    "value": "Process",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 26,
+    "value": "queuePressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 27,
+    "value": "equip_used_in",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 28,
+    "value": "Equipment",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 29,
+    "value": "loadPressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 30,
+    "value": "MaintenanceOrder",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 31,
+    "value": "repairBacklog",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 32,
+    "value": "equipment_has_maintenance_order",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 33,
+    "value": "Base",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 34,
+    "value": "loadIndex",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 35,
+    "value": "Shipment",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 36,
+    "value": "inboundExpeditePressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 37,
+    "value": "base_has_shipment",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 38,
+    "value": "Base",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 39,
+    "value": "loadIndex",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 40,
+    "value": "Line",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 41,
+    "value": "utilPressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 42,
+    "value": "line_belongs_to_base",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 43,
+    "value": "Base",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 44,
+    "value": "loadIndex",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 45,
+    "value": "MaintPlan",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 46,
+    "value": "windowSqueeze",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 47,
+    "value": "base_maint_plan",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 48,
+    "value": "Base",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 49,
+    "value": "loadIndex",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 50,
+    "value": "InterBaseTransfer",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 51,
+    "value": "transferPressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 52,
+    "value": "base_dispatches_transfer",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 53,
+    "value": "Line",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 54,
+    "value": "blockedPressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 55,
+    "value": "WorkOrder",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 56,
+    "value": "releasePressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 57,
+    "value": "line_runs_work_order",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 58,
+    "value": "Line",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 59,
+    "value": "utilPressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 60,
+    "value": "Process",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 61,
+    "value": "queuePressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 62,
+    "value": "line_has_process",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 63,
+    "value": "Line",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 64,
+    "value": "utilPressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 65,
+    "value": "WorkOrder",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 66,
+    "value": "releasePressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 67,
+    "value": "line_runs_work_order",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 68,
+    "value": "Process",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 69,
+    "value": "queuePressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 70,
+    "value": "Equipment",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 71,
+    "value": "loadPressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 72,
+    "value": "process_uses_equipment",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 73,
+    "value": "Process",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 74,
+    "value": "queuePressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 75,
+    "value": "Line",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 76,
+    "value": "blockedPressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 77,
+    "value": "process_belongs_to_line",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 78,
+    "value": "WIPLot",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 79,
+    "value": "feedPressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 80,
+    "value": "DefectRecord",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 81,
+    "value": "defectPressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 82,
+    "value": "wip_lot_found_defect",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 83,
+    "value": "WorkOrder",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 84,
+    "value": "releasePressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 85,
+    "value": "Model",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 86,
+    "value": "costPressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 87,
+    "value": "wo_for_model",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 88,
+    "value": "WorkOrder",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 89,
+    "value": "releasePressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 90,
+    "value": "Model",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 91,
+    "value": "supplyRisk",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 92,
+    "value": "wo_for_model",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 93,
+    "value": "WorkOrder",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 94,
+    "value": "releasePressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 95,
+    "value": "QualityLot",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 96,
+    "value": "inspectBacklog",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 97,
+    "value": "work_order_sampled_by_quality_lot",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 98,
+    "value": "WorkOrder",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 99,
+    "value": "releasePressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 100,
+    "value": "WIPLot",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 101,
+    "value": "feedPressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 102,
+    "value": "work_order_yields_wip_lot",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 103,
+    "value": "Model",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 104,
+    "value": "forecastBias",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 105,
+    "value": "Order",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 106,
+    "value": "demandPressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 107,
+    "value": "model_demanded_by_order",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 108,
+    "value": "Model",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 109,
+    "value": "costPressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 110,
+    "value": "Order",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 111,
+    "value": "costPressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 112,
+    "value": "model_demanded_by_order",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 113,
+    "value": "Model",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 114,
+    "value": "demandLoad",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 115,
+    "value": "Base",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 116,
+    "value": "loadIndex",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 117,
+    "value": "model_producible_at",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 118,
+    "value": "Model",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 119,
+    "value": "demandLoad",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 120,
+    "value": "Certification",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 121,
+    "value": "qualificationQueue",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 122,
+    "value": "model_has_cert",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 123,
+    "value": "Model",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 124,
+    "value": "demandLoad",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 125,
+    "value": "ChangeoverMatrix",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 126,
+    "value": "changeoverPressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 127,
+    "value": "model_changeover",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 128,
+    "value": "Model",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 129,
+    "value": "demandLoad",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 130,
+    "value": "FinishedGoodsInventory",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 131,
+    "value": "drawdownPressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 132,
+    "value": "model_stocked_as_finished_goods",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 133,
+    "value": "Model",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 134,
+    "value": "supplyRisk",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 135,
+    "value": "Order",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 136,
+    "value": "shortageRisk",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 137,
+    "value": "model_demanded_by_order",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 138,
+    "value": "Order",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 139,
+    "value": "orderChurn",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 140,
+    "value": "OrderLine",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 141,
+    "value": "splitPressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 142,
+    "value": "order_has_line",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 143,
+    "value": "Order",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 144,
+    "value": "orderChurn",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 145,
+    "value": "Model",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 146,
+    "value": "demandLoad",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 147,
+    "value": "order_for_model",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 148,
+    "value": "Order",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 149,
+    "value": "costPressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 150,
+    "value": "Customer",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 151,
+    "value": "receivablePressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 152,
+    "value": "order_of_customer",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 153,
+    "value": "Order",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 154,
+    "value": "demandPressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 155,
+    "value": "Model",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 156,
+    "value": "demandLoad",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 157,
+    "value": "order_for_model",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 158,
+    "value": "Order",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 159,
+    "value": "demandPressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 160,
+    "value": "OrderLine",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 161,
+    "value": "splitPressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 162,
+    "value": "order_has_line",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 163,
+    "value": "Order",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 164,
+    "value": "shortageRisk",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 165,
+    "value": "OrderPromise",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 166,
+    "value": "promiseRisk",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 167,
+    "value": "order_has_promise",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 168,
+    "value": "DefectRecord",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 169,
+    "value": "defectPressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 170,
+    "value": "ExceptionEvent",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 171,
+    "value": "handlingBacklog",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 172,
+    "value": "defect_raises_exception",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 173,
+    "value": "MaterialBatch",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 174,
+    "value": "procurementDelay",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 175,
+    "value": "Material",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 176,
+    "value": "shortageRisk",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 177,
+    "value": "batch_replenishes_material",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 178,
+    "value": "Material",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 179,
+    "value": "priceShock",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 180,
+    "value": "Model",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 181,
+    "value": "costPressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 182,
+    "value": "material_used_by_model",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 183,
+    "value": "Material",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 184,
+    "value": "shortageRisk",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 185,
+    "value": "MaterialAlternative",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 186,
+    "value": "switchPressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 187,
+    "value": "material_has_alternative",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 188,
+    "value": "Material",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 189,
+    "value": "shortageRisk",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 190,
+    "value": "MaterialBalance",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 191,
+    "value": "gapPressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 192,
+    "value": "material_has_balance",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 193,
+    "value": "Material",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 194,
+    "value": "shortageRisk",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 195,
+    "value": "MaterialBatch",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 196,
+    "value": "turnoverPressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 197,
+    "value": "material_has_batch",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 198,
+    "value": "Material",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 199,
+    "value": "shortageRisk",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 200,
+    "value": "Model",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 201,
+    "value": "supplyRisk",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 202,
+    "value": "material_used_by_model",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 203,
+    "value": "Material",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 204,
+    "value": "shortageRisk",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 205,
+    "value": "PurchaseOrder",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 206,
+    "value": "expeditePressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 207,
+    "value": "material_supplied_by_po",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 208,
+    "value": "PurchaseOrder",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 209,
+    "value": "expeditePressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 210,
+    "value": "CustomsClearance",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 211,
+    "value": "clearanceQueueDays",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 212,
+    "value": "po_customs_cleared_by",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 213,
+    "value": "PurchaseOrder",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 214,
+    "value": "expeditePressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 215,
+    "value": "IncomingInspection",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 216,
+    "value": "queueDays",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 217,
+    "value": "po_inspected_by",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 218,
+    "value": "PurchaseOrder",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 219,
+    "value": "expeditePressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 220,
+    "value": "Supplier",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 221,
+    "value": "reviewPressure",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 222,
+    "value": "po_from_supplier",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 223,
+    "value": "PurchaseOrder",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 224,
+    "value": "procurementDelay",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 225,
+    "value": "Material",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 226,
+    "value": "shortageRisk",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 227,
+    "value": "po_replenishes_material",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 228,
+    "value": "Supplier",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 229,
+    "value": "deliveryDelay",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 230,
+    "value": "Material",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 231,
+    "value": "shortageRisk",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 232,
+    "value": "supplier_supplies_material",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 233,
+    "value": "Supplier",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 234,
+    "value": "procurementDelay",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 235,
+    "value": "Material",
+    "n": 98,
+    "first": [
+      "Base",
+      "Model",
+      "ProductPlatform"
+    ],
+    "ctx": "Base Model ProductPlatform ProductSeries ProductVersion BOMHeader BOMD"
+  },
+  {
+    "i": 236,
+    "value": "shortageRisk",
+    "n": 41,
+    "first": [
+      "blockedPressure",
+      "changeoverPressure",
+      "clearanceQueueDays"
+    ],
+    "ctx": "blockedPressure 换型压力（changeoverPressure） 清关排队天数（clearanceQueueDays） 逾期"
+  },
+  {
+    "i": 237,
+    "value": "supplier_supplies_material",
+    "n": 116,
+    "first": [
+      "alarm_for_equip",
+      "alt_for_material",
+      "att_for_line"
+    ],
+    "ctx": "alarm_for_equip alt_for_material att_for_line base_data_health base_di"
+  },
+  {
+    "i": 238,
+    "value": "",
+    "n": 99,
+    "first": [
+      "",
+      "ARAging",
+      "ARInvoice"
+    ],
+    "ctx": "选一个对象类型… 应收账款账龄（ARAging） 应收发票（ARInvoice） 已采纳处置方案（AdoptedMitigation） 年度"
+  },
+  {
+    "i": 239,
+    "value": "",
+    "n": 31,
+    "first": [
+      "",
+      "C01",
+      "C02"
+    ],
+    "ctx": "选一条已发布规则… C01 · 产线设计产能上限（BLOCK） C02 · 化成/老化串并产能口径（WARN） C03 · 产能上限约束（B"
+  },
+  {
+    "i": 240,
+    "value": "",
+    "n": 1,
+    "first": [
+      ""
+    ],
+    "ctx": "选一个属性…"
+  },
+  {
+    "i": 241,
+    "value": "must_not_exceed",
+    "n": 4,
+    "first": [
+      "must_not_exceed",
+      "must_not_fall_below",
+      "requires_capacity"
+    ],
+    "ctx": "不得超过（上限） 不得低于（下限） 需要产能 必须早于（时序）"
+  },
+  {
+    "i": 242,
+    "value": "",
+    "n": 99,
+    "first": [
+      "",
+      "Base",
+      "Model"
+    ],
+    "ctx": "选一个对象类型… Base Model ProductPlatform ProductSeries ProductVersion BOMHe"
+  }
+]

@@ -51,16 +51,22 @@ describe("template resolution", () => {
 
 describe("numeric provenance scan (§5.5)", () => {
   it("flags bare business numbers", () => {
-    expect(hasUnverifiedNumerics("产能缺口约 1200 套。")).toBe(true);
-    expect(hasUnverifiedNumerics("利用率 81.9%。")).toBe(true);
+    expect(hasUnverifiedNumerics("产能缺口约 1200 套。", 0)).toBe(true);
+    expect(hasUnverifiedNumerics("利用率 81.9%。", 0)).toBe(true);
   });
-  it("does not flag sentences carrying ⟦ref⟧ marks", () => {
-    expect(hasUnverifiedNumerics("利用率 81.9% ⟦ref:0⟧。")).toBe(false);
-    expect(hasUnverifiedNumerics("缺口 3 套 ⟦ref:1⟧。无数字句子。")).toBe(false);
+  it("does not flag sentences whose ⟦ref⟧ marks all resolve against the provenance table", () => {
+    expect(hasUnverifiedNumerics("利用率 81.9% ⟦ref:0⟧。", 1)).toBe(false);
+    expect(hasUnverifiedNumerics("缺口 3 套 ⟦ref:1⟧。无数字句子。", 2)).toBe(false);
+  });
+  it("flags ⟦ref:N⟧ that points at nothing（表空 / 越界 / 形态不合）", () => {
+    // WO-NUM-FLAG-TRUTH：豁免的判据是「标记指得出」不是「标记存在」
+    expect(hasUnverifiedNumerics("利用率 81.9% ⟦ref:0⟧。", 0), "表空 ⇒ ref:0 指空").toBe(true);
+    expect(hasUnverifiedNumerics("利用率 81.9% ⟦ref:9⟧。", 2), "表长 2 ⇒ ref:9 越界").toBe(true);
+    expect(hasUnverifiedNumerics("利用率 81.9% ⟦ref:abc⟧", 2), "形态不合 ⇒ 指不出").toBe(true);
   });
   it("excludes ISO dates", () => {
-    expect(hasUnverifiedNumerics("截止日期是 2026-06-12。")).toBe(false);
-    expect(hasUnverifiedNumerics("截止 2026-06-12，缺口 3 套。")).toBe(true);
+    expect(hasUnverifiedNumerics("截止日期是 2026-06-12。", 0)).toBe(false);
+    expect(hasUnverifiedNumerics("截止 2026-06-12，缺口 3 套。", 0)).toBe(true);
   });
 });
 

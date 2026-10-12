@@ -1,0 +1,13 @@
+✅ 金丝雀 28/28 全中（必咬 17 + 必不咬 11 · D1 8 + D2/D3 15 + 归类器 5）
+· 扫描面：部署面 8 文件 · 源码面 745 文件（下界 5 / 200，均已过 ⇒ 下面的「零处」是真的零，不是没扫到）
+· D1 部署面开 flag 0 处 · D2 白名单外静态 import 0 处 · D3 入口 动态 1（其中裸 0）/ 静态 2
+
+✗ dsh-dormancy:check 未通过（2 条）：
+  - [D3] 裸入口（**静态** import dsh-runtime）：apps/agentcore/src/engine.ts:35  ← "./dsh-runtime/workflow-mcp.js"
+        静态入口绕过 flag：模块在链接期就被加载。入口必须是 flag 判断内的动态 import。
+  - [D3] 裸入口（**静态** import dsh-runtime）：apps/agentcore/src/mocks/seed.ts:19  ← "../dsh-runtime/workflow-mcp.js"
+        静态入口绕过 flag：模块在链接期就被加载。入口必须是 flag 判断内的动态 import。
+
+  裁决背景：审核方判定「**代码可以并，flag 不能翻**」。翻 flag 的三条前置条件
+  （真 provider 从没跑过 / STALL_LOOP 护栏净减少 / MCP serverName 是 root 级预约与
+  tenant_id everywhere 直接冲突）逐条写在 docs/DECISION-dsh-fusion.md §3，未销账不许翻。

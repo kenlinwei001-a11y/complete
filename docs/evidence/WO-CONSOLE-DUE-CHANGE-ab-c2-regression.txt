@@ -1,0 +1,18 @@
+扰动臂 session=sims_36905066e9cg6sbs curTick=33 applied=["simpert_63mzern2dwht8hfj"]
+对照臂 session=sims_ev38tcyecd3ysc92 curTick=33 applied=undefined
+扰动 id=undefined
+
+对象数 扰动=4425 对照=4425 集合相同=true
+总格数=6375  差异格=2  (0.03%)
+
+── 差异按 (类.状态量) 聚合，按 |Δ| 降序 ──
+  order_SO-3391.leadDays                     n=   1  扰动=       -3.000000  对照=       14.000000  Δ=      -17.000000
+  model_4680-NCM.costPressure                n=   1  扰动=        0.644525  对照=        0.584961  Δ=        0.059564
+
+── 钱相关类（ARInvoice/Customer/Overdue/Order/FinancePlan）全量 ──
+  order_SO-3391.leadDays                     n=   1  Δ=-17.000000   obj_order_SO-3391=-3(对照 14)
+
+── 引擎自报的 signalToNoise（扰动臂）──
+  userContribution=43.337915093448  worldDrift=63217.07357578941  changedCells=805
+
+原始逐格差异落盘：evidence-1001/ab-raw.json  (2 格)

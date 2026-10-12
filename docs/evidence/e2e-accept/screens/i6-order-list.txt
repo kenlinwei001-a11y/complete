@@ -1,0 +1,151 @@
+跳到主内容
+全域数字化智能决策支撑系统
+全域数字化智能决策支撑系统
+🕐
+健康度
+🌙
+A
+admin
+▾
+⚡ 场景启动器
+经营驾驶舱
+事件影响与对策
+▾
+规划与平衡
+年度规划
+季度规划
+月度规划
+规划体检
+规划建议
+运营复盘
+▾
+推演
+统一推演控制台
+推演沙盘
+接单可行性
+接单组合优选
+产能推演
+订单进展与卡因
+▾
+台账与地图
+订单台账
+基地地理视图
+▾
+数据接入
+连接器与上传
+规则文档审核
+合成数据
+外部信号
+隔离区
+▾
+建模与图谱
+本体图谱
+本体建模
+对象/类型浏览
+域管理
+对象接口
+本体关系
+本体切片
+切片库
+实体合并
+边界册治理
+原型 intake
+▾
+图谱体系
+▾
+规则与校准
+规则库
+校准报告
+▾
+构建与成长
+数据构建发动机
+构建 Pipeline 配置
+自成长发动机
+Agent 评测
+求解器目录
+求解器审核台
+▾
+编排与场景
+意图目录
+Agent
+Workflow
+Skill 库
+MCP
+场景入口
+智能资源治理
+计划构建画布
+兜底统计
+视图配置
+▾
+运营与审批
+Action 审批
+组织世界
+运营自动化
+定时任务
+工厂日历
+通知中心
+闭环验证(VLE)
+▾
+平台与系统
+用户管理
+权限策略
+功能开通
+LLM Provider
+配置迁移
+系统自我
+500 rows
+	SO	客户	型号	数量	交期	基地	状态
+▸	SO-3391	广汽集团	4680-NCM	7259	2026-06-24	hefei, jinhua	OPEN
+▸	SO-3402	长安汽车	4680-NCM	14518	2026-07-02	changzhou, jinhua	OPEN
+▸	SO-3415	吉利汽车	4680-NCM	4033	2026-07-18	changzhou, jinhua	OPEN
+▸	SO-3420	东风汽车	4680-NCM	10485	2026-07-09	changzhou, jinhua	OPEN
+▸	SO-3431	广汽集团	2170-NCM	8872	2026-06-28	wuhan, xiamen	OPEN
+▸	SO-3437	宇通客车	2170-NCM	10727	2026-07-14	wuhan, xiamen	OPEN
+▸	SO-3445	长安汽车	方形-NCM	12098	2026-07-05	changzhou, chengdu	OPEN
+▸	SO-3452	国家电网	方形-LFP	17744	2026-06-30	meishan, zaozhuang	OPEN
+▸	SO-3458	南方电网	方形-LFP	21777	2026-07-12	handan, jiangmen	OPEN
+▸	SO-3464	国家电投	方形-LFP	8872	2026-07-25	handan, zaozhuang	OPEN
+▸	SO-3470	南方电网	圆柱-LFP	4033	2026-07-08	xinyang	OPEN
+▸	SO-3476	国家电网	4680-LFP	7259	2026-07-20	changzhou	OPEN
+▸	SO-3481	广汽集团	4680-NCM	10485	2026-07-11	hefei, jinhua	OPEN
+▸	SO-3486	吉利汽车	方形-NCM	5646	2026-07-22	changzhou, jinhua	OPEN
+▸	SO-3490	东风汽车	4680-NCM	16131	2026-07-06	changzhou, chengdu	OPEN
+▸	SO-3495	南方电网	方形-LFP	19357	2026-07-16	handan, zaozhuang	OPEN
+▸	SO-3501	国家电投	方形-LFP	12098	2026-07-28	jiangmen, meishan	OPEN
+▸	SO-3506	宇通客车	2170-NCM	2323	2026-07-19	wuhan, zigong	OPEN
+▸	SO-3512	长安汽车	方形-NCM	8872	2026-07-03	changzhou, jinhua	OPEN
+▸	SO-3518	国家电网	方形-LFP	16131	2026-07-24	handan, zaozhuang	OPEN
+▸	SO-3523	广汽集团	4680-NCM	12098	2026-07-13	chengdu, hefei	OPEN
+▸	SO-3529	南方电网	圆柱-LFP	5646	2026-07-10	yangzhou	OPEN
+▸	SO-3534	东风汽车	4680-NCM	14518	2026-07-27	chengdu, hefei	OPEN
+▸	SO-3540	宇通客车	2170-NCM	2218	2026-07-17	wuhan, xiamen	OPEN
+▸	SO-900024	上汽通用五菱	方形-NCM	2569	2026-03-13	chengdu	COMPLETED
+▸	SO-900025	广汽埃安	2170-NCM	3523	2026-08-08	wuhan, xiamen	OPEN
+▸	SO-900026	广汽埃安	4680-NCM	2443	2025-12-13	hefei, jinhua	COMPLETED
+▸	SO-900027	广汽埃安	2170-NCM	4034	2026-03-23	xiamen	COMPLETED
+▸	SO-900028	南方电网	方形-LFP	4514	2026-04-11	zaozhuang	COMPLETED
+▸	SO-900029	国家电网	方形-LFP	3287	2026-07-24	handan, jiangmen	IN_PRODUCTION
+▸	SO-900030	小鹏汽车	2170-NCM	3383	2026-06-01	wuhan	IN_PRODUCTION
+▸	SO-900031	广汽埃安	4680-LFP	4429	2026-05-03	zaozhuang	COMPLETED
+▸	SO-900032	小鹏汽车	2170-NCM	2383	2026-03-22	wuhan, zigong	COMPLETED
+▸	SO-900033	国家电投	方形-LFP	2336	2026-03-20	handan, zaozhuang	COMPLETED
+▸	SO-900034	国家电网	圆柱-LFP	7572	2026-03-03	xinyang	COMPLETED
+▸	SO-900035	吉利汽车	方形-NCM	1853	2026-05-31	changzhou, jinhua	COMPLETED
+▸	SO-900036	广汽埃安	2170-NCM	6519	2025-12-12	wuhan, zigong	COMPLETED
+▸	SO-900037	国家电网	圆柱-LFP	4212	2026-04-07	xinyang, yangzhou	COMPLETED
+▸	SO-900038	上汽通用五菱	2170-NCM	3477	2026-07-19	zigong	IN_PRODUCTION
+▸	SO-900039	国家电投	4680-LFP	5467	2026-05-25	changzhou	COMPLETED
+▸	SO-900040	南方电网	圆柱-LFP	2327	2026-02-01	xinyang, yangzhou	COMPLETED
+▸	SO-900041	广汽埃安	4680-NCM	4974	2026-03-22	chengdu	COMPLETED
+▸	SO-900042	南方电网	圆柱-LFP	4655	2026-02-09	xinyang, yangzhou	COMPLETED
+▸	SO-900043	长安汽车	4680-LFP	3342	2026-05-27	changzhou	IN_PRODUCTION
+▸	SO-900044	广汽埃安	2170-NCM	5465	2026-03-02	xiamen	COMPLETED
+▸	SO-900045	长安汽车	4680-NCM	1853	2025-12-21	changzhou	COMPLETED
+▸	SO-900046	国家电投	方形-LFP	1774	2026-01-12	handan, jiangmen	COMPLETED
+▸	SO-900047	小鹏汽车	4680-NCM	7458	2026-05-23	hefei, jinhua	COMPLETED
+▸	SO-900048	南方电网	方形-LFP	4713	2026-06-21	meishan, zaozhuang	IN_PRODUCTION
+▸	SO-900049	广汽埃安	4680-NCM	5620	2026-04-23	changzhou	COMPLETED
+←
+1 / 10
+→
+⌃

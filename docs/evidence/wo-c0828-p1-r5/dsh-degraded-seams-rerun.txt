@@ -1,0 +1,15 @@
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/agent-a80b730eca94f0bb7/apps/agentcore
+
+ ✓ test/dsh-degraded-seams.test.ts (6 tests) 21508ms
+   ✓ WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧序） > A1 缝①正例·角色路 dsh STALL_LOOP → agent_degraded 恰一条·早于 answer.final·reason 原值·不双计  8221ms
+   ✓ WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧序） > A2 缝②正例·场景路 dsh STALL_LOOP → 同断言组（无 classification·确证 path=AGENT + 场景入口 note）  5201ms
+   ✓ WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧序） > A3 负向臂·异参剧本不触发降级 → 帧流零 agent_degraded ∧ COMPLETED 照常（咬守卫摘除 M5）  7275ms
+   ✓ WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧序） > A5① 回归零扰·缝①角色路正常剧本 → 帧流零 agent_degraded（正常态逐字节不变）  305ms
+   ✓ WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧序） > A5② 回归零扰·缝②场景路正常剧本 → 帧流零 agent_degraded（正常态逐字节不变）  325ms
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  15:10:47
+   Duration  35.38s (transform 6.90s, setup 0ms, collect 12.19s, tests 21.51s, environment 1ms, prepare 296ms)
+

@@ -1,0 +1,94 @@
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/agent-a80b730eca94f0bb7/apps/datacore
+
+stdout | test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 🔴 头号判据 · 对照实验：三个接线求解器 —— 同 (args,scope) 扰动前 vs 扰动+tick4 后，回包必须**真的不同**
+[contrast] solver=risk_timeline before=ca41452a2e728abb after=c790f7336ac555c7 equal=false
+
+stdout | test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 🔴 头号判据 · 对照实验：三个接线求解器 —— 同 (args,scope) 扰动前 vs 扰动+tick4 后，回包必须**真的不同**
+[contrast] solver=capacity_forecast before=e7a5d6c4524d5351 after=9363c88fb8f1db3b equal=false
+
+stdout | test/synth-validation-lite.test.ts > WO-SYNTH-VALIDATION-LITE · SEAM 五条 > #2 LITE 明显更快（宽松阈值·证真省大头非空跑）
+[SEAM#2] FULL=48129ms LITE=12627ms ratio=0.262
+
+stdout | test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 🔴 头号判据 · 对照实验：三个接线求解器 —— 同 (args,scope) 扰动前 vs 扰动+tick4 后，回包必须**真的不同**
+[contrast] solver=affected_orders before=8cb5a8df637f0131 after=99857b17320a4725 equal=false
+
+stdout | test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > R6 兼容：不传 worldId ⇒ 无 worldState 键且两跑逐字节相同；零压力世界 ⇒ 剥披露键后与真值口径逐字节相同
+[r6-truth] solver=risk_timeline truth=ed27635d15a275f3
+
+stdout | test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > R6 兼容：不传 worldId ⇒ 无 worldState 键且两跑逐字节相同；零压力世界 ⇒ 剥披露键后与真值口径逐字节相同
+[r6-truth] solver=capacity_forecast truth=9f6c0730efaf1bf2
+
+stdout | test/worldstate-surface.seam.test.ts > WO-WORLDSTATE-SURFACE · 统一世界态读取面 > R6 兼容：不传 worldId ⇒ 无 worldState 键且两跑逐字节相同；零压力世界 ⇒ 剥披露键后与真值口径逐字节相同
+[r6-truth] solver=affected_orders truth=833984e5c03574b3
+
+ ✓ test/synth-validation-lite.test.ts (5 tests) 251692ms
+   ✓ WO-SYNTH-VALIDATION-LITE · SEAM 五条 > #1 核心：FULL 与 LITE 生成图逐字节一致，差异**仅限** TS 聚合物化属性；LITE 无 TS、FULL 有 TS（真跳）  52416ms
+   ✓ WO-SYNTH-VALIDATION-LITE · SEAM 五条 > #2 LITE 明显更快（宽松阈值·证真省大头非空跑）  61949ms
+   ✓ WO-SYNTH-VALIDATION-LITE · SEAM 五条 > #3 反陷阱：determinismCheck 仍两次独立真跑（探针计 LITE runJob==2 且两个不同 tenantId）  63720ms
+   ✓ WO-SYNTH-VALIDATION-LITE · SEAM 五条 > #4 cloneTenant 字节一致：fingerprint(clone(x)) === fingerprint(x)  55679ms
+   ✓ WO-SYNTH-VALIDATION-LITE · SEAM 五条 > #5 R6 不破：LITE 同 seed 两跑对象指纹一致（确定性不受跳 TS 影响）  17901ms
+ ✓ test/sim-order-real-fields.seam.test.ts (6 tests) 319913ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ①正向 measuredCells = 在手订单数 × 3，且两边**各自独立**算一遍再比  38601ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ①反向 把某张单的 qty 删掉 ⇒ 该格退回哈希、measuredCells 减 1（只测正向不算）  37081ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ② 改真值 ⇒ 下游读数必须跟着变：把一张单的价格 ×1.5，重跑同一套推演  72330ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ③ 两张金额差一个量级的真订单，同一个扰动 ⇒ 下游读数必须拉开  50030ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ④ R6：同 (industry, scale, seed) 重跑，世界态逐字节一致  87774ms
+   ✓ WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM） > ⑤ 接缝：真值必须**出现在传导结果里**，且 max 语义不随拍数漂（不是纯积分器）  34085ms
+ ✓ test/worldstate-surface.seam.test.ts (8 tests) 349699ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 金丝雀：种子/传导规则/求解器注册/白名单表四样都在（任一不在 ⇒ 后面读不出坏了还是真没变）  44612ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 🔴 头号判据 · 对照实验：三个接线求解器 —— 同 (args,scope) 扰动前 vs 扰动+tick4 后，回包必须**真的不同**  72599ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > R6 兼容：不传 worldId ⇒ 无 worldState 键且两跑逐字节相同；零压力世界 ⇒ 剥披露键后与真值口径逐字节相同  50492ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 闸① 白名单外：capacity_rollup 传 worldId（含幽灵 id）⇒ 机制够不着它（无 worldState 键·与真值口径逐字节相同）  59006ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 闸③ 不静默回落：幽灵 worldId ⇒ 404；跨租户 worldId ⇒ 404；空串 worldId ⇒ 400（金丝雀：同 key 真世界 200）  28108ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 空世界诚实：worldObjects=0 + note 明说「未发生世界隔离」，数值仍给且等于真值口径  31870ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 披露块可复核：sessionId/tick/source/divisor/rules/applied/unconsumed/agentInvolved 齐全，demandLoad 诚实进 unconsumed  31953ms
+   ✓ WO-WORLDSTATE-SURFACE · 统一世界态读取面 > 世界内 R6：同 (worldId, tick) 两跑逐字节相同（含 worldState 披露键）  31018ms
+ ✓ test/sim-real-cells.seam.test.ts (20 tests) 80997ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂2 量纲：全扫 STATE_VAR_DOMAINS 已声明域的变量逐个不越域；无域族归档「刻意无上界」  1228ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > ⓐ 引擎归属：derivationSpecs 清成 0 条 ⇒ 25 个 targetProp 全部消失（证明是引擎②算的）  20749ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂3 敏感性：Customer.receivables ×2 ⇒ receivablePressure 精确 ×2（线性式）  2628ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂3 敏感性：Equipment.health_score ↓10 ⇒ equipmentFailure 精确 ↑10（反向线性）  2097ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂4 反向：拿掉 Line.max_capacity_day ⇒ blockedPressure 退回（COALESCE 兜 0，非写死常数）  3107ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂5 变异反证：把 equipmentFailure 的『100 −』改成『100 +』⇒ 臂1 锚定断言当场红  22753ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > R6 确定性：同 (seed=42) 重铺世界 ⇒ measuredCells / totalCells 逐字节一致  815ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > §3 绑定判据：valueRef 指向不存在的 specKey ⇒ 播种当场抛错变红（⛔ 不静默回落哈希）  394ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > §退役 · `model_forecast_bias` 与它的 valueRef 登记必须同时不存在（残留任一处即红）  393ms
+stdout | test/action-plan-change-levers.seam.test.ts > 兜底线普查 · 「还剩几型审批通过后什么都不写」由机器数，不由人推算 > 逐型真推过 domainExecutor，落兜底线者必须恰好等于登记在案的那一组
+
+[兜底线普查] 已注册 12 型｜落兜底线 1 型：plan_change
+   进真分支：adopt_mitigation → EXECUTION_FAILED(adopt_mitigation：因素「cf-nonexistent-probe」不在处置方案库（params.risk)
+   进真分支：adopt_sim_option → EXECUTED
+   进真分支：AOP情景拍板 → EXECUTION_FAILED(annual scenario __census_probe__ not found)
+   进真分支：校准参数变更 → EXECUTION_FAILED(calibration proposal not found)
+   进真分支：采纳经营方案 → EXECUTION_FAILED(采纳经营方案：payload 不合契约（pathKey: Invalid input: expected string,)
+   进真分支：定稿月度计划版本 → EXECUTED
+   进真分支：计划版本变更 → EXECUTED
+   进真分支：采纳产能保障方案 → EXECUTION_FAILED(采纳产能保障方案：payload.levers 为空——无可写入的杠杆，拒绝空转（不假装已采纳）)
+   进真分支：采纳产能预测结论 → EXECUTED
+   进真分支：对象数据变更 → EXECUTION_FAILED(object not found: __census_probe__)
+   进真分支：流水线发布物化 → EXECUTION_FAILED(entity node not found: n1)
+
+ ✓ test/action-plan-change-levers.seam.test.ts (17 tests) 317751ms
+   ✓ plan_change（非 global-sim）· 按 payload 形态二分：带杠杆真写 / 无杠杆诚实失败 > 金丝雀（先自证检查手法）：`对象数据变更` 走同一套「审批→回读核对」必须看得见真值变化  32383ms
+   ✓ plan_change（非 global-sim）· 按 payload 形态二分：带杠杆真写 / 无杠杆诚实失败 > ★ 主判据：plan_change 带 levers → 审批后 Equipment.oee_current **在仓储里真的变了**  21310ms
+   ✓ plan_change（非 global-sim）· 按 payload 形态二分：带杠杆真写 / 无杠杆诚实失败 > 诚实边界①：sim_sandbox 结论（patch.simulated:true·无杠杆）→ 失败且点名「仿真不得回流真实」，真值零动  23193ms
+   ✓ plan_change（非 global-sim）· 按 payload 形态二分：带杠杆真写 / 无杠杆诚实失败 > 诚实边界②：order-chain 结论的无杠杆形态（「可接」无附加条件 / 生产者反查不到对象）→ 失败且点名「没有 levers 落点」  17672ms
+   ✓ plan_change（非 global-sim）· 按 payload 形态二分：带杠杆真写 / 无杠杆诚实失败 > ★ 主判据③（WO-PLAN-CHANGE-LEVER-MAP）：order-chain 结论带真域映射 levers → Order 属性逐字段真落库 + 派生重算  19464ms
+   ✓ plan_change（非 global-sim）· 按 payload 形态二分：带杠杆真写 / 无杠杆诚实失败 > ★ 主判据④（WO-PLAN-CHANGE-LEVER-MAP）：协调加产 intent:coordinate_capacity 带 levers → Order.outsourceRatio 真落库  20104ms
+   ✓ plan_change（非 global-sim）· 按 payload 形态二分：带杠杆真写 / 无杠杆诚实失败 > 变异反证（摘掉 lever 映射 ⇒ 回到诚实失败）：同一协调加产载荷摘掉 levers → EXECUTION_FAILED 且点名 levers  18182ms
+   ✓ plan_change（非 global-sim）· 按 payload 形态二分：带杠杆真写 / 无杠杆诚实失败 > 原子性：杠杆行缺 value → 拒绝臆造写入，且**一个字节都不写**  17126ms
+   ✓ 兜底线普查 · 「还剩几型审批通过后什么都不写」由机器数，不由人推算 > 逐型真推过 domainExecutor，落兜底线者必须恰好等于登记在案的那一组  29252ms
+   ✓ 采纳经营方案 · 契约拒绝 ⇒ 诚实失败（**拒绝臆造写入**，非法载荷不得进台账） > 契约不过的载荷 → 审批后诚实失败（「payload 不合契约」），且 scheme_adoptions 台账零条  25230ms
+   ✓ 采纳经营方案 · 契约拒绝 ⇒ 诚实失败（**拒绝臆造写入**，非法载荷不得进台账） > 硬约束（业务已裁定·勿改）：采纳动作**绝不覆盖**经营目标基线 —— 真落台账后 plan_generate 输出逐字节相同  18356ms
+   ✓ WO-C0828-P1 · adopt_sim_option 写 Line.utilization 后 utilPressure 同步 > 数据检查：全量 Line 的 utilization 都是数值型（否则派生 evalArithmetic 会归零）  14249ms
+   ✓ WO-C0828-P1 · adopt_sim_option 写 Line.utilization 后 utilPressure 同步 > E3-b′：adopt_sim_option 审批后 Line.utilization 与 utilPressure 都变成拨定值  16157ms
+   ✓ WO-C0828-P1 R3′ · adopt_sim_option 后规格层派生跟随 > E3-b′ 臂①：Material.leadTime → shortageRisk 按 material_shortage_risk 式子跟随  14632ms
+   ✓ WO-C0828-P1 R3′ · adopt_sim_option 后规格层派生跟随 > E3-b′ 臂②：Process.utilization → queuePressure 按 process_queue_pressure 式子跟随  15156ms
+   ✓ WO-C0828-P1 R3′ · adopt_sim_option 后规格层派生跟随 > 规格层聚合 DSL（out(/in(）在运行期诚实跳过、不炸批、不生成新格  15236ms
+
+ Test Files  5 passed (5)
+      Tests  56 passed (56)
+   Start at  14:23:34
+   Duration  625.98s (transform 17.61s, setup 0ms, collect 130.62s, tests 1320.05s, environment 2ms, prepare 4.69s)
+

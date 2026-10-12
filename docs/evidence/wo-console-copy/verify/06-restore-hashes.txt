@@ -1,0 +1,11 @@
+== 还原后：本单 6 个源文件 vs 交付 commit 的 blob 哈希（变异实验后必须全部相同）==
+  相同  19f61fd76c05ef6338a5191a713530f1075974fc  apps/frontend-shell/src/views/sim/DecisionConsoleView.tsx
+  相同  126f253263eab241271e019c39002e9e6ea46788  apps/frontend-shell/src/views/sim/DecisionConsoleView.module.css
+  相同  b20e077e97ef06768716c933ba6d585d1f4cc222  apps/frontend-shell/src/views/sim/decisionConsoleModel.ts
+  相同  f0c783f5afab02c807ca95bf08346ddcd3f641ee  apps/frontend-shell/test/decision-console-model.test.ts
+  相同  abaa412e4a60177a1c8673652ca77edef645d8bd  apps/frontend-shell/test/e2e/console-copy-verify.mjs
+  相同  0bf9190d8c85baade87f8203ff566005cc5666b3  packages/contracts/src/sim-drill.ts
+
+== 变异实验的备份文件（/tmp，若已蒸发可从本 commit 重新取源）==
+  133234 /tmp/mutA-view.bak
+  51443 /tmp/mutB-model.bak

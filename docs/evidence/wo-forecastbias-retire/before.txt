@@ -1,0 +1,24 @@
+🐤① 生产播种序列：派生规格 29 条 · 播种期全量初算物化 2825 个对象
+
+══ model_forecast_bias 规格：status=ACTIVE unsatisfiedDeps=null
+🐤④ tick0 出处表两档都非空：measured=4189 · derived=2192（总 6381 格）
+
+══ Model.forecastBias · tick0 世界态逐个 ══   (Model 对象 6 个 / 进世界 6 个)
+   obj_model_2170-NCM     forecastBias=     0  provenance=measured   o.props.forecastBias=0
+   obj_model_4680-LFP     forecastBias=     0  provenance=measured   o.props.forecastBias=0
+   obj_model_4680-NCM     forecastBias=     0  provenance=measured   o.props.forecastBias=0
+   obj_model_圆柱-LFP       forecastBias=     0  provenance=measured   o.props.forecastBias=0
+   obj_model_方形-LFP       forecastBias=     0  provenance=measured   o.props.forecastBias=0
+   obj_model_方形-NCM       forecastBias=     0  provenance=measured   o.props.forecastBias=0
+   🐤② 进世界的 Model 数 = 6 ✅
+
+🐤③ 反向金丝雀 Material.priceShock 8 格 = [2,2,2,2,2,2,8,2]
+
+══ Order.demandPressure · tick0（负边落点）n=150 min=0 均值=26.286667 max=60 合计=3943
+
+══ 出处话术（屏上那句）══
+   两档取值。① 真读数：状态变量名恰好是该对象的一个数值属性时，直接取该属性的值，不做任何二次折算（该属性自己的口径见对象类型里它的说明）；本次命中 Base.loadIndex、Customer.receivablePressure、DefectRecord.defectPressure、Equipment.equipmentFailure、Equipment.loadPressure、FinishedGoodsInventory.coverDays、Line.blockedPressure、Line.utilPressure、Material.priceShock、Material.shortageRisk、MaterialBalance.gapPressure、MaterialBatch.procurementDelay、Model.costPressure、Model.demandLoad、Model.forecastBias、Model.supplyRisk、Order.costPressure、Order.demandPressure、Order.leadDays、Order.qty、Order.shortageRisk、Order.unitPrice、Process.queuePressure、PurchaseOrder.expeditePressure、PurchaseOrder.procurementDelay、Supplier.deliveryDelay、Supplier.procurementDelay、WIPLot.feedPressure、WorkOrder.releasePressure。② 派生占位：其余格子 round(hash01(`${objectId}|${stateVar}`) × 100)（FNV-1a · 与前端 deriveBaseSnapshot 同式）。
+
+══ 真跑 1 拍 · 全图唯一负系数边 `demo_forecast_bias_to_order_demand`：trace 0 行 / 传导量合计 0   （全表 trace 5810 行 / 33 条边 ⇐ 🐤 证明取法有鉴别力）
+   24 拍后 Order.demandPressure     n= 150 min=    0.000000 均值=    0.000402 max=    0.000917
+   24 拍后 Model.forecastBias       n=   6 min=    0.000000 均值=    0.000000 max=    0.000000

@@ -1,0 +1,51 @@
+WO-BUILTIN-MIGRATE-REST · 交付边界（每个批次末回写这一份）
+========================================================
+台账定义：**已迁** = 该工具的出厂授予面已改挂 DSH 原生 MCP 面（`mcp__builtin__*` / 各自专属 server），
+执行体不变（同一只 GuardedToolExecutor）。判据是**授予面**，不是「server 广告里有没有它」
+（内置工具 server 从上一单起就广告全部 25 件 —— 广告 ≠ 可调用：可调用面由 toolFilter/允许表收窄）。
+
+批次进度
+--------
+批次 0（前两单）：query_objects（试点件）· evaluate_rules（规则面）· plan_slice / resolve_slice（本体面）
+批次 1：get_object · aggregate_objects · search_knowledge · query_timeseries_agg · search_experience
+批次 2：discover · retrieve_knowledge · query_ontology · query_system_ontology
+批次 3：get_breakpoint · impact_of · read_skill_resource · create_action_draft · invoke_solver
+批次 4（WO-BUILTIN-BATCH4 交付）：fill_data · run_synthetic · build_domain · sim_init · sim_tick
+（证据在 `docs/evidence/wo-builtin-batch4/`；分支 `claude/handoff-builtin-batch4`）
+批次 5（**收尾批** · WO-BUILTIN-BATCH5-LAST 交付）：sim_world · sim_certify ·
+discover_growth_tickets · claim_growth_ticket · submit_growth_ticket
+（证据在 `docs/evidence/wo-builtin-batch5/`；分支 `claude/handoff-builtin-batch5`）
+
+仍未迁（批次 5 结束时）
+---------------------
+**本 server（`mcp__builtin__*`）花名册上已无未迁件**（判据：`BUILTIN_MCP_TOOL_NAMES` − `BUILTIN_MIGRATED` = ∅，
+接缝套件「前置自证」现算这一条并钉死；反向通道的活金丝雀随之换锚到跨面那件）。
+反向通道上还剩 **1 件，跨面**（不属本 server 花名册，逐条自有出处）：
+· `evaluate_rules` —— 它在**规则面**（`mcp__rules__*`）上。`agt_seed_analyst` 早已改挂 MCP 面（批次 0）；
+  而 `agt_risk_advisor` 与**通用 agent** 仍是**裸 BUILTIN** 授予 —— 同一能力两条授予路并存。
+  ⚠ **本批未动，也判它不属本批**（三条理由，逐条可查）：
+  ① 交付边界 = 本 server 花名册（5 件），它是**另一条线**（`WO-BUILTIN-TO-DSH` 的规则面）的口；
+  ② 动它要连**另一条线的接缝套件**一起动 —— `dsh-rules-mcp.seam.test.ts` 的「旧载体金丝雀」
+     （反向面 + MCP 面 = 花名册全量）**正读通用 agent 的裸名面这一格**，改它必须同步该套件；
+  ③ 通用 agent 那一格也是本文件所在接缝套件 `EXPECT_GENERAL_BARE` 的锚（跨套件依赖，不能各改各的）。
+
+本单**不迁**的遗留面（不是漏做，是结构性留白，逐条给判据）
+--------------------------------------------------------
+· `skill-probe.ts` 的探针/孪生 agent：裸 BUILTIN 授予（query_objects / get_object / invoke_solver /
+  evaluate_rules / retrieve_knowledge / read_skill_resource）+ `mcpServers: []`。
+  它们的授予面来自**代码构造**而不是 agent 配置；改它要连 skill 评测的双臂差分一起动（`mcpServers` 非空
+  会引入第二个变量），属另一张单。
+· `router/orchestrator.ts` `buildExploratoryTools`：场景包白名单仍产出裸 BUILTIN 名 + hostTools 反向通道
+  （上一单的交付边界里已登记为「另一张单」：那一条的授予面是**场景包数据**不是 agent 配置）。
+  ⚠ **批次 5 复核（本批 5 件是否必经此路）**：本批 3 件在这条路上（`sim_world`/`sim_certify` 走
+  `simCommanderOn` 分支、`discover_growth_tickets` 走 READ 分支），另 2 件（claim/submit）本就不在这条路上
+  （ACTION_DRAFT ⇒ 只认 `create_action_draft`）。**但这条路对已迁件**（批次 0–4 的 query_objects /
+  fill_data / sim_init …）**同样产出裸名** ⇒ 它不是本批 5 件引入的，也不是本批能收的：
+  该路每件**只有一条**载体（裸 BUILTIN + hostTools），不存在「同一能力两条授予路」这个病；
+  它的授予面是**场景包数据**（`seedScenarioPackage().toolWhitelist`），不是 agent 配置 ⇒ 改它要连
+  场景包配置面一起动，属另一张单。本批对该路**零改动**（`buildExploratoryTools` 不读迁移台账）。
+· sim 的 **entitlement 门**（`simCommanderEnabled`）本就在**指挥台 NL / 场景包路**（orchestrator），
+  **不在 agent 配置路** —— 出厂通用 agent 的边（`BUILTIN_TOOLS` 过滤）**迁前就无条件含** sim 四件，
+  本批只换其中两件的载体 ⇒ **entitlement 语义一字未变**（迁前迁后同权）。
+  要收它 = 改「feature 关时 agent 配置路该不该看得见 sim 工具」，那是**产品/entitlement 决策**，
+  不是本单的载体迁移；本批按兵不动并在此点名。

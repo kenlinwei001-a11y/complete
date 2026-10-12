@@ -1,0 +1,368 @@
+═══ WO-PROBE-BSD-FIX · 探针便携性修复 · 证据档 ═══
+取证时刻 : 2026-10-05 12:15:47 CST
+base commit: 837b44dfa（协调方最后探到的 tip = 本档『修前』读数一律取自它）
+分支 tip  : 0f05c5bad（claude/handoff-probe-bsd-fix，已 push，SSH 复核见 §5）
+本档性质 : 每个读数都是真跑；否定结论一律配『必然命中』对照；坏工具与真没有分开报。
+
+════════════════════════════════════════════════════════════════════
+§0 本机实现识别表（每格都是**实测实现**：--version 或必然命中测试；⛔ 不靠「macOS ⇒ BSD userland」推断；未判项单列）
+════════════════════════════════════════════════════════════════════
+
+  ⚠ 本机**同一个命令名有两套实现，取决于在哪个解释器里跑** —— 这是本档最重要的一行：
+
+    上下文 A = bash scripts/*.sh（脚本真实解释器，也是本 WO 的修复对象）
+    上下文 B = Claude Code 的工具 shell（shell 快照里植入了同名函数，函数体实测为：
+               find () { ... ARGV0=bfs "${CLAUDE_CODE_EXECPATH}" -S dfs -regextype findutils-default ... }）
+               ⇒ 复现方式：zsh -c "source <snapshot>; find --version"
+
+    命令   | 上下文A: bash（脚本真实解释器）  | 上下文B: 工具 shell（快照 shim）
+    ---------+----------------------------------------------+------------------------------------
+    find     | find: illegal option -- -  [/usr/bin/find]   | bfs 4.1.1  [函数 shim]
+    grep     | grep (BSD grep, GNU compatible) 2.6.0-FreeBSD | ugrep 7.5.0 x86_64-apple-macosx +avx2; -
+    ps       | /bin/ps(BSD · 无 --version)                | /bin/ps(同一支)
+    bash     | GNU bash, version 3.2.57(1)-release (x86_64-apple-darwin22) | （同左）
+    stat     | stat: illegal option -- c                    | （同左；实测 -f%z 可用：213）
+    date     | date: illegal option -- d                    | （同左；实测 -r 可用：1970）
+
+  自证方式（不是推断）：
+    · find : 上下文A 回 find: illegal option -- -（BSD find 不认 --version）；上下文B 回 bfs 4.1.1。**同一命令名，两条实现。**
+    · grep : 上下文A 回 BSD grep, GNU compatible 2.6.0-FreeBSD；上下文B 回 ugrep 7.5.0。
+    · ps   : 两上下文同为 /bin/ps；ps -eo pid,args --no-headers 回 ps: illegal option -- -（5 行 stderr），
+             真进程表 462 行 ⇒ 必须用 tail -n +2 剥表头。
+    · 未判项：timeout 是否存在（两上下文都没有该二进制；脚本里唯一一处在本机不可达，见 §2 末）。
+
+  ★ 由此推出本 WO 的核心判据（不是「哪个写法对」，是「哪个写法两边都对」）：
+    -newermt 的两种写法**语义相反**，各在一侧是坏的 —— 实测矩阵见 §1.5。
+    两边都成立的只有：-mmin / -mtime / -newer <参照文件>。
+
+════════════════════════════════════════════════════════════════════
+§1 逐处修改 · 修改前后读数
+════════════════════════════════════════════════════════════════════
+
+── §1.1 CJK 吞变量名（**实测 9 处 / 8 行**，同一形态：变量名后直接跟全角字符 → 全角首字节被并进变量名 → set -u 下该行整脚本中止）──
+   定位方式 = **按内容**从真文件里 grep 出片段（不按行号、不手抄）：改前取自 837b44dfa 的 blob，改后取工作区。
+   ⚠ 本档早先一版曾按**写死的行号**抽行 —— 行号在两版之间会漂，抽到的是 else/无关行（已作废，故改为内容定位）。
+
+   文件                     改前片段       RC     改后片段               RC/输出
+   scripts/dispatch-collision.sh $f（              RC=127  [bash: f�: unbound variable] ${f}（                    RC=0    [OK（尾巴]
+   scripts/dispatch-deficit.sh $AGENTS」         RC=127  [bash: AGENTS�: unbound variable] ${AGENTS}」               RC=0    [OK」尾巴]
+   scripts/dispatch-deficit.sh $HERE。           RC=127  [bash: HERE�: unbound variable] ${HERE}。                 RC=0    [OK。尾巴]
+   scripts/dispatch-deficit.sh $MAIN_WT（        RC=127  [bash: MAIN_WT�: unbound variable] ${MAIN_WT}（              RC=0    [OK（尾巴]
+   scripts/dispatch-deficit.sh $QUEUE」          RC=127  [bash: QUEUE�: unbound variable] ${QUEUE}」                RC=0    [OK」尾巴]
+   scripts/dispatch-deficit.sh $STRAY_BR）       RC=127  [bash: STRAY_BR�: unbound variable] ${STRAY_BR}）             RC=0    [OK）尾巴]
+   scripts/gate-resumable.sh  $CKPT）           RC=127  [bash: CKPT�: unbound variable] ${CKPT}）                 RC=0    [OK）尾巴]
+   scripts/gate.sh            $root）           RC=127  [bash: root�: unbound variable] ${root}）                 RC=0    [OK）尾巴]
+   scripts/install-guard-hooks.sh $HOOK）           RC=127  [bash: HOOK�: unbound variable] ${HOOK}）                 RC=0    [OK）尾巴]
+   计数：本表共 9 处、分布在 8 **行**上 —— 提交信息 9aa9b830e 里写的是「8 行」，与实测不矛盾：
+     dispatch-deficit.sh 的『可能改错副本』那一行里有**两处**（$MAIN_WT（ 与 $STRAY_BR）），按行 8、按处 9。
+   ⚠ 未复现（如实报）：session-resume.sh 在 837b44dfa 上**没有**此类行（同一正则 0 命中）。
+     4c55b3144 重写该文件时，我自己在**新增行**上撞了这个坑（RC=127 当场中止），
+       被本 WO 的 harness 咬住后在提交前改成 ${} 形式 ⇒ 不记作「既有病灶」，只记作该形态的活体演示。
+   ⚠ 同一正则对 5 个真文件命中 9 处、对 session-resume.sh 命中 0 处 —— 这两个数一起看才说明『量法是活的』。
+
+── §1.1b 机制自证（两级金丝雀：必中 + 必不中）──
+   bash 版本: 3.2.57(1)-release  LANG=zh_CN.UTF-8  LC_ALL=<空>
+   ── ① 必然命中对照（这个变量确实存在，应该正常展开）──
+     裸 $V 结尾                      RC=0   输出=[OK]
+     大括号 ${V} 结尾              RC=0   输出=[OK]
+   ── ② 病灶形态：变量紧跟全角字符 ──
+     $V（全角左括号               RC=127 输出=[bash: V�: unbound variable]
+     ${V}（全角左括号             RC=0   输出=[OK（x）]
+     $V」全角右引号               RC=127 输出=[bash: V�: unbound variable]
+     $V，全角逗号                  RC=127 输出=[bash: V�: unbound variable]
+     $V。全角句号                  RC=127 输出=[bash: V�: unbound variable]
+     $V　全角空格                  RC=127 输出=[bash: V�: unbound variable]
+   ── ③ 必然不命中对照（变量不存在，必须报 unbound）──
+     $NOSUCHVAR（不存在）          RC=127 输出=[bash: NOSUCHVAR�: unbound variable]
+     ${NOSUCHVAR}（不存在）        RC=127 输出=[bash: NOSUCHVAR: unbound variable]
+
+   双向金丝雀（缺一个就不许信上表）：
+     pos  RC=0 | 正确写法 值（全角括号）
+     neg  RC=1 | /tmp/wo-probe-bsd/_canary_neg.sh: line 4: FOO�: unbound variable
+
+── §1.2 gate-resumable.sh 的 declare -A（bash 3.2 上整脚本中止，且 RC=0）──
+   （夹具自证：oldver/scripts 里 ${BASE} 版存在=是 · newver 版与工作区逐字节同=是）
+   修前 --status RC=0   输出行数=1    首行=/tmp/wo-probe-bsd/oldver/scripts/gate-resumable.sh: line
+   修后 --status RC=0   输出行数=10   首行=═══ gate-resumable · commit aecd068 · 2026-10-05 12:15:4
+   修后 --status 逐行（证明五个包真的被列出、datacore 真的分成 4 片）：
+     ═══ gate-resumable · commit aecd068 · 2026-10-05 12:15:49 · 机器已运行 52288 分钟 ═══
+     检查点：/tmp/claude-0/-home-user-complete/3f5e96d7-59cd-5a3f-aa1a-9551fc6f8f15/scratchpad/gate-ckpt-aecd068.txt
+       ⬜ @platform/contracts
+       ⬜ @platform/llm-adapters
+       ⬜ frontend-shell
+       ⬜ agentcore
+       ⬜ datacore#1/4
+       ⬜ datacore#2/4
+       ⬜ datacore#3/4
+       ⬜ datacore#4/4
+
+── §1.3 task-probe.sh 空目标假绿：传一个不存在的路径时曾印 ✅ 且 RC=0 ──
+   修前（837b44dfa 的 blob，真跑）：RC=0
+     declare: usage: declare [-afFirtx] [-p] [name[=value] ...]
+     ✅ 所有目标在 1800s 内都有写入 —— 无可疑任务。
+   修后（工作区，同一路径）：RC=2
+     ⛔ 一个可探的目标都没有：你给的 1 个路径**都不存在**（或都不可读）。
+        ⇒ 这不是「全部健康」，是**没探成**。路径拼错时，本探针的 ✅ 一个字都不作数。
+   必然命中对照：同一支探针探一个**真存在**的目标（本脚本自己，1800s 内刚被写过）时，判决必须相反：
+          → 长跑 gate 的正常形态就是这样（日志到阶段末才写、命令行不含日志名）。
+            要定性请直接看：ps -eo pid,etime,args | tail -n +2 | awk '/gate\.sh/ && !/awk/'
+   （旧版同一目标下的判决：✅ 所有目标在 1800s 内都有写入 —— 无可疑任务。）
+
+── §1.4 unpushed-watch.sh：「没有 upstream」不度量「一次都没推过」（四态夹具，旧版 vs 新版并排）──
+   旧版源码取自 837b44dfa:scripts/unpushed-watch.sh（⚠ 早先一版误取了 HEAD: ⇒ 拿到的是**修后**的脚本，已作废）
+   ══ 夹具真值（独立来源，不经过被测脚本）══
+     pushed-no-upstream   分支=pushed-no-upstream   远端 tip=4d4bc7b4   本地 HEAD=4d4bc7b    一致=是
+     never-pushed         分支=never-pushed         远端 tip=           本地 HEAD=851abdd    一致=否
+     clean-pushed         分支=clean-pushed         远端 tip=03815ead   本地 HEAD=03815ea    一致=是
+     ahead-1              分支=ahead-1              远端 tip=4033ac72   本地 HEAD=71a19e0    一致=否
+   
+   ══ 旧版（837b44dfa:scripts/unpushed-watch.sh，@{u} 判据）（RC=1）══
+       ⚠ ahead-1                      未提交=0    未推=1   
+           /private/tmp/wo-probe-bsd/upw2/agent-ahead-1
+       ⚠ never-pushed                 未提交=0    未推=0     ⛔ 无 upstream（一次都没推过）
+           /private/tmp/wo-probe-bsd/upw2/agent-never-pushed
+       ⚠ pushed-no-upstream           未提交=0    未推=0     ⛔ 无 upstream（一次都没推过）
+           /private/tmp/wo-probe-bsd/upw2/agent-pushed-no-upstream
+     ⛔ 3/4 个 worktree 有产出悬空 —— 容器一重启就没了。
+     [夹具目录=agent-* 四个：pushed-no-upstream / never-pushed / clean-pushed / ahead-1]
+   
+   ══ 新版（工作区 scripts/unpushed-watch.sh，远端 tip 判据）（RC=1）══
+       ⚠ ahead-1                      未提交=0    未推=1     ⛔ 远端同名分支停在 4033ac72，本地 HEAD 是 71a19e09 —— 有提交没推
+           /private/tmp/wo-probe-bsd/upw2/agent-ahead-1
+       ⚠ never-pushed                 未提交=0    未推=1     ⛔ 远端**确实没有** never-pushed（ls-remote 成功且查无此名），且有 1 个提交不在任何远端分支上 —— 只在本地
+           /private/tmp/wo-probe-bsd/upw2/agent-never-pushed
+     ⛔ 2/4 个 worktree 有产出悬空 —— 容器一重启就没了。
+     [夹具目录=agent-* 四个：pushed-no-upstream / never-pushed / clean-pushed / ahead-1]
+
+── §1.5 find -newermt 两实现语义相反（夹具：1 个刚写 + 1 个 2020 年的文件）──
+   必然命中对照（证明 find 本身活着）：目录内文件总数 = 2
+   写法                         实现                   读数
+   -newermt @1759600000           bfs（工具 shell）    /tmp/wo-probe-bsd/fixture-find/now.txt
+   -newermt @1759600000           BSD（bash）            find: Can't parse date/time: @1759600000
+   -newermt '-120 minutes'        bfs（工具 shell）    bfs: error: bfs -S dfs -regextype findutils-default /tmp/wo-probe-bsd/fixture-find -type f -newermt "-120 minutes" -print
+   -newermt '-120 minutes'        BSD（bash）            /tmp/wo-probe-bsd/fixture-find/now.txt
+   -mmin -120   ★采用         bfs（工具 shell）    /tmp/wo-probe-bsd/fixture-find/now.txt
+   -mmin -120   ★采用         BSD（bash）            /tmp/wo-probe-bsd/fixture-find/now.txt
+   -mtime -30                     bfs（工具 shell）    /tmp/wo-probe-bsd/fixture-find/now.txt
+   -mtime -30                     BSD（bash）            /tmp/wo-probe-bsd/fixture-find/now.txt
+   -newer <参照文件>          bfs（工具 shell）    /tmp/wo-probe-bsd/fixture-find/now.txt
+   -newer <参照文件>          BSD（bash）            /tmp/wo-probe-bsd/fixture-find/now.txt
+   ⚠ 协调方点名的『把 stderr 行数当结果数』陷阱，原样复现：
+     bfs 形 find ... 2>&1 | wc -l = 10（真文件数只有 2 ⇒ 这 10 行是报错文本）
+     -mmin 形 find ... 2>&1 | wc -l = 1（正确写法下 stderr 为空）
+
+── §1.6 其余三个脚本：逐处改前/改后读数（改前 = 各自修复提交的父提交 blob，改后 = 工作区）──
+
+   A) scripts/task-probe.sh（修于 1fbd56ed5）—— 四处 mac 专有写法
+      A-1 ps --no-headers（:97 :98 :107 :112）｜实现首列：bash 里 ps = /bin/ps（BSD）
+        改前 ps -eo pid,args --no-headers                   RC=1   行数=0    stderr=ps: illegal option -- -
+        改后 ps -eo pid,args | tail -n +2                   RC=0   行数=466 
+        必然命中对照：同一支 ps 不加 --no-headers 时行数 = 466（>0 ⇒ ps 本身是活的）
+      A-2 declare -A（:58 :61）｜实现首列：bash 3.2.57（无关联数组）
+        改前 declare -A M; M["k"]=1                   RC=2   输出=bash: line 0: declare: -A: invalid option
+        改后 平行数组 KEYS/VALS                   RC=0   输出=datacore=4
+      A-3 stat -c%s / -c%Y（:61 :86）｜实现首列：BSD stat（/usr/bin/stat）
+        改前 stat -c%s /etc/hosts                     RC=1   输出=stat: illegal option -- c
+        改后 stat -f%z /etc/hosts                     RC=0   输出=213
+      A-4 find -newermt "@epoch"（:52）→ 见 §1.5 矩阵（bsf 认 @epoch、BSD 认相对时间，两边都成立的是 -mmin）
+
+   B) scripts/killby.sh（修于 20e21c338）—— 自建假进程真跑：起 → 看见 → 杀 → 看见它没了
+        夹具：假进程 argv 含 'PROBEFAKE-killby-6119' · 已起 (bg pid 6958) · 进程表里看得见 = 1 条（必中对照，0 就是夹具坏了）
+        改前 RC=1 输出：
+           /tmp/wo-probe-bsd/OLD-killby.sh: line 19: mapfile: command not found
+           /tmp/wo-probe-bsd/OLD-killby.sh: line 22: PIDS: unbound variable
+           /tmp/wo-probe-bsd/OLD-killby.sh: line 23: PIDS: unbound variable
+           /tmp/wo-probe-bsd/OLD-killby.sh: line 24: PIDS[@]: unbound variable
+        ⇒ 杀完复扫：假进程仍在 = 1 条（旧版在 mac 上『一行都不杀』，这正是病灶）
+/tmp/wo-probe-bsd/gen-evidence.sh: line 194:  6958 Killed: 9               bash "$D/${KT}.sh"
+        改后 RC=0 输出：
+           killby: 匹配 1 个 → 6958
+           killby: 已发 SIGKILL，本 shell(pid=6993)/父(pid=6992) 已排除
+        ⇒ 杀完复扫：假进程仍在 = 0 条（0 = 真杀了）
+        （本段内若出现 shell 的 Killed: 9 通报 —— 那是第三个独立证据：被杀的正是那个 bg 作业。⛔ 本行原文一开始误用了反引号，被 shell 当命令替换执行掉，已改回纯文本。）
+        反向对照（保证不存在的 key）RC=0：killby: 无匹配 'q7x2-nobody-6119'（0 个进程；金丝雀：进程表 474 行 ⇒ ps 管道是活的）
+        清理：本段只起过上面这一个假进程，且只被 killby 以确切 pid 杀掉；未用 pkill -f。
+
+   C) scripts/claim-check.sh（修于 837b44dfa）—— 端口探针假绿 + dist 判据恒坏
+      C-1 端口（cmd_port）：BSD ps 回 illegal option ⇒ pids 恒空 ⇒ 每次印 ✅
+         （⚠ 两个版本都在**真仓**里跑：claim-check 自己要先定位 git 顶层，在 /tmp 下跑会得到无关的 RC=2。）
+        改前（837b44dfa 的 blob，真跑）RC=0  ：
+           ps: illegal option -- -
+           ✅ 无存活服务进程，端口 4001 可用
+        改后（同一命令）RC=1  ：
+           🔴 有存活的服务进程，起新的会 EADDRINUSE 并**静默失败**（旧的继续答你）：
+                 6106 一 10/ 5 12:15:46 2026      node --max-old-space-size=8192 apps/datacore/dist/server.js
+        ⇒ 同一台机器、同一秒钟：旧版印 ✅「端口可用」(RC=0)，改后列出存活服务 21 条并 RC=1。
+      C-2 dist（cmd_dist）：根因是 GNU 专有的 find -printf
+        夹具自证（干净树：0）· 态① dist(2026-02) 比 src(2026-01) 新 ⇒ 应判 ✅
+        基线 find <dir> -type f -printf '%T@\n'（bash/BSD find） RC=1   输出=find: -printf: unknown primary or operator
+        态①（dist 新）改前 RC=2   输出=⛔ 读不到时间戳 —— 工具坏了，不许判「新鲜」
+        态①（dist 新）改后 RC=0   输出=✅ datacore dist 不比 src 旧
+        态②（src 新）改后 RC=1   输出=🔴 datacore 的 dist **过期**：源码比产物新
+        态②（src 新）改前 RC=2   输出=⛔ 读不到时间戳 —— 工具坏了，不许判「新鲜」  ⇒ 旧版**不分状态**，两个态都恒 RC=2「工具坏了」
+
+════════════════════════════════════════════════════════════════════
+§2 同族横扫（scripts/*.sh）· 每条构造真跑 · 双向对照
+════════════════════════════════════════════════════════════════════
+   横扫在 bash（脚本真实解释器 ⇒ BSD grep）下跑，全文见 /tmp/wo-probe-bsd/sweep2-bash.txt，RC=0
+   金丝雀：必中 set -uo pipefail = 13 处（>0 ⇒ grep 活）；必不中（保证不存在的串）= 0 处
+
+   （下面先原样贴出扫面的头部三块：实现自证 / 双向金丝雀 / 逐条构造 —— 都是本次真跑的原文）
+   ═══ 同族横扫 v2 · scripts/*.sh · 2026-10-05 12:13:51 · HEAD 0f05c5bad · 上下文=bash(bash) ═══
+   
+   ── 第一列：本机到底是哪条实现（自证，不推断）──
+     find  : find: illegal option -- -   [/usr/bin/find]
+     grep  : grep (BSD grep, GNU compatible) 2.6.0-FreeBSD   [/usr/bin/grep]
+     ps    : ps: illegal option -- - (无 --version) /bin/ps 
+     ps --no-headers 探针: 5 行（必然命中对照：ps -eo pid,args | wc -l = 450 行）
+     bash  : GNU bash, version 3.2.57(1)-release (x86_64-apple-darwin22)
+     awk   : awk version 20200816
+   
+   ── 金丝雀（必然命中，证明下面的 grep 是活的）──
+     必中: grep -n 'set -uo pipefail' scripts/*.sh 命中 = 13 处（>0 即 grep 活）
+     必不中（反向对照）: 查一个保证不存在的串 = 0 处
+   
+   ── find -newermt（★本机两实现语义相反，见头注） ── 命中 2 处
+        scripts/task-probe.sh:30:#   ④ `find -newermt "@<epoch>"` ⇒ BSD find 不认 `@epoch`（`Can't parse date/time`）⇒ 目标枚举恒空。
+        scripts/unpushed-watch.sh:41:#     `find --version` = **bfs 4.1.1**；`-newermt '-120 minutes'` ⇒ `bfs: error: Invalid timestamp.`（相对日期不认）
+   ── [活代码·剔注释] find -newermt（只算非注释行） ── 命中 0 处
+   ── find -printf（GNU 专有） ── 命中 1 处
+        scripts/claim-check.sh:67:  # ⚠ 原写法 `find … -printf '%T@ %p\n' | sort -rn | head -1` 是 GNU 专有：BSD find **没有 -printf**
+   ── ps --no-headers（BSD ps 不认，静默回 0 行） ── 命中 4 处
+        scripts/claim-check.sh:150:  # ⚠ 原写法 `ps … --no-headers` 是 GNU 专有：BSD ps 回 `illegal option -- -`、**一行进程都不回**
+        scripts/killby.sh:25:#   ② `ps -eo pid,args --no-headers` 是 GNU 写法 ⇒ BSD ps 回 `illegal option -- -`、
+        scripts/session-resume.sh:45:# ⚠ 原来的 `ps -eo args --no-headers` 是 GNU 写法 ⇒ BSD ps 回 `illegal option -- -`、**一行都不回**
+        scripts/task-probe.sh:25:#   ① `ps -eo pid,args --no-headers` ⇒ BSD ps 回 `illegal option -- -`，**一行进程都不回**（RC=1）
+   ── ps --ppid ── 命中 0 处
+   ── mapfile / readarray（bash 3.2 无） ── 命中 4 处
+        scripts/dispatch-collision.sh:42:# ⚠ `mapfile` 是 bash 4+ 内建，而本机（macOS）系统 bash 是 **3.2** ——
+        scripts/dispatch-collision.sh:43:#   原写法在本机每一跑都是 `mapfile: command not found` + `ALL: unbound variable`，
+        scripts/killby.sh:22:#   ① `mapfile` 是 bash 4+ 内建，本机 bash 是 **3.2** ⇒ `mapfile: command not found`
+        scripts/killby.sh:26:#      **一行进程都不回** ⇒ 就算有 mapfile 也永远匹配不到任何进程。
+   ── declare -A（bash 3.2 无） ── 命中 4 处
+        scripts/gate-resumable.sh:61:# ⚠ 原来是 `declare -A SHARDS=( ["datacore"]=4 )`（关联数组）。本机系统 bash 是 **3.2**，没有关联数组，
+        scripts/task-probe.sh:27:#   ② `declare -A`（关联数组）⇒ bash 3.2 没这个内建 ⇒ SZ1/MT1 一个元素都没有 ⇒ SUSPECT 恒空
+        scripts/task-probe.sh:104:# ⚠ 原来是 `declare -A SZ1 MT1`（关联数组）。本机系统 bash 是 **3.2**，没有关联数组：
+        scripts/task-probe.sh:105:#   `declare -A` 报 invalid option，随后按**文件名**当下标的赋值全部 `syntax error: operand expected`
+   ── sed -i（BSD 形是 sed -i ''） ── 命中 0 处
+   ── date -d（BSD date 不认） ── 命中 2 处
+        scripts/session-resume.sh:27:#   时刻格式化：GNU 是 `date -d @<epoch>`，BSD 是 `date -r <epoch>`（BSD date **不认 -d**，实测 `illegal option -- d`）。
+        scripts/session-resume.sh:37:  BOOT_HHMM=$(date -d "@${_BOOT_AT}" '+%H:%M:%S' 2>/dev/null || date -r "${_BOOT_AT}" '+%H:%M:%S' 2>/dev/null || echo "未判定")
+   ── timeout（本机不存在） ── 命中 5 处
+        scripts/gate.sh:79:if command -v setsid >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then
+        scripts/gate.sh:178:    setsid timeout --signal=TERM --kill-after=15s "${secs}s" "$@" > "$tmp" 2>&1 &
+        scripts/gate.sh:182:    # macOS 路（本机实测 setsid / timeout 二进制都不存在）。两件替代：
+        scripts/gate.sh:460:  #    改走 capture()（文件重定向 + timeout + 独立进程组），理由见 capture() 头注。
+        scripts/run-l4-realbackend.sh:27:  timeout 180 node scripts/e2e-realbackend.mjs
+   ── grep -P（BSD grep 不认） ── 命中 0 处
+   ── readlink -f ── 命中 0 处
+   ── stat -c（BSD 不认） ── 命中 4 处
+        scripts/claim-check.sh:74:      t=$(stat -c%Y "$f" 2>/dev/null || stat -f%m "$f" 2>/dev/null) || continue
+        scripts/task-probe.sh:29:#   ③ `stat -c%s` / `-c%Y` ⇒ BSD stat 不认 `-c` ⇒ 大小与时间戳读不到。
+        scripts/task-probe.sh:40:f_size()  { stat -c%s "$1" 2>/dev/null || stat -f%z "$1" 2>/dev/null; }
+        scripts/task-probe.sh:41:f_mtime() { stat -c%Y "$1" 2>/dev/null || stat -f%m "$1" 2>/dev/null; }
+   ── xargs -r ── 命中 0 处
+   ── sort -V ── 命中 0 处
+   ── head -n -N（BSD head 不认负数） ── 命中 0 处
+   ── mktemp -u ── 命中 0 处
+   ── basename -s ── 命中 0 处
+   ── /proc/（macOS 无 /proc） ── 命中 9 处
+        scripts/dispatch-deficit.sh:111:LOAD=$(awk '{printf "%.1f", $1}' /proc/loadavg 2>/dev/null || sysctl -n vm.loadavg 2>/dev/null | awk '{printf "%.1f", $2}' || echo "?")
+        scripts/dispatch-deficit.sh:112:LOAD_INT=$(awk '{print int($1)}' /proc/loadavg 2>/dev/null || sysctl -n vm.loadavg 2>/dev/null | awk '{print int($2)}' || echo 0)
+        scripts/gate-resumable.sh:77:# ⚠ 机器年龄：Linux 读 /proc/uptime；macOS **没有 /proc**（`awk: can't open file`）⇒ 横幅恒印空。
+        scripts/gate-resumable.sh:79:UP_SEC=$(awk '{print int($1)}' /proc/uptime 2>/dev/null)
+        scripts/session-resume.sh:26:#   机器年龄：Linux 读 /proc/uptime；macOS **没有 /proc**，用 kern.boottime 反算（`awk: can't open file /proc/uptime`）。
+   ⚠ 上表里『[活代码·剔注释] find -newermt = 0 处』是个**否定结论**，它的必然命中对照就在同一张表里：
+     同一个过滤器对 stat -c 报 2 处、对 /proc/ 报 5 处 ⇒ 过滤器是活的，0 处是「真没有」不是「没查成」。
+
+   【未判 / 未复现 / 不改】逐条（这一节同样是结论，不是省略）
+     · 无 timeout：两上下文都没有该二进制；唯一使用者 scripts/run-l4-realbackend.sh:27 在本机不可达
+       （同文件 :11 走 chrome-linux 路径先退出）⇒ 未复现，不改（改了也无法在本机验证，等于凭推断改代码）。
+     · dispatch-deficit.sh 的 /proc/loadavg、/proc/uptime：已有 macOS 回退（sysctl vm.loadavg / kern.boottime），
+       实测有值 ⇒ 不是病灶，不动。
+     · xargs -r：本机接受、无报错；但对照不能鉴别（BSD xargs 缺参时本就不执行）⇒「-r 是空操作」这一点标未判，
+       不改（无害）。
+     · sort -V / readlink -f / mktemp -u / basename -s / head -n -N / sed -i / grep -P：真跑双向对照后未命中活代码，
+       或命中处只在注释里 ⇒ 不改。
+     · unpushed-watch.sh 时间窗的 -maxdepth 1：实测 3 个 worktree（d1=0/0/1 vs depth3=0/0/6，方向一致但灵敏度低）——
+       只度量「worktree 根/.git 被碰过」，不度量「子树里有人在写」。本次不改判据（会牵动 52 个 worktree 的成本），
+       改为在脚本里与屏上写明。标未判：窗口取小值时是否漏人，未测。
+
+════════════════════════════════════════════════════════════════════
+§3 改过的脚本『仍然可用』的真跑证据（自建假进程：起 → 看见 → 杀 → 看见它没了）
+════════════════════════════════════════════════════════════════════
+
+── §3.1 session-resume.sh（四态；stub PATH 保证不会真起守护/gate、不真跑 build）──
+   态1（RC=0）：
+      M scripts/gate-resumable.sh
+      M scripts/gate.sh
+     ⚠️  本地 837b44dfa ≠ 远端 8e3e91a（origin/claude/wave4-integration）—— **立刻 push**（push 与过 gate 是两回事：推旁支零风险）
+     ✓ autosave 守护在跑 · 心跳 尚无
+     ✓ gate 已在跑
+     · 起了 gate 就去干别的（复验 dev / 推欠账）——空等 = 会话空闲 = 被回收 = gate 白跑
+   态2（RC=0）：
+      M scripts/gate-resumable.sh
+      M scripts/gate.sh
+     ⚠️  本地 837b44dfa ≠ 远端 8e3e91a（origin/claude/wave4-integration）—— **立刻 push**（push 与过 gate 是两回事：推旁支零风险）
+     ↻ autosave 守护已重起（原进程不在）
+     ✓ gate 已在跑
+     · 起了 gate 就去干别的（复验 dev / 推欠账）——空等 = 会话空闲 = 被回收 = gate 白跑
+   态3（RC=0）：
+      M scripts/gate-resumable.sh
+      M scripts/gate.sh
+     ⚠️  本地 837b44dfa ≠ 远端 8e3e91a（origin/claude/wave4-integration）—— **立刻 push**（push 与过 gate 是两回事：推旁支零风险）
+     ↻ autosave 守护已重起（原进程不在）
+     ↻ 重起 gate（build → gate）…
+        gate 起了 → /tmp/wo-probe-bsd/scratch/gate-1148.log
+     · 起了 gate 就去干别的（复验 dev / 推欠账）——空等 = 会话空闲 = 被回收 = gate 白跑
+   态4（RC=0）：
+      M scripts/gate-resumable.sh
+      M scripts/gate.sh
+     ⚠️  本地 837b44dfa ≠ 远端 8e3e91a（origin/claude/wave4-integration）—— **立刻 push**（push 与过 gate 是两回事：推旁支零风险）
+     ⛔ 进程表只读到 0 行 ⇒ autosave 在不在跑**未判定**。
+     · 进程表只读到 0 行 ⇒ gate 在不在跑**未判定**，本脚本不擅自起第二个（白烧一次 build+40 分钟）
+     · 起了 gate 就去干别的（复验 dev / 推欠账）——空等 = 会话空闲 = 被回收 = gate 白跑
+   收尾：真 wo-autosave.sh / 真 gate.sh 进程数 = 0
+
+── §3.2 unpushed-watch.sh 真仓实跑（52 个 worktree，远端走 SSH）──
+     ⚠ claude/handoff-costpressure-identity-fix 未提交=1    未推=0     ✓ 远端已有同名分支且 tip 与本地逐位相同
+         /Users/apple/deploy/complete/.claude/worktrees/agent-a21bdfa25dce6c509
+   ────────────────────────────────────────────────
+   ⛔ 3/7 个 worktree 有产出悬空 —— 容器一重启就没了。
+      处置：给这些 dev 发一条『立刻 git add -A && git commit && git push -u origin HEAD:refs/heads/<branch>』，
+      不许等他们把测试跑绿。推旁支零风险，它只决定『落没落盘』，不决定『能不能并线』。
+   （RC=1；原始全文 /tmp/wo-probe-bsd/upw-real.txt）
+
+── §3.3 远端不可达 / 时间窗过滤器坏 两条『坏工具』路径（都不是「都推了」）──
+   ────────────────────────────────────────────────
+   ────────────────────────────────────────────────
+   ⛔ 远端分支表没取到（/nonexistent/repo.git ls-remote RC=128）—— 本次「推没推」整体**未判定**，
+      上面列出的只是本地未提交改动。这不是「都推了」。要判落盘请走 SSH：
+        WATCH_REMOTE=git@github.com:<owner>/<repo>.git bash scripts/unpushed-watch.sh 120
+   RC=2
+   ⛔ 时间窗过滤器坏了：夹具里 2 个文件、只应有 1 个落在 120 分钟窗内，实得 0/0。
+      ⇒ 这不是「没有活动的 worktree」，是**没查成**。此刻『都推了』一个字都不作数。
+   RC=2
+
+════════════════════════════════════════════════════════════════════
+§4 假进程清理（自己起的自己收，只杀确切 pid）
+════════════════════════════════════════════════════════════════════
+   方式：先 ps -eo pid,args | tail -n +2 | grep -E '<我的夹具名>' 看清是谁，再 kill 确切 pid。
+   全程未用 pkill -f（会自匹）。最后用同一族探针复扫。
+   残留复扫（**逐条列名**，不只给数 —— 只给数的话『探针坏了』与『真干净』在屏上一样）：
+     ⚠ 必须剔掉**调用方自己的 argv**：本生成器与包着它的那条 zsh 命令行里都带 wo-probe-bsd 字样，
+       不剔的话判据恒真 —— 这正是本 WO 里 killby.sh 修的『调用方 argv 污染』同一形态。
+   残留条数 = 0（必然命中对照：同探针能数到真进程表 472 行 ⇒ 探针是活的）
+   真守护/真 gate：0 条（全程 stub PATH ⇒ 一条都没起）
+   红线端口只读观测：4001 监听 pid=58436 · 4002=58612 · 5173=58636（全程未碰）
+
+════════════════════════════════════════════════════════════════════
+§5 远端落盘复核（SSH）
+════════════════════════════════════════════════════════════════════
+   git ls-remote git@github.com:kenlinwei001-a11y/complete.git refs/heads/claude/handoff-probe-bsd-fix
+     0f05c5bad6f8ec889aa5f008de76ae3ed3e8e7ed	refs/heads/claude/handoff-probe-bsd-fix
+   本地 HEAD = 0f05c5bad6f8ec889aa5f008de76ae3ed3e8e7ed
+
+（完）
+
+CAPTURED_RC=0（= 上面整份生成器的退出码；本档所有读数都在它之前产生）

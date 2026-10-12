@@ -1,0 +1,62 @@
+{
+ "steps": [
+  {
+   "n": 1,
+   "what": "打开站点根",
+   "ok": true,
+   "note": "登录框=true png=33102B"
+  },
+  {
+   "n": 2,
+   "what": "填账号密码并登录",
+   "ok": true,
+   "note": "按钮=true 仍在登录页=false png=329696B"
+  },
+  {
+   "n": 3,
+   "what": "从导航进入推演控制台",
+   "ok": true,
+   "note": "点到导航=true 屏上有控制台=true png=192989B"
+  },
+  {
+   "n": 4,
+   "what": "点开「产能损失」",
+   "ok": true,
+   "note": "就地展开=true png=203998B"
+  },
+  {
+   "n": 5,
+   "what": "选落点并加进去",
+   "ok": true,
+   "note": "候选={\"n\":13,\"picked\":\"常州\"} 已加=\"已经加了 1 件事\" png=196303B"
+  },
+  {
+   "n": 6,
+   "what": "再加第二件事",
+   "ok": true,
+   "note": "候选={\"n\":8,\"picked\":\"铝箔\"} 已加=\"已经加了 2 件事\" png=200364B"
+  },
+  {
+   "n": 7,
+   "what": "按「算 一 下」",
+   "ok": true,
+   "note": "{\"money\":\"454.6亿元\",\"sub\":\"500 张单 · 占订单簿 100.0%\",\"cust\":true,\"imp\":true,\"board\":true,\"donothing\":true,\"err\":null,\"impErr\":null} png=361475B"
+  },
+  {
+   "n": 8,
+   "what": "切到专家模式",
+   "ok": true,
+   "note": "data-view=expert png=675649B"
+  },
+  {
+   "n": 9,
+   "what": "切回默认视图",
+   "ok": true,
+   "note": "data-view=console0828 清单还在=\"\""
+  }
+ ],
+ "clicks": 9,
+ "navigations": 1,
+ "totalSteps": 9,
+ "stuckAt": null
+}

@@ -1,0 +1,26 @@
+规则总数 55（PUBLISHED 55）
+9 格的入边源共 10 个 (类型,变量)
+会话 sims_6rnjq7jj8pq8cepa · tick=0 · 世界对象 4425
+脉冲扰动：施加 30 条（跳过 0 个源：无）
+
+── 金丝雀① 世界是否真的动了 ─────────────────────────────
+   变化的对象数：1951 / 4425
+   本表 9 格中读数发生变化的：9 / 9 [('ChangeoverMatrix', 'changeoverPressure'), ('MaterialBatch', 'turnoverPressure'), ('OrderLine', 'splitPressure'), ('Base', 'loadIndex'), ('Model', 'demandLoad'), ('Order', 'costPressure'), ('Customer', 'receivablePressure'), ('WIPLot', 'feedPressure'), ('Line', 'blockedPressure')]
+
+── 判据② 9 格上界轨迹（脉冲后 30 拍）─────────────────────
+   格                                   t0          t5         t20         t30   t30/t0        增量比
+   ChangeoverMatrix.changeoverPressure    179.0000    179.0092    179.0192    179.0192    1.000      0.002
+   MaterialBatch.turnoverPressure    121.0000    163.8368    171.8388    171.8466    1.420      0.000
+   OrderLine.splitPressure       187.0234    187.0234    187.0234    187.0234    1.000       Δ1=0
+   Base.loadIndex                552.0209    552.0209    552.0209    552.0209    1.000       Δ1=0
+   Model.demandLoad              138.0000    138.0743    138.0871    138.0871    1.001      0.000
+   Order.costPressure            115.0000    115.0000    115.0012    115.0019    1.000       Δ1=0
+   Customer.receivablePressure    125.5910    125.5910    125.5910    125.5910    1.000       Δ1=0
+   WIPLot.feedPressure           111.1888    111.1888    111.1888    111.1888    1.000       Δ1=0
+   Line.blockedPressure          182.7257    182.7257    182.7257    182.7257    1.000       Δ1=0
+
+── 观察项（不计入判据）世界与 t0 逐字节相同的对象数 ────────
+   t10 2474 / 4425 · t30 2421 / 4425
+   （未弛回 = 未声明域的状态量当天生是纯积分器；与本单 9 格的有界性无关）
+
+结论：✓ 判据全部成立：世界确实动了（金丝雀①）· 9 格有界且增量收缩（判据②）

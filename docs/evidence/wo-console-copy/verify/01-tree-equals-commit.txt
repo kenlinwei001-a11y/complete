@@ -1,0 +1,29 @@
+== 判据 0：被验工作树 == 交付 commit ==
+工作树: /Users/apple/deploy/wo-edge-wire（HEAD 在别人的分支 claude/handoff-chain-impediment-perf @ 51a13d002）
+交付 commit: cdc85e69c7be359a0149d2a5f22445b757011854
+
+-- 0.1 本单 6 个源文件：commit 侧 blob vs 工作树侧 blob（判据落在这里）--
+  相同  19f61fd76c05ef6338a5191a713530f1075974fc  apps/frontend-shell/src/views/sim/DecisionConsoleView.tsx
+  相同  126f253263eab241271e019c39002e9e6ea46788  apps/frontend-shell/src/views/sim/DecisionConsoleView.module.css
+  相同  b20e077e97ef06768716c933ba6d585d1f4cc222  apps/frontend-shell/src/views/sim/decisionConsoleModel.ts
+  相同  f0c783f5afab02c807ca95bf08346ddcd3f641ee  apps/frontend-shell/test/decision-console-model.test.ts
+  相同  abaa412e4a60177a1c8673652ca77edef645d8bd  apps/frontend-shell/test/e2e/console-copy-verify.mjs
+  相同  0bf9190d8c85baade87f8203ff566005cc5666b3  packages/contracts/src/sim-drill.ts
+
+  ⚠ 注：console-copy-verify.mjs 在主工作树里是**未跟踪**文件，所以 `git diff cdc85e69c --` 会把它读成「已删除 242 行」——
+     那是「未跟踪 ≠ 内容不同」，不是差异。判据必须落在 blob 哈希上（上面那行），不许落在 git diff 上。
+
+-- 0.2 交付 commit 本身有没有碰 datacore（应为空）--
+  [结束]（空 = 本 commit 未改 datacore）
+
+-- 0.3 主工作树当前状态（复验时刻实测）--
+M apps/frontend-shell/src/views/sim/DecisionConsoleView.module.css
+ M apps/frontend-shell/src/views/sim/DecisionConsoleView.tsx
+ M apps/frontend-shell/src/views/sim/decisionConsoleModel.ts
+ M apps/frontend-shell/test/decision-console-model.test.ts
+ M packages/contracts/src/sim-drill.ts
+?? apps/frontend-shell/test/e2e/console-copy-verify.mjs
+?? docs/evidence/wo-console-copy/
+  ↑ 只有本单的 5 改 + 1 新增 + 证据目录；另一个 dev 的 apps/datacore/src/solvers/capacity.ts
+     在 17:5x 已被他自己收走（复验时刻 git status 里已无它）。本单提交时用独立 index 排除过它，
+     见 03-commit-isolation.txt。

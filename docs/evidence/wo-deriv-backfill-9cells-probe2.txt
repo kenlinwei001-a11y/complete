@@ -1,0 +1,77 @@
+实例 http://127.0.0.1:4105   容差 5e-04（DSL decimal 4 位）
+========================================================================================================
+WorkOrder n=260
+金丝雀 neighbors = ['obj_workorder_WO-LINE-WS-changzhou-assembly-0'] ; 我按 props 找到的候选 = ['obj_workorder_WO-LINE-WS-changzhou-assembly-0', 'obj_workorder_WO-LINE-WS-changzhou-assembly-1']
+  ✓ 两侧同源（neighbors 端点 obj_workorder_WO-LINE-WS-changzhou-assembly-0 在 WO 列表内）
+  WorkOrder.lineId 覆盖 0/260 条，落到 130 条产线
+
+① WIPLot.feedPressure  式：COALESCE(SUM(in(work_order_yields_wip_lot).qtyPlanned)*100/this.qty, 0)
+   WIPLot n=260
+   OT-WO-LINE-WS-changzhou-assembly-0       目标      111.118  重算            0   ✗ 差 111      (入边0条 和0 ÷ qty 3310)
+   OT-WO-LINE-WS-changzhou-assembly-1       目标      111.113  重算            0   ✗ 差 111      (入边0条 和0 ÷ qty 4769)
+   WO-LINE-WS-changzhou-calendering-0       目标      111.184  重算            0   ✗ 差 111      (入边0条 和0 ÷ qty 1377)
+   WO-LINE-WS-changzhou-calendering-1       目标      111.142  重算            0   ✗ 差 111      (入边0条 和0 ÷ qty 2836)
+   入边条数分布（本版真读到的）{0: 4}
+   全量：重算逐位相符 0/260 ; 入边条数分布 {0: 260}
+   入边 qtyPlanned 和 范围 [0, 0] 不同值 1 ; qty 范围 [1287, 5106]
+   feedPressure 范围 [111.1, 111.2] 不同值 181
+
+② Line.blockedPressure  式：COALESCE(SUM(out(line_runs_work_order).qtyPlanned)*100/this.max_capacity_day, 0)
+   Line n=130
+   全量：重算逐位相符 130/130 ; 入边条数分布 {2: 130}
+   LINE-WS-handan-calendering               目标      182.726  重算      182.726   ✓            (入边2条 和8420 ÷ cap 4608)
+   LINE-WS-handan-coating                   目标      182.726  重算      182.726   ✓            (入边2条 和8420 ÷ cap 4608)
+   LINE-WS-handan-slurry                    目标      173.611  重算      173.611   ✓            (入边2条 和8000 ÷ cap 4608)
+   LINE-WS-yangzhou-slitting                目标      166.844  重算      166.844   ✓            (入边2条 和8489 ÷ cap 5088)
+   LINE-WS-jinhua-winding                   目标      166.103  重算      166.103   ✓            (入边2条 和9727 ÷ cap 5856)
+   blockedPressure 范围 [27.72, 182.7] ; 源 max_capacity_day 不同值 13 个 [4608,16896]
+
+③ PurchaseOrder.expeditePressure  式：COALESCE(this.shipDay*100/(this.etaDay-this.orderDay), 0)
+   n=30  字段范围：orderDay [-24,12]  etaDay [1,20]  shipDay [-12,17]  arriveDay [-1,19]
+   ⚠ 四个字段**全是日历日号**（有负值 ⇒ 相对某个基准日的偏移），**没有一个是工期**
+   原式逐位相符 30/30 ；候选式 (shipDay−orderDay)*100/窗口 逐位相符 0/30
+   值域 [-32.43, 212.5]；负值 7 个
+
+   对照实验：窗口 8 天、提前 5 天发货（发货用时 5）的三笔，只有「下单日历日」不同：
+     orderDay= 4 etaDay=12 shipDay= 9  ⇒ 原式  112.500   业务上的用时占比恒为  62.5%
+     orderDay= 8 etaDay=16 shipDay=13  ⇒ 原式  162.500   业务上的用时占比恒为  62.5%
+     orderDay=12 etaDay=20 shipDay=17  ⇒ 原式  212.500   业务上的用时占比恒为  62.5%
+
+④ Base.loadIndex   源字段 ['committedQty', 'formationCapDaily', 'agingCapDaily']
+   重算逐位相符 13 / 不符 0 / 源缺字段算不出 0（n=13）
+     源 committedQty       [    116377,     838896] n=13 不同值 13
+     源 formationCapDaily  [     37924,     138973] n=13 不同值 13
+     源 agingCapDaily      [     37924,     138973] n=13 不同值 13
+     目标 loadIndex        [   74.1765,    552.021] 越声明域 10/13
+
+④ Customer.receivablePressure   源字段 ['receivables', 'creditLimit']
+   重算逐位相符 20 / 不符 0 / 源缺字段算不出 0（n=20）
+     源 receivables        [       916,       7916] n=20 不同值 20
+     源 creditLimit        [      6250,      26042] n=20 不同值 20
+     目标 receivablePressure [    6.3958,    125.591] 越声明域 1/20
+
+④ Material.shortageRisk   源字段 ['dailyUse', 'leadTime', 'onHand', 'inTransit']
+   重算逐位相符 8 / 不符 0 / 源缺字段算不出 0（n=8）
+     源 dailyUse           [     242.6,        617] n=8 不同值 8
+     源 leadTime           [        10,         26] n=8 不同值 6
+     源 onHand             [      2596,       9734] n=8 不同值 8
+     源 inTransit          [       144,       3051] n=8 不同值 8
+     目标 shortageRisk     [  -161.418,    51.0022] 越声明域 4/8
+
+④ Model.demandLoad   源字段 ['orderCount', 'capacity']
+   重算逐位相符 6 / 不符 0 / 源缺字段算不出 0（n=6）
+     源 orderCount         [        68,        116] n=6 不同值 6
+     源 capacity           [        50,        314] n=6 不同值 6
+     目标 demandLoad       [   23.5669,        138] 越声明域 1/6
+
+④ Order.costPressure   源字段 ['creditUsedRatio']
+   重算逐位相符 500 / 不符 0 / 源缺字段算不出 0（n=500）
+     源 creditUsedRatio    [       0.4,       1.15] n=500 不同值 51
+     目标 costPressure     [        40,        115] 越声明域 16/500
+
+=== 汇总（重算相符性）===
+   已逐条比对 9 条，其中不符 4 条
+     ✗ OT-WO-LINE-WS-changzhou-assembly-0
+     ✗ OT-WO-LINE-WS-changzhou-assembly-1
+     ✗ WO-LINE-WS-changzhou-calendering-0
+     ✗ WO-LINE-WS-changzhou-calendering-1

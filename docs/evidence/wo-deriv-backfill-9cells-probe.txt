@@ -1,0 +1,85 @@
+实例 http://127.0.0.1:4105
+====================================================================================================
+
+① WIPLot.feedPressure  式：SUM(in(work_order_yields_wip_lot).qtyPlanned)*100/this.qty
+   WIPLot n=260  WorkOrder n=260
+   wipLot.id                 feedPress     this.qty 入边qtyPlanned         重算
+   obj_wiplot_LOT-WO-LINE-WS-changzhou-assembly-0      111.1         3310            0          0   ✗ 差 111.1
+   obj_wiplot_LOT-WO-LINE-WS-changzhou-assembly-1      111.1         4769            0          0   ✗ 差 111.1
+   obj_wiplot_LOT-WO-LINE-WS-changzhou-calendering-0      111.2         1377            0          0   ✗ 差 111.2
+   obj_wiplot_LOT-WO-LINE-WS-changzhou-calendering-1      111.1         2836            0          0   ✗ 差 111.1
+   obj_wiplot_LOT-WO-LINE-WS-changzhou-coating-0      111.1         2438            0          0   ✗ 差 111.1
+   obj_wiplot_LOT-WO-LINE-WS-changzhou-coating-1      111.1         4813            0          0   ✗ 差 111.1
+   入边条数分布 [(0, 260)]
+   this.qty 范围      ['1287', '5106']
+   入边 qtyPlanned 和 范围 [0, 0]  不同值 1 个
+
+② PurchaseOrder.expeditePressure  式：this.shipDay*100/(this.etaDay-this.orderDay)
+   n=30
+   id       orderDay   etaDay  shipDay arriveDay  expedite                    窗口/发货用时
+   _po_13         12       20       17       19   212.500              窗口 8 / 发货用时 5
+   r_po_5          8       16       13       15   162.500              窗口 8 / 发货用时 5
+   r_po_8          9       18       14       16   155.556              窗口 9 / 发货用时 5
+   r_po_4          7       16       11       13   122.222              窗口 9 / 发货用时 4
+   r_po_2          9       20       13       17   118.182             窗口 11 / 发货用时 4
+   _po_26          7       17       11       15   110.000             窗口 10 / 发货用时 4
+   _po_23          4       13        9       11   100.000              窗口 9 / 发货用时 5
+   r_po_3          4       17       11       15    84.615             窗口 13 / 发货用时 7
+   _po_10          5       16        9       13    81.818             窗口 11 / 发货用时 4
+   _po_11          4       19       11       15    73.333             窗口 15 / 发货用时 7
+   负值 7 个：[('r_po_1', -10, 4, -2, -14.286), ('_po_12', -24, 13, -12, -32.432), ('_po_18', -6, 4, -2, -20), ('_po_24', -8, 3, -3, -27.273), ('_po_29', -7, 1, -2, -25)]
+   字段范围：orderDay [-24,12] etaDay [1,20] shipDay [-12,17]
+   原式逐位相符 14/30 ；候选式 (shipDay−orderDay)*100/窗口 逐位相符 0/30
+
+③ Base.loadIndex   源字段 ['committedQty', 'formationCapDaily', 'agingCapDaily']
+   重算逐位相符 0 / 不符 13 / 源缺字段算不出 0（n=13）
+     ✗ obj_base_changzhou       目标      301.8  重算      301.8
+     ✗ obj_base_chengdu         目标      151.6  重算      151.6
+     ✗ obj_base_handan          目标      277.6  重算      277.6
+     ✗ obj_base_hefei           目标        149  重算        149
+     源 committedQty       [ 1.164e+05,  8.389e+05]  n=13 不同值 13
+     源 formationCapDaily  [ 3.792e+04,   1.39e+05]  n=13 不同值 13
+     源 agingCapDaily      [ 3.792e+04,   1.39e+05]  n=13 不同值 13
+
+③ Customer.receivablePressure   源字段 ['receivables', 'creditLimit']
+   重算逐位相符 1 / 不符 19 / 源缺字段算不出 0（n=20）
+     ✗ obj_customer_cust_0      目标      42.93  重算      42.93
+     ✗ obj_customer_cust_1      目标      22.67  重算      22.67
+     ✗ obj_customer_cust_10     目标       8.61  重算       8.61
+     ✗ obj_customer_cust_11     目标      9.085  重算      9.085
+     源 receivables        [       916,       7916]  n=20 不同值 20
+     源 creditLimit        [      6250,  2.604e+04]  n=20 不同值 20
+
+③ Line.blockedPressure   源字段 ['max_capacity_day']
+   重算逐位相符 0 / 不符 0 / 源缺字段算不出 130（n=130）
+     源 max_capacity_day   [      4608,   1.69e+04]  n=130 不同值 13
+
+③ Material.shortageRisk   源字段 ['dailyUse', 'leadTime', 'onHand', 'inTransit']
+   重算逐位相符 0 / 不符 8 / 源缺字段算不出 0（n=8）
+     ✗ obj_material_al_foil     目标     -78.17  重算     -78.17
+     ✗ obj_material_cell_case   目标      20.52  重算      20.52
+     ✗ obj_material_cu_foil     目标      -52.7  重算      -52.7
+     ✗ obj_material_elyte       目标     -161.4  重算     -161.4
+     源 dailyUse           [     242.6,        617]  n=8 不同值 8
+     源 leadTime           [        10,         26]  n=8 不同值 6
+     源 onHand             [      2596,       9734]  n=8 不同值 8
+     源 inTransit          [       144,       3051]  n=8 不同值 8
+
+③ Model.demandLoad   源字段 ['orderCount', 'capacity']
+   重算逐位相符 4 / 不符 2 / 源缺字段算不出 0（n=6）
+     ✗ obj_model_方形-LFP         目标      23.57  重算      23.57
+     ✗ obj_model_方形-NCM         目标      53.33  重算      53.33
+     源 orderCount         [        68,        116]  n=6 不同值 6
+     源 capacity           [        50,        314]  n=6 不同值 6
+
+③ Order.costPressure   源字段 ['creditUsedRatio']
+   重算逐位相符 500 / 不符 0 / 源缺字段算不出 0（n=500）
+     源 creditUsedRatio    [       0.4,       1.15]  n=500 不同值 51
+
+③ Line.blockedPressure  式：SUM(out(line_runs_work_order).qtyPlanned)*100/this.max_capacity_day
+   n=130
+   obj_line_LINE-WS-handan-calendering 目标     182.7  重算         0  (入边0条 和0 ÷ cap 4608)  ✗
+   obj_line_LINE-WS-handan-coating 目标     182.7  重算         0  (入边0条 和0 ÷ cap 4608)  ✗
+   obj_line_LINE-WS-handan-slurry 目标     173.6  重算         0  (入边0条 和0 ÷ cap 4608)  ✗
+   obj_line_LINE-WS-yangzhou-slitting 目标     166.8  重算         0  (入边0条 和0 ÷ cap 5088)  ✗
+   obj_line_LINE-WS-jinhua-winding 目标     166.1  重算         0  (入边0条 和0 ÷ cap 5856)  ✗

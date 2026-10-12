@@ -1,0 +1,4 @@
+
+> datacore@0.1.0 typecheck /Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/datacore
+> tsc -p tsconfig.typecheck.json --noEmit
+

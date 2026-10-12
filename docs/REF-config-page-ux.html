@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="zh"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>传神素问 · 本体推演孪生 v2（可编辑图谱·横向）</title>
+<style>
+:root{--ink:#1f2a37;--muted:#6b7280;--line:#e5e9ee;--panel:#f7f9fb;--bg:#fff;
+ --inst:#2563a8;--member:#3a9d8f;--stock:#d98c3f;--anc:#9aa7b4;--patient:#8f6bb0;--cash:#2f8f5b;--target:#d64545;--derive:#5b6b7f;--accentbg:#eef4fb;}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",Arial,sans-serif;color:var(--ink);background:var(--bg);font-size:13.5px;line-height:1.5}
+header{padding:16px 24px 10px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:18px;flex-wrap:wrap}
+h1{font-size:18px;margin:0}
+.tabs{display:flex;gap:6px}
+.tab{padding:6px 16px;border:1px solid var(--line);border-radius:20px;cursor:pointer;font-size:13px;background:#fff}
+.tab.on{background:var(--inst);color:#fff;border-color:var(--inst)}
+.sub{color:var(--muted);font-size:12px;flex:1;min-width:300px}
+.page{padding:14px 22px 26px;max-width:1520px;margin:0 auto}
+.hidden{display:none}
+/* dashboard horizontal */
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:11px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.kpi .lab{font-size:11px;color:var(--muted);margin-bottom:4px}
+.kpi .num{font-size:20px;font-weight:750}
+.kpi .note{font-size:10.5px;color:var(--muted);margin-top:2px}
+.rowA{display:grid;grid-template-columns:minmax(0,1fr) 352px;gap:12px;margin-bottom:11px}
+.rowB{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:11px}
+.card h3{margin:0 0 2px;font-size:13.5px}.card .h3sub{color:var(--muted);font-size:11px;margin-bottom:8px}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-top:6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:middle}
+svg{display:block;width:100%;height:auto;overflow:visible}
+/* 图表/时间轴viewBox已加宽,直接铺满列;图谱按自然尺寸封顶避免放大 */
+#chart svg,#timeline svg{max-width:100%}
+#graph svg,#graphCfg svg{max-width:322px;margin:0 auto}
+table.cmp{width:100%;border-collapse:collapse;font-size:11.5px}
+table.cmp th,table.cmp td{padding:5px 7px;border-bottom:1px solid var(--line);text-align:right}
+table.cmp th:first-child,table.cmp td:first-child,table.cmp th:nth-child(2),table.cmp td:nth-child(2){text-align:left}
+table.cmp th{color:var(--muted);font-weight:600}table.cmp tr.top td{background:#fdf3ef}
+.constraint-box{background:#fdecec;border:1px solid #f5c6c6;border-radius:10px;padding:10px 12px;margin-bottom:10px}
+.constraint-box .t{font-size:10.5px;color:var(--target);font-weight:700;text-transform:uppercase}
+.constraint-box .m{font-size:12.5px;margin-top:3px}
+.onode text{font-size:9.5px;fill:var(--ink)}.onode rect{fill:#fff;stroke:var(--line);stroke-width:1.4}
+.onode.hot rect{fill:#fdecec;stroke:var(--target);stroke-width:2}.onode.der rect{stroke-dasharray:3 2;fill:#f4f6f9}
+.oedge{stroke:#c3cdd8;stroke-width:1.4;fill:none;marker-end:url(#arrow)}.oedge.off{stroke:#e3b6b6;stroke-dasharray:3 3}
+/* config */
+.cfg{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.grp{margin-bottom:14px}
+.grp h4{margin:0 0 7px;font-size:12px;color:var(--inst);border-bottom:1px solid var(--line);padding-bottom:4px}
+.catbar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:11px}
+.catchip{padding:4px 12px;border:1px solid var(--line);border-radius:16px;cursor:pointer;font-size:12px;background:#fff}
+.catchip.on{background:var(--inst);color:#fff;border-color:var(--inst)}
+.ngrid{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px}
+.nrow{display:grid;grid-template-columns:1fr 88px 42px;gap:6px;align-items:center;margin-bottom:5px}
+.nrow label{font-size:11.5px}.nrow label small{display:block;color:var(--muted);font-size:10px}
+.nrow input{width:100%;padding:3px 5px;border:1px solid var(--line);border-radius:6px;font-size:12px;text-align:right}
+.nrow .tag{font-size:9px;text-align:center;color:var(--muted)}
+.etbl,.rtbl{width:100%;border-collapse:collapse;font-size:11px}
+.etbl th,.etbl td,.rtbl th,.rtbl td{border:1px solid var(--line);padding:3px 5px}
+.etbl input,.rtbl input,.etbl select,.rtbl select{width:100%;border:none;font-size:11px;background:transparent}
+.rtbl input,.rtbl select{border:1px solid var(--line);border-radius:4px;padding:2px 3px}
+.btn{padding:4px 10px;border:1px solid var(--inst);color:var(--inst);background:#fff;border-radius:6px;cursor:pointer;font-size:11.5px}
+.btn.del{border-color:var(--target);color:var(--target);padding:2px 7px}
+.hint{font-size:10.5px;color:var(--muted);margin:3px 0 8px}
+.sched{display:grid;grid-template-columns:1fr 52px 60px;gap:5px;align-items:center;margin-bottom:4px}
+.sched input{width:100%;padding:3px;border:1px solid var(--line);border-radius:5px;font-size:11.5px;text-align:center}
+.sched3{display:grid;grid-template-columns:1fr 46px 52px 82px;gap:5px;align-items:center;margin-bottom:4px}
+.sched3 span{font-size:11px;color:var(--muted);text-align:center}.sched3 span:first-child{text-align:left}
+.sched3.hd span{font-size:10px}
+.sched3 input{width:100%;padding:3px;border:1px solid var(--line);border-radius:5px;font-size:11.5px;text-align:center}
+.alertbox{border-radius:9px;padding:9px 13px;margin-bottom:9px;font-size:12.5px;line-height:1.45}
+.alertbox.warn{background:#fdf1e7;border:1px solid #f0c9a0;color:#8a4b16}
+.alertbox.cash{background:#fdecec;border:1px solid #f2c2c2;color:#9a2b2b}
+.rolecard{border:1px solid var(--line);border-radius:9px;padding:8px 10px;margin-bottom:8px}
+.rolehd{font-size:12px;margin-bottom:6px}
+.salin{width:72px;padding:2px 5px;border:1px solid var(--line);border-radius:5px;text-align:right;font-size:11.5px}
+.staffgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.slot{border:1px dashed var(--line);border-radius:6px;padding:4px;text-align:center}
+.slot small{display:block;color:var(--muted);font-size:9.5px;margin-bottom:3px}
+.slot .kv{display:flex;align-items:center;justify-content:center;gap:2px}
+.slot .kv b{font-size:9.5px;color:var(--muted);font-weight:600}
+.slot input{width:36px;text-align:center;border:1px solid var(--line);border-radius:4px;font-size:11px;padding:1px 0}
+.foot{color:var(--muted);font-size:10.5px;padding:4px 24px 20px}
+#popup{position:fixed;z-index:99;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 26px rgba(0,0,0,.15);padding:11px 13px;font-size:12px;display:none;min-width:196px}
+#popup h5{margin:0 0 7px;font-size:12.5px;color:var(--inst)}
+#popup .r{display:flex;justify-content:space-between;padding:2.5px 0;gap:18px}
+#popup .r span{color:var(--muted)}#popup .r b{font-weight:700}
+</style></head>
+<body>
+<header>
+  <h1>传神素问 · 本体推演孪生 v2</h1>
+  <div class="tabs"><div class="tab on" id="tab_dash" onclick="showTab('dash')">推演看板</div><div class="tab" id="tab_cfg" onclick="showTab('cfg')">本体配置 · 填数据</div></div>
+  <div class="sub">显式本体图谱驱动：<b>配置页</b>编辑节点值(填真实数据)、关系边、以及<b>产品发布</b>（自定义功能名→选上线月→下拉选影响因素→填值，按月联动进模型）。<b>看板</b>横向展示结果。</div>
+</header>
+
+<!-- ============ DASHBOARD ============ -->
+<div class="page" id="page_dash">
+  <div id="alerts"></div>
+  <div class="kpis" id="kpis"></div>
+  <div class="rowA">
+    <div class="card"><h3>月度确认收入 · 累计 · 现金余额</h3>
+      <div class="h3sub">柱=当月确认(受交付池封顶,堆叠) · 深蓝=累计 · 绿=现金(DSO滞后) · 红虚=800万</div>
+      <div id="chart"></div>
+      <div class="legend"><span><i style="background:var(--inst)"></i>机构bundle</span><span><i style="background:var(--member)"></i>会员续费</span><span><i style="background:var(--stock)"></i>存量大单</span><span><i style="background:var(--patient)"></i>患者D2C</span><span><i style="background:var(--anc)"></i>分佣/API</span><span><i style="background:var(--cash);height:3px"></i>现金</span></div></div>
+    <div class="card"><h3>本体因果图谱（只读预览 · 去配置页编辑）</h3><div class="h3sub">虚线框=派生/约束节点 · 红框=当前绑定约束 · 浅红虚线=已关闭的边</div><div id="graph"></div></div>
+  </div>
+  <div class="card"><h3>里程碑时间轴</h3><div class="h3sub">渠道启动 / 入职 / 市场活动 / 产品发布(各期) / 首签 / 存量交付</div><div id="timeline"></div></div>
+  <div class="rowB">
+    <div class="card"><h3>季度财务报表</h3><div class="h3sub">合同额=签约 · 确认=交付口径(受封顶) · 回款=DSO滞后 · 经营现金流=回款−费用−外包 · 毛利=收入−外包 · 净利=毛利−期间费用</div><table class="cmp" id="finance"></table></div>
+    <div class="card"><h3>关键成功要素 · 敏感度（含耦合）</h3><div class="h3sub">按“至2027末累计价值”排序，避开窗口边界假象。交付是瓶颈时，单调销售增收被压小。</div>
+      <div id="constraint"></div><table class="cmp" id="ksf"></table></div>
+  </div>
+</div>
+
+<!-- ============ CONFIG ============ -->
+<div class="page hidden" id="page_cfg">
+  <div class="cfg">
+    <div>
+      <div class="card"><h3>产品发布（自定义功能 · 影响因素联动）</h3>
+        <div class="hint">填功能名称 → 选上线月 → 下拉选<b>影响哪个因素</b> → 填影响值。该效果从上线月起按月生效并与相关数据联动。gate_*=解锁某收入线；boost_*=从该月起提升/降低某因素。</div>
+        <table class="rtbl" id="relTbl"></table>
+        <div style="margin-top:8px"><span class="btn" onclick="addRelease()">+ 新增产品发布</span></div>
+      </div>
+      <div class="card"><h3>人员排期与薪酬（统一）</h3><div class="hint">每个岗位在一处填「月总包薪酬」+「按月增员」（每格：上线月 / 人数）。销售含离职衰减；交付人数决定交付池产能。</div><div id="staffEd"></div></div>
+      <div class="card"><h3>市场活动排期</h3><div id="actEd"></div><div class="hint">某月办活动产生多少线索；线索×市场转化率=商机（与市场人员产的自然线索汇合）。</div></div>
+    </div>
+    <div>
+      <div class="card"><h3>节点值 · 填真实数据</h3><div class="hint">黄框=原生量(你填)；派生量只读并显示公式。改这里即驱动推演。</div><div id="nodeEd"></div></div>
+      <div class="card"><h3>关系边（本体图谱结构）</h3><div class="hint">编辑因果边：来源→去向、关系、影响说明、启停。关闭“市场→商机”等边会切断该传播路径。</div>
+        <table class="etbl" id="edgeTbl"></table>
+        <div style="margin-top:8px"><span class="btn" onclick="addEdge()">+ 新增关系边</span></div>
+        <div id="graphCfg" style="margin-top:12px"></div></div>
+    </div>
+  </div>
+</div>
+<div class="foot">证据等级：单价 Founder Input（BP第19/20页）；原生量=决策/实测/扰动；派生量=Derived。收入受交付产能封顶，现金按DSO滞后。规划推演，非承诺预测。</div>
+<div id="popup"></div>
+
+<script>
+const CNY=v=>{const s=v<0?'-':'';v=Math.abs(v);return s+(v>=1e8?(v/1e8).toFixed(2)+'亿':v>=1e4?Math.round(v/1e4)+'万':Math.round(v).toLocaleString());};
+const M=24,monthLabel=i=>{const y=2026+Math.floor(i/12),m=i%12+1;return y+'/'+m;},Y=[...Array(12).keys()].map(k=>k+12);
+
+// ============ 显式本体图谱：唯一真源 ============
+const RELEASE_TARGETS={
+  gate_member:'解锁会员续费收入', gate_anc:'解锁分佣/API/分身', gate_patient:'解锁患者/D2C抽成',
+  boost_studentConv:'提升学员付费转化(+)', boost_winRate:'提升成交率(+)', boost_mktConv:'提升市场转化率(+)',
+  boost_patients:'提升每医生带患者(+)', reduce_churn:'降低会员流失(−)', boost_coverage:'提升销售覆盖(减开发人天)'};
+const ONT={
+ nodes:[
+  // primitives (kind:p) grouped
+  {id:'marketStart',g:'时点/目标',k:'p',v:6,u:'月',lab:'机构渠道启动'},
+  {id:'directMembers',g:'销售',k:'p',v:0,u:'人',lab:'平台直招会员/月(目标)'},
+  {id:'mktConv',g:'市场',k:'p',v:0.12,u:'%',lab:'市场活动线索→商机转化率'},
+  {id:'leadsPerMarketer',g:'市场',k:'p',v:12,u:'条',lab:'单市场人员·月产线索'},
+  {id:'salesDaysPerMonth',g:'销售',k:'p',v:12,u:'人天',lab:'单销售·月有效外拓'},
+  {id:'oppDevPD',g:'销售',k:'p',v:16,u:'人天',lab:'开发单个机构商机所需'},
+  {id:'salesCycle',g:'销售',k:'p',v:3,u:'月',lab:'销售周期'},
+  {id:'winRate',g:'销售',k:'p',v:0.4,u:'%',lab:'成交率'},
+  {id:'studentsPerInst',g:'销售',k:'p',v:200,u:'人',lab:'单机构学员数'},
+  {id:'studentConv',g:'销售',k:'p',v:0.15,u:'%',lab:'学员付费转化率'},
+  {id:'memberChurn',g:'扰动',k:'p',v:0.20,u:'%',lab:'会员年流失率'},
+  {id:'salesAttrition',g:'扰动',k:'p',v:0.15,u:'%',lab:'销售年离职率'},
+  {id:'patientsPerDoctor',g:'扰动',k:'p',v:4,u:'人',lab:'每活跃医生·月带患者'},
+  {id:'patientRev',g:'扰动',k:'p',v:15,u:'元',lab:'单患者·月抽成'},
+  {id:'dpm',g:'交付',k:'p',v:18,u:'人天',lab:'人均·月有效交付'},
+  {id:'instPD',g:'交付',k:'p',v:20,u:'人天',lab:'单机构上线所需交付'},
+  {id:'projectPD',g:'交付',k:'p',v:120,u:'人天',lab:'单大单所需交付'},
+  {id:'stockStart',g:'交付',k:'p',v:3,u:'月',lab:'存量可交付起始'},
+  {id:'stockDeals',g:'交付',k:'p',v:6,u:'单/年',lab:'存量大单·年新签'},
+  {id:'bundlePrice',g:'收费',k:'p',v:6000,u:'元',lab:'机构人均打包价(含硬件+首期会员)'},
+  {id:'memberPrice',g:'收费',k:'p',v:999,u:'元',lab:'会员年费(订阅)'},
+  {id:'ancPerMemberYr',g:'收费',k:'p',v:200,u:'元',lab:'单会员·年分佣/API/分身'},
+  {id:'stockValue',g:'收费',k:'p',v:800000,u:'元',lab:'单大单(项目)合同额'},
+  {id:'pipeline2026',g:'存量商机',k:'p',v:3000000,u:'元',lab:'期初在手商机金额(2026延至2027)'},
+  {id:'pipelineConv',g:'存量商机',k:'p',v:0.5,u:'%',lab:'在手商机承接转化率(人工)'},
+  {id:'pipelineStart',g:'存量商机',k:'p',v:12,u:'月',lab:'在手商机转化起始月'},
+  {id:'pipelineSpread',g:'存量商机',k:'p',v:6,u:'月',lab:'转化收入摊布月数'},
+  {id:'salesCost',g:'人员',k:'p',v:25000,u:'元',lab:'销售·月总包'},
+  {id:'deliveryCost',g:'人员',k:'p',v:22000,u:'元',lab:'交付·月总包'},
+  {id:'marketCost',g:'人员',k:'p',v:20000,u:'元',lab:'市场·月总包'},
+  {id:'rndCost',g:'人员',k:'p',v:30000,u:'元',lab:'研发·月总包'},
+  {id:'gaCost',g:'人员',k:'p',v:20000,u:'元',lab:'职能·月总包'},
+  {id:'opexMonthly',g:'成本',k:'p',v:150000,u:'元',lab:'其他月度费用总包'},
+  {id:'outsourceRatio',g:'成本',k:'p',v:0.30,u:'%',lab:'项目外包比例'},
+  {id:'outsourceDayRate',g:'成本',k:'p',v:2000,u:'元',lab:'外包人天单价'},
+  {id:'dsoM',g:'成本',k:'p',v:3,u:'月',lab:'回款周期DSO'},
+  {id:'initCash',g:'成本',k:'p',v:6000000,u:'元',lab:'期初现金'},
+  // schedules
+  {id:'hiring',k:'sched',v:[{m:0,n:2},{m:6,n:1},{m:12,n:1},{m:18,n:0}]},
+  {id:'activities',k:'sched',v:[{m:5,leads:60,cost:200000},{m:9,leads:60,cost:200000},{m:13,leads:80,cost:300000},{m:17,leads:80,cost:300000}]},
+  {id:'deliveryHiring',k:'sched',v:[{m:0,n:3},{m:8,n:2},{m:0,n:0},{m:0,n:0}]},
+  {id:'marketHiring',k:'sched',v:[{m:6,n:1},{m:14,n:1},{m:0,n:0},{m:0,n:0}]},
+  {id:'rndHiring',k:'sched',v:[{m:0,n:6},{m:8,n:2},{m:14,n:0},{m:0,n:0}]},
+  {id:'gaHiring',k:'sched',v:[{m:0,n:3},{m:12,n:1},{m:0,n:0},{m:0,n:0}]},
+  {id:'releases',k:'rel',v:[
+    {name:'成长平台·会员体系',month:8,target:'gate_member',value:0},
+    {name:'AI课程Agent助手',month:10,target:'boost_studentConv',value:0.05},
+    {name:'执业平台·分佣',month:12,target:'gate_anc',value:0},
+    {name:'数字医馆·患者服务',month:16,target:'gate_patient',value:0},
+  ]},
+  // derived (kind:d)
+  {id:'coverage',k:'d',lab:'单销售可覆盖客户',u:'家/月',f:'salesDaysPerMonth ÷ oppDevPD'},
+  {id:'deliverySupply',k:'d',lab:'交付池·月供给',u:'人天',f:'deliveryHeadcount × dpm'},
+ ],
+ // graph nodes (positions) + edges
+ gnodes:{mkt:[16,8,'市场活动',0],product:[150,8,'产品发布(分期)',0],lead:[16,48,'线索',0],sales:[150,48,'销售产能(派生)',1],
+   opp:[16,88,'商机',0],contract:[150,88,'签约',0],delivery:[83,128,'交付池(共享约束)',1],
+   rev:[16,168,'确认收入',0],cust:[150,168,'会员/患者基数',0],cash:[16,208,'现金',0],ar:[150,208,'应收',0],hiring:[83,248,'入职·离职·成本',0]},
+ edges:[
+  {id:'e1',from:'mkt',to:'lead',rel:'GENERATES',eff:'线索=活动线索数'},
+  {id:'mkt_opp',from:'lead',to:'opp',rel:'CONVERTS',eff:'商机=线索×市场转化率',active:true},
+  {id:'e3',from:'sales',to:'opp',rel:'GENERATES',eff:'商机+=销售数×覆盖'},
+  {id:'e4',from:'opp',to:'contract',rel:'CONVERTS',eff:'签约=商机(滞后销售周期)×成交率'},
+  {id:'e5',from:'contract',to:'delivery',rel:'REQUIRES',eff:'占用交付池 instPD/机构'},
+  {id:'e6',from:'delivery',to:'cust',rel:'ONBOARDS',eff:'上线→会员基数(含流失)'},
+  {id:'e7',from:'delivery',to:'rev',rel:'GATES',eff:'确认收入受交付池吞吐封顶'},
+  {id:'e8',from:'cust',to:'rev',rel:'YIELDS',eff:'会员/患者/分佣(按发布解锁)'},
+  {id:'e9',from:'product',to:'rev',rel:'UNLOCKS',eff:'各期发布解锁对应收入线'},
+  {id:'e10',from:'rev',to:'ar',rel:'CREATES',eff:'应收=确认收入'},
+  {id:'e11',from:'ar',to:'cash',rel:'COLLECTS',eff:'回款滞后DSO'},
+  {id:'e12',from:'hiring',to:'sales',rel:'STAFFS',eff:'销售数(含离职衰减)'},
+  {id:'e13',from:'hiring',to:'cash',rel:'INCURS',eff:'分岗位月总包→费用'},
+ ]
+};
+const FIX={maxInst:80};
+const PCT=new Set(['mktConv','winRate','studentConv','memberChurn','salesAttrition','outsourceRatio','pipelineConv']);
+const MONEY=new Set(['bundlePrice','memberPrice','ancPerMemberYr','stockValue','salesCost','deliveryCost','rndCost','gaCost','opexMonthly','mktSpend','initCash','outsourceDayRate']);
+const nodeById=id=>ONT.nodes.find(n=>n.id===id);
+const getL=()=>{const L={};ONT.nodes.forEach(n=>{if(n.k==='p'||n.k==='sched'||n.k==='rel')L[n.id]=n.v;});return L;};
+const edgeOn=id=>{const e=ONT.edges.find(x=>x.id===id);return !e||e.active!==false;};
+
+// ============ 时变因素（产品发布联动） ============
+function eff(L,t){let sc=L.studentConv,wr=L.winRate,mc=L.mktConv,pp=L.patientsPerDoctor,ch=L.memberChurn,odp=L.oppDevPD;
+  L.releases.forEach(r=>{if(r.month>t)return;
+    if(r.target==='boost_studentConv')sc+=r.value; else if(r.target==='boost_winRate')wr+=r.value;
+    else if(r.target==='boost_mktConv')mc+=r.value; else if(r.target==='boost_patients')pp+=r.value;
+    else if(r.target==='reduce_churn')ch=Math.max(0,ch-r.value); else if(r.target==='boost_coverage')odp=Math.max(4,odp-r.value);});
+  return {sc,wr,mc,pp,ch:1-Math.pow(1-ch,1/12),odp};}
+const gateOn=(L,tg,t)=>L.releases.some(r=>r.target===tg&&r.month<=t);
+const mRate=a=>1-Math.pow(1-a,1/12);
+const repsAt=(L,t)=>{const ar=mRate(L.salesAttrition);return L.hiring.reduce((s,h)=>s+(t>=h.m?h.n*Math.pow(1-ar,t-h.m):0),0);};
+const staffAt=(sched,t)=>sched.reduce((s,h)=>s+(t>=h.m?h.n:0),0);
+
+function simulate(L){
+  const rev=Array(M).fill(0),byLine={inst:Array(M).fill(0),member:Array(M).fill(0),stock:Array(M).fill(0),patient:Array(M).fill(0),anc:Array(M).fill(0)};
+  const reps=Array(M).fill(0),opp=Array(M).fill(0),signed=Array(M).fill(0),joinAt=Array(M).fill(0),activeArr=Array(M).fill(0),util=Array(M).fill(0),cost=Array(M).fill(0);
+  const bookings=Array(M).fill(0),dPD=Array(M).fill(0),cogs=Array(M).fill(0),collect=Array(M).fill(0),gross=Array(M).fill(0),net=Array(M).fill(0),ocf=Array(M).fill(0);
+  const Sarr=Array(M).fill(0),demandPM=Array(M).fill(0),backlogArr=Array(M).fill(0),delivStaff=Array(M).fill(0);
+  const mktLeads=Array(M).fill(0),actCost=Array(M).fill(0);const actM=new Set();
+  L.activities.forEach(a=>{if(a.m>=0&&a.m<M){if(a.leads>0){mktLeads[a.m]+=a.leads;actM.add(a.m);}actCost[a.m]+=(a.cost||0);}});
+  const mktEdge=edgeOn('mkt_opp')?1:0;
+  for(let t=0;t<M;t++){reps[t]=repsAt(L,t);const e=eff(L,t);const cov=L.salesDaysPerMonth/e.odp;
+    const orgLeads=staffAt(L.marketHiring,t)*L.leadsPerMarketer;              // 市场人员产的自然线索
+    opp[t]=((t>=L.marketStart)?reps[t]*cov:0)+(mktLeads[t]+orgLeads)*e.mc*mktEdge;}
+  let instCum=0;
+  for(let t=0;t<M;t++){const src=t-Math.round(L.salesCycle);const e=eff(L,t);let c=(src>=0)?opp[src]*e.wr:0;
+    if(instCum+c>FIX.maxInst)c=Math.max(0,FIX.maxInst-instCum);signed[t]=c;instCum+=c;}
+  let instB=0,stockB=0;
+  for(let t=0;t<M;t++){const e=eff(L,t);const stockArr=(t>=L.stockStart)?L.stockDeals/12:0;
+    delivStaff[t]=staffAt(L.deliveryHiring,t);const S=delivStaff[t]*L.dpm;Sarr[t]=S;   // 交付池月供给(随按月增员变化)
+    bookings[t]=signed[t]*L.studentsPerInst*e.sc*L.bundlePrice+stockArr*L.stockValue;
+    demandPM[t]=signed[t]*L.instPD+stockArr*L.projectPD;
+    instB+=signed[t]*L.instPD; stockB+=stockArr*L.projectPD;
+    const tot=instB+stockB,deliver=Math.min(S,tot);util[t]=S>0?deliver/S:0;dPD[t]=deliver;
+    const iA=tot>0?deliver*instB/tot:0,sA=tot>0?deliver*stockB/tot:0;instB-=iA;stockB-=sA;
+    backlogArr[t]=instB+stockB;
+    const instDone=iA/L.instPD,payStu=instDone*L.studentsPerInst*e.sc;
+    byLine.inst[t]+=payStu*L.bundlePrice;joinAt[t]+=payStu;
+    byLine.stock[t]+=(sA/L.projectPD)*L.stockValue;}
+  // 期初在手商机(2026延至2027):人工转化率,直接计入(近成交,不占交付池)
+  const pipeConv=L.pipeline2026*L.pipelineConv,pSp=Math.max(1,L.pipelineSpread);
+  for(let t=L.pipelineStart;t<Math.min(M,L.pipelineStart+pSp);t++)byLine.stock[t]+=pipeConv/pSp;
+  if(L.pipelineStart<M)bookings[L.pipelineStart]+=pipeConv;
+  let active=0;
+  for(let t=0;t<M;t++){const e=eff(L,t);const mOn=gateOn(L,'gate_member',t);
+    active=active*(1-e.ch)+joinAt[t]+(mOn?L.directMembers:0);activeArr[t]=active;
+    byLine.member[t]=mOn?active*(L.memberPrice/12):0;
+    byLine.anc[t]=gateOn(L,'gate_anc',t)?active*(L.ancPerMemberYr/12):0;
+    byLine.patient[t]=gateOn(L,'gate_patient',t)?active*e.pp*L.patientRev:0;}
+  for(let t=0;t<M;t++){rev[t]=byLine.inst[t]+byLine.member[t]+byLine.stock[t]+byLine.patient[t]+byLine.anc[t];
+    // 分岗位人力(销售/交付/市场/研发/职能,均按当月在岗人数×月总包) + 单场市场费 + 其他费用
+    const payroll=reps[t]*L.salesCost+delivStaff[t]*L.deliveryCost+staffAt(L.marketHiring,t)*L.marketCost+staffAt(L.rndHiring,t)*L.rndCost+staffAt(L.gaHiring,t)*L.gaCost;
+    cost[t]=payroll+actCost[t]+L.opexMonthly;   // 各场市场活动费用(逐场填)
+    cogs[t]=L.outsourceRatio*dPD[t]*L.outsourceDayRate;gross[t]=rev[t]-cogs[t];net[t]=rev[t]-cogs[t]-cost[t];}
+  const cash=Array(M).fill(0);let c=L.initCash;
+  for(let t=0;t<M;t++){const dso=Math.max(0,Math.round(L.dsoM));collect[t]=(t-dso>=0)?rev[t-dso]:0;ocf[t]=collect[t]-cost[t]-cogs[t];c+=ocf[t];cash[t]=c;}
+  const sum=(a,idx)=>idx.reduce((s,i)=>s+a[i],0);
+  // ===== 阈值预警：交付积压 & 现金转负 =====
+  const alerts=[];
+  let firstOverload=-1;for(let t=0;t<M;t++){if(Sarr[t]>0&&backlogArr[t]>Sarr[t]){firstOverload=t;break;}}
+  const demAvg=sum(demandPM,Y)/12,supAvg=sum(Sarr,Y)/12,deficit=demAvg-supAvg;
+  const extraStaff=deficit>0?Math.ceil(deficit/L.dpm):0;
+  if(firstOverload>=0||backlogArr[M-1]>supAvg*0.5){
+    alerts.push({level:'warn',msg:`⚠ 交付瓶颈：约 ${monthLabel(firstOverload>=0?firstOverload:12)} 起签约开始积压（期末积压≈${Math.round(backlogArr[M-1])}人天，约 ${Math.round(backlogArr[M-1]/L.instPD)} 个机构交付不出）。签得再多也确认不了收入——建议在此之前把交付团队再增约 ${Math.max(extraStaff,2)} 人，或放慢销售/降低单机构交付人天。`});
+  }
+  let firstNeg=-1;for(let t=0;t<M;t++){if(cash[t]<0){firstNeg=t;break;}}
+  const minCash=Math.min(...cash);
+  if(firstNeg>=0)alerts.push({level:'cash',msg:`💰 现金预警：约 ${monthLabel(firstNeg)} 现金转负，最低 ${CNY(minCash)}。需在此前补充现金/融资约 ${CNY(-minCash)}（或压降人力/费用节奏）。`});
+  return {rev,byLine,cash,reps,cov:L.salesDaysPerMonth/L.oppDevPD,activeArr,util,actM:[...actM],alerts,
+    Sarr,demandPM,backlogArr,delivStaff,avgS2027:supAvg,peakDeliv:Math.max(...delivStaff),
+    bookings,cogs,collect,gross,net,ocf,totalRev:rev.reduce((s,v)=>s+v,0),
+    rev2027:sum(rev,Y),bookings2027:sum(bookings,Y),collect2027:sum(collect,Y),gross2027:sum(gross,Y),net2027:sum(net,Y),ocf2027:sum(ocf,Y),
+    grossMargin2027:sum(rev,Y)>0?sum(gross,Y)/sum(rev,Y):0,minCash2027:Math.min(...Y.map(i=>cash[i])),
+    firstSign:signed.findIndex(v=>v>0.01),stock2027:sum(byLine.stock,Y),peakReps:Math.max(...reps),
+    avgActive2027:sum(activeArr,Y)/12,util2027:sum(util,Y)/12};
+}
+function ksfTable(L){const b=simulate(L),base=b.totalRev,bc=b.minCash2027;
+  const P=[
+   {label:'销售团队规模',node:'sales',act:'起始多招2名销售',mut:x=>({...x,hiring:x.hiring.map((h,i)=>i===0?{...h,n:h.n+2}:h)})},
+   {label:'销售周期',node:'sales',act:'销售周期缩短1个月',mut:x=>({...x,salesCycle:Math.max(1,x.salesCycle-1)})},
+   {label:'商机开发效率',node:'sales',act:'单商机开发-4人天',mut:x=>({...x,oppDevPD:Math.max(4,x.oppDevPD-4)})},
+   {label:'成交率',node:'contract',act:'成交率 +5pt',mut:x=>({...x,winRate:Math.min(0.8,x.winRate+0.05)})},
+   {label:'学员付费转化',node:'cust',act:'学员转化 +5pt',mut:x=>({...x,studentConv:Math.min(0.6,x.studentConv+0.05)})},
+   {label:'会员留存',node:'cust',act:'会员年流失 -5pt',mut:x=>({...x,memberChurn:Math.max(0,x.memberChurn-0.05)})},
+   {label:'销售留存',node:'hiring',act:'销售年离职 -5pt',mut:x=>({...x,salesAttrition:Math.max(0,x.salesAttrition-0.05)})},
+   {label:'交付产能',node:'delivery',act:'交付起始 +2 人',mut:x=>({...x,deliveryHiring:x.deliveryHiring.map((h,i)=>i===0?{...h,n:h.n+2}:h)})},
+   {label:'医生带动患者',node:'cust',act:'每医生+2患者/月',mut:x=>({...x,patientsPerDoctor:x.patientsPerDoctor+2})},
+   {label:'市场活动转化',node:'mkt',act:'活动转化率 +3pt',mut:x=>({...x,mktConv:Math.min(0.4,x.mktConv+0.03)})},
+   {label:'回款周期',node:'cash',act:'DSO 缩短1个月',mut:x=>({...x,dsoM:Math.max(0,x.dsoM-1)})},
+  ];
+  P.forEach(p=>{const s=simulate(p.mut(L));p.dRev=s.totalRev-base;p.dCash=s.minCash2027-bc;});
+  P.sort((a,b)=>b.dRev-a.dRev||b.dCash-a.dCash);return P;}
+
+// ============ RENDER (dashboard) ============
+function renderKPIs(s){const att=s.rev2027/8000000,ss=s.rev2027?s.stock2027/s.rev2027:0;
+  const T=[['2027确认收入',CNY(s.rev2027),'目标800–1500万','var(--ink)'],
+   ['达成率(对800万)',Math.round(att*100)+'%',(att>=1?'达标':'缺口 ')+CNY(Math.abs(s.rev2027-8e6)),att>=1?'var(--cash)':'var(--target)'],
+   ['2027现金低点',CNY(s.minCash2027),s.minCash2027<0?'需补现金/融资':'现金为正',s.minCash2027<0?'var(--target)':'var(--cash)'],
+   ['2027毛利率',Math.round(s.grossMargin2027*100)+'%','净利 '+CNY(s.net2027),'var(--ink)'],
+   ['交付利用率',Math.round(s.util2027*100)+'%',s.util2027>=0.98?'交付已打满':'交付有余量',s.util2027>=0.98?'var(--target)':'var(--ink)'],
+   ['单销售覆盖 / 存量占比',s.cov.toFixed(2)+' / '+Math.round(ss*100)+'%','派生 · 首签'+(s.firstSign>=0?monthLabel(s.firstSign):'—'),'var(--derive)']];
+  document.getElementById('kpis').innerHTML=T.map(t=>`<div class="kpi"><div class="lab">${t[0]}</div><div class="num" style="color:${t[3]}">${t[1]}</div><div class="note">${t[2]}</div></div>`).join('');}
+function renderChart(s){window.LS=s;const W=920,H=250,p={l:50,r:50,t:12,b:24},iw=W-p.l-p.r,ih=H-p.t-p.b;
+  const maxRev=Math.max(...s.rev,1);const cum=[];s.rev.reduce((a,v,i)=>{const n=a+v;cum[i]=n;return n;},0);
+  const maxCum=Math.max(cum[M-1],1),minC=Math.min(0,...s.cash),maxC=Math.max(...s.cash,1);
+  const bw=iw/M*0.66,x=i=>p.l+(i+0.5)*iw/M,yCum=v=>p.t+ih-(v/maxCum)*ih*0.9,yCash=v=>p.t+ih-((v-minC)/(maxC-minC))*ih;
+  const cols={inst:'var(--inst)',member:'var(--member)',stock:'var(--stock)',patient:'var(--patient)',anc:'var(--anc)'};
+  let bars='';for(let i=0;i<M;i++){let acc=0;const base=p.t+ih;['inst','member','stock','patient','anc'].forEach(k=>{const v=s.byLine[k][i];if(v<=0)return;const h=(v/maxRev)*ih*0.9,y=base-(acc+v)/maxRev*ih*0.9;bars+=`<rect x="${x(i)-bw/2}" y="${y}" width="${bw}" height="${h}" fill="${cols[k]}" opacity="${i>=12?1:.5}"/>`;acc+=v;});}
+  const tgtY=yCum(8e6),cumP=cum.map((v,i)=>`${i?'L':'M'}${x(i)},${yCum(v)}`).join(' '),cashP=s.cash.map((v,i)=>`${i?'L':'M'}${x(i)},${yCash(v)}`).join(' ');
+  let xt='';for(let i=0;i<M;i+=3)xt+=`<text x="${x(i)}" y="${H-8}" text-anchor="middle" font-size="9" fill="var(--muted)">${monthLabel(i)}</text>`;
+  const reg=`<rect x="${x(12)-iw/M/2}" y="${p.t}" width="${12*iw/M}" height="${ih}" fill="var(--accentbg)" opacity=".6"/>`;
+  const zc=(minC<0)?`<line x1="${p.l}" x2="${W-p.r}" y1="${yCash(0)}" y2="${yCash(0)}" stroke="#cbd5e0" stroke-dasharray="2 3"/>`:'';
+  let hit='';for(let i=0;i<M;i++)hit+=`<rect x="${x(i)-iw/M/2}" y="${p.t}" width="${iw/M}" height="${ih}" fill="transparent" style="cursor:pointer" onclick="showMonth(event,${i})"><title>${monthLabel(i)} 点击看明细</title></rect>`;
+  document.getElementById('chart').innerHTML=`<svg viewBox="0 0 ${W} ${H}">${reg}<text x="${x(17.5)}" y="${p.t+11}" text-anchor="end" font-size="9.5" fill="var(--inst)" font-weight="700">2027</text>${zc}${bars}<path d="${cumP}" fill="none" stroke="#123a63" stroke-width="2"/><path d="${cashP}" fill="none" stroke="var(--cash)" stroke-width="2"/><line x1="${p.l}" x2="${W-p.r}" y1="${tgtY}" y2="${tgtY}" stroke="var(--target)" stroke-width="1.4" stroke-dasharray="5 4"/><text x="${W-p.r}" y="${tgtY-4}" text-anchor="end" font-size="9" fill="var(--target)">目标800万</text>${xt}${hit}</svg>`;}
+function showMonth(ev,i){const s=window.LS;if(!s)return;const pop=document.getElementById('popup');
+  const rows=[['合同额(签约)',s.bookings[i]],['确认收入(交付)',s.rev[i]],['净利',s.net[i]],['经营现金流',s.ocf[i]],['现金存量(期末)',s.cash[i]]];
+  pop.innerHTML=`<h5>${monthLabel(i)} · 月度明细</h5>`+rows.map(r=>`<div class="r"><span>${r[0]}</span><b style="color:${r[1]<0?'var(--target)':'var(--ink)'}">${CNY(r[1])}</b></div>`).join('');
+  pop.style.display='block';let xx=ev.clientX+14,yy=ev.clientY+8;if(xx>window.innerWidth-210)xx=ev.clientX-210;if(yy>window.innerHeight-160)yy=ev.clientY-160;pop.style.left=xx+'px';pop.style.top=yy+'px';ev.stopPropagation();}
+document.addEventListener('click',e=>{const pop=document.getElementById('popup');if(pop&&pop.style.display==='block'&&!pop.contains(e.target))pop.style.display='none';});
+function renderTimeline(s){const L=getL();const W=1180,H=118,p={l:12,r:12,t:26,b:22},iw=W-p.l-p.r,x=i=>p.l+i/(M-1)*iw;
+  const marks=[{i:L.marketStart,c:'var(--inst)',t:'渠道启动'}];
+  L.hiring.forEach((h,k)=>{if(h.n>0)marks.push({i:h.m,c:'#7a8aa0',t:(k===0?'起始':'增')+h.n+'销售'});});
+  L.releases.forEach(r=>marks.push({i:r.month,c:'var(--member)',t:r.name.slice(0,6)}));
+  if(s.firstSign>=0)marks.push({i:s.firstSign,c:'#123a63',t:'首签'});marks.push({i:L.stockStart,c:'var(--stock)',t:'存量交付'});
+  L.activities.filter(a=>a.leads>0).forEach((a,k)=>marks.push({i:a.m,c:'#c98a2b',t:k===0?'市场活动':'',small:true}));
+  let axis='';for(let i=0;i<M;i+=3)axis+=`<text x="${x(i)}" y="${H-6}" text-anchor="middle" font-size="9" fill="var(--muted)">${monthLabel(i)}</text>`;
+  const reg=`<rect x="${x(12)}" y="${p.t-6}" width="${x(23)-x(12)}" height="${H-p.t-p.b+8}" fill="var(--accentbg)"/>`;
+  let dots='';const placed=[];marks.filter(m=>m.i>=0&&m.i<M).sort((a,b)=>a.i-b.i).forEach(mk=>{const px=x(mk.i);let lv=0;placed.forEach(q=>{if(Math.abs(q.x-px)<54)lv=Math.max(lv,q.level+1);});if(mk.t)placed.push({x:px,level:lv});
+    dots+=`<line x1="${px}" x2="${px}" y1="${p.t}" y2="${H-p.b}" stroke="${mk.c}" stroke-width="${mk.small?1:1.6}" opacity="${mk.small?.5:.9}" stroke-dasharray="${mk.small?'2 2':''}"/><circle cx="${px}" cy="${p.t}" r="${mk.small?2.5:4}" fill="${mk.c}"/>${mk.t?`<text x="${px}" y="${p.t-8-lv*11}" text-anchor="middle" font-size="9" fill="${mk.c}" font-weight="600">${mk.t}</text>`:''}`;});
+  document.getElementById('timeline').innerHTML=`<svg viewBox="0 0 ${W} ${H}">${reg}<line x1="${p.l}" x2="${W-p.r}" y1="${p.t}" y2="${p.t}" stroke="var(--line)"/><text x="${x(12)+4}" y="${p.t-2}" font-size="9" fill="var(--inst)" font-weight="700" opacity=".6">2027 →</text>${dots}${axis}</svg>`;}
+function renderFinance(s){const Q=[['2026Q1',[0,1,2]],['2026Q2',[3,4,5]],['2026Q3',[6,7,8]],['2026Q4',[9,10,11]],['2027Q1',[12,13,14]],['2027Q2',[15,16,17]],['2027Q3',[18,19,20]],['2027Q4',[21,22,23]]];
+  const sm=(a,idx)=>idx.reduce((x,i)=>x+a[i],0);let html=`<tr><th>季度</th><th>合同额</th><th>确认</th><th>回款</th><th>经营现金流</th><th>毛利</th><th>净利</th></tr>`;
+  Q.forEach(([lab,idx],qi)=>{html+=`<tr${qi>=4?' style="background:#f6f9fc"':''}><td>${lab}</td><td>${CNY(sm(s.bookings,idx))}</td><td>${CNY(sm(s.rev,idx))}</td><td>${CNY(sm(s.collect,idx))}</td><td style="color:${sm(s.ocf,idx)<0?'var(--target)':'var(--ink)'}">${CNY(sm(s.ocf,idx))}</td><td>${CNY(sm(s.gross,idx))}</td><td style="color:${sm(s.net,idx)<0?'var(--target)':'var(--cash)'}">${CNY(sm(s.net,idx))}</td></tr>`;});
+  html+=`<tr class="top" style="font-weight:700"><td>2027全年</td><td>${CNY(s.bookings2027)}</td><td>${CNY(s.rev2027)}</td><td>${CNY(s.collect2027)}</td><td style="color:${s.ocf2027<0?'var(--target)':'var(--ink)'}">${CNY(s.ocf2027)}</td><td>${CNY(s.gross2027)}<span style="font-weight:400;color:var(--muted)">(${Math.round(s.grossMargin2027*100)}%)</span></td><td style="color:${s.net2027<0?'var(--target)':'var(--cash)'}">${CNY(s.net2027)}</td></tr>`;
+  document.getElementById('finance').innerHTML=html;}
+function renderKSF(L){const P=ksfTable(L);let html=`<tr><th>关键成功要素</th><th>动作</th><th>累计增收</th><th>现金变化</th></tr>`;
+  P.forEach((p,i)=>{html+=`<tr class="${i===0?'top':''}"><td>${p.label}${i===0?' ●':''}</td><td>${p.act}</td><td style="color:${p.dRev>1000?'var(--cash)':(p.dRev<-1000?'var(--target)':'var(--muted)')}">${p.dRev>0?'+':''}${CNY(p.dRev)}</td><td style="color:${p.dCash<-1000?'var(--target)':'var(--cash)'}">${p.dCash>=0?'+':''}${CNY(p.dCash)}</td></tr>`;});
+  document.getElementById('ksf').innerHTML=html;return P[0].node;}
+function renderConstraint(L,s){const b=ksfTable(L)[0];const u=Math.round(s.util2027*100);
+  document.getElementById('constraint').innerHTML=`<div class="constraint-box"><div class="t">绑定约束</div><div class="m">${b.label} — 「${b.act}」增收 <b>${CNY(b.dRev)}</b>。交付利用率 ${u}%${u>=98?'（已打满：先加交付）':'（有余量：需求侧是瓶颈）'}</div></div>`;}
+function renderGraph(host,hot){const g=ONT.gnodes,w=290,h=290,bw=118,bh=30;
+  let edges='';ONT.edges.forEach(e=>{const A=g[e.from],B=g[e.to];if(!A||!B)return;const off=e.active===false;
+    edges+=`<path class="oedge ${off?'off':''}" d="M${A[0]+bw/2},${A[1]+bh} C${A[0]+bw/2},${A[1]+bh+10} ${B[0]+bw/2},${B[1]-10} ${B[0]+bw/2},${B[1]}"/>`;});
+  let nodes='';Object.entries(g).forEach(([k,v])=>{const hc=(k===hot),der=v[3]===1;
+    nodes+=`<g class="onode ${hc?'hot':''} ${der?'der':''}"><rect x="${v[0]}" y="${v[1]}" width="${bw}" height="${bh}" rx="6"/><text x="${v[0]+bw/2}" y="${v[1]+19}" text-anchor="middle" font-weight="${hc?700:500}">${v[2]}</text></g>`;});
+  document.getElementById(host).innerHTML=`<svg viewBox="0 0 ${w} ${h}"><defs><marker id="arrow" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#c3cdd8"/></marker></defs>${edges}${nodes}</svg>`;}
+
+function renderAlerts(s){const el=document.getElementById('alerts');if(!s.alerts||!s.alerts.length){el.innerHTML='';return;}
+  el.innerHTML=s.alerts.map(a=>`<div class="alertbox ${a.level}">${a.msg}</div>`).join('');}
+function renderDash(){const L=getL();const s=simulate(L);renderAlerts(s);renderKPIs(s);renderChart(s);renderTimeline(s);renderFinance(s);const hot=renderKSF(L);renderConstraint(L,s);renderGraph('graph',hot);}
+
+// ============ CONFIG editors ============
+function fmtInput(n){return PCT.has(n.id)?(n.v*100):n.v;}
+const NODECATS=['时点/目标','市场','销售','扰动','交付','收费','存量商机','成本','派生'];
+let nodeCat='时点/目标';
+function setNodeCat(c){nodeCat=c;renderNodeEd();}
+function renderNodeEd(){
+  const bar=`<div class="catbar">`+NODECATS.map(c=>`<span class="catchip ${c===nodeCat?'on':''}" onclick="setNodeCat('${c}')">${c}</span>`).join('')+`</div>`;
+  let body='';
+  if(nodeCat==='派生'){const L=getL();const s=simulate(L);const dv={coverage:(L.salesDaysPerMonth/L.oppDevPD).toFixed(2)+' 家/月',deliverySupply:Math.round(s.avgS2027)+' 人天(2027均)'};
+    body=`<div class="ngrid">`+ONT.nodes.filter(n=>n.k==='d').map(n=>`<div class="nrow"><label>${n.lab}<small>= ${n.f}</small></label><span style="text-align:right;font-weight:700;color:var(--derive)">${dv[n.id]}</span><span class="tag">派生</span></div>`).join('')+`</div>`;}
+  else{const ns=ONT.nodes.filter(n=>n.k==='p'&&n.g===nodeCat);
+    body=`<div class="ngrid">`+ns.map(n=>`<div class="nrow"><label>${n.lab}<small>${n.id}</small></label><input type="number" step="any" value="${fmtInput(n)}" oninput="setNode('${n.id}',this.value)"><span class="tag">${PCT.has(n.id)?'%':(MONEY.has(n.id)?'元':n.u)}</span></div>`).join('')+`</div>`;}
+  document.getElementById('nodeEd').innerHTML=bar+body;}
+function liveUpdate(){renderDash();const cfg=document.getElementById('page_cfg');if(cfg&&!cfg.classList.contains('hidden'))renderGraph('graphCfg',null);}
+function setNode(id,val){const n=nodeById(id);let v=parseFloat(val);if(isNaN(v))return;if(PCT.has(id))v=v/100;n.v=v;liveUpdate();}
+function renderSched(host,arr,key,label,max){let html=`<div class="sched"><span></span><span style="text-align:center;font-size:10px;color:var(--muted)">${key==='n'?'入职月':'活动月'}</span><span style="text-align:center;font-size:10px;color:var(--muted)">${label}</span></div>`;
+  arr.forEach((r,i)=>{html+=`<div class="sched"><span style="font-size:11px;color:var(--muted)">${key==='n'?(i===0?'起始':'增员'+i):'活动'+(i+1)}</span><input type="number" value="${r.m}" oninput="setSched('${host}',${i},'m',this.value)"><input type="number" value="${r[key]}" oninput="setSched('${host}',${i},'${key}',this.value)"></div>`;});
+  document.getElementById(host).innerHTML=html;}
+function setSched(host,i,f,val){const id=host==='hireEd'?'hiring':'activities';const arr=nodeById(id).v;arr[i][f]=Math.max(0,parseInt(val)||0);liveUpdate();}
+function renderActs(){const arr=nodeById('activities').v;
+  let html=`<div class="sched3 hd"><span></span><span>活动月</span><span>线索</span><span>费用(元)</span></div>`;
+  arr.forEach((r,i)=>{html+=`<div class="sched3"><span>活动${i+1}</span><input type="number" value="${r.m}" oninput="setAct(${i},'m',this.value)"><input type="number" value="${r.leads}" oninput="setAct(${i},'leads',this.value)"><input type="number" value="${r.cost||0}" oninput="setAct(${i},'cost',this.value)"></div>`;});
+  html+=`<div style="margin-top:6px"><span class="btn" onclick="addAct()">+ 新增活动</span></div>`;
+  document.getElementById('actEd').innerHTML=html;}
+function setAct(i,f,val){nodeById('activities').v[i][f]=Math.max(0,parseInt(val)||0);liveUpdate();}
+function addAct(){nodeById('activities').v.push({m:12,leads:60,cost:200000});renderActs();liveUpdate();}
+const RELUNIT={boost_studentConv:'pt',boost_winRate:'pt',boost_mktConv:'pt',reduce_churn:'pt',boost_patients:'人',boost_coverage:'人天'};
+function renderRel(){const rel=nodeById('releases').v;
+  let html=`<tr><th>功能名称</th><th>上线月</th><th>影响因素</th><th>值(单位)</th><th></th></tr>`;
+  rel.forEach((r,i)=>{const isGate=r.target.startsWith('gate');const unit=RELUNIT[r.target]||'';
+    html+=`<tr><td><input value="${r.name}" oninput="setRel(${i},'name',this.value)"></td><td style="width:46px"><input type="number" value="${r.month}" oninput="setRel(${i},'month',this.value)"></td>
+    <td><select onchange="setRel(${i},'target',this.value)">${Object.entries(RELEASE_TARGETS).map(([k,v])=>`<option value="${k}" ${r.target===k?'selected':''}>${v}</option>`).join('')}</select></td>
+    <td style="width:64px">${isGate?'<span style="color:var(--muted)" title="解锁类不需要填值">— 无需填</span>':`<span style="display:flex;align-items:center;gap:2px"><input type="number" step="any" value="${['boost_studentConv','boost_winRate','boost_mktConv','reduce_churn'].includes(r.target)?r.value*100:r.value}" oninput="setRel(${i},'value',this.value)"><b style="font-size:9.5px;color:var(--muted)">${unit}</b></span>`}</td>
+    <td style="width:26px"><span class="btn del" onclick="delRel(${i})">×</span></td></tr>`;});
+  document.getElementById('relTbl').innerHTML=html;}
+function setRel(i,f,val){const rel=nodeById('releases').v;if(f==='name'){rel[i].name=val;liveUpdate();return;}
+  if(f==='target'){rel[i].target=val;renderRel();liveUpdate();return;}
+  let v=parseFloat(val)||0;if(f==='value'&&['boost_studentConv','boost_winRate','boost_mktConv','reduce_churn'].includes(rel[i].target))v=v/100;if(f==='month')v=Math.max(0,Math.min(23,parseInt(val)||0));rel[i][f]=v;liveUpdate();}
+function addRelease(){nodeById('releases').v.push({name:'新功能',month:12,target:'boost_studentConv',value:0.03});renderRel();liveUpdate();}
+function delRel(i){nodeById('releases').v.splice(i,1);renderRel();liveUpdate();}
+function renderEdge(){let html=`<tr><th>来源</th><th>去向</th><th>关系</th><th>影响说明</th><th>启</th><th></th></tr>`;const opt=Object.keys(ONT.gnodes);
+  ONT.edges.forEach((e,i)=>{const sel=id=>opt.map(o=>`<option ${e[id]===o?'selected':''}>${o}</option>`).join('');
+    html+=`<tr><td><select onchange="setEdge(${i},'from',this.value)">${sel('from')}</select></td><td><select onchange="setEdge(${i},'to',this.value)">${sel('to')}</select></td>
+    <td style="width:74px"><input value="${e.rel}" oninput="setEdge(${i},'rel',this.value)"></td><td><input value="${e.eff}" oninput="setEdge(${i},'eff',this.value)"></td>
+    <td style="width:24px;text-align:center"><input type="checkbox" ${e.active!==false?'checked':''} onchange="setEdge(${i},'active',this.checked)"></td><td style="width:24px"><span class="btn del" onclick="delEdge(${i})">×</span></td></tr>`;});
+  document.getElementById('edgeTbl').innerHTML=html;}
+function setEdge(i,f,val){ONT.edges[i][f]=val;liveUpdate();}
+function addEdge(){ONT.edges.push({id:'e'+Date.now(),from:'rev',to:'cash',rel:'REL',eff:'说明',active:true});renderEdge();liveUpdate();}
+function delEdge(i){ONT.edges.splice(i,1);renderEdge();liveUpdate();}
+
+const ROLES=[['hiring','销售','salesCost',true],['deliveryHiring','交付','deliveryCost',false],['marketHiring','市场','marketCost',false],['rndHiring','研发','rndCost',false],['gaHiring','职能','gaCost',false]];
+function renderStaff(){let html='';
+  ROLES.forEach(([id,name,costId,attr])=>{const cost=nodeById(costId),sched=nodeById(id).v;
+    html+=`<div class="rolecard"><div class="rolehd"><b>${name}</b> · 月总包 <input class="salin" type="number" value="${cost.v}" oninput="setNode('${costId}',this.value)"> 元${attr?' <span style="color:var(--muted);font-size:10px">(含离职衰减)</span>':''}</div><div class="staffgrid">`+
+      sched.map((s,i)=>`<div class="slot"><small>${i===0?'起始':'增'+i}</small><div class="kv"><b>月</b><input value="${s.m}" title="上线月" oninput="setSchedNode('${id}',${i},'m',this.value)"><b>人</b><input value="${s.n}" title="人数" oninput="setSchedNode('${id}',${i},'n',this.value)"></div></div>`).join('')+`</div></div>`;});
+  document.getElementById('staffEd').innerHTML=html;}
+function setSchedNode(id,i,f,val){nodeById(id).v[i][f]=Math.max(0,parseInt(val)||0);liveUpdate();}
+function renderCfg(){renderNodeEd();renderStaff();renderActs();renderRel();renderEdge();renderGraph('graphCfg',null);}
+function renderAll(){renderDash();if(!document.getElementById('page_cfg').classList.contains('hidden'))renderCfg();}
+function showTab(t){document.getElementById('page_dash').classList.toggle('hidden',t!=='dash');document.getElementById('page_cfg').classList.toggle('hidden',t!=='cfg');
+  document.getElementById('tab_dash').classList.toggle('on',t==='dash');document.getElementById('tab_cfg').classList.toggle('on',t==='cfg');if(t==='cfg')renderCfg();else renderDash();}
+renderDash();renderCfg();
+</script></body></html>

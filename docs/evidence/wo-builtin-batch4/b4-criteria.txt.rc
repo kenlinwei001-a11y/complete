@@ -1,0 +1,1 @@
+CAPTURED_RC=0（从 b4-seam.txt 里抽出的原文段落，抽取命令本身 rc=0；被抽取的那一次 vitest 运行 rc=0，见 b4-seam.txt.rc）

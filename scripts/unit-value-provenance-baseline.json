@@ -1,0 +1,19 @@
+{
+ "note": "值级量纲棘轮（G-LEVER-SNAPSHOT-UNIT-LIE）。逐文件记 UNPROVEN 条数，只许降不许升；基线高于实测 = 免检名额，同样判红。存量多为 mock/fixture 里的数字字面量（量纲看着对，但门证不了），要销账就在那一行补 `/* @unit <量纲> */` 背书 —— 背书是看得见的，放宽判据是看不见的。",
+ "gate": "scripts/check-unit-value-provenance.mjs",
+ "ontologyRef": "§7 · G-LEVER-SNAPSHOT-UNIT-LIE",
+ "generatedBy": "node scripts/check-unit-value-provenance.mjs --update",
+ "total": 42,
+ "files": {
+  "apps/datacore/src/livedin/engine.ts": 3,
+  "apps/datacore/src/opsteam/schedule.ts": 1,
+  "apps/datacore/src/solvers/service.ts": 7,
+  "apps/datacore/src/sop.ts": 1,
+  "apps/datacore/src/synthetic/battery.ts": 1,
+  "apps/datacore/src/vle.ts": 2,
+  "apps/frontend-shell/src/mocks/fixtures.ts": 6,
+  "apps/frontend-shell/src/mocks/handlers.ts": 8,
+  "apps/frontend-shell/src/mocks/simSolvers.ts": 10,
+  "apps/frontend-shell/src/views/sim/SopBalanceView.tsx": 3
+ }
+}

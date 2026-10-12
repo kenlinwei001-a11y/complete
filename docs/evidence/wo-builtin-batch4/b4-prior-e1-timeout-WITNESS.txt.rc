@@ -1,0 +1,3 @@
+本文档不是本 dev 跑出来的：它是**前一位接手人**在 worktree `agent-a3ae5adb1fea57acb`（分支 claude/handoff-builtin-batch4 @ dd7ae2275，与本单起点同一 commit）于 2026-10-10 00:27 留下的 blast 原始日志，原文件 /tmp/b4-blast.log。
+关键行：dsh-builtin-mcp.seam.test.ts E1 = 574433ms → "Test timed out in 90000ms."；E2 因"迁后臂必须先跑过"级联红；Q2 = 既有红。
+该次 run 汇总：Test Files 2 failed | 15 passed (17) / Tests 3 failed | 170 passed (173) / Duration 1230.08s（collect 1779.76s ⇒ 病态负载签名）。

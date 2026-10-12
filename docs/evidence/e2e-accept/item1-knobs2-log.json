@@ -1,0 +1,340 @@
+{
+  "counters": {
+    "steps": 6,
+    "clicks": 6,
+    "navs": 5
+  },
+  "portsHit": {
+    "127.0.0.1:5181": 216,
+    "127.0.0.1:4051": 13,
+    "127.0.0.1:4052": 10
+  },
+  "netCalls": [
+    {
+      "port": "4051",
+      "path": "/a/v1/auth/refresh",
+      "status": 401,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/auth/login",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/me/workspace",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/history/watermark",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/data-health",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/scenarios",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/tenants/demo/features",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/scenes",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/propagation-rules",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/sessions",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/cross_object_occupancy/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/optimize_whatif/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/portfolio/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/portfolio/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/portfolio/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/outbox",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/outbox",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/portfolio/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/portfolio/run",
+      "status": 200,
+      "method": "POST"
+    }
+  ],
+  "log": [
+    {
+      "t": "2026-09-04T02:38:38.001Z",
+      "kind": "STEP",
+      "msg": "#1 打开应用入口（唯一允许输入的 URL）"
+    },
+    {
+      "t": "2026-09-04T02:38:38.048Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:38:38.774Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:38:38.812Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "t": "2026-09-04T02:38:38.817Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/login"
+    },
+    {
+      "t": "2026-09-04T02:38:38.819Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "t": "2026-09-04T02:38:38.829Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "t": "2026-09-04T02:38:40.565Z",
+      "kind": "STEP",
+      "msg": "#2 在登录页填 demo / admin / demo1234"
+    },
+    {
+      "t": "2026-09-04T02:38:40.632Z",
+      "kind": "CLICK",
+      "msg": "#1 登录"
+    },
+    {
+      "t": "2026-09-04T02:38:40.817Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:38:44.190Z",
+      "kind": "LOGIN",
+      "msg": "登录后 URL",
+      "url": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:38:44.190Z",
+      "kind": "STEP",
+      "msg": "#3 →「接单组合优选」"
+    },
+    {
+      "t": "2026-09-04T02:38:44.198Z",
+      "kind": "CLICK",
+      "msg": "#2 侧边栏 →「接单组合优选」"
+    },
+    {
+      "t": "2026-09-04T02:38:44.244Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/v/global-sim"
+    },
+    {
+      "t": "2026-09-04T02:38:52.278Z",
+      "kind": "CANARY",
+      "msg": "修正后抽取器（应全部非空且像数）",
+      "onTimeRate": "39%",
+      "totalCost": "1,986,559",
+      "squeezed": "8",
+      "pinned": "0",
+      "inTransit": "21,777",
+      "changeoverHrs": "33.8",
+      "freight": "1,730,080",
+      "grossProxy": "-4,017,149",
+      "planTable": [
+        [
+          "最多按期",
+          "20",
+          "8",
+          "172,842",
+          "11",
+          "1,343,706",
+          "34",
+          "1,223,250",
+          "2,598,184"
+        ],
+        [
+          "最低代价",
+          "20",
+          "8",
+          "172,842",
+          "11",
+          "1,829,254",
+          "34",
+          "0",
+          "2,010,837"
+        ]
+      ],
+      "sliders": {
+        "按期 权重": "1",
+        "代价 权重": "1",
+        "换型 权重": "1",
+        "延误 权重": "1",
+        "成品库存 权重": "1",
+        "营收权重": "1",
+        "违约金权重": "1",
+        "换型成本权重": "1"
+      }
+    },
+    {
+      "t": "2026-09-04T02:38:52.278Z",
+      "kind": "STEP",
+      "msg": "#4 拉「按期 权重」到 10（不点按钮），读一次"
+    },
+    {
+      "t": "2026-09-04T02:38:52.339Z",
+      "kind": "SLIDER",
+      "msg": "按期 权重 := 10",
+      "ok": true
+    },
+    {
+      "t": "2026-09-04T02:38:58.349Z",
+      "kind": "RESULT",
+      "msg": "按期权重=10 · 未点按钮",
+      "变了": "(什么都没变)",
+      "按期率": "39%",
+      "总代价": "1,986,559",
+      "毛利代理": "-4,017,149"
+    },
+    {
+      "t": "2026-09-04T02:38:58.349Z",
+      "kind": "STEP",
+      "msg": "#5 同一状态下点「发起联合求解」，再读一次（区分：旋钮死 vs 要按钮才生效）"
+    },
+    {
+      "t": "2026-09-04T02:38:58.356Z",
+      "kind": "CLICK",
+      "msg": "#4 点「发起联合求解」"
+    },
+    {
+      "t": "2026-09-04T02:39:06.458Z",
+      "kind": "RESULT",
+      "msg": "按期权重=10 · 已点按钮(true)",
+      "相对基线变了": "(什么都没变)",
+      "按期率": "39%",
+      "总代价": "1,986,559",
+      "毛利代理": "-4,017,149"
+    },
+    {
+      "t": "2026-09-04T02:39:06.704Z",
+      "kind": "SHOT",
+      "msg": "i1-knob-after-resolve"
+    },
+    {
+      "t": "2026-09-04T02:39:06.714Z",
+      "kind": "STEP",
+      "msg": "#6 再拉「代价 权重」到 10 并点按钮"
+    },
+    {
+      "t": "2026-09-04T02:39:06.791Z",
+      "kind": "SLIDER",
+      "msg": "代价 权重 := 10",
+      "ok": true
+    },
+    {
+      "t": "2026-09-04T02:39:09.806Z",
+      "kind": "CLICK",
+      "msg": "#6 点「发起联合求解」"
+    },
+    {
+      "t": "2026-09-04T02:39:17.899Z",
+      "kind": "RESULT",
+      "msg": "代价权重=10 · 已点按钮",
+      "相对基线变了": "(什么都没变)",
+      "按期率": "39%",
+      "总代价": "1,986,559"
+    }
+  ]
+}

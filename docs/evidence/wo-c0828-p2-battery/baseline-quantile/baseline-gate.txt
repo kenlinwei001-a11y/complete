@@ -1,0 +1,20 @@
+=== A/B：门 quantile-unit-onscreen §2b 在 P2 父提交 b4cd399c4 上 ===
+树: /tmp/wt-base-fe HEAD=b4cd399c4 START=09-29 16:01:16
+
+ RUN  v3.2.6 /private/tmp/wt-base-fe/apps/frontend-shell
+
+stderr | test/quantile-unit-onscreen.seam.test.tsx > §3 · 屏上真出现单位（渲染结果，不是字段名） > S&OP：KPI 条 + ② 三线对照表头 = 万套/月；⑤ 版本演进表头 = 万套/年（同屏两个分母，可分辨）
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+
+ ✓ test/quantile-unit-onscreen.seam.test.tsx (8 tests) 47738ms
+   ✓ §2 · 契约里零裸分位名（旧名不回潮） > React prop 侧同样零分位裸名：DynamicLeverPanel 的「调整前」参照量是量纲中立名  7367ms
+   ✓ §2b · 改名漏改断言：旧名不许作为数据键留在任何代码里 > src + test 全扫（剥注释）：零处把 `p50`/`p90` 当数据键用；显示标签/测试钩子/缺席断言不误伤  23250ms
+   ✓ §3 · 屏上真出现单位（渲染结果，不是字段名） > S&OP：KPI 条 + ② 三线对照表头 = 万套/月；⑤ 版本演进表头 = 万套/年（同屏两个分母，可分辨）  9813ms
+   ✓ §3 · 屏上真出现单位（渲染结果，不是字段名） > 订单全链 ①交期判：屏上写清「套/周」，且不再把整单量说成「本周需求」  6990ms
+
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+   Start at  16:01:21
+   Duration  72.00s (transform 10.49s, setup 15.24s, collect 3.92s, tests 47.74s, environment 3.27s, prepare 569ms)
+
+CAPTURED_RC=0

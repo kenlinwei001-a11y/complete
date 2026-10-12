@@ -11,6 +11,24 @@ export type FetchLike = (url: string, init: { method: string; headers: Record<st
  */
 const BACKOFF_MS = [60_000, 5 * 60_000, 30 * 60_000, 2 * 60 * 60_000, 12 * 60 * 60_000];
 
+/** URL → origin；非法 URL 返回 null（**不抛**：一条坏 hook 不该炸掉整轮投递）。 */
+function safeOrigin(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 受信内部对端（B 栈）：只有投递到**这个源**的 webhook 才附带 `X-Service-Token`。
+ * baseUrl 取 `AGENTCORE_BASE_URL`，token 取 `SERVICE_TOKEN`。
+ */
+export interface InternalPeer {
+  baseUrl: string;
+  serviceToken: string;
+}
+
 /**
  * C-2 / 执行语义 §2: A→B 零调用 — events are written to an outbox and POSTed to
  * registered webhook URLs.
@@ -23,13 +41,36 @@ const BACKOFF_MS = [60_000, 5 * 60_000, 30 * 60_000, 2 * 60 * 60_000, 12 * 60 * 
  */
 export class OutboxService {
   private timer: NodeJS.Timeout | null = null;
+  /** 受信对端的 origin（`http://host:port`）；解析失败或未配置则为 null ⇒ 一律不附带凭证。 */
+  private readonly peerOrigin: string | null;
 
   constructor(
     private repos: Repos,
     private log: Logger,
     private fetchImpl: FetchLike = (url, init) => fetch(url, init),
     private metrics?: Metrics,
-  ) {}
+    private internalPeer?: InternalPeer,
+  ) {
+    this.peerOrigin = internalPeer?.baseUrl ? safeOrigin(internalPeer.baseUrl) : null;
+  }
+
+  /**
+   * 该 hook URL 是否指向受信内部对端（B 栈）。
+   *
+   * ⚠ **这是本文件最要紧的一处安全判断，别改成 `startsWith(baseUrl)`。**
+   * webhook 是**租户自助注册**的（`POST /a/v1/webhooks` 收下 body 里的任意 `url`，
+   * `app.ts` 不做白名单）。若无差别给每次投递附带 `X-Service-Token`，任何租户管理员
+   * 只要注册一条指向自己服务器的 hook，就能把**两服务共享的服务间密钥**原样收走 ——
+   * 那比本次要修的「匿名清缓存」严重得多（凭据外泄 vs 缓存击穿），等于用一个更大的洞补一个小洞。
+   *
+   * 判据用 **origin 全等**而非前缀匹配：前缀匹配下 `http://agentcore:4002.evil.com`
+   * 会命中 `http://agentcore:4002` ——密钥照样送出去。
+   */
+  private isInternalPeer(url: string): boolean {
+    if (!this.peerOrigin) return false;
+    const o = safeOrigin(url);
+    return o !== null && o === this.peerOrigin;
+  }
 
   /**
    * Append an event. `aggregateKey` groups events that must be delivered in
@@ -108,9 +149,20 @@ export class OutboxService {
     let lastError: string | undefined;
     for (const hook of targets) {
       try {
+        const headers: Record<string, string> = {
+          "content-type": "application/json",
+          "idempotency-key": evt.eventId,
+        };
+        // 只对受信内部对端附带服务间凭证（B 侧 `/b/v1/internal/invalidate` 已收口为 SERVICE_TOKEN；
+        // 不带 = 缓存失效链**静默**断掉：投递方只看到 401 → 退避重试 → 最终死信，而
+        // B 侧缓存靠 TTL 60s 兜底，业务面无红、测试面无红 —— 正是最难发现的那种断法）。
+        if (this.isInternalPeer(hook.url) && this.internalPeer) {
+          headers["x-service-token"] = this.internalPeer.serviceToken;
+          headers["x-service-caller"] = "datacore-outbox";
+        }
         const res = await this.fetchImpl(hook.url, {
           method: "POST",
-          headers: { "content-type": "application/json", "idempotency-key": evt.eventId },
+          headers,
           body: JSON.stringify({
             id: evt.id,
             eventId: evt.eventId,

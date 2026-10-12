@@ -1,0 +1,61 @@
+{
+  "mode": "before",
+  "at": "2026-09-07T14:05:35.991Z",
+  "steps": [
+    "① 登录 demo/admin/demo1234 → http://127.0.0.1:5291/",
+    "② 真后端命中 5 次（禁 VITE_MOCK 已实测）",
+    "③ 点导航「数据接入」→ http://127.0.0.1:5291/admin/connections",
+    "④ rest_api + http://nonexistent.invalid/data → 屏上：\"连接成功\"",
+    "⑤ 金丝雀 mock_erp → 屏上：\"连接成功\""
+  ],
+  "landedAfterLogin": "http://127.0.0.1:5291/",
+  "assertNoMock": {
+    "ok": true,
+    "realHits": 5,
+    "sample": [
+      "200 POST http://127.0.0.1:4051/a/v1/auth/login",
+      "200 GET http://127.0.0.1:4051/a/v1/me/workspace",
+      "200 GET http://127.0.0.1:4051/a/v1/history/watermark",
+      "200 GET http://127.0.0.1:4051/a/v1/data-health",
+      "200 GET http://127.0.0.1:4052/b/v1/scenarios"
+    ]
+  },
+  "navLinkBox": {
+    "w": 223,
+    "h": 36
+  },
+  "navSteps": "侧栏「数据接入」分组默认展开，组内条目 1 次点击直达（链接盒 223×36）",
+  "urlAfterNavClick": "http://127.0.0.1:5291/admin/connections",
+  "badHost": {
+    "input": "http://nonexistent.invalid/data",
+    "screen": {
+      "present": true,
+      "text": "连接成功"
+    }
+  },
+  "badHostShot": "conntest-before-03-badhost.png",
+  "canaryGood": {
+    "input": "mock_erp（内置样例源）",
+    "screen": {
+      "present": true,
+      "text": "连接成功"
+    }
+  },
+  "canaryShot": "conntest-before-04-canary-good.png",
+  "canaryDiscriminates": false,
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ],
+  "apiCalls": [
+    {
+      "status": 200,
+      "url": "http://127.0.0.1:4051/a/v1/connections/test",
+      "body": "{\"ok\":true}"
+    },
+    {
+      "status": 200,
+      "url": "http://127.0.0.1:4051/a/v1/connections/test",
+      "body": "{\"ok\":true}"
+    }
+  ]
+}

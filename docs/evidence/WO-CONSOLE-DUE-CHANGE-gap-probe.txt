@@ -1,0 +1,33 @@
+# rules=55
+
+# ── ① 订单三个量今天能到哪 ─────────────────────────────
+Order.qty               1 型  Model
+Order.leadDays          1 型  Model
+Order.unitPrice         1 型  Model
+Order.costPressure     22 型  ARInvoice,Base,Certification,ChangeoverMatrix,Customer,CustomerLocation,DefectRecord,ExceptionEvent,FinishedGoodsInventory,InterBaseTransfer,Line,MaintPlan,Model,Order,OrderLine,OrderPromise,OverdueRecord,Process,QualityLot,Shipment,WIPLot,WorkOrder
+Order.shortageRisk      1 型  OrderPromise
+Order.demandPressure   22 型  ARInvoice,Base,Certification,ChangeoverMatrix,Customer,CustomerLocation,DefectRecord,ExceptionEvent,FinishedGoodsInventory,InterBaseTransfer,Line,MaintPlan,Model,Order,OrderLine,OrderPromise,OverdueRecord,Process,QualityLot,Shipment,WIPLot,WorkOrder
+
+# ── ② 有边指向 Order 的「源格」（= 回到 Order 的入口）────
+  Customer.receivablePressure  -> Order.{orderChurn(d1)}
+  Model.costPressure           -> Order.{costPressure}
+  Model.forecastBias           -> Order.{demandPressure}
+  Model.supplyRisk             -> Order.{shortageRisk}
+
+# ── ③ Model 侧关键格的进出边 ───────────────────────────
+  Model.demandLoad           in[FinishedGoodsInventory.coverDays,FinishedGoodsInventory.drawdownPressure,Order.orderChurn,Order.demandPressure]  out[Base.loadIndex,Certification.qualificationQueue,ChangeoverMatrix.changeoverPressure,FinishedGoodsInventory.drawdownPressure]
+  Model.costPressure         in[Material.priceShock,WorkOrder.releasePressure]  out[Order.costPressure]
+  Model.forecastBias         in[-]  out[Order.demandPressure]
+  Model.supplyRisk           in[Material.shortageRisk,WorkOrder.releasePressure]  out[Order.shortageRisk]
+  Model.backlogQtyTop        in[Order.qty]  out[-]
+  Model.backlogHorizonDays   in[Order.leadDays]  out[-]
+
+# ── ④ 谁能到钱（Customer/ARInvoice/OverdueRecord）───────
+  可驱动 ∧ 可达钱 的格 5 个：
+  Equipment.equipmentFailure, Equipment.loadPressure, FinishedGoodsInventory.coverDays, Material.priceShock, Model.forecastBias
+
+# ── ⑤ 假设加一条 Order.leadDays → Model.X，能到 Order 吗 ─
+  + Order.leadDays→Model.demandLoad     可达 22 型 | 到 Order? ✅ | 到钱 ✅[Customer,ARInvoice,OverdueRecord]
+  + Order.leadDays→Model.costPressure   可达 22 型 | 到 Order? ✅ | 到钱 ✅[Customer,ARInvoice,OverdueRecord]
+  + Order.leadDays→Model.supplyRisk     可达  3 型 | 到 Order? ✅ | 到钱 ❌
+  + Order.leadDays→Model.forecastBias   可达 22 型 | 到 Order? ✅ | 到钱 ✅[Customer,ARInvoice,OverdueRecord]

@@ -1,0 +1,149 @@
+
+ RUN  v3.2.6 /home/user/complete/.claude/worktrees/agent-acc57186b580542d6/apps/datacore
+
+ DEPRECATED  'basic' reporter is deprecated and will be removed in Vitest v3.
+Remove 'basic' from 'reporters' option. To match 'basic' reporter 100%, use configuration:
+{
+  "test": {
+    "reporters": [
+      [
+        "default",
+        {
+          "summary": false
+        }
+      ]
+    ]
+  }
+}
+ ❯ test/sim-real-cells.seam.test.ts (20 tests | 3 failed) 25198ms
+   × WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > ⓒ 接缝驱动：26 条规格编译入库 + 物化后 measuredCells 从 470 涨到 4183（主判据 3,896 过线） 85ms
+     → expected 4189 to be 4183 // Object.is equality
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > ⓑ 指认粒度：26 条规格逐条物化数 = 该类型进世界对象数（逐条点名，不一锅断言） 74ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂1 锚定：Equipment.equipmentFailure = 100 − health_score（独立手算） 0ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂1 锚定：Line.utilPressure = utilization 逐字节（同量纲直取） 0ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂1 锚定：Model.costPressure = unitCost×100÷unitPrice（先乘后除 4 位定点） 0ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂1 锚定：Process.queuePressure = utilization × 100 0ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂1 锚定：Supplier.deliveryDelay = (1 − onTimeRate) × 100 0ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂1 锚定：Order.shortageRisk = outsourceRatio × 100（A⚠ 仓主批口径代理） 0ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂1 锚定：MaterialBatch.procurementDelay = ageDays 逐字节（恒等直取） 0ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂1 锚定：Model.demandLoad = orderCount × 100 ÷ capacity（先乘后除 4 位定点） 0ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂2 量纲：全扫 STATE_VAR_DOMAINS 已声明域的变量逐个不越域；无域族归档「刻意无上界」 294ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > ⓐ 引擎归属：derivationSpecs 清成 0 条 ⇒ 25 个 targetProp 全部消失（证明是引擎②算的）  6449ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂3 敏感性：Customer.receivables ×2 ⇒ receivablePressure 精确 ×2（线性式）  432ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂3 敏感性：Equipment.health_score ↓10 ⇒ equipmentFailure 精确 ↑10（反向线性）  579ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂4 反向：拿掉 Line.max_capacity_day ⇒ blockedPressure 退回（COALESCE 兜 0，非写死常数）  468ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 臂5 变异反证：把 equipmentFailure 的『100 −』改成『100 +』⇒ 臂1 锚定断言当场红  8079ms
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > R6 确定性：同 (seed=42) 重铺世界 ⇒ measuredCells / totalCells 逐字节一致 220ms
+   × WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > §3 绑定判据：valueRef 指向不存在的 specKey ⇒ 播种当场抛错变红（⛔ 不静默回落哈希） 197ms
+     → expected 4189 to be 4183 // Object.is equality
+   × WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > §退役 · `model_forecast_bias` 与它的 valueRef 登记必须同时不存在（残留任一处即红） 4ms
+     → `model_forecast_bias` 又回来了 —— 它的分子 `totalDemand − SUM(in(order_for_model).qty)` 两项同源、**恒等于 0**，且会给 `Model.forecastBias` 盖上 "measured" 章（屏上谎称实测）。⛔ 要复活它必须先让分子的两项来自**不同**的量。: expected [ 'order_value', …(28) ] to not include 'model_forecast_bias'
+   ✓ WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > 金丝雀：seedHash01 确定性（占位格的哈希兜底未受本单影响） 0ms
+ ❯ test/seed-demo-propagation.test.ts (21 tests | 1 failed) 94508ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 种子后 view-config：propagationCount≥2 + stateVars 非空（消空世界）  8126ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 种的规则沿真链路（Order/Model/Base）：发布且 viaLinkKey 是 demo 真链路  2441ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 🔴 方向可达门：每条种子规则的 source─via→target 在**真链路表**上真的走得通（#158 复发闸）  7067ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 🔴 方向可达门的变异反证：喂一条方向写反的规则（#158 原文），门必须判它死  7884ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 确定性 R6：同 SEED_DEMO 重跑规则字节一致（固定 id/系数）  2042ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 幂等：重复播种不增项（固定 id 覆盖）  981ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > live-fire：种子规则 + 真 Order→Model 链路 → tick 真跨对象传导  4699ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 🔴 效果层 SEAM：供应侧扰动（Supplier.deliveryDelay）跨 3 跳真的传导到 Order.shortageRisk  5683ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 🔴 逐条真触发：54 条规则在真 tick 的 trace 里一条不缺（REQ143 + 档 1/2/3 + 采购根源 3 + 三根源 4 + 设备侧出口 4 + 订单真实字段 3 + 库存环 2 + 物料环 3）  4461ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🐤 金丝雀：端点/链路全合法的边**必须建得出来**（证明这组门不是一律拒绝）  3497ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 端点不存在的边必须 400（link-types 那次 81/133 全放行的复发闸）  4511ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 链路类型不存在的边必须 400  3876ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 方向写反的边必须 400 —— 引擎只沿 from→to 单向走，反向边语法全对但恒贡献 0  3969ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 coefficientRef 解析不到必须 400 —— 否则静默回落内联系数，用户以为改规则生效其实无效  4429ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 PATCH 也走同一道体检：塞非法 coefficientRef 必须 400，而合法系数照常放行  4431ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 体检在 upsert **之前**跑：非法边不许先把同 key 的合法边覆盖掉再报错  4200ms
+   ✓ §5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子） > 种子把 bom_cost_share 接上了（兄弟边 edge-money-weight §4 的同款闸，本条边此前漏着） 2ms
+   ✓ §5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子） > 🔴 对照实验：同一型号上，BOM 占比不同的两种物料各涨 15 ⇒ 读数必须按占比拉开（修前同为 9.75）  8359ms
+   ✓ §5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子） > 种子把 bom_cost_share 接到**缺料→供应风险**这条边上了（此前挂 equal_share·注释被邻居证伪） 2ms
+   ✓ §5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子） > 🔴 对照实验：缺料→供应风险 —— BOM 占比不同的物料各涨 15 ⇒ 读数按占比拉开，且 Σ权重≡1 总量不跳  7552ms
+   × §6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算 > 🔴 超预算格子集合 + `Model.demandLoad` 读数必须与在册一致（加边/抬系数即红） 6285ms
+     → 「源走哈希占位」的边集合变了 —— 见上方三种成因，三种都必须先解释再改这个名单。: expected [ …(5) ] to deeply equal [ …(6) ]
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/seed-demo-propagation.test.ts > §6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算 > 🔴 超预算格子集合 + `Model.demandLoad` 读数必须与在册一致（加边/抬系数即红）
+AssertionError: 「源走哈希占位」的边集合变了 —— 见上方三种成因，三种都必须先解释再改这个名单。: expected [ …(5) ] to deeply equal [ …(6) ]
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  [[22m
+[2m    "demo_alt_switch_to_material_shortage",[22m
+[2m    "demo_fg_drawdown_relieves_model_demand",[22m
+[32m-   "demo_forecast_bias_to_order_demand",[39m
+[2m    "demo_inspection_queue_to_material_shortage",[22m
+[2m    "demo_order_churn_to_line_split",[22m
+[2m    "demo_order_churn_to_model_demand_load",[22m
+[2m  ][22m
+
+ ❯ test/seed-demo-propagation.test.ts:1392:7
+    1390|       hashSourced,
+    1391|       "「源走哈希占位」的边集合变了 —— 见上方三种成因，三种都必须先解释再改这个名单。",
+    1392|     ).toEqual([
+       |       ^
+    1393|       "demo_alt_switch_to_material_shortage",       // 源 MaterialAlter…
+    1394|       "demo_fg_drawdown_relieves_model_demand",     // 源 FinishedGoods…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  test/sim-real-cells.seam.test.ts > WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > ⓒ 接缝驱动：26 条规格编译入库 + 物化后 measuredCells 从 470 涨到 4183（主判据 3,896 过线）
+AssertionError: expected 4189 to be 4183 // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 4183[39m
+[31m+ 4189[39m
+
+ ❯ test/sim-real-cells.seam.test.ts:86:27
+     84|     //   ⛔ 别把这 −6 读成「丢了 6 格真读数」：那 6 格原本就不是真读数，是一个恒等式的零。
+     85|     expect(totalCells).toBe(6381);
+     86|     expect(measuredCells).toBe(4183);
+       |                           ^
+     87|   });
+     88| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  test/sim-real-cells.seam.test.ts > WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > §3 绑定判据：valueRef 指向不存在的 specKey ⇒ 播种当场抛错变红（⛔ 不静默回落哈希）
+AssertionError: expected 4189 to be 4183 // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 4183[39m
+[31m+ 4189[39m
+
+ ❯ test/sim-real-cells.seam.test.ts:364:37
+    362|     // WO-PROP-REVIEW-V2：4171→4189（+18 库存环 coverDays 格）；
+    363|     // WO-FORECASTBIAS-RETIRE：4189→4183（−6 Model.forecastBias 格退役回哈希）。…
+    364|     expect(ok.origin.measuredCells).toBe(4183);
+       |                                     ^
+    365|   });
+    366| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  test/sim-real-cells.seam.test.ts > WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合） > §退役 · `model_forecast_bias` 与它的 valueRef 登记必须同时不存在（残留任一处即红）
+AssertionError: `model_forecast_bias` 又回来了 —— 它的分子 `totalDemand − SUM(in(order_for_model).qty)` 两项同源、**恒等于 0**，且会给 `Model.forecastBias` 盖上 "measured" 章（屏上谎称实测）。⛔ 要复活它必须先让分子的两项来自**不同**的量。: expected [ 'order_value', …(28) ] to not include 'model_forecast_bias'
+ ❯ test/sim-real-cells.seam.test.ts:380:11
+    378|         "两项同源、**恒等于 0**，且会给 `Model.forecastBias` 盖上 \"measured\" 章（屏上谎…
+    379|         "⛔ 要复活它必须先让分子的两项来自**不同**的量。",
+    380|     ).not.toContain("model_forecast_bias");
+       |           ^
+    381|     // 臂②：没有任何 valueRef 还指着它（指着 ⇒ `deriveSeedBaseSnapshot` 抛「绑定断裂」）。
+    382|     expect(
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  4 failed | 37 passed (41)
+   Start at  03:52:47
+   Duration  104.11s (transform 5.80s, setup 0ms, collect 17.01s, tests 119.71s, environment 0ms, prepare 478ms)
+

@@ -1,0 +1,32 @@
+扰动落点：A = obj_model_2170-NCM.demandLoad(+20)  B = obj_base_changzhou.loadIndex(+20)  推 5 拍
+  臂 Z  建好
+  臂 A  建好
+  臂 B  建好
+  臂 AB 建好
+
+变量                                    A−Z            B−Z           AB−Z
+-----------------------------------------------------------------------
+overduePressure                      0格/0           0格/0           0格/0
+qualificationQueue                   0格/0           0格/0           0格/0
+changeoverPressure               5格/1.982           0格/0       5格/1.982
+clearanceQueueDays                   0格/0           0格/0           0格/0
+drawdownPressure                 3格/2.973           0格/0       3格/2.973
+queueDays                            0格/0           0格/0           0格/0
+transferPressure                4格/0.8803      2格/0.7075      6格/0.8803
+windowSqueeze                    3格/1.174           0格/0       3格/1.174
+switchPressure                       0格/0           0格/0           0格/0
+turnoverPressure                     0格/0           0格/0           0格/0
+backlogQtyTop                        0格/0           0格/0           0格/0
+backlogPriceTop                      0格/0           0格/0           0格/0
+collectionPressure                   0格/0           0格/0           0格/0
+inspectBacklog                       0格/0    20格/0.09497    20格/0.09497
+inboundExpeditePressure          3格/1.027           0格/0       3格/1.027
+reviewPressure                       0格/0           0格/0           0格/0
+splitPressure                        0格/0           0格/0           0格/0
+
+=== 判据 ===
+  · 差分判据 = 同拍下「臂X 与臂Z 逐格不同」的格数；Z 臂吸收了世界自身的漂移，故它才是对照。
+  ✗ 预言未全成立：
+     预言失败：qualificationQueue 在 A 臂应当与 Z 臂不同（= 扰动 A 没传到它）
+     预言失败：windowSqueeze 在 B 臂应当与 Z 臂不同（= 扰动 B 没传到它）
+     预言失败：inboundExpeditePressure 在 B 臂应当与 Z 臂不同（= 扰动 B 没传到它）

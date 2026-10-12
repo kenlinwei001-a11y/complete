@@ -1,0 +1,1078 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}</style></head><body>
+<title>推演控制台合并方案</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{--doc-bg:#f4f6fa;--doc-panel:#fff;--doc-line:#dbe1ec;--doc-ink:#1a2130;
+    --doc-muted:#5d6b83;--doc-accent:#2f5fd0;--doc-warnbg:#fff6e8;--doc-warnline:#e8c48a}
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --doc-bg:#0e131d;--doc-panel:#161d29;--doc-line:#28323f;--doc-ink:#e2e8f2;
+    --doc-muted:#93a1b8;--doc-accent:#6f9dff;--doc-warnbg:#241d0f;--doc-warnline:#5c4720}}
+  :root[data-theme="dark"]{--doc-bg:#0e131d;--doc-panel:#161d29;--doc-line:#28323f;--doc-ink:#e2e8f2;
+    --doc-muted:#93a1b8;--doc-accent:#6f9dff;--doc-warnbg:#241d0f;--doc-warnline:#5c4720}
+  :root{--g:#151d2c;--p:#1e2839;--p2:#243046;--p3:#2b3853;--ln:#2d3b52;--ln2:#3a4a66;
+    --ink:#e4ebf6;--mut:#8497b4;--dim:#61728d;--ac:#3d7dfd;--acd:#24457f;
+    --root:#46c98b;--hub:#57b6d9;--leaf:#7a8aa5;
+    --warn:#f0a03c;--jam:#8b7ff5;--crit:#e2574f;--up:#e2574f;--down:#46c98b}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--doc-bg);color:var(--doc-ink);font-size:15px;line-height:1.7;
+    font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",-apple-system,BlinkMacSystemFont,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1340px;margin:0 auto;padding:40px 18px 72px}
+  .lbl{font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace;font-size:10.5px;
+    letter-spacing:.13em;text-transform:uppercase;color:var(--doc-muted);font-weight:500}
+  h1{margin:8px 0 0;font-size:27px;font-weight:700;letter-spacing:-.01em}
+  .sub{margin:8px 0 0;color:var(--doc-muted);font-size:14.5px;max-width:66ch}
+  h2{font-size:18px;margin:38px 0 4px;font-weight:650}
+  h2+.cap{margin:0 0 14px;color:var(--doc-muted);font-size:13.5px;max-width:72ch}
+  .note{background:var(--doc-warnbg);border:1px solid var(--doc-warnline);border-radius:5px;
+    padding:12px 15px;font-size:13.5px;line-height:1.65;margin-top:18px}
+  code{font-family:"IBM Plex Mono",monospace;font-size:.88em;background:var(--doc-panel);
+    border:1px solid var(--doc-line);border-radius:3px;padding:1px 5px}
+
+  .console{background:var(--g);border:1px solid var(--ln);border-radius:6px;overflow:hidden;
+    color:var(--ink);font-size:12px;line-height:1.5;font-variant-numeric:tabular-nums;
+    box-shadow:0 14px 38px rgba(8,12,22,.3)}
+  .modes{display:flex;align-items:center;background:var(--p);border-bottom:1px solid var(--ln);
+    overflow-x:auto}
+  .modes button{background:transparent;border:0;border-bottom:2px solid transparent;color:var(--mut);
+    font:inherit;font-size:11.5px;padding:9px 13px;cursor:pointer;white-space:nowrap}
+  .modes button:hover{color:var(--ink)}
+  .modes button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ac);font-weight:600;background:var(--p2)}
+  .modes button:focus-visible{outline:2px solid var(--ac);outline-offset:-3px}
+  .modes .grp{font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:.12em;color:var(--dim);
+    padding:0 9px 0 13px;border-left:1px solid var(--ln2);margin-left:5px;align-self:center;white-space:nowrap}
+
+  .statusbar{display:flex;gap:13px;align-items:center;padding:6px 12px;background:var(--g);
+    border-bottom:1px solid var(--ln);font-size:11px;color:var(--mut);flex-wrap:wrap}
+  .statusbar b{color:var(--ink);font-weight:600}
+  .statusbar .warn{color:#f5c98a}
+  .seg{display:flex;border:1px solid var(--ln2);border-radius:3px;overflow:hidden}
+  .seg button{background:transparent;border:0;color:var(--mut);padding:2px 10px;font:inherit;font-size:10.5px;cursor:pointer}
+  .seg button[aria-pressed="true"]{background:var(--ac);color:#fff;font-weight:600}
+  .statusbar .seg{margin-left:auto}
+
+  .summary{display:flex;align-items:center;gap:11px;padding:7px 12px;background:var(--p2);
+    border-bottom:1px solid var(--ln);font-size:11px;flex-wrap:wrap}
+  .summary .sl{font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:.13em;color:var(--dim)}
+  .summary .spill{background:var(--p);border:1px solid var(--ln2);border-left:2px solid var(--root);
+    border-radius:3px;padding:3px 9px}
+  .summary .spill b{color:var(--ink)}
+  .summary .sopen{background:var(--ac);border:0;color:#fff;font:inherit;font-size:10.5px;font-weight:600;
+    padding:3px 11px;border-radius:3px;cursor:pointer}
+  .summary .sopen:hover{background:#5590ff}
+  .summary .sres{margin-left:auto;color:var(--mut)}
+  .summary .cw{color:var(--warn)}.summary .cj{color:var(--jam)}
+  .summary .cc{color:var(--crit)}.summary .cf{color:var(--hub)}
+  .quietbtn{background:var(--p);border:1px dashed var(--ln2);border-radius:3px;color:var(--dim);
+    font:inherit;font-size:10.5px;padding:5px 10px;cursor:pointer;text-align:left}
+  .quietbtn:hover{border-color:var(--ln2);color:var(--mut);background:var(--p2)}
+  .quietbtn:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
+  .jump{display:flex;align-items:center;gap:8px;padding:8px 13px;border-top:1px solid var(--ln);
+    background:var(--p);font-size:10.5px;color:var(--dim)}
+  .jump a{color:var(--ac);text-decoration:none;border-bottom:1px solid var(--acd)}
+  .jump a:hover{border-bottom-color:var(--ac)}
+  .grid{display:grid;grid-template-columns:250px minmax(0,1fr) 252px;align-items:stretch}
+  .grid.narrow{grid-template-columns:250px minmax(0,1fr)}
+  @media (max-width:1060px){.grid,.grid.narrow{grid-template-columns:1fr}}
+
+  /* ── 左栏 ── */
+  .rail{border-right:1px solid var(--ln);background:var(--p);display:flex;flex-direction:column;min-width:0}
+  .railhd{display:flex;align-items:center;gap:6px;padding:8px 11px;border-bottom:1px solid var(--ln)}
+  .railhd h3{margin:0;font-size:12.5px;font-weight:650}
+  .railhd .cnt{font-size:10px;color:var(--dim)}
+  .fold{margin-left:auto;background:transparent;border:1px solid var(--ln2);border-radius:3px;
+    color:var(--mut);font:inherit;font-size:10px;padding:1px 7px;cursor:pointer}
+  .fold:hover{border-color:var(--acd);color:var(--ink)}
+  .subtabs{display:flex;flex-wrap:wrap;gap:3px;padding:7px 9px;border-bottom:1px solid var(--ln)}
+  .subtabs button{background:var(--p2);border:1px solid var(--ln);border-radius:2px;color:var(--mut);
+    font:inherit;font-size:10px;padding:2px 7px;cursor:pointer}
+  .subtabs button[aria-selected="true"]{background:var(--acd);border-color:var(--ac);color:var(--ink);font-weight:600}
+  .subtabs button:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
+  .railbody{padding:10px 11px 12px;display:flex;flex-direction:column;gap:10px}
+  .fld{display:flex;flex-direction:column;gap:4px}
+  .fld label{font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:.13em;
+    text-transform:uppercase;color:var(--dim)}
+  select,input[type=text]{width:100%;background:var(--p2);border:1px solid var(--ln2);border-radius:3px;
+    color:var(--ink);font:inherit;font-size:11.5px;padding:5px 7px}
+  select:focus-visible,input:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
+  .duo{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+  .big{font-size:19px;font-weight:650;letter-spacing:-.02em}
+  .big small{font-size:11px;color:var(--mut);font-weight:400;margin-left:2px}
+  input[type=range]{width:100%;accent-color:var(--ac);background:transparent}
+  .apply{background:var(--ac);border:0;color:#fff;font:inherit;font-size:12px;font-weight:600;
+    padding:7px 0;border-radius:3px;cursor:pointer;width:100%}
+  .apply:hover{background:#5590ff}
+  .ck{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--mut)}
+  .ck input{accent-color:var(--ac)}
+  .stack{border-top:1px solid var(--ln);padding:8px 11px;display:flex;flex-direction:column;gap:4px}
+  .stack .t{font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:.13em;color:var(--dim)}
+  .pill{display:flex;align-items:center;gap:6px;background:var(--p2);border:1px solid var(--ln);
+    border-left:2px solid var(--root);border-radius:3px;padding:4px 8px;font-size:10.5px}
+  .pill .x{margin-left:auto;color:var(--dim);cursor:pointer}
+  .railnote{padding:8px 11px;border-top:1px solid var(--ln);font-size:9.5px;color:var(--dim);line-height:1.55}
+
+  /* ── 指标卡墙 ── */
+  .wall{padding:11px 12px 13px;min-width:0;display:flex;flex-direction:column;gap:11px}
+  .layer{display:flex;flex-direction:column;gap:6px}
+  .layerhd{display:flex;align-items:center;gap:8px}
+  .tg{font-size:9.5px;font-weight:600;letter-spacing:.05em;padding:1px 7px;border-radius:2px}
+  .tg.r{background:rgba(70,201,139,.16);color:var(--root)}
+  .tg.h{background:rgba(87,182,217,.15);color:var(--hub)}
+  .tg.l{background:rgba(122,138,165,.15);color:var(--leaf)}
+  .layerhd .ds{font-size:10.5px;color:var(--dim)}
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px}
+  .card{background:var(--p);border:1px solid var(--ln);border-left-width:2px;border-radius:3px;
+    padding:6px 8px 7px;cursor:pointer;text-align:left;font:inherit;color:var(--ink);
+    display:flex;flex-direction:column;gap:3px;min-width:0}
+  .card:hover{background:var(--p2);border-color:var(--ln2)}
+  .card[aria-pressed="true"]{border-color:var(--ac);background:var(--acd)}
+  .card:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
+  .card.quiet{opacity:.46}
+  .card .nm{font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .card .row{display:flex;align-items:baseline;gap:5px}
+  .card .v{font-size:16px;font-weight:650;letter-spacing:-.02em;line-height:1.1}
+  .card .d{font-size:10px;font-weight:600}
+  .d.up{color:var(--up)}.d.down{color:var(--down)}.d.flat{color:var(--dim)}
+  .card .k{font-family:"IBM Plex Mono",monospace;font-size:8.5px;color:var(--dim);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .card svg{display:block;width:100%;height:15px}
+  .lr{border-left-color:var(--root)}.lh{border-left-color:var(--hub)}.ll{border-left-color:var(--leaf)}
+
+  /* ── 右栏 ── */
+  .insp{border-left:1px solid var(--ln);background:var(--p);padding:10px 11px;
+    display:flex;flex-direction:column;gap:9px;min-width:0}
+  .insphd .t{font-size:13px;font-weight:650}
+  .insphd .k{font-family:"IBM Plex Mono",monospace;font-size:9.5px;color:var(--dim);display:block}
+  .kv{display:flex;flex-direction:column;gap:3px;font-size:11px}
+  .kv div{display:flex;gap:8px}
+  .kv .a{color:var(--mut);min-width:58px}
+  .kv .b{font-weight:600}
+  .sect{border-top:1px solid var(--ln);padding-top:8px;display:flex;flex-direction:column;gap:4px}
+  .sect .t{font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:.13em;color:var(--dim)}
+  .chain{font-size:10.5px;color:var(--mut);line-height:1.6}
+  .chain b{color:var(--ink)}
+  .sevrow{display:flex;align-items:center;gap:8px;background:var(--p2);border:1px solid var(--ln);
+    border-left-width:2px;border-radius:3px;padding:5px 8px;font-size:10.5px}
+  .sevrow .n{font-size:15px;font-weight:700;min-width:26px}
+  .s1{border-left-color:var(--warn)}.s1 .n{color:var(--warn)}
+  .s2{border-left-color:var(--jam)}.s2 .n{color:var(--jam)}
+  .s3{border-left-color:var(--crit)}.s3 .n{color:var(--crit)}
+  .s4{border-left-color:var(--hub)}.s4 .n{color:var(--hub);font-size:13px}
+
+  .bigval{display:flex;align-items:baseline;gap:8px}
+  .bigval .v{font-size:28px;font-weight:700;letter-spacing:-.03em;line-height:1}
+  .bigval .dlt{font-size:13px;font-weight:650}
+  .dlt.up{color:var(--up)}.dlt.down{color:var(--down)}.dlt.flat{color:var(--dim)}
+  svg.dual{width:100%;height:46px;display:block}
+  .sparkleg{display:flex;gap:9px;align-items:center;font-size:9.5px;color:var(--dim);flex-wrap:wrap}
+  .sparkleg i{display:inline-block;width:11px;height:0;border-top:2px solid;margin-right:3px;vertical-align:middle}
+  .sparkleg .lb{border-top-style:dashed;color:var(--dim)}
+  .sparkleg .la{color:var(--ac)}
+  .sparkleg .cross{margin-left:auto;color:var(--warn)}
+  .kv .prov{color:var(--warn);font-weight:500}
+  table.mini td{padding:2px 6px 2px 0;font-size:10px;border-bottom:1px solid rgba(45,59,82,.5)}
+  table.mini td:last-child{text-align:right}
+  .acts{gap:5px}
+  .act{background:var(--p2);border:1px solid var(--ln2);border-radius:3px;color:var(--mut);
+    font:inherit;font-size:10.5px;padding:5px 9px;cursor:pointer;text-align:left}
+  .act:hover{border-color:var(--acd);color:var(--ink);background:var(--p3)}
+  .act.primary{background:var(--acd);border-color:var(--ac);color:var(--ink);font-weight:600}
+  .act.primary:hover{background:#2c5296}
+  .act:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
+  .slot{margin-top:8px;border-top:1px dashed var(--ln2);padding-top:8px;font-size:10.5px;
+    color:var(--mut);line-height:1.65;min-height:52px}
+  .slot .hint{color:var(--dim);font-style:italic}
+  .slot .st{font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:.13em;
+    color:var(--dim);display:block;margin-bottom:3px}
+  .slot b{color:var(--ink)}
+  table.d tbody tr[data-pickable]{cursor:pointer}
+  table.d tbody tr[data-pickable]:hover td{background:var(--p2)}
+  .heat .hcell{position:relative}
+  .heat .hcell:not(.na):hover{outline:2px solid var(--ink);outline-offset:-1px}
+  .detail{border-top:1px solid var(--ln);background:var(--g)}
+  .dhd{display:flex;align-items:center;gap:9px;padding:7px 13px;border-bottom:1px solid var(--ln);
+    background:var(--p);font-size:11.5px}
+  .dhd .r{font-family:"IBM Plex Mono",monospace;font-size:9.5px;color:var(--dim)}
+  .dclose{margin-left:auto;background:transparent;border:1px solid var(--ln2);border-radius:3px;
+    color:var(--mut);font:inherit;font-size:10px;padding:1px 8px;cursor:pointer}
+  .dclose:hover{border-color:var(--acd);color:var(--ink)}
+  .dbody{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;padding:11px 13px 13px}
+  @media (max-width:900px){.dbody{grid-template-columns:1fr}}
+  .log{border-top:1px solid var(--ln);background:var(--p);padding:6px 12px 8px;
+    font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--mut);line-height:1.7;
+    max-height:92px;overflow:auto}
+  .log .t{color:var(--dim)}.log .ok{color:var(--root)}.log .w{color:var(--warn)}
+
+  /* ── 二级页通用 ── */
+  .pane{padding:0;min-width:0}
+  .phd{display:flex;align-items:baseline;gap:9px;padding:9px 13px;border-bottom:1px solid var(--ln);background:var(--p)}
+  .phd h4{margin:0;font-size:13.5px;font-weight:650}
+  .phd .pd{margin:0;font-size:10.5px;color:var(--mut)}
+  .phd .src{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:9.5px;color:var(--dim);white-space:nowrap}
+  .src .yes{color:var(--root)}.src .no{color:var(--warn)}
+  .pbody{padding:12px 13px 14px;display:grid;gap:11px}
+  .c2{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr)}
+  .c2b{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  @media (max-width:900px){.c2,.c2b{grid-template-columns:1fr}}
+  .box{background:var(--p);border:1px solid var(--ln);border-radius:4px;overflow:hidden;min-width:0}
+  .bhd{display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--ln);
+    font-size:11px;font-weight:600}
+  .bhd .r{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:9.5px;color:var(--dim);font-weight:400}
+  .bbody{padding:9px 10px}
+  table.d{width:100%;border-collapse:collapse;font-size:10.5px}
+  table.d th{text-align:left;font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:.09em;
+    color:var(--dim);font-weight:500;padding:0 7px 5px 0;border-bottom:1px solid var(--ln)}
+  table.d td{padding:4px 7px 4px 0;border-bottom:1px solid rgba(45,59,82,.5);white-space:nowrap}
+  table.d tr:last-child td{border-bottom:0}
+  table.d tr.on td{background:var(--acd)}
+  .mono{font-family:"IBM Plex Mono",monospace}
+  .bad{color:var(--crit)}.mid{color:var(--warn)}.good{color:var(--root)}.nul{color:var(--dim);font-style:italic}
+  .badge{font-size:9px;padding:0 5px;border-radius:2px;font-weight:600}
+  .b1{background:rgba(240,160,60,.18);color:var(--warn)}
+  .b2{background:rgba(139,127,245,.18);color:var(--jam)}
+  .b3{background:rgba(226,87,79,.18);color:var(--crit)}
+  .tw{overflow-x:auto}
+  .empty{font-size:10px;color:var(--dim);padding:6px 0;line-height:1.6}
+
+  /* 热力矩阵 */
+  .heat{display:grid;gap:2px;font-size:9px}
+  .heat .hcell{aspect-ratio:1.9;display:flex;align-items:center;justify-content:center;border-radius:2px;
+    color:#0d1420;font-weight:600;cursor:pointer}
+  .heat .hlab{color:var(--dim);font-size:9px;display:flex;align-items:center;justify-content:flex-end;
+    padding-right:4px;white-space:nowrap;overflow:hidden}
+  .heat .hcol{color:var(--dim);font-size:8.5px;text-align:center;writing-mode:vertical-rl;
+    transform:rotate(180deg);height:52px;justify-self:center}
+  .heat .hcell.na{background:repeating-linear-gradient(45deg,#243046,#243046 3px,#2b3853 3px,#2b3853 6px);
+    color:var(--dim);font-style:italic;font-size:8px}
+
+  ol.asks{padding-left:20px}ol.asks li{margin:11px 0}
+  ol.asks .d{color:var(--doc-muted);font-size:13.5px;display:block;margin-top:2px}
+  table.led{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:4px}
+  table.led th{text-align:left;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--doc-muted);font-family:"IBM Plex Mono",monospace;font-weight:500;
+    padding:0 12px 7px 0;border-bottom:1px solid var(--doc-line)}
+  table.led td{padding:9px 12px 9px 0;border-bottom:1px solid var(--doc-line);vertical-align:top}
+  table.led td:first-child{font-weight:600;white-space:nowrap}
+  table.led .why{color:var(--doc-muted);font-size:13px;line-height:1.6}
+  .okc{color:#2e9e63}.nokc{color:#c07a1e}
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .okc{color:#5fd39b}
+    :root:not([data-theme="light"]) .nokc{color:#f0b45c}}
+  :root[data-theme="dark"] .okc{color:#5fd39b}:root[data-theme="dark"] .nokc{color:#f0b45c}
+  [hidden]{display:none !important}
+  @media (prefers-reduced-motion:reduce){*{transition:none !important}}
+</style>
+
+<div class="wrap">
+  <span class="lbl">推演沙盘 + 四页 · 合并为一页</span>
+  <h1>推演控制台合并方案</h1>
+  <p class="sub">底图换成 37 张状态变量指标卡，扰动因素做成左栏下拉的 <b>6 个子页</b>（可向上收起），原来的四页与图表降成 <b>9 个模式页签</b>。除一处外后端零新增。</p>
+
+  <div class="note">
+    <b>15 个二级页全部画出来了，不是占位框。</b>顶部页签切 9 个结果页，左栏子页签切 6 个扰动子页——都能点。
+    指标名逐字取自 <code>battery.ts</code> 的 <code>STATE_VAR_DISPLAY_NAMES</code>（实测 37 条）；环节、基地、型号、求解器名同样取自真实种子。
+    数值为示意，<b>但每页底部标了它今天有没有端点可取</b>。
+  </div>
+
+  <div class="console">
+    <div class="modes" role="tablist" aria-label="模式">
+      <button role="tab" aria-selected="true" data-p="m0">指标态势</button>
+      <span class="grp">扰动后</span>
+      <button role="tab" aria-selected="false" data-p="m1">传导识别</button>
+      <button role="tab" aria-selected="false" data-p="m2">损失归因</button>
+      <button role="tab" aria-selected="false" data-p="m3">方案寻优</button>
+      <button role="tab" aria-selected="false" data-p="m4">演习结论</button>
+      <span class="grp">图</span>
+      <button role="tab" aria-selected="false" data-p="m5">产销线路图</button>
+      <span class="grp">底账</span>
+      <button role="tab" aria-selected="false" data-p="m8">传导边册</button>
+      <button role="tab" aria-selected="false" data-p="m9">本体与就绪</button>
+    </div>
+
+    <!-- 收起态常驻摘要条：占一行高度换随时可改 -->
+    <div class="summary" id="summary" hidden>
+      <span class="sl">已施加</span>
+      <span class="spill">采购到货延迟 <b>+18d</b> · 采购单 ×30 · 第 1–60 天</span>
+      <button class="sopen" type="button" id="sopen">改扰动 ▾</button>
+      <span class="sres">卡点 <b class="cw">4</b> · 堵点 <b class="cj">6</b> · 断点 <b class="cc">7</b> · 流动效率 <b class="cf">1.4%</b></span>
+    </div>
+
+    <div class="statusbar">
+      <span>tick <b>0</b> → <b>60</b> 天</span>
+      <span>传导边 <b>38</b> · 根源 <b>4</b> / 枢纽 <b>15</b> / 末端 <b>18</b></span>
+      <span>对象 <b>3411</b> · 状态格 <b>3563</b></span>
+      <span class="warn">● 尚未通过就绪认证 · 结论仅供参考</span>
+      <span class="seg" role="group" aria-label="推演天数">
+        <button type="button" aria-pressed="false">30 天</button>
+        <button type="button" aria-pressed="true">60 天</button>
+        <button type="button" aria-pressed="false">90 天</button>
+      </span>
+    </div>
+
+    <!-- ═══ m0 指标态势 ═══ -->
+    <div id="m0" role="tabpanel">
+      <div class="grid">
+        <aside class="rail">
+          <div class="railhd"><h3>扰动因素</h3><span class="cnt">已施加 1 条</span>
+            <button class="fold" type="button" id="foldbtn" aria-expanded="true">收起 ▲</button></div>
+          <div id="railwrap">
+            <div class="subtabs" role="tablist" aria-label="扰动子页">
+              <button role="tab" aria-selected="true"  data-s="s1">物料</button>
+              <button role="tab" aria-selected="false" data-s="s2">订单</button>
+              <button role="tab" aria-selected="false" data-s="s3">设备</button>
+              <button role="tab" aria-selected="false" data-s="s4">需求</button>
+              <button role="tab" aria-selected="false" data-s="s5">产能</button>
+              <button role="tab" aria-selected="false" data-s="s6">财务</button>
+            </div>
+
+            <!-- 子页 1 物料 -->
+            <div class="railbody" id="s1" role="tabpanel">
+              <div class="fld"><label>供应商</label><select>
+                <option>容百科技 · 正极</option><option>星辰新材 · 负极</option><option>全部 15 家</option></select></div>
+              <div class="fld"><label>物料</label><select>
+                <option>LFP-99 磷酸铁锂</option><option>LFP-88</option><option>LFP-22 隔膜</option><option>全部</option></select></div>
+              <div class="fld"><label>扰什么 · 只列根源</label><select>
+                <option>采购到货延迟 procurementDelay</option><option>价格冲击 priceShock</option>
+                <option disabled>─── 枢纽/末端 33 项（半路插入）───</option>
+                <option>短缺风险 shortageRisk（果）</option></select></div>
+              <div class="fld"><label>幅度</label><span class="big">+18<small>天</small></span>
+                <input type="range" min="0" max="40" value="18" aria-label="到货延迟天数"></div>
+              <div class="fld"><label>持续</label><span class="big">1–60<small>天</small></span>
+                <input type="range" min="1" max="60" value="60" aria-label="持续天数"></div>
+              <label class="ck"><input type="checkbox" checked>连带在途批次（24 个）</label>
+              <button class="apply" type="button">施加并推演</button>
+            </div>
+
+            <!-- 子页 2 订单 -->
+            <div class="railbody" id="s2" role="tabpanel" hidden>
+              <div class="fld"><label>客户</label><select>
+                <option>整车厂 A</option><option>整车厂 B</option><option>储能集成商 C</option></select></div>
+              <div class="fld"><label>订单 · 在产 / 销售预测</label><select>
+                <option>SO-3391 · 在产 · 4680-NCM</option><option>SO-3402 · 在产 · LFP-314</option>
+                <option>FC-2027Q2 · 预测 · 储能-280Ah</option></select></div>
+              <div class="fld"><label>改什么</label><select>
+                <option>交期提前 / 推迟</option><option>交付地点改派</option><option>价格重谈</option>
+                <option>整单取消</option><option>临时插单</option></select></div>
+              <div class="duo">
+                <div class="fld"><label>交期</label><span class="big">−7<small>天</small></span></div>
+                <div class="fld"><label>交付地点</label><select><option>常州</option><option>扬州</option><option>合肥</option></select></div>
+              </div>
+              <div class="fld"><label>落到哪个量</label><select>
+                <option>订单行拆分压力 splitPressure</option><option>交期承诺风险 promiseRisk</option>
+                <option>工单下达压力 releasePressure</option></select></div>
+              <button class="apply" type="button">施加并推演</button>
+            </div>
+
+            <!-- 子页 3 设备 -->
+            <div class="railbody" id="s3" role="tabpanel" hidden>
+              <div class="fld"><label>基地 / 产线</label><select>
+                <option>常州 · L-16</option><option>扬州 · L-22</option><option>合肥 · L-25</option>
+                <option>全部 780 台设备</option></select></div>
+              <div class="fld"><label>工序</label><select>
+                <option>涂布 OP-002</option><option>辊压 OP-003</option><option>卷绕 OP-005</option><option>装配 OP-006</option></select></div>
+              <div class="fld"><label>扰什么</label><select>
+                <option>设备负荷压力 loadPressure</option><option>维修派工积压 repairBacklog</option>
+                <option>检修窗挤压 windowSqueeze</option></select></div>
+              <div class="fld"><label>幅度</label><span class="big">+22<small>%</small></span>
+                <input type="range" min="0" max="60" value="22" aria-label="负荷提升"></div>
+              <p class="railnote" style="border:0;padding:0">
+                <b style="color:var(--warn)">⚠ OEE 四个字段今天扰不动</b>——它们只在对象属性上，没进 <span class="mono">world.state</span>，
+                引擎读不到。要扰得先把属性投进状态层（后端一张单）。</p>
+              <button class="apply" type="button">施加并推演</button>
+            </div>
+
+            <!-- 子页 4 需求 -->
+            <div class="railbody" id="s4" role="tabpanel" hidden>
+              <div class="fld"><label>型号 / 客户段</label><select>
+                <option>4680-NCM</option><option>LFP-314</option><option>储能-280Ah</option><option>全部 6 个型号</option></select></div>
+              <div class="fld"><label>扰什么</label><select>
+                <option>需求压力 demandPressure（根源）</option><option>需求负载 demandLoad（枢纽）</option></select></div>
+              <div class="fld"><label>方向</label><select><option>高估 · 实际比预测低</option><option>低估 · 实际比预测高</option></select></div>
+              <div class="fld"><label>偏差幅度</label><span class="big">+28<small>%</small></span>
+                <input type="range" min="-50" max="50" value="28" aria-label="需求偏差"></div>
+              <p class="railnote" style="border:0;padding:0">
+                <b style="color:var(--warn)">⚠ 「预测偏差」是带方向的量</b>，而 <span class="mono">demandPressure</span> 没有方向。
+                独立的 <span class="mono">forecastBias</span> 变量在另一张单里，尚未并线。</p>
+              <button class="apply" type="button">施加并推演</button>
+            </div>
+
+            <!-- 子页 5 产能 -->
+            <div class="railbody" id="s5" role="tabpanel" hidden>
+              <div class="fld"><label>产线</label><select>
+                <option>L-16 常州</option><option>L-22 扬州</option><option>L-25 合肥</option></select></div>
+              <div class="fld"><label>扰什么</label><select>
+                <option>利用率压力 utilPressure</option><option>换型压力 changeoverPressure</option>
+                <option>投料压力 feedPressure</option><option>排队压力 queuePressure</option></select></div>
+              <div class="duo">
+                <div class="fld"><label>节拍</label><span class="big">1.2<small>/h</small></span></div>
+                <div class="fld"><label>良率</label><span class="big">98<small>%</small></span></div>
+              </div>
+              <div class="fld"><label>幅度</label><span class="big">+15<small>%</small></span>
+                <input type="range" min="0" max="60" value="15" aria-label="产能扰动幅度"></div>
+              <button class="apply" type="button">施加并推演</button>
+            </div>
+
+            <!-- 子页 6 财务 -->
+            <div class="railbody" id="s6" role="tabpanel" hidden>
+              <div class="fld"><label>扰什么 · 根源</label><select>
+                <option>价格冲击 priceShock（根源）</option><option>成本压力 costPressure</option>
+                <option>应收压力 receivablePressure</option><option>逾期催收压力 collectionPressure</option></select></div>
+              <div class="fld"><label>作用面</label><select>
+                <option>全部物料</option><option>正极材料</option><option>单一供应商</option></select></div>
+              <div class="fld"><label>幅度</label><span class="big">+12<small>%</small></span>
+                <input type="range" min="-30" max="60" value="12" aria-label="价格冲击"></div>
+              <div class="fld"><label>账期变化</label><span class="big">+15<small>天</small></span>
+                <input type="range" min="0" max="90" value="15" aria-label="账期"></div>
+              <button class="apply" type="button">施加并推演</button>
+            </div>
+          </div>
+          <div class="stack"><span class="t">已施加</span>
+            <div class="pill"><span>采购到货延迟 +18d · PO×30</span><span class="x">✕</span></div></div>
+          <p class="railnote">沙盘改的只是这个推演世界，不写真实数据。结论要落地须走 Action 审批。</p>
+        </aside>
+
+        <main class="wall" id="wall"></main>
+
+        <aside class="insp">
+          <div class="insphd"><span class="t" id="i-nm">短缺风险</span><span class="k" id="i-k">shortageRisk · 枢纽</span></div>
+
+          <div class="bigval"><span class="v" id="i-v">67.4</span><span class="dlt up" id="i-d">+17.0</span></div>
+          <svg id="i-spark" viewBox="0 0 200 46" preserveAspectRatio="none" class="dual" aria-hidden="true"></svg>
+          <div class="sparkleg"><span><i class="lb"></i>扰动前</span><span><i class="la"></i>扰动后</span>
+            <span class="cross" id="i-cross">第 9 天越线</span></div>
+
+          <div class="kv">
+            <div><span class="a">量纲</span><span class="b" id="i-unit">压力指数 0–100 · 越高越差</span></div>
+            <div><span class="a">扰动前</span><span class="b" id="i-b">50.4</span></div>
+            <div><span class="a">落点</span><span class="b" id="i-n">32</span> 个对象</div>
+            <div><span class="a">凭什么</span><span class="b prov" id="i-prov">推演投影 · 非实测</span></div>
+          </div>
+
+          <div class="sect"><span class="t">上游 · 谁推的它</span><p class="chain" id="i-up"></p></div>
+          <div class="sect"><span class="t">下游 · 它推坏什么</span><p class="chain" id="i-dn"></p></div>
+
+          <div class="sect"><span class="t">最严重的落点</span>
+            <table class="d mini" id="i-top"><tbody></tbody></table></div>
+
+          <div class="sect acts"><span class="t">从这里能做什么</span>
+            <button class="act primary" type="button" id="openDrawer">展开全链与 32 个落点 ▾</button>
+            <button class="act" type="button">关掉上游那条边，看它回不回去</button>
+            <button class="act" type="button">据此求方案</button>
+          </div>
+        </aside>
+      </div>
+      <div class="detail" id="detail" hidden>
+        <div class="dhd"><b id="d-ttl">短缺风险 · 全链与落点</b>
+          <span class="r">二级 · 点右栏「展开」进来</span>
+          <button class="dclose" type="button" id="closeDrawer">收起 ▴</button></div>
+        <div class="dbody">
+          <div class="box"><div class="bhd">传导链<span class="r">系数 × 延迟拍数</span></div>
+            <div class="bbody"><svg id="d-chain" viewBox="0 0 300 190" style="width:100%;height:auto;display:block"></svg></div></div>
+          <div class="box"><div class="bhd">落点逐条<span class="r" id="d-cnt">32 个对象</span></div>
+            <div class="bbody tw" style="max-height:186px;overflow:auto">
+              <table class="d"><thead><tr><th>对象</th><th>基地</th><th>扰动前</th><th>现在</th><th>Δ</th><th>越线日</th></tr></thead>
+              <tbody id="d-rows"></tbody></table></div></div>
+          <div class="box"><div class="bhd">60 天双线<span class="r">虚线=扰动前 · 实线=扰动后</span></div>
+            <div class="bbody"><svg id="d-series" viewBox="0 0 300 190" style="width:100%;height:auto;display:block"></svg></div></div>
+        </div>
+      </div>
+      <div class="log">
+        <div><span class="t">10:24:02</span> <span class="ok">✓</span> 会话 sims_demo_seed_world · 3411 对象 / 3563 状态格</div>
+        <div><span class="t">10:24:03</span> <span class="ok">✓</span> 传导图 38 边 · 入度分层 根源 4 / 枢纽 15 / 末端 18</div>
+        <div><span class="t">10:24:19</span> 施加 procurementDelay +18d @ PurchaseOrder×30 · 第 1–60 天</div>
+        <div><span class="t">10:24:21</span> <span class="w">⚠</span> 清关腿本体无承载字段 · 如实标「算不出来」，未兜底</div>
+        <div><span class="t">10:24:24</span> <span class="ok">✓</span> 推演完成 · 卡点 4 · 堵点 6 · 断点 7 · 流动效率 1.4%</div>
+      </div>
+    </div>
+
+    <!-- ═══ m1 传导识别 ═══ -->
+    <div id="m1" role="tabpanel" hidden><div class="pane">
+      <div class="phd"><h4>传导识别</h4><p class="pd">扰动沿哪条链传下去、每一跳被谁挡住</p>
+        <span class="src"><span class="yes">✓ 端点已有</span> node-detail · bottleneck_matrix</span></div>
+      <div class="pbody c2">
+        <div class="box"><div class="bhd">在制批号 · 逐条<span class="r">260 条 · 站位 涂布 OP-002</span></div>
+          <div class="bbody tw"><table class="d" id="t-cond"><thead><tr>
+            <th>批号</th><th>环节</th><th>型号</th><th>在制</th><th>在链历时</th><th>在站停留</th><th>影响级</th></tr></thead><tbody></tbody></table>
+          <p class="empty"><b class="mid">影响级恒 null</b>：本体零字段承载严重度，给 1–4 得先发明阈值表 = 编数。缺席码 <span class="mono">ONTOLOGY_MISSING</span>。<br>
+          <b class="mid">在站停留为负</b>：批次日戳（2026-06-15 起）跑在模拟时钟 t0（2026-06-10）前面 —— 合成数据与时钟未对齐，<b>没有 clamp 成 0</b>（那等于抹平成「刚到站」）。</p></div></div>
+        <div class="box"><div class="bhd">站位检视<span class="r">demand.consensus</span></div>
+          <div class="bbody">
+            <div class="kv" style="font-size:11px">
+              <div><span class="a">环节类型</span><span class="b">S&amp;OP 共识会</span></div>
+              <div><span class="a">上游工位</span><span class="b">160#</span></div>
+              <div><span class="a">下游距离</span><span class="b">98 工时</span></div>
+              <div><span class="a">在制批量</span><span class="b">3000</span></div>
+              <div><span class="a">日产能</span><span class="b">3.0k 套</span></div>
+              <div><span class="a">传导能力</span><span class="b good">是</span></div>
+              <div><span class="a">口径校准</span><span class="b nul">关闭</span></div>
+            </div>
+            <div class="sect" style="margin-top:9px"><span class="t">系统条时钟</span>
+              <p class="chain">t0 <b>2026-06-10</b> + tick <b>0</b> = 模拟日 <b>2026-06-10</b><br>
+              <span style="color:var(--dim)">取 A8 模拟时钟，<b style="color:var(--mut)">绝不取墙钟</b>——它同时是「在站停留」的减数。</span></p></div>
+          </div></div>
+      </div>
+    </div></div>
+
+    <!-- ═══ m2 损失归因 ═══ -->
+    <div id="m2" role="tabpanel" hidden><div class="pane">
+      <div class="phd"><h4>损失归因</h4><p class="pd">一张单全链走完 85.4 天，每个环节吃掉了多少</p>
+        <span class="src"><span class="yes">✓ 端点已有</span> chain-loss-matrix · chain-loss-drill</span></div>
+      <div class="pbody c2">
+        <div class="box"><div class="bhd">环节 × 基地 损失矩阵<span class="r">分母排除增值段 ⇒ Σ 恒 100%</span></div>
+          <div class="bbody"><div class="heat" id="heat"></div>
+            <p class="empty" style="margin-top:7px">斜纹格 = <b class="mid">算不出来</b>，如实标 EMPTY 并说明缺什么，<b>不补 0</b>。<br>
+            清关 / 到货检验 / 返工工时 / 节拍 / 入厂在途 —— 本体没有承载字段。</p></div></div>
+        <div class="box"><div class="bhd">根因链 · 锚点 SO-3391<span class="r">残差 2.8e-14 · 容差 ±0.001</span></div>
+          <div class="bbody tw"><table class="d" id="t-loss"><thead><tr>
+            <th>环节</th><th>天数</th><th>占非增值</th><th>性质</th><th>下钻字段</th></tr></thead><tbody></tbody></table>
+            <p class="empty">站 <b>28</b> · 停运 <b>16</b> · 换乘 <b>4</b> · 增值 <b>10</b> · 返工 <b>0</b>　|　流动效率 <b class="good">1.4%</b>（增值 1.19D / 前置期 85.4D）</p>
+            <div class="slot" id="slot-heat"><span class="hint">← 点左边任一格，这里出该「环节 × 基地」的损失构成</span></div></div></div>
+      </div>
+    </div></div>
+
+    <!-- ═══ m3 方案寻优 ═══ -->
+    <div id="m3" role="tabpanel" hidden><div class="pane">
+      <div class="phd"><h4>方案寻优</h4><p class="pd">针对这次扰动给对策，按目标做帕累托排序</p>
+        <span class="src"><span class="yes">✓ 端点已有</span> optimize-pareto · mitigation_select</span></div>
+      <div class="pbody c2">
+        <div class="box"><div class="bhd">帕累托前沿<span class="r">X 前置期(天) · Y 成本(万) · 圈=达成率</span></div>
+          <div class="bbody"><svg id="pareto" viewBox="0 0 340 170" style="width:100%;height:auto;display:block"></svg></div></div>
+        <div class="box"><div class="bhd">候选方案<span class="r">按残差比降序</span></div>
+          <div class="bbody tw"><table class="d" id="t-opt"><thead><tr>
+            <th>方案</th><th>做法</th><th>前置期</th><th>成本</th><th>达成率</th><th>残差比</th></tr></thead><tbody></tbody></table>
+            <div class="sect" style="margin-top:9px"><span class="t">选中方案 · 绑定约束</span>
+              <p class="chain">承接基地 <b>扬州</b>　调拨物料 <b>LFP-99 ×4</b> / <b>LFP-88 ×4</b><br>
+              可用产线 <b>2/5</b> · <b>1/5</b> · <b>3/5</b>　原计划处置 <b>4 条</b><br>
+              <span style="color:var(--dim)">「参数版本」「收敛残差」端点未答 ⇒ 诚实标 <span class="mono">null</span>，不摆假值。</span></p></div></div></div>
+      </div>
+    </div></div>
+
+    <!-- ═══ m4 演习结论 ═══ -->
+    <div id="m4" role="tabpanel" hidden><div class="pane">
+      <div class="phd"><h4>演习结论</h4><p class="pd">扫产销端到端的卡点、堵点、脆弱点，逐条点名</p>
+        <span class="src"><span class="yes">✓ 端点已有</span> 演习三端点（一期二期已并线）</span></div>
+      <div class="pbody">
+        <div class="box"><div class="bhd">统一发现清单<span class="r">DrillFinding · severity 归一 0–100</span></div>
+          <div class="bbody tw"><table class="d" id="t-drill"><thead><tr>
+            <th>类</th><th>严重度</th><th>在哪</th><th>第几天越线</th><th>为什么</th><th>谁算的</th><th>数据模式</th></tr></thead><tbody></tbody></table>
+            <div class="slot" id="slot-drill"><span class="hint">↑ 点任一条发现，这里出它的证据链</span></div>
+            <p class="empty"><b>「无卡点」与「没算出来」必须是两个不同的屏上态</b> —— 这条写在契约里，不是文案要求。
+            <span class="mono">dataMode</span> 认不出来一律落 <span class="mono">UNDECLARED</span>，<b>不是</b> LIVE。</p></div></div>
+      </div>
+    </div></div>
+
+    <!-- ═══ m5 产销线路图 ═══ -->
+    <div id="m5" role="tabpanel" hidden><div class="pane">
+      <div class="phd"><h4>产销线路图</h4><p class="pd">站 = 环节，站圈 = 该环节吃掉的全链损失占比</p>
+        <span class="src"><span class="yes">✓ 现有实现整块复用</span></span></div>
+      <div class="pbody">
+        <div class="box"><div class="bhd">线路图
+          <span class="seg" style="margin-left:10px"><button aria-pressed="true">线路图</button><button aria-pressed="false">物理拓扑</button>
+          <button aria-pressed="false">链路阶段</button><button aria-pressed="false">本体拓扑</button><button aria-pressed="false">业务流程</button></span>
+          <span class="r">主线 需求→订单→产能→交付</span></div>
+          <div class="bbody"><svg id="linemap" viewBox="0 0 700 190" style="width:100%;height:auto;display:block"></svg>
+          <p class="empty">圈越大 = 吃掉的全链损失占比越高。红圈 = 本次扰动新增的越线点。虚线段 = 算不出来的腿（清关 / 到货检验）。</p></div></div>
+      </div>
+    </div></div>
+
+    <!-- ═══ m6 接单可行性 ═══ -->
+    <!-- ═══ m7 接单组合优选 ═══ -->
+    <!-- ═══ m8 传导边册 ═══ -->
+    <div id="m8" role="tabpanel" hidden><div class="pane">
+      <div class="phd"><h4>传导边册</h4><p class="pd">38 条因果边按域分组，关掉一条看结论怎么变</p>
+        <span class="src"><span class="yes">✓ 关 + 看变化 两条端点都在</span> disabled-rules · counterfactual</span></div>
+      <div class="pbody c2">
+        <div class="box"><div class="bhd">因果边<span class="r">开=参与推演 · 关=本次假装它不存在</span></div>
+          <div class="bbody tw"><table class="d" id="t-edge"><thead><tr>
+            <th>域</th><th>源</th><th>目标</th><th>系数</th><th>延迟</th><th>启用</th></tr></thead><tbody></tbody></table>
+            <p class="empty">关掉的边<b>不从图上消失，只降级</b>——消失了用户就不知道自己关了什么，也拨不回来。<br>
+            <b class="mid">这和左栏扰动不是一回事</b>：左栏改的是<b>输入值</b>，这里改的是<b>模型结构</b>（反事实）。<br>
+            <span class="good">关掉只写本会话的 <span class="mono">disabledRuleKeys</span></span>——属仿真世界写入不是真值写入，
+            按 R4-sim 豁免审批，<b>PropagationRule.status 一个字节不动</b>。要让「这条边该退役」真生效，仍须走 R4 正门。</p></div></div>
+        <div class="box"><div class="bhd">域分布<span class="r">共 38 条</span></div>
+          <div class="bbody"><div id="domains"></div>
+            <div class="sect" style="margin-top:9px"><span class="t">关掉后的差异</span>
+              <p class="chain">关掉 <b>采购到货延迟 → 短缺风险</b>：<br>
+              短缺风险 <b>67.4 → 50.4</b>（回到基线）· 下游 18 个变量全部复位<br>
+              断点 <b>7 → 4</b>　卡点 <b>4 → 3</b>　流动效率 <b>1.4% → 1.9%</b><br>
+              <span style="color:var(--dim)">⇒ 这条边独自解释了本次一半的断点。</span></p></div></div></div>
+      </div>
+    </div></div>
+
+    <!-- ═══ m9 本体与就绪 ═══ -->
+    <div id="m9" role="tabpanel" hidden><div class="pane">
+      <div class="phd"><h4>本体与就绪</h4><p class="pd">这个推演世界凭什么可信</p>
+        <span class="src"><span class="yes">✓ 端点已有</span> view-config · 会话 scope</span></div>
+      <div class="pbody c2b">
+        <div class="box"><div class="bhd">就绪认证<span class="r bad">未通过</span></div>
+          <div class="bbody tw"><table class="d"><thead><tr><th>判据</th><th>要求</th><th>实测</th><th></th></tr></thead><tbody>
+            <tr><td>图查询覆盖</td><td>≥ 98 对象</td><td class="mid">95</td><td class="bad">✕</td></tr>
+            <tr><td>切片 minQueries</td><td>≥ 1</td><td class="mid">99 &lt; 1</td><td class="bad">✕</td></tr>
+            <tr><td>传导边已发布</td><td>全部</td><td class="good">38 / 38</td><td class="good">✓</td></tr>
+            <tr><td>状态变量有中文名</td><td>全部</td><td class="good">37 / 37</td><td class="good">✓</td></tr>
+            <tr><td>确定性重跑一致</td><td>字节级</td><td class="good">通过</td><td class="good">✓</td></tr>
+          </tbody></table>
+          <p class="empty">未通过时结论横幅<b>常驻首屏，不许降层到看不见</b>。</p>
+          <div class="slot" id="slot-ready"><span class="hint">↑ 点任一条判据，这里出「缺什么 · 去哪补」</span></div></div></div>
+        <div class="box"><div class="bhd">真实性标注<span class="r">每个数字凭什么</span></div>
+          <div class="bbody tw"><table class="d"><thead><tr><th>量</th><th>来源</th><th>性质</th></tr></thead><tbody>
+            <tr><td>tick0 状态读数</td><td class="mono">round(hash01(objectId|stateVar)×100)</td><td class="mid">结构派生 · 非实测</td></tr>
+            <tr><td>传导后的值</td><td class="mono">baseline × 系数 × 幅度</td><td class="mid">推演投影 · 非实测</td></tr>
+            <tr><td>环节天数</td><td class="mono">Operation.standardTime 等</td><td class="good">仓储真值</td></tr>
+            <tr><td>批号 / 型号 / 在制</td><td class="mono">WIPLot.*</td><td class="good">仓储真值</td></tr>
+            <tr><td>财务金额</td><td class="mono">基线 × (1 + 压力 ÷ 100)</td><td class="mid">推演投影</td></tr>
+            <tr><td>影响级</td><td class="nul">本体无承载</td><td class="nul">恒 null</td></tr>
+          </tbody></table>
+          <p class="empty">口径标注必须<b>跟着数字走</b>，否则用户会把占位当实测。</p></div></div>
+      </div>
+    </div></div>
+    <div class="jump">
+      <span>接单可行性 · 接单组合优选 <b style="color:var(--mut)">保留为独立页</b>，不并入本壳 ——</span>
+      <a href="#">跳转到接单可行性 →</a><a href="#">跳转到接单组合优选 →</a>
+      <span style="margin-left:auto;color:var(--dim)">跳转时带上本会话 id，过去仍看得到你刚施加了什么</span>
+    </div>
+  </div>
+
+  <h2>13 个页面全表 · 哪些要后端</h2>
+  <p class="cap">你说「避免大规模后端开发」——逐页核过取数口，实测结论比我上一版更好：<b>零处要动后端</b>。</p>
+  <div class="tw"><table class="led">
+    <thead><tr><th>页面</th><th>取数</th><th>后端</th></tr></thead><tbody>
+      <tr><td>指标态势（底图）</td><td class="why">view-config.stateVars · 会话 world · metric-series</td><td class="okc">不用</td></tr>
+      <tr><td>扰动子页 × 6</td><td class="why">objects 查询 + POST perturbations（现有写口）</td><td class="okc">不用</td></tr>
+      <tr><td>传导识别</td><td class="why">node-detail · bottleneck_matrix · impact-analysis</td><td class="okc">不用</td></tr>
+      <tr><td>损失归因</td><td class="why">chain-loss-matrix · chain-loss-drill</td><td class="okc">不用</td></tr>
+      <tr><td>方案寻优</td><td class="why">optimize-pareto · mitigation_select</td><td class="okc">不用</td></tr>
+      <tr><td>演习结论</td><td class="why">演习三端点（已并线）</td><td class="okc">不用</td></tr>
+      <tr><td>产销线路图</td><td class="why">现有实现整块复用</td><td class="okc">不用</td></tr>
+      <tr><td>传导边册</td><td class="why">propagation-rules 读 · <b>disabled-rules 关</b> · <b>counterfactual 看变化</b></td><td class="okc">不用</td></tr>
+      <tr><td>本体与就绪</td><td class="why">view-config · 会话 scope</td><td class="okc">不用</td></tr>
+    </tbody></table></div>
+
+  <h2>两处我在图里如实标了「今天做不到」</h2>
+  <p class="cap">这些不是设计缺陷，是系统现状。画出来是为了让你看见代价，不是为了好看。</p>
+  <ol class="asks">
+    <li><b>设备子页：OEE 四个字段扰不动</b>
+      <span class="d">它们只在对象属性上，没进 <code>world.state</code>，而引擎只读 state。硬加进 UI = 用户选了「OEE −10%」、请求成功、下游一动不动。要扰得先把属性投进状态层——后端一张单。</span></li>
+    <li><b>需求子页：「预测偏差」没有独立变量</b>
+      <span class="d">现在只能借 <code>demandPressure</code>，但压力<b>没有方向</b>而预测偏差有（高估 / 低估）。独立的 <code>forecastBias</code> 在另一张单里，尚未并线。</span></li>
+  </ol>
+
+  <h2>一条订正 —— 我上一版说错了</h2>
+  <p class="cap">你问「PUT/PATCH 要不要补」，我去量了，<b>前提不成立</b>：那个能力今天就有。</p>
+  <div class="note">
+    <b>「关掉一条边看结论怎么变」两条端点都在：</b><br>
+    <code>POST /a/v1/sim/sessions/:id/disabled-rules</code>（关）　+　<code>POST /a/v1/sim/sessions/:id/counterfactual</code>（看变化）<br>
+    会话上就有 <code>disabledRuleKeys</code> 字段，前端模型 <code>edgeActiveModel.ts</code> 的
+    <code>toggleEdge()</code> / <code>buildDiff()</code> 也齐了（带 baseline / counterfactual / absentIn 三态）。<br><br>
+    <b>PUT/PATCH 真正缺的是另一件事</b>：永久改一条边的系数或延迟——那是<b>真值变更</b>，要走 R4 审批链，
+    和边册页要的「本次假装它不存在」根本不是一条路。<br><br>
+    <b>所以第 4 条不用做。</b>我差点为一件已经做完的事派单——这正是本仓记过的老病：
+    拿「清单上还没划掉」当「这活还没做」的证据。
+  </div>
+
+  <div class="note" style="margin-top:26px">
+    <b>范围边界：</b>这一版<b>零后端改动、零数据源改动</b>——把已有的 renderer 与已有的端点重新排一次版。
+    四页 pixel 用例会因版面变动而红，那批断言需同批更新（预期内，不是回归）。
+  </div>
+</div>
+
+<script>
+const VARS=[
+ ["procurementDelay","采购到货延迟","root",30],["demandPressure","需求压力","root",24],
+ ["deliveryDelay","交付延迟","root",15],["priceShock","价格冲击","root",8],
+ ["shortageRisk","短缺风险","hub",32],["demandLoad","需求负载","hub",6],
+ ["loadIndex","负载指数","hub",13],["utilPressure","利用率压力","hub",130],
+ ["supplyRisk","供应风险","hub",6],["costPressure","成本压力","hub",18],
+ ["expeditePressure","加急压力","hub",22],["queuePressure","排队压力","hub",44],
+ ["releasePressure","工单下达压力","hub",31],["feedPressure","投料压力","hub",27],
+ ["changeoverPressure","换型压力","hub",19],["splitPressure","订单行拆分压力","hub",38],
+ ["switchPressure","替代料切换压力","hub",12],["loadPressure","设备负荷压力","hub",780],
+ ["inboundExpeditePressure","来料催交压力","hub",30],
+ ["queueDays","排队天数","leaf",44],["inspectBacklog","检验积压","leaf",26],
+ ["defectPressure","缺陷压力","leaf",21],["handlingBacklog","异常处置积压","leaf",17],
+ ["turnoverPressure","批次周转压力","leaf",24],["clearanceQueueDays","清关排队天数","leaf",9],
+ ["gapPressure","缺口压力","leaf",11],["reviewPressure","绩效复评压力","leaf",7],
+ ["repairBacklog","维修派工积压","leaf",166],["windowSqueeze","检修窗挤压","leaf",14],
+ ["qualificationQueue","认证排队","leaf",13],["drawdownPressure","成品提货压力","leaf",28],
+ ["transferPressure","跨基地调拨压力","leaf",16],["promiseRisk","交期承诺风险","leaf",24],
+ ["deliveryHoldRisk","收货暂扣风险","leaf",10],["collectionPressure","逾期催收压力","leaf",15],
+ ["receivablePressure","应收压力","leaf",15],["overduePressure","逾期压力","leaf",12]];
+function h01(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return((h>>>0)%10000)/10000}
+function spark(k,dr){const n=14,p=[];for(let i=0;i<n;i++){p.push(Math.max(4,Math.min(96,42+h01(k+i)*22+dr*(i/(n-1))**2)))}
+ const d=p.map((v,i)=>`${(i/(n-1)*100).toFixed(1)},${(100-v).toFixed(1)}`).join(" ");
+ const c=dr>4?"var(--up)":dr<-4?"var(--down)":"var(--dim)";
+ return `<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polyline points="${d}" fill="none" stroke="${c}" stroke-width="3" vector-effect="non-scaling-stroke"/></svg>`}
+const LAY={root:["根源","入度 0 · 没有上游，只能被外部打进来","r","lr"],
+ hub:["枢纽","有上游也有下游 · 扰它等于从半路插入","h","lh"],
+ leaf:["末端","出度 0 · 通常是「看」的不是「扰」的","l","ll"]};
+const wall=document.getElementById("wall");
+const CHANGED=v=>{const sd=h01(v[0]);
+ const dr=v[0]==="procurementDelay"?34:(v[2]==="root"?0:(sd>.62?6+sd*22:sd<.24?-(3+sd*14):(sd-.45)*6));
+ return {dr,changed:Math.abs(dr)>=2}};
+function mkcard(v,cl,dim){const[k,z,,cnt]=v;const sd=h01(k);const {dr}=CHANGED(v);
+ const base=40+sd*22,val=base+dr*.62,dc=dr>2?"up":dr<-2?"down":"flat",ds2=(dr>0?"+":"")+dr.toFixed(1);
+ const b=document.createElement("button");b.type="button";b.className=`card ${cl}`+(dim?" quiet":"");
+ b.setAttribute("aria-pressed","false");
+ Object.assign(b.dataset,{k,nm:z,lay:LAY[v[2]][0],v:val.toFixed(1),b:base.toFixed(1),d:ds2,n:cnt});
+ b.innerHTML=`<span class="nm">${z}</span><span class="row"><span class="v">${val.toFixed(1)}</span><span class="d ${dc}">${ds2}</span></span>${spark(k,dr)}<span class="k">${k} · ${cnt} 落点</span>`;
+ b.addEventListener("click",()=>pick(b));return b}
+for(const lk of ["root","hub","leaf"]){const[nm,ds,tg,cl]=LAY[lk];
+ const L=VARS.filter(v=>v[2]===lk);
+ const moved=L.filter(v=>CHANGED(v).changed), still=L.filter(v=>!CHANGED(v).changed);
+ if(!moved.length&&!still.length)continue;
+ const sec=document.createElement("section");sec.className="layer";
+ sec.innerHTML=`<div class="layerhd"><span class="tg ${tg}">${nm}</span>
+   <span class="ds">${moved.length} 项被推动${still.length?` · 另有 ${still.length} 项未变`:""} —— ${ds}</span></div>`;
+ const g=document.createElement("div");g.className="cards";
+ for(const v of moved) g.appendChild(mkcard(v,cl,false));
+ sec.appendChild(g);
+ if(still.length){
+   const more=document.createElement("div");more.className="cards";more.hidden=true;
+   for(const v of still) more.appendChild(mkcard(v,cl,true));
+   const btn=document.createElement("button");btn.type="button";btn.className="quietbtn";
+   btn.setAttribute("aria-expanded","false");
+   btn.textContent=`未变化 ${still.length} 项 ▾　这次扰动没推动它们`;
+   btn.addEventListener("click",()=>{const o=btn.getAttribute("aria-expanded")==="true";
+     btn.setAttribute("aria-expanded",o?"false":"true");more.hidden=o;
+     btn.textContent=`未变化 ${still.length} 项 ${o?"▾":"▴"}　这次扰动没推动它们`});
+   sec.appendChild(btn);sec.appendChild(more)}
+ wall.appendChild(sec)}
+const UP={procurementDelay:[["外部扰动","直接打进来",null,"+18 天 · 第 1–60 天"]],
+ shortageRisk:[["采购到货延迟","procurementDelay","0.80 × 0 拍","本次扰动的直接下游"]]};
+const DN={procurementDelay:[["短缺风险","shortageRisk","0.80 × 0 拍"],["来料催交压力","inboundExpeditePressure","0.60 × 1 拍"]],
+ shortageRisk:[["供应风险","supplyRisk","0.60 × 1 拍"],["加急压力","expeditePressure","0.50 × 1 拍"],["替代料切换压力","switchPressure","0.40 × 2 拍"]]};
+const DAYUNIT=new Set(["procurementDelay","deliveryDelay","queueDays","clearanceQueueDays"]);
+const BASES4=["常州","扬州","合肥","金华"];
+const OBJPFX={procurementDelay:"PO",shortageRisk:"MAT",loadPressure:"EQ",splitPressure:"SO",utilPressure:"LINE"};
+function unitOf(k){return DAYUNIT.has(k)?"天 · 越大越晚":"压力指数 0–100 · 越高越差"}
+function provOf(k){return "推演投影 · 非实测"}
+function landings(k,n,base,dr){const out=[],m=Math.min(n,26),pfx=OBJPFX[k]??"OBJ";
+ for(let i=0;i<m;i++){const r=h01(k+"|"+i);
+  const b=BASES4[Math.floor(h01(k+"b"+i)*4)];
+  const bv=base*(0.8+r*0.45), nv=bv+dr*(0.55+h01(k+"d"+i)*0.7);
+  out.push({id:`${pfx}-${(1000+Math.floor(r*8999))}`,base:b,b:bv,v:nv,d:nv-bv,
+   day:Math.abs(dr)<2?null:Math.max(1,Math.round(3+h01(k+"y"+i)*26))})}
+ return out.sort((a,b)=>Math.abs(b.d)-Math.abs(a.d))}
+function dualSpark(el,base,dr,w=200,h=46){
+ const n=30,pb=[],pa=[];
+ for(let i=0;i<n;i++){const wob=(h01("w"+i)-.5)*3.4;
+  pb.push(base+wob); pa.push(base+wob+dr*Math.min(1,(i/(n-1)*1.35)**1.6))}
+ const all=[...pb,...pa],lo=Math.min(...all)-3,hi=Math.max(...all)+3;
+ const X=i=>i/(n-1)*w, Y=v=>h-2-(v-lo)/(hi-lo)*(h-4);
+ const mk=a=>a.map((v,i)=>`${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(" ");
+ let g=`<polyline points="${mk(pb)}" fill="none" stroke="#61728d" stroke-width="1.4" stroke-dasharray="3 2.5" vector-effect="non-scaling-stroke"/>`;
+ g+=`<polyline points="${mk(pa)}" fill="none" stroke="${Math.abs(dr)<2?"#61728d":dr>0?"#e2574f":"#46c98b"}" stroke-width="1.8" vector-effect="non-scaling-stroke"/>`;
+ if(Math.abs(dr)>=2){const ci=Math.round(n*.3);g+=`<circle cx="${X(ci)}" cy="${Y(pa[ci])}" r="2.6" fill="#f0a03c"/>`}
+ el.innerHTML=g}
+function pick(c){for(const o of document.querySelectorAll(".card"))o.setAttribute("aria-pressed","false");
+ c.setAttribute("aria-pressed","true");const d=c.dataset;
+ const dr=parseFloat(d.d), base=parseFloat(d.b);
+ i_nm.textContent=d.nm; i_k.textContent=`${d.k} · ${d.lay}`;
+ i_v.textContent=d.v; i_b.textContent=d.b; i_n.textContent=d.n;
+ const dl=document.getElementById("i-d");
+ dl.textContent=d.d; dl.className="dlt "+(dr>2?"up":dr<-2?"down":"flat");
+ document.getElementById("i-unit").textContent=unitOf(d.k);
+ document.getElementById("i-prov").textContent=provOf(d.k);
+ dualSpark(document.getElementById("i-spark"),base,dr);
+ const L=landings(d.k,+d.n,base,dr);
+ const cross=L.find(x=>x.day);
+ document.getElementById("i-cross").textContent=cross?`最早第 ${Math.min(...L.filter(x=>x.day).map(x=>x.day))} 天越线`:"本次未越线";
+ const up=UP[d.k]??[[d.lay==="根源"?"无上游":"上游边","入度 "+(d.lay==="根源"?"0":"≥1"),"由传导图现算",""]];
+ i_up.innerHTML=up.map(u=>`<b>${u[0]}</b>${u[1]?` <span class="mono" style="font-size:9.5px">${u[1]}</span>`:""}${u[2]?` · ${u[2]}`:""}${u[3]?`<br><span style="color:var(--dim)">${u[3]}</span>`:""}`).join("<br>");
+ const dn=DN[d.k]??(d.lay==="末端"?[["出度 0","","它是结果，扰它不会传导"]]:[["下游边","","由传导图现算"]]);
+ i_dn.innerHTML=dn.map(u=>`<b>${u[0]}</b>${u[1]?` <span class="mono" style="font-size:9.5px">${u[1]}</span>`:""}${u[2]?` · ${u[2]}`:""}`).join("<br>");
+ document.querySelector("#i-top tbody").innerHTML=L.slice(0,4).map(x=>
+  `<tr><td class="mono">${x.id}</td><td>${x.base}</td><td class="${x.d>0?"bad":x.d<0?"good":"nul"}">${x.d>0?"+":""}${x.d.toFixed(1)}</td></tr>`).join("");
+ window.__cur={d,dr,base,L};
+ if(!document.getElementById("detail").hidden) fillDrawer()}
+function fillDrawer(){const {d,dr,base,L}=window.__cur;
+ document.getElementById("d-ttl").textContent=`${d.nm} · 全链与落点`;
+ document.getElementById("d-cnt").textContent=`${d.n} 个对象 · 列出前 ${Math.min(L.length,26)}`;
+ document.getElementById("d-rows").innerHTML=L.map(x=>
+  `<tr><td class="mono">${x.id}</td><td>${x.base}</td><td>${x.b.toFixed(1)}</td><td>${x.v.toFixed(1)}</td>
+   <td class="${x.d>0?"bad":x.d<0?"good":"nul"}">${x.d>0?"+":""}${x.d.toFixed(1)}</td>
+   <td class="${x.day?"mid":"nul"}">${x.day?"第 "+x.day+" 天":"未越线"}</td></tr>`).join("");
+ // 传导链
+ const up=UP[d.k]??[], dn=DN[d.k]??[];
+ let g="",cy=95;
+ g+=`<rect x="86" y="${cy-15}" width="128" height="30" rx="3" fill="#24457f" stroke="#3d7dfd" stroke-width="1.5"/>`;
+ g+=`<text x="150" y="${cy-1}" fill="#e4ebf6" font-size="11" text-anchor="middle" font-weight="600">${d.nm}</text>`;
+ g+=`<text x="150" y="${cy+11}" fill="#8ab4ff" font-size="8" text-anchor="middle" font-family="IBM Plex Mono,monospace">${d.v}　${d.d}</text>`;
+ up.forEach((u,i)=>{const y=30+i*30;
+  g+=`<rect x="66" y="${y-11}" width="168" height="23" rx="3" fill="#1e2839" stroke="#46c98b" stroke-width="1.2"/>`;
+  g+=`<text x="150" y="${y+4}" fill="#e4ebf6" font-size="9.5" text-anchor="middle">${u[0]}</text>`;
+  g+=`<line x1="150" y1="${y+12}" x2="150" y2="${cy-16}" stroke="#46c98b" stroke-width="1.2" marker-end="url(#ar)"/>`;
+  if(u[2])g+=`<text x="156" y="${(y+cy)/2}" fill="#61728d" font-size="8" font-family="IBM Plex Mono,monospace">${u[2]}</text>`});
+ dn.forEach((u,i)=>{const y=150+i*26;
+  g+=`<rect x="46" y="${y-10}" width="208" height="21" rx="3" fill="#1e2839" stroke="#57b6d9" stroke-width="1.1"/>`;
+  g+=`<text x="150" y="${y+4}" fill="#c9d6e8" font-size="9" text-anchor="middle">${u[0]}　<tspan fill="#61728d" font-size="7.5">${u[2]??""}</tspan></text>`;
+  if(i===0)g+=`<line x1="150" y1="${cy+16}" x2="150" y2="${y-11}" stroke="#57b6d9" stroke-width="1.2" marker-end="url(#ar)"/>`});
+ g=`<defs><marker id="ar" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+   <path d="M0,0 L6,3 L0,6 Z" fill="#57b6d9"/></marker></defs>`+g;
+ document.getElementById("d-chain").innerHTML=g;
+ // 60 天双线
+ {const n=60,pb=[],pa=[];
+  for(let i=0;i<n;i++){const w=(h01("s"+i)-.5)*3.2;
+   pb.push(base+w); pa.push(base+w+dr*Math.min(1,(i/(n-1)*1.3)**1.6))}
+  const all=[...pb,...pa],lo=Math.min(...all)-4,hi=Math.max(...all)+4;
+  const X=i=>26+i/(n-1)*260, Y=v=>168-(v-lo)/(hi-lo)*150;
+  let q="";for(let i=0;i<=4;i++){const y=18+i*37.5;q+=`<line x1="26" y1="${y}" x2="286" y2="${y}" stroke="#2d3b52"/>`}
+  q+=`<polyline points="${pb.map((v,i)=>`${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(" ")}" fill="none" stroke="#61728d" stroke-width="1.3" stroke-dasharray="3 2.5"/>`;
+  q+=`<polyline points="${pa.map((v,i)=>`${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(" ")}" fill="none" stroke="${Math.abs(dr)<2?"#61728d":dr>0?"#e2574f":"#46c98b"}" stroke-width="1.8"/>`;
+  if(Math.abs(dr)>=2){const ci=18;q+=`<line x1="${X(ci)}" y1="14" x2="${X(ci)}" y2="168" stroke="#f0a03c" stroke-width="1" stroke-dasharray="2 3"/>`;
+   q+=`<text x="${X(ci)+4}" y="24" fill="#f0a03c" font-size="8">第 ${ci+1} 天越线</text>`}
+  q+=`<text x="156" y="185" fill="#61728d" font-size="8" text-anchor="middle">第 1 → 60 天</text>`;
+  document.getElementById("d-series").innerHTML=q}}
+/* 传导识别表 */
+const LOTS=[["P2161","老化静置","LFP-314","4.2k","21.4","−12.1",1],["P2162","齐套发料","NCM-300","3.8k","32.7","−8.4",3],
+ ["P2161","过程质检","NCM-050","2.6k","12.2","−15.0",2],["P2163","老化静置","LFP-250","4.0k","17.3","−3.2",2],
+ ["P2161","干线在途","LFP-314","2.8k","8.5","−9.7",1],["P2164","主计划排产","NCM-300","3.3k","14.2","−2.6",2],
+ ["P2161","齐套发料","LFP-314","3.1k","12.1","−11.4",1],["P2165","涂布","方形-LFP","3.7k","6.8","−4.9",3]];
+document.querySelector("#t-cond tbody").innerHTML=LOTS.map((r,i)=>
+ `<tr class="${i===1?"on":""}"><td class="mono">${r[0]}</td><td>${r[1]}</td><td class="mono">${r[2]}</td>
+  <td>${r[3]}</td><td>${r[4]}d</td><td class="bad">${r[5]}d</td><td class="nul">null</td></tr>`).join("");
+
+/* 损失矩阵 */
+const NODES=["主计划排产","齐套发料","涂布","辊压","卷绕","装配","老化静置","过程质检","干线在途","到货检验","清关"];
+const BASES=["常州","扬州","合肥","金华"];
+const heat=document.getElementById("heat");
+heat.style.gridTemplateColumns=`64px repeat(${BASES.length},1fr)`;
+let hh=`<div></div>`+BASES.map(b=>`<div class="hcol">${b}</div>`).join("");
+for(const n of NODES){hh+=`<div class="hlab">${n}</div>`;
+ for(const b of BASES){const na=(n==="清关"||n==="到货检验");
+  if(na){hh+=`<div class="hcell na">算不出</div>`;continue}
+  const v=h01(n+b)*24;const t=Math.min(1,v/20);
+  const bg=`rgb(${Math.round(60+t*196)},${Math.round(160-t*96)},${Math.round(190-t*150)})`;
+  hh+=`<div class="hcell" style="background:${bg}" title="${n} × ${b}">${v.toFixed(1)}%</div>`}}
+heat.innerHTML=hh;
+
+const LOSS=[["老化静置","18.6","21.8%","停运","Process.agingDays"],["齐套发料","14.2","16.6%","停运","Material.leadTime"],
+ ["干线在途","11.9","13.9%","换乘","Shipment.transitDays"],["过程质检","9.4","11.0%","停运","Operation.standardTime"],
+ ["主计划排产","8.1","9.5%","停运","PlanVersion.windowDays"],["订单回款","7.6","8.9%","停运","Customer.termDays"],
+ ["涂布","5.2","6.1%","增值","Operation.standardTime"],["清关","—","—","算不出","EMPTY · 无承载字段"]];
+document.querySelector("#t-loss tbody").innerHTML=LOSS.map(r=>
+ `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td class="${r[3]==="增值"?"good":r[3]==="算不出"?"nul":"mid"}">${r[3]}</td>
+  <td class="mono ${r[4].startsWith("EMPTY")?"nul":""}">${r[4]}</td></tr>`).join("");
+
+/* 帕累托 */
+const OPT=[["S-0055","跨基地借调 + 外协",18.4,2180,94.1,80],["S-0051","外协兜底",18.7,1240,93.0,64],
+ ["S-0042","跨基地借调",19.1,620,92.4,52],["S-0038","缓冲释放",20.2,180,90.1,31],
+ ["S-0026","加急空运",17.9,3400,95.2,44],["S-0019","延期协商",23.6,60,86.4,18]];
+document.querySelector("#t-opt tbody").innerHTML=OPT.map((r,i)=>
+ `<tr class="${i===0?"on":""}"><td class="mono">${r[0]}</td><td>${r[1]}</td><td>${r[2]}d</td><td>${r[3]}</td>
+  <td class="${r[4]>93?"good":"mid"}">${r[4]}%</td><td>${r[5]}%</td></tr>`).join("");
+{const s=document.getElementById("pareto");const xs=OPT.map(o=>o[2]),ys=OPT.map(o=>o[3]);
+ const x0=Math.min(...xs)-1,x1=Math.max(...xs)+1,y0=0,y1=Math.max(...ys)*1.12;
+ const X=v=>34+(v-x0)/(x1-x0)*292,Y=v=>150-(v-y0)/(y1-y0)*132;
+ let g="";for(let i=0;i<=4;i++){const y=150-i*33;g+=`<line x1="34" y1="${y}" x2="326" y2="${y}" stroke="#2d3b52" stroke-width="1"/>`}
+ const front=OPT.slice().sort((a,b)=>a[2]-b[2]).filter((o,i,a)=>!a.some(q=>q[2]<=o[2]&&q[3]<o[3]));
+ g+=`<polyline points="${front.map(o=>`${X(o[2])},${Y(o[3])}`).join(" ")}" fill="none" stroke="#3d7dfd" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+ for(const o of OPT){const r=4+(o[4]-86)*.9;
+  g+=`<circle cx="${X(o[2])}" cy="${Y(o[3])}" r="${r}" fill="${o[0]==="S-0055"?"#3d7dfd":"#243046"}" stroke="${o[0]==="S-0055"?"#8ab4ff":"#57b6d9"}" stroke-width="1.5"/>`;
+  g+=`<text x="${X(o[2])}" y="${Y(o[3])-r-4}" fill="#8497b4" font-size="8" text-anchor="middle" font-family="IBM Plex Mono,monospace">${o[0]}</text>`}
+ g+=`<text x="180" y="166" fill="#61728d" font-size="8" text-anchor="middle">前置期（天）· 越左越快</text>`;
+ g+=`<text x="10" y="80" fill="#61728d" font-size="8" transform="rotate(-90 10 80)" text-anchor="middle">成本（万）</text>`;
+ s.innerHTML=g}
+
+/* 演习发现 */
+const DRILL=[["卡点",82,"涂布 OP-002","第 12 天","利用率达规则红线 · 速率上限被打满","bottleneck_matrix","LIVE"],
+ ["卡点",74,"老化静置 Y1","第 19 天","在制 4.2k 超上限","bottleneck_matrix","LIVE"],
+ ["堵点",68,"过程质检","第 23 天","待检批次积压 · 能力够但流不动","chain_loss_attribution","LIVE"],
+ ["堵点",61,"干线在途","第 27 天","到货检验前置队列","chain_loss_attribution","LIVE"],
+ ["断点",90,"采购到货 → 物料短缺","第 6 天","上游给不了下游要的（本次扰动直接下游）","propagation","LIVE"],
+ ["断点",77,"物料短缺 → 型号缺料","第 14 天","缺料沿 BOM 向上传导","propagation","LIVE"],
+ ["脆弱点",55,"清关腿","—","本体无承载字段 · 结构性，非本次扰动引起","—","UNDECLARED"]];
+document.querySelector("#t-drill tbody").innerHTML=DRILL.map(r=>{
+ const b=r[0]==="卡点"?"b1":r[0]==="堵点"?"b2":"b3";
+ return `<tr><td><span class="badge ${b}">${r[0]}</span></td><td>${r[1]}</td><td>${r[2]}</td>
+  <td class="${r[3]==="—"?"nul":""}">${r[3]}</td><td style="white-space:normal">${r[4]}</td>
+  <td class="mono">${r[5]}</td><td class="${r[6]==="LIVE"?"good":"nul"}">${r[6]}</td></tr>`}).join("");
+
+/* 线路图 */
+{const S=[["需求",40,"demand.consensus",7],["订单",130,"order.intake",5],["排产",220,"capacity.schedule",11],
+ ["齐套",310,"material.kit",17],["涂布",400,"capacity.op.OP-002",8],["老化",490,"process.aging",22],
+ ["质检",580,"quality.inspect",12],["交付",660,"delivery.ship",14]];
+ let g=`<line x1="40" y1="95" x2="660" y2="95" stroke="#3a4a66" stroke-width="2"/>`;
+ g+=`<line x1="580" y1="95" x2="660" y2="95" stroke="#61728d" stroke-width="2" stroke-dasharray="5 4"/>`;
+ for(const[n,x,k,p]of S){const r=6+p*.72;const hot=(k==="material.kit"||k==="process.aging");
+  g+=`<circle cx="${x}" cy="95" r="${r}" fill="${hot?"rgba(226,87,79,.22)":"rgba(61,125,253,.18)"}" stroke="${hot?"#e2574f":"#57b6d9"}" stroke-width="1.8"/>`;
+  g+=`<text x="${x}" y="${95-r-7}" fill="#e4ebf6" font-size="10" text-anchor="middle">${n}</text>`;
+  g+=`<text x="${x}" y="${95+r+13}" fill="#8497b4" font-size="8.5" text-anchor="middle">${p}%</text>`;
+  g+=`<text x="${x}" y="${95+r+24}" fill="#61728d" font-size="7.5" text-anchor="middle" font-family="IBM Plex Mono,monospace">${k}</text>`}
+ g+=`<text x="620" y="60" fill="#61728d" font-size="8.5" text-anchor="middle">清关 · 算不出</text>`;
+ g+=`<text x="350" y="176" fill="#61728d" font-size="8.5" text-anchor="middle">圈 = 该环节吃掉的全链损失占比 · 红 = 本次扰动新增越线点 · 虚线 = 算不出来的腿</text>`;
+ document.getElementById("linemap").innerHTML=g}
+
+/* 传导边册 */
+const EDGES=[["采购与供应","采购单 · 采购到货延迟","物料 · 短缺风险","0.80","0"],
+ ["采购与供应","物料批次 · 采购到货延迟","物料 · 短缺风险","0.60","1"],
+ ["采购与供应","供应商 · 交付延迟","物料 · 供应风险","0.70","1"],
+ ["销售与客户","订单 · 需求压力","型号 · 需求负载","0.90","0"],
+ ["销售与客户","型号 · 需求负载","基地 · 负载指数","0.75","0"],
+ ["计划与排产","基地 · 负载指数","产线 · 利用率压力","0.65","1"],
+ ["生产制造","产线 · 利用率压力","工序 · 排队压力","0.55","1"],
+ ["质量管理","工序 · 缺陷压力","工序 · 检验积压","0.50","2"],
+ ["设备与维护","设备 · 设备负荷压力","工序 · 排队压力","0.60","1"],
+ ["财务与成本","物料 · 价格冲击","型号 · 成本压力","0.85","0"]];
+document.querySelector("#t-edge tbody").innerHTML=EDGES.map((r,i)=>
+ `<tr class="${i===0?"on":""}"><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td><td>${r[4]} 拍</td>
+  <td><input type="checkbox" ${i===0?"":"checked"} aria-label="启用这条边"></td></tr>`).join("");
+{const D=[["采购与供应",10],["销售与客户",6],["基地与仓储交付",4],["产品与工程",3],["生产制造",3],
+  ["质量管理",3],["计划与排产",2],["设备与维护",2],["财务与成本",2],["未归域",3]];
+ const mx=Math.max(...D.map(d=>d[1]));
+ document.getElementById("domains").innerHTML=D.map(([n,c])=>
+  `<div style="display:flex;align-items:center;gap:7px;font-size:10.5px;margin:3px 0">
+    <span style="min-width:88px;color:var(--mut)">${n}</span>
+    <span style="height:8px;width:${c/mx*100}%;max-width:130px;background:var(--ac);opacity:.7;border-radius:2px"></span>
+    <span class="mono" style="color:var(--dim)">${c}</span></div>`).join("")}
+
+/* 交互 */
+const fb=document.getElementById("foldbtn"),rw=document.getElementById("railwrap");
+const sum=document.getElementById("summary");
+function setFold(open){fb.setAttribute("aria-expanded",open?"true":"false");rw.hidden=!open;
+ sum.hidden=open;fb.textContent=open?"收起 ▲":"展开 ▼"}
+fb.addEventListener("click",()=>setFold(fb.getAttribute("aria-expanded")!=="true"));
+document.getElementById("sopen").addEventListener("click",()=>setFold(true));
+for(const t of document.querySelectorAll(".subtabs [role=tab]"))t.addEventListener("click",()=>{
+ for(const o of document.querySelectorAll(".subtabs [role=tab]")){o.setAttribute("aria-selected","false");
+  document.getElementById(o.dataset.s).hidden=true}
+ t.setAttribute("aria-selected","true");document.getElementById(t.dataset.s).hidden=false});
+for(const t of document.querySelectorAll(".modes [role=tab]"))t.addEventListener("click",()=>{
+ for(const o of document.querySelectorAll(".modes [role=tab]")){o.setAttribute("aria-selected","false");
+  document.getElementById(o.dataset.p).hidden=true}
+ t.setAttribute("aria-selected","true");document.getElementById(t.dataset.p).hidden=false});
+for(const g of document.querySelectorAll(".seg"))for(const b of g.querySelectorAll("button"))
+ b.addEventListener("click",()=>{for(const s of g.querySelectorAll("button"))s.setAttribute("aria-pressed","false");
+  b.setAttribute("aria-pressed","true")});
+
+/* ══════ 二级页的点击下钻 —— 与卡墙同构：点一行 → 右侧检视换内容 ══════ */
+function markPickable(sel){for(const tr of document.querySelectorAll(sel)) tr.setAttribute("data-pickable","")}
+function selectRow(tb,tr){for(const o of tb.querySelectorAll("tr"))o.classList.remove("on");tr.classList.add("on")}
+
+/* ① 传导识别：点批号 → 站位检视换成该批号所在站 */
+{const STA={"老化静置":["Y1","过程质检","干线在途",3000,"3.0k 套",98],
+  "齐套发料":["P2","主计划排产","涂布",4200,"4.2k 套",96],
+  "过程质检":["Q1","老化静置","干线在途",2600,"2.6k 套",99],
+  "干线在途":["T1","过程质检","到货检验",2800,"—",null],
+  "主计划排产":["S1","S&OP 共识会","齐套发料",3300,"3.3k 套",null],
+  "涂布":["C2","混料","辊压",3700,"3.7k 套",95.9]};
+ const tb=document.querySelector("#t-cond tbody"); markPickable("#t-cond tbody tr");
+ tb.addEventListener("click",e=>{const tr=e.target.closest("tr");if(!tr)return;selectRow(tb,tr);
+  const c=tr.children, node=c[1].textContent, lot=c[0].textContent, model=c[2].textContent;
+  const q=STA[node]??["—","—","—",0,"—",null];
+  document.querySelector("#m1 .kv").innerHTML=
+   `<div><span class="a">批号</span><span class="b mono">${lot}</span></div>
+    <div><span class="a">当前站</span><span class="b">${node} · ${q[0]}</span></div>
+    <div><span class="a">型号</span><span class="b mono">${model}</span></div>
+    <div><span class="a">上游工位</span><span class="b">${q[1]}</span></div>
+    <div><span class="a">下游工位</span><span class="b">${q[2]}</span></div>
+    <div><span class="a">在制批量</span><span class="b">${q[3]}</span></div>
+    <div><span class="a">日产能</span><span class="b">${q[4]}</span></div>
+    <div><span class="a">良率</span><span class="b ${q[5]===null?"nul":q[5]<97?"mid":"good"}">${q[5]===null?"本站不产出":q[5]+"%"}</span></div>
+    <div><span class="a">在站停留</span><span class="b bad">${c[5].textContent}</span></div>`;
+  document.querySelector("#m1 .sect .chain").innerHTML=
+   `t0 <b>2026-06-10</b> + tick <b>0</b> = 模拟日 <b>2026-06-10</b><br>
+    该批末次移动 <b>2026-06-${22+ (lot.charCodeAt(4)%6)}</b> ⇒ 停留 <b class="bad">${c[5].textContent}</b><br>
+    <span style="color:var(--dim)">负值 = 批次日戳跑在模拟时钟前面。<b style="color:var(--mut)">没有 clamp 成 0</b>——那等于抹平成「刚到站」。</span>`;
+  document.querySelector("#m1 .bhd .r").textContent=`${lot} · ${node}`});
+ tb.querySelector("tr").click()}
+
+/* ② 损失归因：点热力格 → 该环节×基地的损失构成 */
+{const slot=document.getElementById("slot-heat");
+ document.getElementById("heat").addEventListener("click",e=>{
+  const c=e.target.closest(".hcell");if(!c)return;
+  if(c.classList.contains("na")){
+   slot.innerHTML=`<span class="st">这一格算不出来</span>
+    <b>${c.title}</b> —— 本体<b>没有承载字段</b>。如实标 EMPTY 并说明缺什么，<b>不补 0 不给假默认值</b>。<br>
+    缺席码 <span class="mono">ONTOLOGY_MISSING</span>。要让它算得出来，得先在本体上长出承载它的属性。`;return}
+  const [n,b]=c.title.split(" × "), v=c.textContent;
+  const parts=[["标准工时","Operation.standardTime",0.42],["换型准备","Operation.setupTime",0.23],
+   ["老化静置","Process.agingDays",0.19],["供应商到货","Supplier.leadTime",0.16]];
+  slot.innerHTML=`<span class="st">损失构成 · ${n} × ${b} = ${v}</span>`+
+   parts.map(x=>`<div style="display:flex;gap:7px;align-items:center;margin:2px 0">
+    <span style="min-width:62px">${x[0]}</span>
+    <span style="height:7px;width:${x[2]*100}%;max-width:120px;background:var(--ac);opacity:.65;border-radius:2px"></span>
+    <span class="mono" style="color:var(--dim);font-size:9px">${x[1]}</span></div>`).join("")+
+   `<div style="margin-top:5px;color:var(--dim)">每段天数都来自<b style="color:var(--mut)">一个真实对象的一个真实字段</b>，拿标签回仓储可逐位对拍（R13 下钻三元组）。</div>`});
+ document.querySelector("#heat .hcell:not(.na)")?.click()}
+
+/* ③ 方案寻优：点方案行 → 绑定约束换成该方案 */
+{const BIND={"S-0055":["扬州","LFP-99 ×4 / LFP-88 ×4","2/5 · 1/5 · 3/5","4 条","跨基地借调 + 外协双管"],
+  "S-0051":["合肥","LFP-99 ×6","3/5 · 2/5","2 条","纯外协，不动自有产线"],
+  "S-0042":["扬州","LFP-88 ×3","1/5 · 1/5","3 条","只借调，不外协"],
+  "S-0038":["常州","—","4/5","1 条","释放安全库存缓冲"],
+  "S-0026":["常州","LFP-99 ×2（空运）","2/5","5 条","最快但最贵"],
+  "S-0019":["—","—","—","0 条","不动产能，改承诺交期"]};
+ const tb=document.querySelector("#t-opt tbody"); markPickable("#t-opt tbody tr");
+ tb.addEventListener("click",e=>{const tr=e.target.closest("tr");if(!tr)return;selectRow(tb,tr);
+  const k=tr.children[0].textContent,q=BIND[k];
+  document.querySelector("#m3 .sect .t").textContent=`选中方案 ${k} · 绑定约束`;
+  document.querySelector("#m3 .sect .chain").innerHTML=
+   `<b>${q[4]}</b><br>承接基地 <b>${q[0]}</b>　调拨物料 <b>${q[1]}</b><br>
+    可用产线 <b>${q[2]}</b>　原计划处置 <b>${q[3]}</b><br>
+    <span style="color:var(--dim)">「参数版本」「收敛残差」端点未答 ⇒ 诚实标 <span class="mono">null</span>，不摆假值。</span>`;
+  for(const cc of document.querySelectorAll("#pareto circle")){}
+ });
+ tb.querySelector("tr").click()}
+
+/* ④ 演习结论：点发现 → 证据链 */
+{const EV={"涂布 OP-002":["bottleneck_matrix","利用率 = 已排产工时 ÷ 可用工时","0.94 > 规则红线 0.90","Equipment · Process 各 1 跳"],
+  "老化静置 Y1":["bottleneck_matrix","在制量 vs 上限","4.2k > 上限 3.8k","Process.agingDays"],
+  "过程质检":["chain_loss_attribution","待检批次积压天数","12.2d > 容差 8d","Operation.standardTime"],
+  "干线在途":["chain_loss_attribution","前置队列长度","队列 > 到货检验能力","Shipment.transitDays"],
+  "采购到货 → 物料短缺":["propagation","传导边 系数 0.80 · 延迟 0 拍","shortageRisk 50.4 → 67.4","本次扰动的直接下游"],
+  "物料短缺 → 型号缺料":["propagation","沿 BOM 向上","缺料量 > 齐套需求","BOMDetail 105 条"],
+  "清关腿":["—","本体无承载字段","算不出来 · 非本次扰动引起","EMPTY · ONTOLOGY_MISSING"]};
+ const tb=document.querySelector("#t-drill tbody"),slot=document.getElementById("slot-drill");
+ markPickable("#t-drill tbody tr");
+ tb.addEventListener("click",e=>{const tr=e.target.closest("tr");if(!tr)return;selectRow(tb,tr);
+  const w=tr.children[2].textContent,q=EV[w]??["—","—","—","—"],mode=tr.children[6].textContent;
+  slot.innerHTML=`<span class="st">证据链 · ${w}</span>
+   <b>谁算的</b> <span class="mono">${q[0]}</span>　<b>数据模式</b> <span class="${mode==="LIVE"?"good":"nul"}">${mode}</span><br>
+   <b>判据</b> ${q[1]}<br><b>实测</b> ${q[2]}<br><b>下钻</b> ${q[3]}
+   ${mode!=="LIVE"?`<br><span style="color:var(--warn)">⚠ 非 LIVE ⇒ 这条不是「算出来没问题」，是「没算出来」。两者屏上必须分开。</span>`:""}`});
+ tb.querySelector("tr").click()}
+
+/* ⑤ 产销线路图：点站 → 该环节检视 */
+{const lm=document.getElementById("linemap");
+ lm.style.cursor="pointer";
+ lm.addEventListener("click",e=>{
+  const t=e.target.closest("circle");if(!t)return;
+  const cx=+t.getAttribute("cx");
+  const S=[["需求",40,7],["订单",130,5],["排产",220,11],["齐套",310,17],["涂布",400,8],["老化",490,22],["质检",580,12],["交付",660,14]];
+  const hit=S.find(x=>Math.abs(x[1]-cx)<3);if(!hit)return;
+  for(const c of lm.querySelectorAll("circle")) c.setAttribute("stroke-width","1.8");
+  t.setAttribute("stroke-width","3.4");
+  document.querySelector("#m5 .empty").innerHTML=
+   `<span class="st" style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.13em;color:var(--dim);display:block;margin-bottom:3px">选中站 · ${hit[0]}</span>
+    吃掉全链损失 <b>${hit[2]}%</b>　${hit[2]>15?'<span class="bad">本次扰动新增越线点</span>':'<span class="good">未越线</span>'}<br>
+    <span style="color:var(--dim)">点这一站可下钻到「传导识别」看该站在制批号，或到「损失归因」看它在各基地的分布。</span>`})}
+
+/* ⑥ 传导边册：点边 → 关掉它的差异 */
+{const tb=document.querySelector("#t-edge tbody"); markPickable("#t-edge tbody tr");
+ tb.addEventListener("click",e=>{const tr=e.target.closest("tr");if(!tr||e.target.tagName==="INPUT")return;
+  selectRow(tb,tr);const c=tr.children,src=c[1].textContent,tgt=c[2].textContent,co=c[3].textContent;
+  const off=tr.querySelector("input").checked===false;
+  document.querySelector("#m8 .sect .chain").innerHTML=
+   `关掉 <b>${src} → ${tgt}</b>（系数 ${co}）：<br>
+    ${off?`目标值 <b>回到基线</b> · 下游整支复位<br>断点 <b>7 → 4</b>　卡点 <b>4 → 3</b>　流动效率 <b>1.4% → 1.9%</b><br>
+      <span style="color:var(--dim)">⇒ 这条边独自解释了本次一半的断点。</span>`
+     :`这条边<b>当前开着</b> —— 勾掉左边的框即可试算。<br>
+      <span style="color:var(--dim)">关掉只写本会话 <span class="mono">disabledRuleKeys</span>，不动 <span class="mono">PropagationRule.status</span>。</span>`}`});
+ tb.querySelector("tr").click()}
+
+/* ⑦ 本体与就绪：点判据 → 缺什么去哪补 */
+{const FIX={"图查询覆盖":["3 个对象类型没有任何查询覆盖它们","去本体加切片查询，或确认这三类本就不该被推演触及"],
+  "切片 minQueries":["切片 99 的最小查询数为 0，低于门槛 1","给该切片至少配一条查询，或把它从推演范围里摘掉"],
+  "传导边已发布":["—","已满足"],"状态变量有中文名":["—","已满足"],"确定性重跑一致":["—","已满足"]};
+ const tb=document.querySelector("#m9 table.d tbody"),slot=document.getElementById("slot-ready");
+ markPickable("#m9 table.d tbody tr");
+ tb.addEventListener("click",e=>{const tr=e.target.closest("tr");if(!tr)return;selectRow(tb,tr);
+  const k=tr.children[0].textContent,q=FIX[k]??["—","—"],pass=tr.children[3].textContent.includes("✓");
+  slot.innerHTML=`<span class="st">${k} · ${pass?"已通过":"未通过"}</span>`+
+   (pass?`<span class="good">这一条已满足，无需处置。</span>`
+    :`<b>缺什么</b> ${q[0]}<br><b>去哪补</b> ${q[1]}<br>
+      <span style="color:var(--dim)">未通过不阻止推演，只是结论横幅会常驻——<b style="color:var(--mut)">是否采信由你判断</b>。</span>`)});
+ tb.querySelector("tr").click()}
+</script>
+
+</body></html>

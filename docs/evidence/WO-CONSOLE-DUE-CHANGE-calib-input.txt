@@ -1,0 +1,19 @@
+# Model.demandLoad 入边 4 条（实测）
+  demo_fg_cover_days_to_model_demand
+     源 FinishedGoodsInventory.coverDays  combine=sum delay=0 weightRef=source_field_share cadence=-
+     coefficient=null  desc="成品现货覆盖天数越高 ⇒ 在手订单簿对该型号的即时需求压力越被库存吸收（缓冲吸收 = 需求负载下修）"
+  demo_fg_drawdown_relieves_model_demand
+     源 FinishedGoodsInventory.drawdownPressure  combine=sum delay=1 weightRef=source_field_share cadence=-
+     coefficient=null  desc="成品库存被提走 ⇒ 这部分需求已由库存交付，从型号待产负荷里扣掉（稳态按去化压力的 0.6 倍下修）"
+  demo_order_churn_to_model_demand_load
+     源 Order.orderChurn  combine=sum delay=0 weightRef=source_qty_relative cadence=-
+     coefficient=null  desc="订单频繁变更 ⇒ 取消/缩水占多、在手需求被高估，型号需求负载随之下修（变更频度 × −0.009445 = 需求负载下修量）"
+  demo_order_demand_pressure
+     源 Order.demandPressure  combine=sum delay=0 weightRef=source_qty_relative cadence=-
+     coefficient=null  desc="订单接得多 ⇒ 该型号要生产的量跟着涨（订单需求压力 × 0.018891 = 型号需求负载）"
+
+# 供对照：目标格 domain
+  {}
+
+# ── 目标格所在组的全部边（增益预算按组算）──────────────
+  组 = Model.demandLoad ⇒ 本组就是上面 4 条

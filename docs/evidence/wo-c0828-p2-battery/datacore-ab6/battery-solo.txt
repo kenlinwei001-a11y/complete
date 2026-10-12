@@ -1,0 +1,359 @@
+HEAD=51a13d002 START=09-28 18:27:55
+cmd: solo-only A/B (6 文件逐个 maxWorkers=1)
+== solo test/turn-loop.seam.test.ts ==
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/apps/datacore
+
+ ✓ test/turn-loop.seam.test.ts (11 tests) 797636ms
+   ✓ WO-TURN-LOOP · 回合推进对求解器可见（接缝） > 🐤 金丝雀：扰动幅度不同 ⇒ 轨迹必须不同（否则量法坏了，下面结论一律不许信）  103705ms
+   ✓ WO-TURN-LOOP · 回合推进对求解器可见（接缝） > 🔴 SEAM：tick×3 后求解器给出 4 拍轨迹，前两拍与无扰动对照臂逐字节相同（两跳链的到达延迟 = 回合语义）  77204ms
+   ✓ WO-TURN-LOOP · 回合推进对求解器可见（接缝） > 🔴 SEAM：同样三次扰动换先后顺序 ⇒ 结果必须不同（相同则说明回合没接上，只是快照重算）  89755ms
+   ✓ WO-TURN-LOOP · 回合推进对求解器可见（接缝） > ⚖️ 边界：两条 delay0 可加扰动换顺序 ⇒ 结果相同（顺序要有意义，路径上必须有记忆）  71639ms
+   ✓ WO-TURN-LOOP · 回合推进对求解器可见（接缝） > 🔒 R6：同扰动同顺序重跑 ⇒ 除 worldId/summary 外逐字节相同（回合不许引入随机性）  67577ms
+   ✓ WO-TURN-LOOP · 回合推进对求解器可见（接缝） > 🔁 反向对照：tick×0 ⇒ 单帧世界 direction=UNKNOWN / delta=null，既有 pressures 不受影响  32582ms
+   ✓ WO-TURN-LOOP · 回合推进对求解器可见（接缝） > 📏 窗口：tick×5 + turnWindow=3 ⇒ 只回 3 拍且 truncated=true（不假装看全了）  57926ms
+   ✓ WO-TURN-LOOP · 回合推进对求解器可见（接缝） > 🕳 读取器：无世界线 ⇒ frames 空 + note 点明「读不到历史」（不与「历史为空」混为一谈）  27790ms
+   ✓ WO-TURN-LOOP · 回合推进对求解器可见（接缝） > 🐤 反向金丝雀：set(tick0 起点值) ⇒ 与不扰动臂逐字节相同；set(0) ⇒ 必须不同（幅度 0 ≠ 没扰动）  119117ms
+   ✓ WO-TURN-LOOP · 回合推进对求解器可见（接缝） > 📈 单调：delta 扰动阶梯 0→+1000 ⇒ 聚合读数与单对象读数都严格递增（源涨⇒下游涨）  150329ms
+
+ Test Files  1 passed (1)
+      Tests  11 passed (11)
+   Start at  18:28:07
+   Duration  857.03s (transform 31.06s, setup 0ms, collect 55.95s, tests 797.64s, environment 1ms, prepare 1.19s)
+
+SOLO_RC[test/turn-loop.seam.test.ts]=0
+== solo test/vle-acceptance.test.ts ==
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/apps/datacore
+
+ ❯ test/vle-acceptance.test.ts (4 tests | 1 failed) 210865ms
+   ✓ VLE 验收补齐 · VL2/VL4/VL5/VL7 > VL2 植入计算 bug（broken_aggregate）→ 独立参照比对处变红，报告 pass=false  59580ms
+   ✓ VLE 验收补齐 · VL2/VL4/VL5/VL7 > VL4 闭环收敛：注入偏差→提案(simulatedMapeAfter<mapeBefore)→批准应用→后续求解用新参数  18502ms
+   × VLE 验收补齐 · VL2/VL4/VL5/VL7 > VL5 混沌恢复：扰动运行(注入故障)不污染后续——一次性验证租户隔离 → 重跑回到基线 132739ms
+     → Test timed out in 120000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   ✓ VLE 验收补齐 · VL2/VL4/VL5/VL7 > VL7 静态独立性：VLE 参照预言机不 import 被测求解器（不可用被测算被测） 32ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/vle-acceptance.test.ts > VLE 验收补齐 · VL2/VL4/VL5/VL7 > VL5 混沌恢复：扰动运行(注入故障)不污染后续——一次性验证租户隔离 → 重跑回到基线
+Error: Test timed out in 120000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ test/vle-acceptance.test.ts:54:3
+     52|   });
+     53| 
+     54|   it("VL5 混沌恢复：扰动运行(注入故障)不污染后续——一次性验证租户隔离 → 重跑回到基线", async () => {
+       |   ^
+     55|     const t = await makeApp();
+     56|     const baseline = (await t.services.vle.run(t.adminCtx, "SMOKE", 42…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 3 passed (4)
+   Start at  18:42:34
+   Duration  237.98s (transform 13.42s, setup 0ms, collect 23.35s, tests 210.87s, environment 0ms, prepare 943ms)
+
+undefined
+/Users/apple/deploy/complete/apps/datacore:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run test/vle-acceptance.test.ts --maxWorkers=1 --testTimeout=1500000
+SOLO_RC[test/vle-acceptance.test.ts]=1
+== solo test/dynamic-drill-resolve.seam.test.ts ==
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/apps/datacore
+
+ ❯ test/dynamic-drill-resolve.seam.test.ts (6 tests | 4 failed) 1310418ms
+   ✓ WO-DYNAMIC-DRILL-RESOLVE · DYNAMIC-* 占位查询期解析 SEAM > DR-0 金丝雀 · 数据半：种子里 DYNAMIC-* 仍是占位且自带挑选口径（播种期解析即红）  26987ms
+   × WO-DYNAMIC-DRILL-RESOLVE · DYNAMIC-* 占位查询期解析 SEAM > DR-1 · **对上率**：本次全部落点都能对上因子，且 MaterialBalance 那一族一条不落 470996ms
+     → Test timed out in 180000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   × WO-DYNAMIC-DRILL-RESOLVE · DYNAMIC-* 占位查询期解析 SEAM > DR-2 · **头号判据**：TYPE 档解析出的实例 == 这条落点自己的那一张，且读数与库里真对象逐位相等 314939ms
+     → Test timed out in 300000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   × WO-DYNAMIC-DRILL-RESOLVE · DYNAMIC-* 占位查询期解析 SEAM > DR-3 · **三档禁塌**：EXACT / TYPE / NONE 三态在同一次种子上同时可复现，且 TYPE 不冒充 EXACT 186678ms
+     → Test timed out in 180000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   × WO-DYNAMIC-DRILL-RESOLVE · DYNAMIC-* 占位查询期解析 SEAM > DR-4 · 归因期解析走的是**因子自己声明的 drillPick**（不是候选池首条），且 R6 两跑字节一致 226293ms
+     → Test timed out in 180000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   ✓ WO-DYNAMIC-DRILL-RESOLVE · DYNAMIC-* 占位查询期解析 SEAM > DR-5 · 归因期占位解析**只连坐 demand_attain 一个域**（其余指标域产物逐字节不变的结构理由）  84503ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/dynamic-drill-resolve.seam.test.ts > WO-DYNAMIC-DRILL-RESOLVE · DYNAMIC-* 占位查询期解析 SEAM > DR-1 · **对上率**：本次全部落点都能对上因子，且 MaterialBalance 那一族一条不落
+Error: Test timed out in 180000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ test/dynamic-drill-resolve.seam.test.ts:89:3
+     87|   });
+     88| 
+     89|   it("DR-1 · **对上率**：本次全部落点都能对上因子，且 MaterialBalance 那一族一条不落", async ()…
+       |   ^
+     90|     const t = await makeApp();
+     91|     await seedBattery(t);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  test/dynamic-drill-resolve.seam.test.ts > WO-DYNAMIC-DRILL-RESOLVE · DYNAMIC-* 占位查询期解析 SEAM > DR-2 · **头号判据**：TYPE 档解析出的实例 == 这条落点自己的那一张，且读数与库里真对象逐位相等
+Error: Test timed out in 300000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ test/dynamic-drill-resolve.seam.test.ts:111:3
+    109|   }, 180000);
+    110| 
+    111|   it("DR-2 · **头号判据**：TYPE 档解析出的实例 == 这条落点自己的那一张，且读数与库里真对象逐位相等", async…
+       |   ^
+    112|     const t = await makeApp();
+    113|     await seedBattery(t);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  test/dynamic-drill-resolve.seam.test.ts > WO-DYNAMIC-DRILL-RESOLVE · DYNAMIC-* 占位查询期解析 SEAM > DR-3 · **三档禁塌**：EXACT / TYPE / NONE 三态在同一次种子上同时可复现，且 TYPE 不冒充 EXACT
+Error: Test timed out in 180000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ test/dynamic-drill-resolve.seam.test.ts:139:3
+    137|   }, 300000);
+    138| 
+    139|   it("DR-3 · **三档禁塌**：EXACT / TYPE / NONE 三态在同一次种子上同时可复现，且 TYPE 不冒充 EX…
+       |   ^
+    140|     const t = await makeApp();
+    141|     await seedBattery(t);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  test/dynamic-drill-resolve.seam.test.ts > WO-DYNAMIC-DRILL-RESOLVE · DYNAMIC-* 占位查询期解析 SEAM > DR-4 · 归因期解析走的是**因子自己声明的 drillPick**（不是候选池首条），且 R6 两跑字节一致
+Error: Test timed out in 180000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ test/dynamic-drill-resolve.seam.test.ts:171:3
+    169|   }, 180000);
+    170| 
+    171|   it("DR-4 · 归因期解析走的是**因子自己声明的 drillPick**（不是候选池首条），且 R6 两跑字节一致", asyn…
+       |   ^
+    172|     const t = await makeApp();
+    173|     await seedBattery(t);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 2 passed (6)
+   Start at  18:46:50
+   Duration  1356.53s (transform 18.72s, setup 0ms, collect 33.43s, tests 1310.42s, environment 0ms, prepare 1.32s)
+
+undefined
+/Users/apple/deploy/complete/apps/datacore:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run test/dynamic-drill-resolve.seam.test.ts --maxWorkers=1 --testTimeout=1500000
+SOLO_RC[test/dynamic-drill-resolve.seam.test.ts]=1
+== solo test/prov-drillfield-truth.test.ts ==
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/apps/datacore
+
+stdout | test/prov-drillfield-truth.test.ts > WO-R13-DRILLFIELD · 溯源口径通用判据（标签所指字段 → 回的值真出自该字段·无静默跳过） > gap_attribution 全部 8 条路径 + supply_demand_gap_attribution：每个 provenance 非 SINGLE 即 AGGREGATE，两类都被断言，无第三类
+[PROV-CANARY] pathsWithProv=8 single={"gap_attribution":85,"supply_demand_gap_attribution":3} aggregate={"gap_attribution":24,"supply_demand_gap_attribution":4} typeFields=23
+
+stdout | test/prov-drillfield-truth.test.ts > WO-R13-DRILLFIELD · 溯源口径通用判据（标签所指字段 → 回的值真出自该字段·无静默跳过） > supply_demand_gap_attribution 结构漂移支路（seg_drift·默认种子里恒 0 → 必须造数才走得到）同样逐叶对拍
+[PROV-CANARY-DRIFT] single={"supply_demand_gap_attribution":6} aggregate={"supply_demand_gap_attribution":4} typeFields=DemandSegment.tgt,DemandSegment.demandWanPerYearP50,Order.qty,Equipment.oee_current,MaterialBalance.gapTon,Line.capacityDaily
+
+ ❯ test/prov-drillfield-truth.test.ts (10 tests | 4 failed) 8096619ms
+   ✓ WO-PROV-DRILLFIELD · gap_attribution provenance 口径真值门（R13·标签所指字段真值 == 回的值） > 口径锚（数据半）：`Order.value` = qty×unitPrice = **元**，与万元归因权重 orderVal 恰差 1e4  83481ms
+   × WO-PROV-DRILLFIELD · gap_attribution provenance 口径真值门（R13·标签所指字段真值 == 回的值） > 效果层①（全局路）：每个可解析下钻叶的 drillValue == 该对象该字段真值（订单叶 ≥5·非空洞） 2679165ms
+     → Test timed out in 1500000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   ✓ WO-PROV-DRILLFIELD · gap_attribution provenance 口径真值门（R13·标签所指字段真值 == 回的值） > 效果层②（基地作用域路 + 敞口路）：scoped/exposure 两条支路逐叶同样对拍真值  29418ms
+   ✓ WO-PROV-DRILLFIELD · gap_attribution provenance 口径真值门（R13·标签所指字段真值 == 回的值） > 效果层③（前端显示这一跳）：ProvenanceDag / DashboardView 渲染出的那个数 == DB 里 Order.value 真值  166895ms
+   ✓ WO-PROV-DRILLFIELD · gap_attribution provenance 口径真值门（R13·标签所指字段真值 == 回的值） > 接缝（数据半×引擎半）：改订单颗粒 → 重跑派生 → drillValue 跟着 `Order.value` 一起变，且再次逐叶相等  9573ms
+   ✓ WO-PROV-DRILLFIELD · gap_attribution provenance 口径真值门（R13·标签所指字段真值 == 回的值） > R6 确定性：两跑 gap_attribution 字节一致（本单只改展示口径·不引入非确定性）  15945ms
+   × WO-R13-DRILLFIELD · 溯源口径通用判据（标签所指字段 → 回的值真出自该字段·无静默跳过） > gap_attribution 全部 8 条路径 + supply_demand_gap_attribution：每个 provenance 非 SINGLE 即 AGGREGATE，两类都被断言，无第三类 1609866ms
+     → Test timed out in 300000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   × WO-R13-DRILLFIELD · 溯源口径通用判据（标签所指字段 → 回的值真出自该字段·无静默跳过） > supply_demand_gap_attribution 结构漂移支路（seg_drift·默认种子里恒 0 → 必须造数才走得到）同样逐叶对拍 1380068ms
+     → Test timed out in 300000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   ✓ WO-R13-DRILLFIELD · 溯源口径通用判据（标签所指字段 → 回的值真出自该字段·无静默跳过） > 下游 id 拼装回归：真正拼 `obj_<type>_<drillId>` 的那条消费路必须逐叶解析得开  17716ms
+   × WO-R13-DRILLFIELD · 溯源口径通用判据（标签所指字段 → 回的值真出自该字段·无静默跳过） > 路径表完整性锚：supply_demand_gap_attribution **不消费任何入参** → 故上表只列 1 条；哪天接了 args 这条必红 2104383ms
+     → Test timed out in 300000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/prov-drillfield-truth.test.ts > WO-PROV-DRILLFIELD · gap_attribution provenance 口径真值门（R13·标签所指字段真值 == 回的值） > 效果层①（全局路）：每个可解析下钻叶的 drillValue == 该对象该字段真值（订单叶 ≥5·非空洞）
+Error: Test timed out in 1500000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ test/prov-drillfield-truth.test.ts:114:3
+    112|   });
+    113| 
+    114|   it("效果层①（全局路）：每个可解析下钻叶的 drillValue == 该对象该字段真值（订单叶 ≥5·非空洞）", async (…
+       |   ^
+    115|     const t = await makeApp();
+    116|     await seedBattery(t);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  test/prov-drillfield-truth.test.ts > WO-R13-DRILLFIELD · 溯源口径通用判据（标签所指字段 → 回的值真出自该字段·无静默跳过） > gap_attribution 全部 8 条路径 + supply_demand_gap_attribution：每个 provenance 非 SINGLE 即 AGGREGATE，两类都被断言，无第三类
+Error: Test timed out in 300000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ test/prov-drillfield-truth.test.ts:404:3
+    402| 
+    403| describe("WO-R13-DRILLFIELD · 溯源口径通用判据（标签所指字段 → 回的值真出自该字段·无静默跳过）", () …
+    404|   it("gap_attribution 全部 8 条路径 + supply_demand_gap_attribution：每个 prov…
+       |   ^
+    405|     const t = await makeApp();
+    406|     await seedBattery(t);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  test/prov-drillfield-truth.test.ts > WO-R13-DRILLFIELD · 溯源口径通用判据（标签所指字段 → 回的值真出自该字段·无静默跳过） > supply_demand_gap_attribution 结构漂移支路（seg_drift·默认种子里恒 0 → 必须造数才走得到）同样逐叶对拍
+Error: Test timed out in 300000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ test/prov-drillfield-truth.test.ts:459:3
+    457|   }, 300_000);
+    458| 
+    459|   it("supply_demand_gap_attribution 结构漂移支路（seg_drift·默认种子里恒 0 → 必须造数才走…
+       |   ^
+    460|     // 为什么单开一个 app：默认种子 `DemandSegment.tgt === p50`（实测三段皆等）⇒ drift = m…
+    461|     // ⇒ `drillField:"tgt"` 那条叶**在默认路径上一次都不出现**（"接了线没数据"）。不造数就等于没验它。
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  test/prov-drillfield-truth.test.ts > WO-R13-DRILLFIELD · 溯源口径通用判据（标签所指字段 → 回的值真出自该字段·无静默跳过） > 路径表完整性锚：supply_demand_gap_attribution **不消费任何入参** → 故上表只列 1 条；哪天接了 args 这条必红
+Error: Test timed out in 300000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ test/prov-drillfield-truth.test.ts:539:3
+    537|   }, 300_000);
+    538| 
+    539|   it("路径表完整性锚：supply_demand_gap_attribution **不消费任何入参** → 故上表只列 1 条；哪天…
+       |   ^
+    540|     // 这条不是在给"丢参数"背书，而是把「为什么只列 1 条路径」从**我的说法**变成**机器的说法**。
+    541|     // 实测：`supplyDemandGapAttribution(ctx, args)` 的**归因计算**零处读 args ⇒ …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+⎯⎯⎯⎯⎯⎯ Unhandled Errors ⎯⎯⎯⎯⎯⎯
+
+Vitest caught 1 unhandled error during the test run.
+This might cause false positive tests. Resolve unhandled errors to make sure your tests are not affected.
+
+⎯⎯⎯⎯⎯⎯ Unhandled Error ⎯⎯⎯⎯⎯⎯⎯
+Error: [vitest-worker]: Timeout calling "onTaskUpdate"
+ ❯ Object.onTimeoutError ../../node_modules/.pnpm/vitest@3.2.6_@types+node@22.19.21_jsdom@25.0.1_msw@2.14.6_@types+node@22.19.21_typescript@5.9.3_/node_modules/vitest/dist/chunks/rpc.-pEldfrD.js:53:10
+ ❯ Timeout._onTimeout ../../node_modules/.pnpm/vitest@3.2.6_@types+node@22.19.21_jsdom@25.0.1_msw@2.14.6_@types+node@22.19.21_typescript@5.9.3_/node_modules/vitest/dist/chunks/index.B521nVV-.js:59:62
+ ❯ listOnTimeout node:internal/timers:605:17
+ ❯ processTimers node:internal/timers:541:7
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 6 passed (10)
+     Errors  1 error
+   Start at  19:15:29
+   Duration  8178.44s (transform 36.67s, setup 0ms, collect 65.34s, tests 8096.62s, environment 0ms, prepare 1.31s)
+
+undefined
+/Users/apple/deploy/complete/apps/datacore:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run test/prov-drillfield-truth.test.ts --maxWorkers=1 --testTimeout=1500000
+SOLO_RC[test/prov-drillfield-truth.test.ts]=1
+== solo test/vle.test.ts ==
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/apps/datacore
+
+ ❯ test/vle.test.ts (5 tests | 4 failed) 4356223ms
+   × 闭环验证引擎 VLE（VL1/VL3/VL6/VL8） > VL1: SMOKE 全绿基线 —— 七段断言通过、三覆盖率、工程验证度 1062379ms
+     → Test timed out in 120000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   × 闭环验证引擎 VLE（VL1/VL3/VL6/VL8） > VL3: 注入悬挂引用故障 → 引用完整性断言变红，报告 pass=false（diff 指出首个悬挂） 1604314ms
+     → Test timed out in 120000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   ✓ 闭环验证引擎 VLE（VL1/VL3/VL6/VL8） > VL6/隔离: run 用一次性验证租户，演示租户数据不受影响；报告落在调用方租户  34130ms
+   × 闭环验证引擎 VLE（VL1/VL3/VL6/VL8） > VL8/确定性: 同 seed 两次 run 报告断言结果一致 901130ms
+     → Test timed out in 120000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   × 闭环验证引擎 VLE（VL1/VL3/VL6/VL8） > endpoint: POST /a/v1/validation/runs (admin) → 201 报告；planner → 403；历史可列 753886ms
+     → Test timed out in 120000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/vle.test.ts > 闭环验证引擎 VLE（VL1/VL3/VL6/VL8） > VL1: SMOKE 全绿基线 —— 七段断言通过、三覆盖率、工程验证度
+Error: Test timed out in 120000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ test/vle.test.ts:14:3
+     12| // 提到 120s（仅本套，全局 vitest.config 30s 不动）。这是环境耗时适配，非掩盖回归（baseline 同样需要）。
+     13| describe("闭环验证引擎 VLE（VL1/VL3/VL6/VL8）", { timeout: 120000 }, () => {
+     14|   it("VL1: SMOKE 全绿基线 —— 七段断言通过、三覆盖率、工程验证度", async () => {
+       |   ^
+     15|     const t = await makeApp();
+     16|     const run = await t.services.vle.run(t.adminCtx, "SMOKE", 42);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  test/vle.test.ts > 闭环验证引擎 VLE（VL1/VL3/VL6/VL8） > VL3: 注入悬挂引用故障 → 引用完整性断言变红，报告 pass=false（diff 指出首个悬挂）
+Error: Test timed out in 120000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ test/vle.test.ts:27:3
+     25|   });
+     26| 
+     27|   it("VL3: 注入悬挂引用故障 → 引用完整性断言变红，报告 pass=false（diff 指出首个悬挂）", async () …
+       |   ^
+     28|     const t = await makeApp();
+     29|     const run = await t.services.vle.run(t.adminCtx, "SMOKE", 42, { in…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  test/vle.test.ts > 闭环验证引擎 VLE（VL1/VL3/VL6/VL8） > VL8/确定性: 同 seed 两次 run 报告断言结果一致
+Error: Test timed out in 120000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ test/vle.test.ts:51:3
+     49|   });
+     50| 
+     51|   it("VL8/确定性: 同 seed 两次 run 报告断言结果一致", async () => {
+       |   ^
+     52|     const t = await makeApp();
+     53|     const r1 = (await t.services.vle.run(t.adminCtx, "SMOKE", 7)).repo…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  test/vle.test.ts > 闭环验证引擎 VLE（VL1/VL3/VL6/VL8） > endpoint: POST /a/v1/validation/runs (admin) → 201 报告；planner → 403；历史可列
+Error: Test timed out in 120000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ test/vle.test.ts:59:3
+     57|   });
+     58| 
+     59|   it("endpoint: POST /a/v1/validation/runs (admin) → 201 报告；planner → …
+       |   ^
+     60|     const t = await makeApp();
+     61|     const denied = await t.app.inject({ method: "POST", url: "/a/v1/va…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 1 passed (5)
+   Start at  21:32:03
+   Duration  5643.14s (transform 54.45s, setup 0ms, collect 1265.73s, tests 4356.22s, environment 79ms, prepare 1.33s)
+
+undefined
+/Users/apple/deploy/complete/apps/datacore:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run test/vle.test.ts --maxWorkers=1 --testTimeout=1500000
+SOLO_RC[test/vle.test.ts]=1
+== solo test/scale-baseline.test.ts ==
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/apps/datacore
+
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/scale-baseline.test.ts [ test/scale-baseline.test.ts ]
+Error: [vitest-worker]: Timeout calling "fetch" with "["/src/ontology/query-engine.ts","ssr"]"
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  no tests
+   Start at  23:27:22
+   Duration  1010.75s (transform 996.61s, setup 0ms, collect 0ms, tests 0ms, environment 0ms, prepare 410ms)
+
+undefined
+/Users/apple/deploy/complete/apps/datacore:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run test/scale-baseline.test.ts --maxWorkers=1 --testTimeout=1500000
+SOLO_RC[test/scale-baseline.test.ts]=1
+SOLO_RC=1 END=09-28 23:44:16

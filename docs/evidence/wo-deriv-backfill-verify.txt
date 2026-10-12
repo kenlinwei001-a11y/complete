@@ -1,0 +1,25 @@
+金丝雀 Order.leadDays         真读到 500 个值
+金丝雀 Supplier.onTimeRate    真读到 15 个值
+金丝雀 QualityLot.batchSize   真读到 260 个值
+
+口径（独立复算）                                     变量                          对数      逐位相符  最大绝对差
+--------------------------------------------------------------------------------------------
+ARInvoice.overdueDays                        overduePressure             60    60/60   0
+Certification.certHours                      qualificationQueue          18    18/18   0
+ChangeoverMatrix.minutes                     changeoverPressure          30    30/30   0
+CustomsClearance.clearedDay-declaredDay      clearanceQueueDays           1     1/1    0
+FGI.qtyOnHand/dailyDemand                    drawdownPressure            18    18/18   0
+IncomingInspection.releasedDay-arrivedDay    queueDays                   30    30/30   0
+IBT.transitDays*100/etaDay                   transferPressure            17    17/17   0
+MaintPlan.week                               windowSqueeze               13    13/13   0
+MaterialAlternative.priority                 switchPressure               5     5/5    0
+MaterialBatch.idleDays                       turnoverPressure            24    24/24   0
+OverdueRecord.overdueDays                    collectionPressure           2     2/2    0
+QualityLot.batchSize                         inspectBacklog             260   260/260  0
+Shipment.etaDay                              inboundExpeditePressure     13    13/13   0
+Supplier.(contracted-actual)*100/contracted  reviewPressure              15    15/15   0
+OrderLine.breachPenalty*100/(qty*unitPrice)  splitPressure              873   873/873  0
+Model.MAX(in(order_for_model).qty)           backlogQtyTop                6     6/6    0
+Model.MAX(in(order_for_model).unitPrice)     backlogPriceTop              6     6/6    0
+
+⇒ 17/17 逐位相符（独立复算 == 世界态）

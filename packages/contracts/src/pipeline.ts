@@ -157,3 +157,73 @@ export type OntologyWorkflowUpsert = z.infer<typeof OntologyWorkflowUpsertSchema
 /** validate 结果。 */
 export const WfValidationIssueSchema = z.object({ nodeId: z.string().optional(), code: z.string(), message: z.string() });
 export type WfValidationIssue = z.infer<typeof WfValidationIssueSchema>;
+
+// ---------------------------------------------------------------------------
+// 数据构建 Pipeline（低代码可配置执行流）：把「数据构建发动机」的**写死步骤**外化成数据。
+//
+// 与上面的 OntologyWorkflow 正交、**不是同一件事**，故单开一套（同文件、共用 WfEdge 与 baseNode 形状）：
+//   · OntologyWorkflow  = 「要建成什么」——建模名词（数据源/处理/实体/链路/汇），DAG 画布，产物是本体 schema；
+//   · BuildPipeline     = 「按什么步骤跑」——执行阶段 + 每个节点的 SOP（干什么/失败怎么办/人要不要介入）。
+// WfNode 六种 kind 里没有任何一种能表达「试建→跨系统下发→比对→发布→验证→推演→记账」这类执行阶段，
+// baseNode 也没有 maxAttempts / 失败策略 / 人工介入 字段（见本文件 baseNode 定义），故必须单开。
+//
+// 一个 kind 一条出厂默认（factory）；租户存一条即覆盖。不配置任何东西时行为与写死时代逐字节一致。
+// ---------------------------------------------------------------------------
+
+/** pipeline 适用的链路：数据接入/导入/故事建域各一条。 */
+export const BuildPipelineKindSchema = z.enum(["story_build", "intake", "intake_import"]);
+export type BuildPipelineKind = z.infer<typeof BuildPipelineKindSchema>;
+
+/** 失败怎么办（节点 SOP 的核心）：有界重试 / 跳过继续 / 中止整条。 */
+export const BuildNodeFailurePolicySchema = z.enum(["RETRY", "SKIP", "ABORT"]);
+export type BuildNodeFailurePolicy = z.infer<typeof BuildNodeFailurePolicySchema>;
+
+/** 节点 SOP：这个节点**干什么** · **失败怎么办** · **人要不要介入**（仓主原话「配置每个节点的 SOP」）。 */
+export const BuildNodeSopSchema = z.object({
+  /** 干什么（人读的操作规程正文；不参与执行，供画布/审计展示）。 */
+  description: z.string().default(""),
+  /** 失败怎么办。ABORT = 止于该步保留现场（出厂默认，与写死时代一致）。 */
+  onFailure: BuildNodeFailurePolicySchema.default("ABORT"),
+  /** RETRY 时的有界尝试次数（含首次）。 */
+  maxAttempts: z.number().int().min(1).max(10).default(1),
+  /** 人要不要介入：true → 执行到该节点前把 run 置 PAUSED 等人批准（approve 后 resume 续跑）。 */
+  requiresHumanApproval: z.boolean().default(false),
+  /** 节点参数（步骤实现自解释；出厂默认为空 → 走实现内默认）。 */
+  params: z.record(z.string(), z.unknown()).default({}),
+});
+export type BuildNodeSop = z.infer<typeof BuildNodeSopSchema>;
+
+const FACTORY_SOP: BuildNodeSop = { description: "", onFailure: "ABORT", maxAttempts: 1, requiresHumanApproval: false, params: {} };
+
+/**
+ * pipeline 节点：绑定一个**内置步骤实现键**（stepKey，由 datacore 注册表解析）+ 该节点的 SOP。
+ * id/label/position 与 WfNode 的 baseNode 同形 → 前端画布可共用一套渲染，不造第三套形状。
+ */
+export const BuildPipelineNodeSchema = z.object({
+  ...baseNode,
+  /** 绑定的步骤实现键（如 dry_build / intake_reconcile）。未注册的键在解析时报错，不静默跳过。 */
+  stepKey: z.string().min(1),
+  /** 关掉即不执行（保留在画布上）。 */
+  enabled: z.boolean().default(true),
+  sop: BuildNodeSopSchema.default(FACTORY_SOP),
+});
+export type BuildPipelineNode = z.infer<typeof BuildPipelineNodeSchema>;
+
+export const BuildPipelineSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  kind: BuildPipelineKindSchema,
+  name: z.string().min(1),
+  nodes: z.array(BuildPipelineNodeSchema).default([]),
+  /** 有边则按边拓扑排序执行；无边则按 nodes 数组顺序。形状直接复用 WfEdge。 */
+  edges: z.array(WfEdgeSchema).default([]),
+  /** true = 出厂默认（未落库的内置定义），租户存一条即为 false。 */
+  factory: z.boolean().default(false),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+});
+export type BuildPipeline = z.infer<typeof BuildPipelineSchema>;
+
+/** 建/改 pipeline 入参（不含 id/tenantId/factory/时间戳）。 */
+export const BuildPipelineUpsertSchema = BuildPipelineSchema.omit({ id: true, tenantId: true, factory: true, createdAt: true, updatedAt: true });
+export type BuildPipelineUpsert = z.infer<typeof BuildPipelineUpsertSchema>;

@@ -50,8 +50,14 @@ describe("运营态出厂配置 §2/§3（场景入口 / analyst / 经验记忆�
       expect(analyst!.systemPrompt, `提示词四要素：${kw}`).toContain(kw);
     }
     expect(analyst!.scopeDeclaration.objectTypes.length).toBeGreaterThan(0);
-    expect(analyst!.scopeDeclaration.toolNames).toContain("search_experience");
-    expect(analyst!.scopeDeclaration.toolNames).toContain("create_action_draft");
+    // ⚠ WO-BUILTIN-MIGRATE-REST：`search_experience` 已迁到 DSH 原生 MCP 面 ⇒ 声明面按契约惯例
+    // 记**全名**（模型面/调用名校验用同一个串；在这里钉裸名会在每次迁移后假红）。
+    expect(analyst!.scopeDeclaration.toolNames).toContain("mcp__builtin__search_experience");
+    // ⚠ WO-BUILTIN-MIGRATE-REST 批次 3：`create_action_draft` 也迁走了 ⇒ 声明面同样记全名。
+    // ⚠ 批次 4 回写如实：批次 3 的提交信息写「金丝雀改为『声明面里**还有**未迁件的裸名（sim 一族）』」，
+    //   但那条金丝雀**从未落地**（本次逐行读过）—— analyst 的声明面此刻**全是全名**（内置面/本体面/
+    //   求解器面/规则面/工作流面），没有裸名可钉。故本处只咬「迁移件按全名在册」，⛔ 不假装还有金丝雀。
+    expect(analyst!.scopeDeclaration.toolNames).toContain("mcp__builtin__create_action_draft");
     expect(analyst!.budget?.maxIterations).toBeGreaterThan(0);
     expect(analyst!.budget?.maxToolCalls).toBeGreaterThan(0);
   });

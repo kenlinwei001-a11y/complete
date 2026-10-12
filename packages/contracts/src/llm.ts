@@ -66,6 +66,9 @@ export const LlmModelCapabilitiesSchema = z.object({
   tools: z.boolean(),
   structuredOutput: z.boolean(),
   maxContext: z.number().int(),
+  /** 推理型模型（默认走思考通道·如 kimi 系 / o3 / deepseek-reasoner）。绑定「关推理」开关（PurposeBinding.noReasoning）
+   *  据此在解析期改用同 provider 的非推理兄弟模型——因部分厂商（实测 Moonshot）无请求级关推理参数。缺省=非推理。 */
+  reasoning: z.boolean().optional(),
 });
 export type LlmModelCapabilities = z.infer<typeof LlmModelCapabilitiesSchema>;
 
@@ -117,7 +120,7 @@ export const LlmVendorSchema = z.object({
 });
 export type LlmVendor = z.infer<typeof LlmVendorSchema>;
 
-const cap = (tools: boolean, structuredOutput: boolean, maxContext: number): LlmModelCapabilities => ({ tools, structuredOutput, maxContext });
+const cap = (tools: boolean, structuredOutput: boolean, maxContext: number, reasoning?: boolean): LlmModelCapabilities => ({ tools, structuredOutput, maxContext, ...(reasoning ? { reasoning: true } : {}) });
 const m = (modelId: string, displayName: string, c: LlmModelCapabilities): LlmProviderModel => ({ modelId, displayName, capabilities: c });
 
 /** 厂商 + 型号目录（配置页下拉数据源；可随厂商发版增删，不影响后端）。 */
@@ -137,24 +140,30 @@ export const LLM_VENDOR_CATALOG: LlmVendor[] = [
     models: [
       m("gpt-4o", "GPT-4o", cap(true, true, 128000)),
       m("gpt-4o-mini", "GPT-4o mini", cap(true, true, 128000)),
-      m("o3", "o3", cap(true, true, 200000)),
-      m("o4-mini", "o4-mini", cap(true, true, 200000)),
+      m("o3", "o3（推理）", cap(true, true, 200000, true)),
+      m("o4-mini", "o4-mini（推理）", cap(true, true, 200000, true)),
     ],
   },
   {
     key: "moonshot", displayName: "Moonshot（月之暗面 Kimi）", kind: "openai_compatible",
     defaultBaseUrl: "https://api.moonshot.cn/v1", docUrl: "https://platform.moonshot.cn",
     models: [
-      m("kimi-k2-0905-preview", "Kimi K2", cap(true, true, 256000)),
-      m("moonshot-v1-128k", "Moonshot v1 128K", cap(true, true, 128000)),
-      m("moonshot-v1-32k", "Moonshot v1 32K", cap(true, true, 32000)),
-      m("moonshot-v1-8k", "Moonshot v1 8K", cap(true, true, 8000)),
+      // 真实 Moonshot /v1/models id（kimi-* 为推理型·锁 temperature=1·无请求级关推理参数 → 关推理开关改用 moonshot-v1-* 兄弟）。
+      m("kimi-k2.5", "Kimi 2.5（推理）", cap(true, true, 262144, true)),
+      m("kimi-k2.6", "Kimi 2.6（推理）", cap(true, true, 262144, true)),
+      m("kimi-k3", "Kimi K3（推理）", cap(true, true, 262144, true)),
+      m("moonshot-v1-128k", "Moonshot v1 128K", cap(true, true, 131072)),
+      m("moonshot-v1-32k", "Moonshot v1 32K", cap(true, true, 32768)),
+      m("moonshot-v1-8k", "Moonshot v1 8K", cap(true, true, 8192)),
+      m("moonshot-v1-auto", "Moonshot v1 Auto", cap(true, true, 131072)),
     ],
   },
   {
     key: "zhipu", displayName: "智谱 GLM（Zhipu）", kind: "openai_compatible",
     defaultBaseUrl: "https://open.bigmodel.cn/api/paas/v4", docUrl: "https://open.bigmodel.cn/dev/api",
     models: [
+      m("glm-5-5", "GLM-5.5", cap(true, true, 256000)),
+      m("glm-5-2", "GLM-5.2", cap(true, true, 200000)),
       m("glm-4.6", "GLM-4.6", cap(true, true, 200000)),
       m("glm-4.5", "GLM-4.5", cap(true, true, 128000)),
       m("glm-4-plus", "GLM-4-Plus", cap(true, true, 128000)),
@@ -183,8 +192,10 @@ export const LLM_VENDOR_CATALOG: LlmVendor[] = [
     key: "deepseek", displayName: "DeepSeek（深度求索）", kind: "openai_compatible",
     defaultBaseUrl: "https://api.deepseek.com/v1", docUrl: "https://api-docs.deepseek.com",
     models: [
+      m("deepseek-v4", "DeepSeek-V4", cap(true, true, 128000)),
+      m("deepseek-v4-pro", "DeepSeek-V4 Pro", cap(true, true, 128000)),
       m("deepseek-chat", "DeepSeek-V3 Chat", cap(true, true, 64000)),
-      m("deepseek-reasoner", "DeepSeek-R1 Reasoner", cap(true, false, 64000)),
+      m("deepseek-reasoner", "DeepSeek-R1 Reasoner（推理）", cap(true, false, 64000, true)),
     ],
   },
   {
@@ -209,6 +220,7 @@ export const LlmPurposeSchema = z.enum([
   "modeling", // A3 建模建议
   "template_gen", // A7 行业模板生成
   "compose", // workflow llm_compose 步骤
+  "comprehend", // 数据构建发动机：故事脚本意图解析→全栈倒推（听懂任意业务语言；缺则确定性关键词地板）
 ]);
 export type LlmPurpose = z.infer<typeof LlmPurposeSchema>;
 
@@ -219,6 +231,10 @@ export const PurposeBindingSchema = z.object({
   purpose: LlmPurposeSchema,
   providerId: z.string(),
   modelId: z.string(),
+  /** WO-QOS-NOREASON「关推理」开关：ON → 解析期若绑定模型为推理型（capabilities.reasoning）且 provider 有非推理
+   *  兄弟模型（capabilities.reasoning 非真 + 满足用途 tools），则改用兄弟模型出快答（因部分厂商无请求级关推理参数）。
+   *  非推理模型或无兄弟 → 无操作（保持绑定模型）。默认关（既有绑定逐字节不变）。 */
+  noReasoning: z.boolean().optional(),
 });
 export type PurposeBinding = z.infer<typeof PurposeBindingSchema>;
 
@@ -237,4 +253,15 @@ export const PURPOSE_CAPABILITY_REQUIREMENTS: Record<
   modeling: { structuredOutput: true },
   template_gen: { structuredOutput: true },
   compose: {},
+  comprehend: { structuredOutput: true },
 };
+
+/** execution-semantics §5.4：LLM 故障降级逐次 provider 尝试审计（providerId/结果/耗时）。 */
+export const ProviderAttemptSchema = z.object({
+  tenantId: z.string(),
+  providerId: z.string(),
+  outcome: z.enum(["OK", "FALLBACK_TRIGGERED", "FALLBACK_OK", "FALLBACK_FAILED"]),
+  ms: z.number(),
+  at: z.string(),
+});
+export type ProviderAttempt = z.infer<typeof ProviderAttemptSchema>;

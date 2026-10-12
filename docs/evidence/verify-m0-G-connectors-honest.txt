@@ -1,0 +1,37 @@
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/datacore
+
+ ✓ test/connectors.test.ts (7 tests) 11357ms
+   ✓ A1 connectors > CN1: CSV upload → connection → schema discovery field profiles correct  2388ms
+   ✓ A1 connectors > CN1b: XLSX 上传 → 解析 → RawDataset 落库（G-6 parseXlsx，xlsx 三路统一）  2661ms
+   ✓ A1 connectors > CN2: mock_erp sync lands rows; repeat sync is idempotent  962ms
+   ✓ A1 connectors > encrypts credentials at rest and never echoes them  1278ms
+   ✓ A1 connectors > rest_api adapter pulls a JSON array  1283ms
+   ✓ A1 connectors > accepts multipart uploads (≤100MB) on POST /a/v1/uploads  1324ms
+   ✓ A1 connectors > registers all 7 PRD connector types (plus mocks)  1372ms
+ ✓ test/connection-test-honest.test.ts (26 tests) 23465ms
+   ✓ WO-CONNTEST-HONEST §1 · 连不上就说连不上（修复前对任何主机都返 ok:true） > 主机名解析不到 ⇒ ok:false + DNS_NOT_RESOLVED（而不是「连接成功」）  2280ms
+   ✓ WO-CONNTEST-HONEST §1 · 连不上就说连不上（修复前对任何主机都返 ok:true） > 端口拒绝 ⇒ CONNECTION_REFUSED（与 DNS 失败是**两条不同的下一步动作**）  1361ms
+   ✓ WO-CONNTEST-HONEST §1 · 连不上就说连不上（修复前对任何主机都返 ok:true） > 认证被拒（401/403）⇒ AUTH_FAILED：连上了但凭据不对，不能与「连不上」混为一谈  1039ms
+   ✓ WO-CONNTEST-HONEST §1 · 连不上就说连不上（修复前对任何主机都返 ok:true） > 对端 500 ⇒ HTTP_ERROR（地址可达，服务不正常）  1207ms
+   ✓ WO-CONNTEST-HONEST §1 · 连不上就说连不上（修复前对任何主机都返 ok:true） > 非 HTTP 方案 ⇒ 明说「协议不受支持」，不许退化成笼统的「地址格式不正确」  1293ms
+   ✓ WO-CONNTEST-HONEST §1 · 连不上就说连不上（修复前对任何主机都返 ok:true） > 四类失败的 reason 两两不同 —— 只回一个笼统「失败」等于没修  4985ms
+   ✓ WO-CONNTEST-HONEST §2 · 反向对照：真能连上的必须仍然 ok:true > HTTP 200 ⇒ ok:true（没把按钮做成永远失败）  845ms
+   ✓ WO-CONNTEST-HONEST §2 · 反向对照：真能连上的必须仍然 ok:true > 内置样例型（mock_erp/mock_crm/mock_external）真枚举数据集 ⇒ ok:true 且报得出表数  894ms
+   ✓ WO-CONNTEST-HONEST §2 · 反向对照：真能连上的必须仍然 ok:true > 文件型：blob 存在 ⇒ ok:true；blob 不存在 ⇒ NOT_FOUND（不是笼统失败）  635ms
+   ✓ WO-CONNTEST-HONEST §3 · 金丝雀与「没试」的可区分性 > 金丝雀：缺必填 ⇒ 回包必须变（证明观测手段有鉴别力，不是恒 true）  916ms
+   ✓ WO-CONNTEST-HONEST §3 · 金丝雀与「没试」的可区分性 > probed 位把「试过了连不上」与「压根没试」分开 —— 这正是修复前 bug 的本体  699ms
+   ✓ WO-CONNTEST-HONEST §3 · 金丝雀与「没试」的可区分性 > 未知连接器类型 ⇒ UNKNOWN_TYPE  726ms
+   ✓ WO-CONNTEST-HONEST §4 · 无适配器的三类：不许报「连接成功」 > sap_erp / salesforce_crm / generic_jdbc / external_feed ⇒ ok:false + UNSUPPORTED_TYPE，且说得出后果  774ms
+   ✓ WO-CONNTEST-HONEST §4 · 无适配器的三类：不许报「连接成功」 > knowledge_base 由 KbService 服务 ⇒ 必须 ok:true，且不许拿 HTTP 去探 internal:// 的 endpoint  1060ms
+   ✓ WO-CONNTEST-HONEST §4 · 无适配器的三类：不许报「连接成功」 > 知识库探针真读了后备存储：灌一篇文档后回包里的篇数会变（不是写死的 true）  954ms
+   ✓ WO-CONNTEST-HONEST §5 · 有界超时：不许把请求线程挂死 > 对端永不响应 ⇒ 在超时上界内返回 TIMEOUT（实测耗时随回包一起给）  1406ms
+   ✓ WO-CONNTEST-HONEST §6 · no-secrets-echo：失败原因不许带出凭据 > query 里的密钥与地址里的 userinfo 都不进回包（target 只留 origin）  858ms
+   ✓ WO-CONNTEST-HONEST §6 · no-secrets-echo：失败原因不许带出凭据 > 凭据内嵌在地址里 ⇒ 明确提示挪到凭据字段，且不回显密码  797ms
+   ✓ WO-CONNTEST-HONEST §6 · no-secrets-echo：失败原因不许带出凭据 > sap_erp 的 password 不出现在回包里  731ms
+
+ Test Files  2 passed (2)
+      Tests  33 passed (33)
+   Start at  11:55:54
+   Duration  37.35s (transform 7.18s, setup 0ms, collect 24.28s, tests 34.82s, environment 1ms, prepare 543ms)
+

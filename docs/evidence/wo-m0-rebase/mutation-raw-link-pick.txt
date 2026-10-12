@@ -1,0 +1,55 @@
+
+ RUN  v3.2.6 /home/user/complete/.claude/worktrees/agent-a3994bbb10e281b32/apps/datacore
+
+ ❯ test/seed-demo-propagation.test.ts (22 tests | 1 failed | 21 skipped) 5265ms
+   ↓ SEED_DEMO · 沙盘传导规则种子 > 种子后 view-config：propagationCount≥2 + stateVars 非空（消空世界）
+   ↓ SEED_DEMO · 沙盘传导规则种子 > 种的规则沿真链路（Order/Model/Base）：发布且 viaLinkKey 是 demo 真链路
+   ↓ SEED_DEMO · 沙盘传导规则种子 > 🔴 方向可达门：每条种子规则的 source─via→target 在**真链路表**上真的走得通（#158 复发闸）
+   ↓ SEED_DEMO · 沙盘传导规则种子 > 🔴 方向可达门的变异反证：喂一条方向写反的规则（#158 原文），门必须判它死
+   ↓ SEED_DEMO · 沙盘传导规则种子 > 确定性 R6：同 SEED_DEMO 重跑规则字节一致（固定 id/系数）
+   ↓ SEED_DEMO · 沙盘传导规则种子 > 幂等：重复播种不增项（固定 id 覆盖）
+   ↓ SEED_DEMO · 沙盘传导规则种子 > live-fire：种子规则 + 真 Order→Model 链路 → tick 真跨对象传导
+   ↓ SEED_DEMO · 沙盘传导规则种子 > 🔴 效果层 SEAM：供应侧扰动（Supplier.deliveryDelay）跨 3 跳真的传导到 Order.shortageRisk
+   ↓ SEED_DEMO · 沙盘传导规则种子 > 🔴 逐条真触发：54 条规则在真 tick 的 trace 里一条不缺（REQ143 + 档 1/2/3 + 采购根源 3 + 三根源 4 + 设备侧出口 4 + 订单真实字段 3 + 库存环 2 + 物料环 3）
+   ↓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🐤 金丝雀：端点/链路全合法的边**必须建得出来**（证明这组门不是一律拒绝）
+   ↓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 端点不存在的边必须 400（link-types 那次 81/133 全放行的复发闸）
+   ↓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 链路类型不存在的边必须 400
+   ↓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 方向写反的边必须 400 —— 引擎只沿 from→to 单向走，反向边语法全对但恒贡献 0
+   ↓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 coefficientRef 解析不到必须 400 —— 否则静默回落内联系数，用户以为改规则生效其实无效
+   ↓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 PATCH 也走同一道体检：塞非法 coefficientRef 必须 400，而合法系数照常放行
+   ↓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 体检在 upsert **之前**跑：非法边不许先把同 key 的合法边覆盖掉再报错
+   ↓ §5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子） > 种子把 bom_cost_share 接上了（兄弟边 edge-money-weight §4 的同款闸，本条边此前漏着）
+   ↓ §5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子） > 🔴 对照实验：同一型号上，BOM 占比不同的两种物料各涨 15 ⇒ 读数必须按占比拉开（修前同为 9.75）
+   ↓ §5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子） > 种子把 bom_cost_share 接到**缺料→供应风险**这条边上了（此前挂 equal_share·注释被邻居证伪）
+   ↓ §5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子） > 🔴 对照实验：缺料→供应风险 —— BOM 占比不同的物料各涨 15 ⇒ 读数按占比拉开，且 Σ权重≡1 总量不跳
+   ↓ §6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算 > 🔴 超预算格子集合 + `Model.demandLoad` 读数必须与在册一致（加边/抬系数即红）
+   × M0-A11 解释切片（≤20 节点只读投影 + 覆盖账本） > 真推演 trace ⇒ 截断账本与手算一致；maxNodes 放大 ⇒ 完整（T1+T3） 5264ms
+     → 型号入边 12 条 ≠ 25 ⇒ 稀疏世界前提破了，手算作废。**多**出来 ⇒ 有第二个写入源（又一条规则往 obj_model_4680-LFP 写）；**少**了 ⇒ 被打的单里有人没参与传导 —— 先查它进没进推演世界（`entersSimWorld`：已完成订单不进；2026-09-20 就是这一条让入边从 25 掉到 12），再查它的 pairWeight 是不是 0（`source_qty_relative` 读 Order.qty）。⛔ 不许把这个 25 改成当天观测到的数字 —— 那等于让本金丝雀从此不再守任何前提。: expected 12 to be 25 // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/seed-demo-propagation.test.ts > M0-A11 解释切片（≤20 节点只读投影 + 覆盖账本） > 真推演 trace ⇒ 截断账本与手算一致；maxNodes 放大 ⇒ 完整（T1+T3）
+AssertionError: 型号入边 12 条 ≠ 25 ⇒ 稀疏世界前提破了，手算作废。**多**出来 ⇒ 有第二个写入源（又一条规则往 obj_model_4680-LFP 写）；**少**了 ⇒ 被打的单里有人没参与传导 —— 先查它进没进推演世界（`entersSimWorld`：已完成订单不进；2026-09-20 就是这一条让入边从 25 掉到 12），再查它的 pairWeight 是不是 0（`source_qty_relative` 读 Order.qty）。⛔ 不许把这个 25 改成当天观测到的数字 —— 那等于让本金丝雀从此不再守任何前提。: expected 12 to be 25 // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 25[39m
+[31m+ 12[39m
+
+ ❯ test/seed-demo-propagation.test.ts:1548:7
+    1546|         `再查它的 pairWeight 是不是 0（\`source_qty_relative\` 读 Order.qty）。` +
+    1547|         `⛔ 不许把这个 25 改成当天观测到的数字 —— 那等于让本金丝雀从此不再守任何前提。`,
+    1548|     ).toBe(25);
+       |       ^
+    1549|     expect(inEdges.every((e) => e.ruleKey === "demo_order_demand_press…
+    1550| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 21 skipped (22)
+   Start at  04:04:36
+   Duration  11.67s (transform 4.02s, setup 0ms, collect 6.03s, tests 5.27s, environment 0ms, prepare 74ms)
+

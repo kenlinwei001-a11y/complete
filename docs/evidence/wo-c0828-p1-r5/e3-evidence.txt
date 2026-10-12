@@ -1,0 +1,10 @@
+[E3-d] 已存在非终态草稿 act_34028j8vp3tc57ej（status=PENDING_APPROVAL），跳过第二次 POST
+=== E3-b′ 四数表 ===
+Material obj_material_al_foil leadTime: before=14.0000 target=10 after=10.0000 (status=EXECUTED)
+Material obj_material_al_foil shortageRisk: before=-78.1686 expected=-149.4360 after=-149.4360 moved=true
+Line obj_line_LINE-WS-changzhou-assembly utilization: before=92.5496 target=85 after=85.0000 (status=EXECUTED)
+Line obj_line_LINE-WS-changzhou-assembly utilPressure: before=92.5496 after=85.0000 moved=true
+=== E3-c reject 反向 ===
+Material obj_material_cell_case leadTime before=14 after=14 rejectStatus=REJECTED
+=== E3-d 幂等 ===
+adopt_sim_option drafts with cand-idem/fp-idem: before=1 after=1 (delta=0)

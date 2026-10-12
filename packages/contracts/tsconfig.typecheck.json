@@ -1,0 +1,15 @@
+{
+  // typecheck 专用配置：把 `test/` 纳入类型检查面。
+  // `tsconfig.json` 被 `build` 用来 emit 声明（`rootDir: "src"` + `declaration: true`），
+  // 不能直接放宽它的 include，否则测试文件会被 emit 进 dist 并污染包的公开类型面。
+  //
+  // 病灶：改前 `include` 是 `["src"]`，7 个测试文件全在类型检查面之外。
+  // 金丝雀实测：往 test/ 塞一个 `const x: number = "str"` ⇒
+  // `pnpm --filter @platform/contracts typecheck` RC=0。
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": ["src", "test"]
+}

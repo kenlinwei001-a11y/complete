@@ -123,7 +123,7 @@ describe("R1 · 工具返回 500 条对象（>8KB）", () => {
         scopeDeclaration: { objectTypes: ["Base"], toolNames: ["query_timeseries_agg"] },
       }),
     );
-    const huge = { data: { points: bigItems(400, 30), tsAgg: { aggRunId: "a", specKey: "s@v1", window: { start: "x", end: "y" }, rowsIn: 1 } } };
+    const huge = { data: { points: bigItems(400, 30), tsAgg: { aggRunId: "a", specKey: "s@v1", window: { start: "x", end: "y" }, rowsIn: 1 } }, snapshotVersion: "test-1" };
     t.dataCore.timeseries.aggQuery = async () => huge;
     t.llm.queueAgentTurn(
       {
@@ -363,7 +363,13 @@ describe("增量 §1.3 第 2 刀 · 服务端 compaction", () => {
   it("循环：折叠不足以回到软阈值 → 请求 compaction；响应 compaction 块后历史被其替代", async () => {
     await t.repos.agents.insert(agentDef({ id: "agt_cmp", key: "cmp_agent" }));
     t.llm.caps = { countTokens: true, compaction: true, maxContextTokens: 8000 };
-    const bigPrompt = `分析任务：${"内容填充。".repeat(4200)}`; // ~21000 chars ≈ 6000 tokens（soft=5600, hard=7200 之间）
+    // WO-HARNESS-PROMPT：共享核追加七要素四段后 system 增 ~934 chars，等量下调 filler 以保持
+    // 总 token 落在 soft(5600)/hard(7200) 之间的同一档（校准常量·压缩语义不变）。
+    // WO-CAPMAP-LIVE 再次校准（同一手法·同一理由）：实测 AGENT_SYSTEM_CORE +249 chars
+    //（【工作方式】不再封死 discover、【求解纪律】删掉写死 solver key）、导航图段首 +138 chars
+    //（改口"候选不是全集"），合计 +387 chars ⇒ filler 等量下调 78 个重复单元（78×5=390 chars）。
+    // 压缩语义不变，只是把总量按回原档位。
+    const bigPrompt = `分析任务：${"内容填充。".repeat(3935)}`; // ~19680 chars ≈ 5733 tokens（soft=5600, hard=7200 之间）
 
     t.llm.queueAgentTurn(
       (req) => {

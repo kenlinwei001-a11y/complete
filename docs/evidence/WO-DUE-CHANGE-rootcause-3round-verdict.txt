@@ -1,0 +1,61 @@
+
+───────── Round 1 ───────── 金丝雀(两对照臂差异格)=0/6375
+[R1] cost_shock         BELOW_FLOOR     达钱格 247 格，最大 |Δ|=0.000673 < 0.01
+      差异 248 · 钱格 247 · 钱格max|Δ| 0.000673 · 出边目标动了 [Model.costPressure] · 扰动新引入钳制 0 · 钳制总数 162
+      demandLoad 0/6 max=0（对照 0/6 max=0）· demandPressure 0/150 max=0（对照 0/150）· forecastBias max=88
+[R1] supply_disruption  REACHED         达钱格 200 格，最大 |Δ|=0.012256
+      差异 237 · 钱格 200 · 钱格max|Δ| 0.012256 · 出边目标动了 [Material.shortageRisk] · 扰动新引入钳制 0 · 钳制总数 162
+      demandLoad 0/6 max=0（对照 0/6 max=0）· demandPressure 0/150 max=0（对照 0/150）· forecastBias max=88
+[R1] capacity_loss      BELOW_FLOOR     达钱格 211 格，最大 |Δ|=0.000832 < 0.01
+      差异 224 · 钱格 211 · 钱格max|Δ| 0.000832 · 出边目标动了 [Process.queuePressure] · 扰动新引入钳制 0 · 钳制总数 162
+      demandLoad 0/6 max=0（对照 0/6 max=0）· demandPressure 0/150 max=0（对照 0/150）· forecastBias max=88
+[R1] demand_shift       NO_MONEY        动了 2 格（OrderLine.splitPressure），未达钱账
+      差异 2 · 钱格 0 · 钱格max|Δ| 0 · 出边目标动了 [OrderLine.splitPressure] · 扰动新引入钳制 0 · 钳制总数 162
+      demandLoad 0/6 max=0（对照 0/6 max=0）· demandPressure 0/150 max=0（对照 0/150）· forecastBias max=88
+[R1] quality_event      DEAD_END        QualityLot.inspectBacklog 出边 0 条（静态可判）
+      差异 1 · 钱格 0 · 钱格max|Δ| 0 · 出边目标动了 [无] · 扰动新引入钳制 0 · 钳制总数 162
+      demandLoad 0/6 max=0（对照 0/6 max=0）· demandPressure 0/150 max=0（对照 0/150）· forecastBias max=88
+
+───────── Round 2 ───────── 金丝雀(两对照臂差异格)=0/6375
+[R2] cost_shock         BELOW_FLOOR     达钱格 247 格，最大 |Δ|=0.000673 < 0.01
+      差异 248 · 钱格 247 · 钱格max|Δ| 0.000673 · 出边目标动了 [Model.costPressure] · 扰动新引入钳制 0 · 钳制总数 162
+      demandLoad 0/6 max=0（对照 0/6 max=0）· demandPressure 0/150 max=0（对照 0/150）· forecastBias max=88
+[R2] supply_disruption  REACHED         达钱格 200 格，最大 |Δ|=0.012256
+      差异 237 · 钱格 200 · 钱格max|Δ| 0.012256 · 出边目标动了 [Material.shortageRisk] · 扰动新引入钳制 0 · 钳制总数 162
+      demandLoad 0/6 max=0（对照 0/6 max=0）· demandPressure 0/150 max=0（对照 0/150）· forecastBias max=88
+[R2] capacity_loss      BELOW_FLOOR     达钱格 211 格，最大 |Δ|=0.000832 < 0.01
+      差异 224 · 钱格 211 · 钱格max|Δ| 0.000832 · 出边目标动了 [Process.queuePressure] · 扰动新引入钳制 0 · 钳制总数 162
+      demandLoad 0/6 max=0（对照 0/6 max=0）· demandPressure 0/150 max=0（对照 0/150）· forecastBias max=88
+[R2] demand_shift       NO_MONEY        动了 2 格（OrderLine.splitPressure），未达钱账
+      差异 2 · 钱格 0 · 钱格max|Δ| 0 · 出边目标动了 [OrderLine.splitPressure] · 扰动新引入钳制 0 · 钳制总数 162
+      demandLoad 0/6 max=0（对照 0/6 max=0）· demandPressure 0/150 max=0（对照 0/150）· forecastBias max=88
+[R2] quality_event      DEAD_END        QualityLot.inspectBacklog 出边 0 条（静态可判）
+      差异 1 · 钱格 0 · 钱格max|Δ| 0 · 出边目标动了 [无] · 扰动新引入钳制 0 · 钳制总数 162
+      demandLoad 0/6 max=0（对照 0/6 max=0）· demandPressure 0/150 max=0（对照 0/150）· forecastBias max=88
+
+───────── Round 3 ───────── 金丝雀(两对照臂差异格)=0/6375
+[R3] cost_shock         BELOW_FLOOR     达钱格 247 格，最大 |Δ|=0.000673 < 0.01
+      差异 248 · 钱格 247 · 钱格max|Δ| 0.000673 · 出边目标动了 [Model.costPressure] · 扰动新引入钳制 0 · 钳制总数 162
+      demandLoad 0/6 max=0（对照 0/6 max=0）· demandPressure 0/150 max=0（对照 0/150）· forecastBias max=88
+[R3] supply_disruption  REACHED         达钱格 200 格，最大 |Δ|=0.012256
+      差异 237 · 钱格 200 · 钱格max|Δ| 0.012256 · 出边目标动了 [Material.shortageRisk] · 扰动新引入钳制 0 · 钳制总数 162
+      demandLoad 0/6 max=0（对照 0/6 max=0）· demandPressure 0/150 max=0（对照 0/150）· forecastBias max=88
+[R3] capacity_loss      BELOW_FLOOR     达钱格 211 格，最大 |Δ|=0.000832 < 0.01
+      差异 224 · 钱格 211 · 钱格max|Δ| 0.000832 · 出边目标动了 [Process.queuePressure] · 扰动新引入钳制 0 · 钳制总数 162
+      demandLoad 0/6 max=0（对照 0/6 max=0）· demandPressure 0/150 max=0（对照 0/150）· forecastBias max=88
+[R3] demand_shift       NO_MONEY        动了 2 格（OrderLine.splitPressure），未达钱账
+      差异 2 · 钱格 0 · 钱格max|Δ| 0 · 出边目标动了 [OrderLine.splitPressure] · 扰动新引入钳制 0 · 钳制总数 162
+      demandLoad 0/6 max=0（对照 0/6 max=0）· demandPressure 0/150 max=0（对照 0/150）· forecastBias max=88
+[R3] quality_event      DEAD_END        QualityLot.inspectBacklog 出边 0 条（静态可判）
+      差异 1 · 钱格 0 · 钱格max|Δ| 0 · 出边目标动了 [无] · 扰动新引入钳制 0 · 钳制总数 162
+      demandLoad 0/6 max=0（对照 0/6 max=0）· demandPressure 0/150 max=0（对照 0/150）· forecastBias max=88
+
+══ 三轮一致性（逐条结论比，不是「看着像」）════════════
+cost_shock         BELOW_FLOOR / BELOW_FLOOR / BELOW_FLOOR ✅ 三轮逐字段一致
+supply_disruption  REACHED / REACHED / REACHED    ✅ 三轮逐字段一致
+capacity_loss      BELOW_FLOOR / BELOW_FLOOR / BELOW_FLOOR ✅ 三轮逐字段一致
+demand_shift       NO_MONEY / NO_MONEY / NO_MONEY ✅ 三轮逐字段一致
+quality_event      DEAD_END / DEAD_END / DEAD_END ✅ 三轮逐字段一致
+
+★ 三轮答案一致 · 金丝雀全部通过（0/0/0 差异格，均须为 0）
+落盘：/tmp/wo-console-e2e/evidence-1002/3round-verdict.json

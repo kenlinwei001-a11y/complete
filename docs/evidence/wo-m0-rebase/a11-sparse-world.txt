@@ -1,0 +1,67 @@
+🐤① order_for_model 500 条 · 型号 obj_model_4680-LFP 名下 116 张单 · 取前 25 张
+🐤② 规则 55 条 · demo_order_demand_pressure: weightRef={"basis":"source_qty_relative"} coefficient=0.00698967 coefficientRef={"ruleKey":"C36","paramKey":"demo_order_demand_pressure"} · 权重表 150 项
+
+型号 obj_model_4680-LFP · 25 张单逐张（qty/status 读 Order.props，取法同 pair-weights.ts:310）
+
+  #  orderId                     qty     status          进世界 pairWeight            入边  amount
+   1  obj_order_SO-3476           7259    OPEN            ✅     1.4096995144994096    ✅    0.098533344055
+   2  obj_order_SO-900031         4429    COMPLETED       ❌     undefined             ❌    —
+   3  obj_order_SO-900039         5467    COMPLETED       ❌     undefined             ❌    —
+   4  obj_order_SO-900043         3342    IN_PRODUCTION   ✅     0.6490171893452303    ✅    0.045364159779
+   5  obj_order_SO-900053         5714    COMPLETED       ❌     undefined             ❌    —
+   6  obj_order_SO-900056         5281    IN_PRODUCTION   ✅     1.025571447316625     ✅    0.071684059782
+   7  obj_order_SO-900061         3765    COMPLETED       ❌     undefined             ❌    —
+   8  obj_order_SO-900063         6969    COMPLETED       ❌     undefined             ❌    —
+   9  obj_order_SO-900074         6811    IN_PRODUCTION   ✅     1.3226978086865242    ✅    0.092452211924
+  10  obj_order_SO-900079         4082    IN_PRODUCTION   ✅     0.7927253641254429    ✅    0.055408886959
+  11  obj_order_SO-900083         5955    COMPLETED       ❌     undefined             ❌    —
+  12  obj_order_SO-900084         3238    COMPLETED       ❌     undefined             ❌    —
+  13  obj_order_SO-900090         3467    OPEN            ✅     0.6732922188689149    ✅    0.047060904235
+  14  obj_order_SO-900095         4323    COMPLETED       ❌     undefined             ❌    —
+  15  obj_order_SO-900105         14318   IN_PRODUCTION   ✅     2.7805589817609238    ✅    0.19435189698
+  16  obj_order_SO-900116         5268    COMPLETED       ❌     undefined             ❌    —
+  17  obj_order_SO-900120         4760    COMPLETED       ❌     undefined             ❌    —
+  18  obj_order_SO-900128         3069    IN_PRODUCTION   ✅     0.5960005248655033    ✅    0.041658469886
+  19  obj_order_SO-900131         1550    COMPLETED       ❌     undefined             ❌    —
+  20  obj_order_SO-900137         1512    IN_PRODUCTION   ✅     0.2936307571184884    ✅    0.020523820941
+  21  obj_order_SO-900138         3134    OPEN            ✅     0.6086235402178192    ✅    0.042540777004
+  22  obj_order_SO-900141         4818    IN_PRODUCTION   ✅     0.9356567379608975    ✅    0.065399318316
+  23  obj_order_SO-900145         1923    COMPLETED       ❌     undefined             ❌    —
+  24  obj_order_SO-900147         2636    COMPLETED       ❌     undefined             ❌    —
+  25  obj_order_SO-900151         2714    IN_PRODUCTION   ✅     0.5270594410182391    ✅    0.036839715631
+
+入边 12 条 / 25 张单 ⇒ 缺 13 张
+
+🐤③ 非空金丝雀（同一把查法 · 确知非空样例）：obj_order_SO-3476 props.qty=7259 · status=OPEN · pairWeight=1.4096995144994096 · amount=0.098533344055 ⇒ 查法能读出非零，故下面的「为 0 / 不在表里」是数据本身，不是查法坏了
+
+缺的 13 张逐张定性：
+  obj_order_SO-900031  qty=4429  status="COMPLETED"  进推演世界=false  在权重表里=false
+  obj_order_SO-900039  qty=5467  status="COMPLETED"  进推演世界=false  在权重表里=false
+  obj_order_SO-900053  qty=5714  status="COMPLETED"  进推演世界=false  在权重表里=false
+  obj_order_SO-900061  qty=3765  status="COMPLETED"  进推演世界=false  在权重表里=false
+  obj_order_SO-900063  qty=6969  status="COMPLETED"  进推演世界=false  在权重表里=false
+  obj_order_SO-900083  qty=5955  status="COMPLETED"  进推演世界=false  在权重表里=false
+  obj_order_SO-900084  qty=3238  status="COMPLETED"  进推演世界=false  在权重表里=false
+  obj_order_SO-900095  qty=4323  status="COMPLETED"  进推演世界=false  在权重表里=false
+  obj_order_SO-900116  qty=5268  status="COMPLETED"  进推演世界=false  在权重表里=false
+  obj_order_SO-900120  qty=4760  status="COMPLETED"  进推演世界=false  在权重表里=false
+  obj_order_SO-900131  qty=1550  status="COMPLETED"  进推演世界=false  在权重表里=false
+  obj_order_SO-900145  qty=1923  status="COMPLETED"  进推演世界=false  在权重表里=false
+  obj_order_SO-900147  qty=2636  status="COMPLETED"  进推演世界=false  在权重表里=false
+
+⇒ 缺的 13 张 与 不进推演世界的 13 张 **逐张同一批** = true（不是条数碰巧相同，是同一个集合）
+分布：被取的 25 张里 qty 非正/缺失 0 张 ⇒ qty **不是**本次缺口的原因（缺的 13 张 qty 全是正数）
+全租户 Order 500 张：COMPLETED=350 · IN_PRODUCTION=100 · OPEN=50 ⇒ 进推演世界 150 张
+该型号 116 张单里，进推演世界的 37 张 ⇒ A11 若想凑满 N 条入边，必须从**这一批**里挑
+入边按规则分组：demo_order_demand_pressure=12
+全 trace 里 demo_order_demand_pressure 共 12 条，落到本型号 12 条
+被取的 25 张单里，连到 >1 个型号的有 0 张
+
+══════════════════════════════════════════════════════════════════════════════
+修法验证：从「进推演世界」的单里挑
+══════════════════════════════════════════════════════════════════════════════
+各型号「进世界的单」数 top5：obj_model_4680-LFP=37 · obj_model_方形-LFP=28 · obj_model_2170-NCM=25 · obj_model_4680-NCM=24 · obj_model_方形-NCM=21
+型号 obj_model_4680-LFP（名下进世界的单 37 张）· 取 25 张 ⇒ 入边 25 条
+  全为 demo_order_demand_pressure 且 |amount|>0 = true
+  maxNodes=20  ⇒ nodes=20 edges=19 coverage={"maxNodes":20,"truncated":true,"droppedNodes":6,"droppedEdges":6,"amountCoveredPct":88.23}（手算 pct=88.23）
+  maxNodes=1000⇒ nodes=26 edges=25 coverage={"maxNodes":1000,"truncated":false,"droppedNodes":0,"droppedEdges":0,"amountCoveredPct":100}

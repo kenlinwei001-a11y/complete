@@ -1,6 +1,19 @@
-import { mcpServerNameSlug, mcpToolFullName, type AgentDefinition, type Answer, type ResolvedRef, type SkillDefinition, type WorkflowDefinition } from "@platform/contracts";
-import { runAgentLoop, type AgentLoopResult, type AgentToolSpec } from "./agent/loop.js";
+import { isWriteModeSkill, mcpServerNameSlug, mcpToolFullName, type AgentDefinition, type AgentRunKernel, type AgentRunRecord, type Answer, type ResolvedRef, type RuleVerdict, type SkillDefinition, type WorkflowDefinition, ErrorCodes } from "@platform/contracts";
+import {
+  attributionFields,
+  originFields,
+  runAgentLoop,
+  skillGovernance,
+  type AgentLoopResult,
+  type AgentRunAttributionInput,
+  type AgentRunPlacementInput,
+  type AgentToolSpec,
+} from "./agent/loop.js";
 import { AGENT_SYSTEM_CORE, buildSkillSection } from "./agent/prompts.js";
+import { projectNavigationSlice, renderNavigationSlice, navigationSliceSolverKeys, scopeCanInvokeSolvers } from "./agent/navigation-slice.js";
+// WO-CAPMAP-LIVE · 能力地图注入源：活资源目录（替掉手写镜像）。
+import { fetchLiveSolverCatalog, type CapabilityMapSource } from "./agent/live-capability-map.js";
+import { buildOntologySemanticContext } from "./agent/ontology-context.js";
 import { selectMcpTools } from "./agent/mcp-router.js";
 import type { Embedder } from "./agent/skill-router.js";
 import { buildProviderEmbedder, llmRollingSummarizer } from "./agent/production-cognition.js";
@@ -16,7 +29,265 @@ import type { DataCoreClient, ToolAuthCtx } from "./tools/clients.js";
 import { GuardedToolExecutor } from "./tools/executor.js";
 import type { SkillResourceReader } from "./tools/skill-resources.js";
 import { BUILTIN_TOOLS } from "./tools/registry.js";
+import { buildOntologyMcpTools, ONTOLOGY_MCP_SERVER } from "./tools/ontology-mcp.js";
+import { buildSolverMcpWireTools, type SolverCatalogItem } from "./mcp/solvers-catalog.js";
+import { buildRulesMcpTools, RULES_MCP_SERVER } from "./mcp/rules-mcp.js";
+import { BUILTIN_MCP_SERVER, buildBuiltinMcpTools, parseBuiltinMcpToolName } from "./mcp/builtin-mcp.js";
+import { parseSolverMcpToolName, SOLVERS_MCP_SERVER } from "@platform/contracts";
+import {
+  WORKFLOW_MCP_CONFIG_ID,
+  WORKFLOW_MCP_SERVER,
+  WORKFLOW_MCP_TOOLS_ENV,
+  parseWorkflowMcpToolName,
+  workflowMcpTool,
+  type WorkflowMcpToolSpec,
+} from "./mcp/workflow-mcp.js";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+/**
+ * WO-DSH-RESOURCE-REACH · 本体 MCP server 的**入口文件**定位（stdio 子进程的真身）。
+ *
+ * 为什么不能直接 `new URL("./dsh-runtime/ontology-mcp-server.js", import.meta.url)`：
+ * 本模块在**两种载体**下被加载 —— 生产 = `dist/engine.js`（同级真有 .js），
+ * 接缝测试 = vitest 里的 `src/engine.ts`（同级只有 .ts，子进程 `node` 起不来）。
+ * 判据落在**文件是否存在**上，而不是猜运行环境（`process.env.VITEST` 之类的开关会在
+ * 打包/降级/自建 harness 下静默选错，且那种错只表现为「工具莫名不可见」——最难查的一类）。
+ * 两条候选都缺 ⇒ 返回 dist 形态路径（子进程起不来时 mcp-client 侧 fail-closed 得 ERROR，
+ * 不编一个能跑的空壳）。**该路径不落任何模型可见面**（R-UI-4）。
+ */
+function resolveDshServerPath(fileName: string): string {
+  const sibling = fileURLToPath(new URL(`./dsh-runtime/${fileName}`, import.meta.url));
+  if (existsSync(sibling)) return sibling;
+  return fileURLToPath(new URL(`../dist/dsh-runtime/${fileName}`, import.meta.url));
+}
+
+function resolveOntologyMcpServerPath(): string {
+  return resolveDshServerPath("ontology-mcp-server.js");
+}
+
+function resolveSolversMcpServerPath(): string {
+  return resolveDshServerPath("solvers-mcp-server.js");
+}
+
+/**
+ * WO-WORKFLOW-MCP · 工作流 MCP server 的入口文件定位 —— 与上方 `resolveOntologyMcpServerPath`
+ * **同一实现、同一条论证**（两种载体：生产 dist / 接缝测试 src；判据落文件存在性；
+ * 两条候选都缺 ⇒ 返回 dist 形态路径，子进程起不来时 mcp-client 侧 fail-closed 得 ERROR）。
+ * 合并成一个带参函数会让调用点看不出「哪条链用哪个 server」，故保持两份显式常量路径。
+ */
+function resolveWorkflowMcpServerPath(): string {
+  const sibling = fileURLToPath(new URL("./dsh-runtime/workflow-mcp-server.js", import.meta.url));
+  if (existsSync(sibling)) return sibling;
+  return fileURLToPath(new URL("../dist/dsh-runtime/workflow-mcp-server.js", import.meta.url));
+}
+
+/**
+ * WO-AGENT-CONFIG-TO-DSH · 规则 MCP server 的入口文件定位 —— 与上方三个 `resolve*McpServerPath`
+ * **同一实现、同一条论证**（两种载体：生产 dist / 接缝测试 src；判据落文件存在性；两条候选都缺
+ * ⇒ 返回 dist 形态路径，子进程起不来时 mcp-client 侧 fail-closed 得 ERROR，不编一个能跑的空壳）。
+ */
+function resolveRulesMcpServerPath(): string {
+  return resolveDshServerPath("rules-mcp-server.js");
+}
+
+/**
+ * WO-BUILTIN-TO-DSH · 内置工具（BUILTIN）MCP server 的入口文件定位 —— 与上方四个
+ * `resolve*McpServerPath` **同一实现、同一条论证**（两种载体：生产 dist / 接缝测试 src；
+ * 判据落文件存在性；两条候选都缺 ⇒ 返回 dist 形态路径，子进程起不来时 mcp-client 侧
+ * fail-closed 得 ERROR，不编一个能跑的空壳）。
+ */
+function resolveBuiltinMcpServerPath(): string {
+  return resolveDshServerPath("builtin-mcp-server.js");
+}
+import type { FeatureGate } from "./features/gate.js";
+import { ResourceRegistryService } from "./dril/resource-registry.js";
 import { runWorkflow, type ExtendedPlanStep, type WorkflowResult } from "./workflow/executor.js";
+import { newId } from "./ids.js";
+// WO-NUMERIC-REDLINE-BLOCK：判别位/文案单源。`util/numerics.js` **不属于** dsh-runtime，
+// 静态 import 它不触碰休眠面（dormancy 只禁静态 import `dsh-runtime` / `packages/dsh-harness`）。
+// WO-DSH-REDLINE-PARITY：`NUMERIC_REDLINE_CODE` 的 import 已随 dsh 硬拦一并删除（对齐原生路后
+// 无人再产出该 code）。判据本身 `util/numerics.js` 的 `scanBlocks` 未动，仍是下面两处处置计数的单源。
+
+// ---------------------------------------------------------------------------
+// WO-SKILL-2 · Skill 运行时辅助（provenance 策略 / 写模式 / 规则引用预检后验）
+// ---------------------------------------------------------------------------
+
+function skillProvenancePolicy(skills: SkillDefinition[]): "required" | "best_effort" | "none" {
+  if (skills.some((s) => s.provenancePolicy === "required")) return "required";
+  if (skills.some((s) => s.provenancePolicy === "best_effort" || s.provenancePolicy === undefined)) return "best_effort";
+  return "none";
+}
+
+function skillWriteMode(skills: SkillDefinition[]): boolean {
+  // 判定单源在 contracts（见 isWriteModeSkill 注释：探针曾只判 sideEffect 半 → 在更小工具集上发合格证）
+  return skills.some((s) => isWriteModeSkill(s));
+}
+
+/**
+ * WO-S05（欠账 #154）· **强制执行型引用槽位登记表** —— 运行时真正会执行的 (kind, role) 组合单一来源。
+ *
+ * 病根不是「配错了一个字段」，是**配错了没人吭声**：契约词表允许 8 种 kind × 4 种 role = 32 种组合
+ * （`SKILL_REFERENCE_KINDS` × `SKILL_REFERENCE_ROLES`），schema 一律放行；而 `precondition`/`postcheck`
+ * 这两个**带强制语义**的 role，运行时只对少数 kind 真的做事。出厂唯一的 precondition 声明
+ * （`capacity_action_draft` → `{kind:"solver", key:"capacity_forecast", role:"precondition"}`）
+ * 恰好落在差集里：声明在、消费方在、两者对不上 —— 被 `kind === "rule"` 一行静默滤掉，不报错不告警。
+ *
+ * 本表是**消费方自己取值用的那一份**（下面 `skillRefKeys` 按它过滤，`skill-lint` 也 import 它），
+ * 不是给 lint 抄的第二份清单 —— 抄一份就是装饰品：改了这边、lint 拿旧的去测、照样绿
+ * （CLAUDE.md 铁律 0.6「金丝雀必须与主逻辑共用同一份实现」）。
+ * 谁删掉一个消费方就得从本表删条目，lint 立刻开始报「声明了运行时不会执行的前置/后验」——
+ * **机器先说话，而不是等下一个 dev 再踩一次**。
+ *
+ * `context` / `fallback` 两个 role 不在本表：它们是**告知性**的（由 `dril/resource-projector.ts:322`
+ * 投影进资源图供检索），本就不承诺执行，不该被判为「没人消费」。
+ */
+export const ENFORCED_SKILL_REF_SLOTS: readonly { kind: string; role: "precondition" | "postcheck" }[] = [
+  // engine 预检：BLOCK 即拦下，不调 LLM（见 runRegisteredAgent「Skill 规则引用预检」）
+  { kind: "rule", role: "precondition" },
+  // engine 后验：BLOCK 即把答案替换为 rule_violation
+  { kind: "rule", role: "postcheck" },
+  // WO-S05 新增：跑该技能前必须先成功调用该求解器（见 unmetSolverPreconditions / loadSkill 门）
+  { kind: "solver", role: "precondition" },
+];
+
+/** 某 (kind, role) 组合运行时是否真的会被执行（lint 与 engine 共用同一判据）。 */
+export function isEnforcedSkillRefSlot(kind: string, role: string): boolean {
+  return ENFORCED_SKILL_REF_SLOTS.some((s) => s.kind === kind && s.role === role);
+}
+
+/**
+ * WO-DSH-SOLVER-GATE · 两臂技能加载器**各自的真名**。
+ * 门禁说明（`unmetPreconditionBody`）末句要告诉模型「怎么把正文取回来」，而两臂的加载器不是同一个：
+ *   · native 臂 = loop 侧 `load_skill`（`SKILL_TOOL_NAMES` 那份工具面）；
+ *   · dsh 臂 = 上游 dsh-tool-skill 的 `skill` 工具（名称/参数/渲染都是上游常量，不可配）。
+ * 故`unmetPreconditionBody` 收**形参**、由各臂调用点传自己的真名注入——⛔ 不许在文案里写死任一臂的
+ * 名字：写死 `load_skill` 则 dsh 臂模型读到「去调一个不存在的工具」（P2A 换名后该工具已摘除）。
+ * 两份都从**本表**取，不各抄一份字符串（铁律 0.6「金丝雀必须与主逻辑共用同一份实现」）。
+ */
+export const SKILL_LOADER_TOOL = { native: "load_skill", dsh: "skill" } as const;
+
+/**
+ * 按 (kind, role) 抽取 skill 引用的 key 集合。
+ *
+ * 原 `skillRuleRefs` 把 `kind === "rule"` 硬编码在判据里，于是 `kind==="solver"` 的 precondition
+ * 连「被看见」的机会都没有（#154）。这里把 kind 提成形参：rule 路径逐字节沿用既有语义，
+ * solver 路径走下面 `unmetSolverPreconditions` 的另一套判据。
+ */
+function skillRefKeys(skills: SkillDefinition[], kind: string, role: "precondition" | "postcheck"): string[] {
+  const keys: string[] = [];
+  for (const s of skills) {
+    for (const r of s.references ?? []) {
+      if (r.kind === kind && r.role === role && (r.required === undefined || r.required)) {
+        keys.push(r.key);
+      }
+    }
+  }
+  return [...new Set(keys)];
+}
+
+function skillRuleRefs(skills: SkillDefinition[], role: "precondition" | "postcheck"): string[] {
+  return skillRefKeys(skills, "rule", role);
+}
+
+/**
+ * WO-S05 · solver 类 precondition 的判据 —— 与 rule 类**不是同一种问题**，不能混进 `rules.evaluate`：
+ * rule 问的是「当前是否违规」（规则引擎答），solver 问的是「这个求解器**跑过没有**」（本任务工具调用史答）。
+ * 把 solver key 当规则 id 送进规则引擎，只会查无此规则并 fail-open —— 那是把一次静默丢弃换成另一次。
+ *
+ * 判「跑过」= 本任务里存在一条 `invoke_solver` 且 `outcome==="OK"` 且 `input.solverKey` 命中。
+ * （MCP 形态 `mcp__solvers__{key}` 已在 `tools/executor.ts:164-168` 归一成同样的 toolName/input，故一并覆盖。）
+ *
+ * @returns 尚未满足的 solver key（空数组 = 全部满足）
+ */
+async function unmetSolverPreconditions(
+  repos: Repos,
+  taskId: string,
+  solverKeys: string[],
+): Promise<string[]> {
+  if (solverKeys.length === 0) return [];
+  const calls = await repos.toolCalls.listByTask(taskId);
+  const succeeded = new Set<string>();
+  for (const c of calls) {
+    if (c.toolName !== "invoke_solver" || c.outcome !== "OK") continue;
+    const key = (c.input as Record<string, unknown> | undefined)?.solverKey;
+    if (typeof key === "string") succeeded.add(key);
+  }
+  return solverKeys.filter((k) => !succeeded.has(k));
+}
+
+/**
+ * WO-S05 · precondition 未满足时**替代技能正文**下发的门禁说明。
+ *
+ * 为何不直接返回 undefined：loop 侧会把它渲染成 `skill not found`（`agent/loop.ts:579`）——
+ * 那是**假信息**，模型会以为技能不存在而放弃，而不是「先去跑推演」。本文案照该技能 body 自己写的
+ * 失败处理（「无结论则先跑推演」）给出可执行的下一步。
+ *
+ * WO-DSH-SOLVER-GATE：`loaderTool` 是**形参**——两臂的加载器真名不同（native `load_skill` /
+ * dsh `skill`，见 `SKILL_LOADER_TOOL`），由调用点注入。本函数是这份文案的**唯一**实现，
+ * 两臂共用（dsh 臂经反向通道端点取本函数的产物，不在 harness 侧另抄一份）。
+ */
+function unmetPreconditionBody(skillKey: string, missingSolverKeys: string[], loaderTool: string): string {
+  const list = missingSolverKeys.map((k) => `\`${k}\``).join("、");
+  return [
+    `## 技能「${skillKey}」的前置条件尚未满足（平台门禁）`,
+    "",
+    `本技能声明了 precondition：必须**先成功调用**求解器 ${list}，拿到推演结论后才能使用。`,
+    "本任务的工具调用记录里还没有这些求解器的成功调用，因此技能正文暂不下发。",
+    "",
+    "## 下一步",
+    `1. 先调 \`invoke_solver\`（${list}）并拿到结果；`,
+    `2. 再次 \`${loaderTool}\` 加载本技能，届时会下发正文。`,
+    "",
+    "不要在缺推演结论的情况下臆造数字或直接拟稿。",
+  ].join("\n");
+}
+
+function ruleViolationAnswer(verdicts: RuleVerdict[]): Answer {
+  const blocking = verdicts.filter((v) => !v.passed && v.severity === "BLOCK");
+  return {
+    trustLevel: "AGENT_EXPLORATORY",
+    blocks: blocking.map((v) => ({
+      type: "rule_violation" as const,
+      ruleId: v.ruleId,
+      severity: v.severity,
+      explanation: v.explanation,
+      provId: "prov_skill_rule_check",
+    })),
+    provenance: [],
+    unverifiedNumerics: false,
+  };
+}
+
+function emptyAgentRunRecord(
+  taskId: string,
+  model: string,
+  budget: BudgetTracker,
+  // WO-AGENTRUN-ATTRIBUTION：规则预检 BLOCK 的早退出口也是**这个 agent 的**一次运行（零迭代但确有归属），
+  // 归属经同一个 `attributionFields` 投影 —— 不许在这里另抄一份字段拼装（抄了就会与 finishRun 漂）。
+  attribution?: AgentRunAttributionInput,
+  // WO-AGENTRUN-FANOUT-PERSIST：同理——被会诊扇出的子 agent 若在规则预检就被 BLOCK，那也是**它真跑过一次**
+  // （零迭代但确有位置），照样得带上 FANOUT 落库，否则「这个 Agent 跑了几次」会漏掉被拦下的那些。
+  placement?: AgentRunPlacementInput,
+  // WO-DSH-P2-UX（N5）：内核标识。dsh 分叉两点恒 "EXTERNAL"；分叉前 BLOCK 早退点传有效内核值
+  //（WO-AGENT-KERNEL-SELECT：agent.kernel 显式优先 / 缺省回落 env，与分叉守卫同一表达式）——标的是「本会走哪个内核」，
+  // 该 run 未真执行任何循环，**不许**读成「真在 dsh 上跑过」（R13 不造数纪律）。
+  kernel?: AgentRunKernel,
+): AgentRunRecord {
+  return {
+    id: newId("run"),
+    taskId,
+    model,
+    iterations: [],
+    budget: budget.budget,
+    budgetExhausted: false,
+    totalInputTokens: 0,
+    totalOutputTokens: 0,
+    ...attributionFields(attribution),
+    ...originFields(placement),
+    ...(kernel ? { kernel } : {}),
+  };
+}
 
 export interface EngineDeps {
   repos: Repos;
@@ -29,12 +300,53 @@ export interface EngineDeps {
   llmSettings: LlmSettings;
   /** 增量 §3：read_skill_resource 内容读取端口（缺省仅元信息）。 */
   skillResources?: SkillResourceReader;
+  /** WO-DRIL-P2 · entitlement 门（DRIL 检索 registry 依赖；缺省则 retrieve_knowledge 降级空结果）。 */
+  features?: FeatureGate;
+  /**
+   * WO-CLOSE-NATIVE-GAPS · **测试专用装配位（test-only assembly）** —— 内核运行时选择。
+   *
+   * 今天的行为是 X：`runRegisteredAgent` 的分叉由 `agent.kernel` 与进程 env `DSH_HARNESS`
+   * 共同决定（显式 `"NATIVE"` 钉回原生、缺省回落 env），于是「跑哪个内核」是一个**产品面**取值。
+   * 应该是 Y（仓主 2026-10-09：「把旧内核今天还剩四个入口都调整为 DSH，替代旧内核」「都改掉，
+   * 不考虑回退」）：**注册 agent 路恒走 DSH**（外部运行时）—— 内核不再是产品面可选项。
+   *
+   * ⛔ 本字段**不是**回退开关，判据三条（缺一即不许读成「留了后门」）：
+   *   ① 生产 composition root（`main.ts` → `wireDeps`）**永不设置**它，缺省 = `"dsh"`；
+   *   ② 没有任何配置面能到它 —— 不读 env、不读 config、不进 API body（`grep '"inprocess"'`
+   *      的扫描面只看得到 engine.ts / deps.ts / test/**，`scripts/check-dsh-dormancy.mjs` 的新口径守着这一条）；
+   *   ③ 它只表达「测试环境没有 dsh harness 与真 provider，本次执行改用进程内循环」——
+   *      是**测试替身**（与 `createTestApp` 注入 `ScriptedLlmClient` 同一性质），
+   *      不是「把某个 agent 钉回旧内核」（那个能力本单已整条退役，见 `AgentDefinition.kernel`）。
+   *
+   * ⚠ 为什么必须是运行时读取（不是构造期定死）：双跑/对拍类接缝测试要在**同一进程**里
+   * 分别跑两条臂（如 `dsh-e2e-degradation-screen` 的 flag off/on 对拍）。
+   */
+  agentKernelRuntime?: "dsh" | "inprocess";
 }
 
 export interface RunRegisteredAgentOpts {
   taskId: string;
-  agentId: string;
-  version: number | "latest";
+  /**
+   * WO-CLOSE-NATIVE-GAPS（additive）· 与 `version` 一起可省 —— 省 = 本次运行的是
+   * `ephemeralAgent` 传入的**运行期合成** agent（不落库、不查仓储）。二者互斥：
+   * 传了 `ephemeralAgent` 时 `agentId`/`version` 被忽略。
+   */
+  agentId?: string;
+  version?: number | "latest";
+  /**
+   * WO-CLOSE-NATIVE-GAPS · **运行期合成的探索 agent**（见 orchestrator `runPathB` 的
+   * 「通用 agent 不在场」落点）：不是持久化定义 ⇒ 归属必须显式覆盖（见 `attributionOverride`），
+   * 且**不进** `onResolvedRef`（没有版本可留痕）。它的 `tools`/`skills`/`scopeDeclaration`
+   * 与出厂 agent 同构，故引擎侧装配（scope 门 / 技能面 / 两内核分叉）一次到位。
+   */
+  ephemeralAgent?: AgentDefinition;
+  /**
+   * WO-CLOSE-NATIVE-GAPS · 归属覆盖：合成 agent 不是**任何一版**持久化定义 ⇒ 正面记
+   * `EXPLORATORY`（传 `{ tenantId }`，无 agentId）而不是把合成体的 id 记成归属
+   * （那会让「我这个 agent 跑过几次」这个读投影凭空多出一个从不存在的 agent）。
+   * 缺省（不传）= 按解析出的 agent 三件套记 REGISTERED（既有行为）。
+   */
+  attributionOverride?: AgentRunAttributionInput;
   prompt: string;
   ctx: ToolAuthCtx;
   nesting: NestingCtx;
@@ -43,13 +355,210 @@ export interface RunRegisteredAgentOpts {
   isCancelled?: () => boolean;
   /** 引用模式增量 §2.2：执行时解析到的实际版本留痕回调（agent/skill/rule/workflow）。 */
   onResolvedRef?: (ref: ResolvedRef) => void;
+  /**
+   * WO-FIVE-ROLE-AI-EMPLOYEE P1 · opt-in：强制 agent scopeDeclaration.objectTypes（越界读对象拒）。
+   * Coordinator 角色扇出置 true（scope 真隔离）；既有路径不置 = 字节兼容不强制。
+   */
+  enforceObjectScope?: boolean;
+  /**
+   * WO-ROUTE-1（闭 E9·旁白在多角色路径上结构性不可达）· **纯透传**：`qos.reasoning-trace` 开时把每轮思考旁白
+   * 经 `step.completed`(type=agent_narration) 流给前端。此前 `emitNarration` 全仓唯一调用点是 orchestrator
+   * `runPathB` → `runCoordinator → runWorkflowSteps → runAgentStep → runRegisteredAgent` 这条链上一次都没传，
+   * 默认 false → 多角色扇出（实测 6 次 agent 往返）一条旁白都发不出。缺省 undefined = 逐字节沿用既有行为。
+   */
+  emitNarration?: boolean;
+  /**
+   * WO-AGENTRUN-FANOUT-PERSIST（additive·可选）· 本次运行在编排结构里的位置。
+   * 调用方是唯一知情人（loop/engine 都看不出自己是顶层还是被扇出的——taskId 是同一个）。
+   * 不传 = 不写位置字段（既有调用方逐字节兼容）。
+   */
+  placement?: AgentRunPlacementInput;
+  /**
+   * WO-DSH-REFLECT-PARITY · **纯透传**：本次注册 agent 运行收尾前是否做「确定性复盘」
+   * （`agent/reflect.ts` 单源四查：①答了吗 ②裸数 ∧ `⟦ref:N⟧` 越界 ③工具静默失败
+   * ④**Solver-first**——排产/优化类问句未调对口 solver 即违规）。
+   *
+   * **两条臂同判据**：原生臂 → `runAgentLoop({ reflect: true })`（loop 早已支持该位）；
+   * dsh 臂 → `reassemble.reflect`（重组装侧同一份 `reflectAnswer`，不另写第二套）。
+   *
+   * **门控由调用方求值** —— `reflectEnabled(enabledFeatures)` 只能由持有 feature set 的 orchestrator 算，
+   * 本层不自己算（与 `emitNarration` 同一模式）。缺省不传 = 两条臂逐字节沿用既有行为（复盘一步不跑）。
+   *
+   * ⚠ dsh 臂的处置只对位原生路的**第二支**（重规划预算尽 ⇒ 诚实收尾）：dsh 是子进程收束后的纯 fold、
+   * 模型已退出，结构上做不到第一支「回注 reasons + 有界重规划」——**不许读成已对齐原生路完整语义**。
+   */
+  reflect?: boolean;
+  /**
+   * ★ WO-REFLECT-INPUT-FIX · 复盘判据要读的**用户原话**（见 `agent/loop.ts` 同名字段的病灶说明）。
+   *
+   * 调用方（orchestrator）手上有 `task.query`，本层手上的 `userContent` 是**拼接材料**
+   * （`prompt + 导航切片 + 本体语义上下文`）—— 材料里混着 engine 自己注入的 solver/规则文案，
+   * 而 ④ 的判据词表正是那一族 ⇒ 拿拼接材料当判据输入会让 ④ 在无关问句上误报。
+   * 缺省（不传）= 退回拼接材料 = 修复前行为（字节兼容）。
+   */
+  reflectUserContent?: string;
+  /**
+   * WO-CLOSE-NATIVE-GAPS · **整段 system 覆盖**（仅探索路用；CEO/块级深问走这条）。
+   *
+   * 口径与 orchestrator 旧探索路 `baseSystem = opts.systemOverride ?? AGENT_SYSTEM_CORE` **同源**：
+   * 覆盖值是**完整 system**（`CEO_DEEP_QUESTION_SYSTEM` 本身就含 `AGENT_SYSTEM_CORE`），
+   * 故它**整体替换**「人设段 + AGENT_SYSTEM_CORE」，技能段仍照常 append。
+   * ⛔ 不传 = 既有装配（`agent.systemPrompt + CORE + 技能段`），其它调用方逐字节不变。
+   */
+  systemOverride?: string;
+}
+
+/**
+ * WO-DSH-PROD-READY · W8主：tool-execute 反向通道的 per-run 登记册条目。
+ * runToken（随机一次性）→ 本次 run 的执行面。executor 必须是 fork 前 :491 创建的**同一实例**
+ * （第二实例 = readCache/预算/审计双账本缺陷）；seenCallIds 供端点 409 重放拒绝。
+ */
+export interface DshToolExecuteRun {
+  executor: GuardedToolExecutor;
+  budget?: BudgetTracker;
+  defaultTimeoutMs: number;
+  seenCallIds: Set<string>;
+  /**
+   * W9-full：宿主侧表（键 = 桥上传的帧 callId 原值，team-lead 2026-08-22 裁决直通方案）。
+   * 端点逐调用累积 {outcome 四态, tc_ 形态 toolCallId, 宿主实测 durationMs}；run 终作
+   * ReassembleOptions.hostToolCalls 传 reassemble（侧表 = 事实源；MCP/meta 不过宿主的
+   * 调用无条目 ⇒ 未命中支帧两态推导维持）。
+   */
+  hostToolCalls: Map<
+    string,
+    { outcome: "OK" | "DENIED" | "ERROR" | "BUDGET_EXCEEDED"; toolCallId: string; durationMs: number }
+  >;
+  /**
+   * WO-DSH-PROD-READY · W8.5：workflow 反向化的 per-run 绑定表（模型可见名 → {workflowId, version}）。
+   * 源 = fork 处 grantedToolNames 同一 `tools`（router 收窄后授予面）的 WORKFLOW 成员——
+   * **表成员即 scope 闸**：与 native loop.ts:766 scopeToolNames 检查等价（两臂都是「授予面内
+   * 的 workflow 名才可执行」；dsh 臂 scope 语义由子进程 allow-list + 本表双闸合成，宿主表 =
+   * 唯一 workflowId 解析权威）。wire 禁带 workflowId（端点永不读取 body.workflowId）——
+   * 防子进程越权点名绑定表外的任意 workflow。
+   */
+  workflowBindings?: Map<string, { workflowId: string; version: number | "latest" }>;
+  /**
+   * W8.5：workflow 执行上下文（fork 处从 runRegisteredAgent opts 捕获）。端点 workflow 分支
+   * 透传给 runWorkflowAsTool——nested 预算（enterNesting 共享 budget）/留痕/metrics/SSE emit
+   * 全走既有内部逻辑，零复刻。emit 出处差登记：dsh 臂 nested workflow 事件来自宿主端点路径
+   * 而非帧流（REC §3 W8.5 条目）。
+   */
+  workflowCtx?: {
+    taskId: string;
+    ctx: ToolAuthCtx;
+    nesting: NestingCtx;
+    emit: (event: string, payload: unknown) => Promise<void>;
+    onResolvedRef?: (ref: ResolvedRef) => void;
+  };
+  /**
+   * WO-DSH-SOLVER-GATE · solver 类 skill precondition 的 dsh 臂求值上下文。
+   * 与 `workflowCtx` **分开一个字段**（不是从它派生）：workflowCtx 只在授予面含 WORKFLOW 工具时才铸，
+   * 而求解器前置门对「只有 BUILTIN 工具 + 一条带 precondition 的技能」的 agent 同样必须生效——
+   * 挂在 workflowCtx 上会让这类 agent 的门静默失效（形态：门在、条件永不成立）。
+   * 只放 taskId：判据唯一出处仍是 `unmetSolverPreconditions(repos, taskId, keys)`（native 臂同一个函数）。
+   */
+  skillPrecondCtx?: { taskId: string };
 }
 
 /** Cross-wires the agent loop and the workflow executor (mutual nesting, shared budget). */
 export class ExecutionEngine {
-  constructor(readonly deps: EngineDeps) {}
+  /** WO-DRIL-P2 · DRIL 检索注册表（features 存在时懒建；供 retrieve_knowledge 工具）。 */
+  private readonly resourceRegistry?: ResourceRegistryService;
+  /**
+   * W8主：tool-execute 反向通道 runToken 登记册（实例字段而非模块级——多 engine 实例不互串；
+   * server.ts 端点经 deps.engine 直达，不静态 import dsh-runtime（dormancy D3 约束）。
+   * 仅 dsh fork 期间有活条目：fork 铸、try/finally 注销。
+   */
+  readonly dshToolExecuteRuns = new Map<string, DshToolExecuteRun>();
 
-  makeExecutor(taskId: string, ctx: ToolAuthCtx, budget?: BudgetTracker, scopeToolNames?: string[]): GuardedToolExecutor {
+  /**
+   * WO-CLOSE-NATIVE-GAPS · **本次运行跑哪个内核**（唯一判据，三个消费点同源：
+   * 分叉守卫 / BLOCK 早退的 run 标签 / 求解器广告面收窄）。
+   *
+   * 今天的行为是 X：判据曾散在三处，表达式把「agent 显式字段」与「进程 env 兜底」并列
+   *（`agent.kernel` 显式优先、字段缺失回落 env；见 `dsh-gov-datacore-credential.seam.test.ts` ④
+   * 的旧口径断言）—— 其中 `agent.kernel` 置 `"NATIVE"` 是**运维回退开关**（ROLLOUT §1-c），
+   * env 是**部署面开关**。⛔ 本注释**不逐字复写**那条已退役的表达式：它会让
+   * 「引擎侧零消费方」的机器判据（该测试 ④ 扫本文件不许出现 `process.env.` 该键）误报成真违规。
+   * 应该是 Y（仓主 2026-10-09）：「都改掉，不考虑回退」⇒ 注册 agent 路恒走 DSH，
+   * 两个开关都不再是判据；唯一例外是测试专用装配位（见 `EngineDeps.agentKernelRuntime` 头注三条判据）。
+   *
+   * ⛔ 不许把它改回读 env / config / agent 数据 —— 那三者任一回到表达式里，旧内核就重新有了入口，
+   * 而 `scripts/check-dsh-dormancy.mjs` 的新口径（守「不许悄悄回落旧内核」）会随之失效。
+   */
+  private dshIsTheKernelThisRun(): boolean {
+    return this.deps.agentKernelRuntime !== "inprocess";
+  }
+
+  /**
+   * 同上判据的**公开只读面** —— 供 orchestrator 的探索路落点分叉用（那条路的执行体选择必须与
+   * 引擎同一判据，不许各写一份：两处判据漂移 = 「记录说 DSH、实际跑进程内循环」这类假绿）。
+   * 产品恒 `"dsh"`；`"inprocess"` 只可能来自测试装配（见 `EngineDeps.agentKernelRuntime` 三条判据）。
+   */
+  agentKernelRuntimeMode(): "dsh" | "inprocess" {
+    return this.deps.agentKernelRuntime ?? "dsh";
+  }
+
+  /** 与 `dshIsTheKernelThisRun()` **同一个判据**的 run 记录标签（`AgentRunKernel` 词表见 contracts）。 */
+  private kernelLabelThisRun(): AgentRunKernel {
+    return this.dshIsTheKernelThisRun() ? "EXTERNAL" : "NATIVE";
+  }
+
+  constructor(readonly deps: EngineDeps) {
+    if (deps.features) {
+      this.resourceRegistry = new ResourceRegistryService({
+        repos: deps.repos,
+        dataCore: deps.dataCore,
+        features: deps.features,
+      });
+    }
+  }
+
+  /**
+   * WO-CAPMAP-LIVE · 活资源目录检索面（**单一实例**·orchestrator 与本引擎共用，不各建一个）。
+   * 供能力地图注入源（`fetchLiveSolverCatalog`）与 `retrieve_knowledge` 复用同一份投影/检索实现。
+   * `features` 缺省 → `undefined` → 注入方 fail-open 退降级镜像。
+   */
+  capabilityMapSource(): CapabilityMapSource | undefined {
+    return this.resourceRegistry;
+  }
+
+  /**
+   * WO-DSH-SOLVER-GATE · dsh 臂 solver 前置门的**宿主判据**（server.ts 反向通道端点 `POST
+   * /b/v1/dsh/skill-precondition` 的执行体）。
+   *
+   * 为何这门要回宿主问、而不是在 harness 侧自己记账：判据是「本任务里这个求解器**成功跑过没有**」，
+   * 事实源是 `repos.toolCalls`（native 臂读的同一份）。harness 自己记一份 = 第二套真相源：
+   * 至少两条会漂 —— ① MCP 形态求解器（`mcp__solvers__{key}`）不过反向桥，只有宿主归一；
+   * ② native 臂判的是 outcome==="OK"，harness 侧的桥包络与宿主审计行并非同一个量。
+   * 故这里直接调 native 臂那个函数（**同一个 `unmetSolverPreconditions`**），两臂判据逐位一致。
+   *
+   * 门禁说明的**文案**也在这里生成（`unmetPreconditionBody` 唯一实现），加载器真名按臂传
+   * dsh 的 `skill`——harness 只负责把这段文本当作 content 下发，不在 .mjs 里另抄一份文案。
+   *
+   * @returns undefined = runToken 不识/已注销（端点映射 401）；否则 missing 为尚未满足的 key，
+   *          非空时附 gateBody（模型面要读到的门禁说明）。
+   */
+  async dshSkillPrecondition(
+    runToken: string,
+    skillKey: string,
+    solverKeys: string[],
+  ): Promise<{ missing: string[]; gateBody?: string } | undefined> {
+    const entry = this.dshToolExecuteRuns.get(runToken);
+    if (!entry?.skillPrecondCtx) return undefined;
+    const missing = await unmetSolverPreconditions(this.deps.repos, entry.skillPrecondCtx.taskId, solverKeys);
+    return missing.length > 0
+      ? { missing, gateBody: unmetPreconditionBody(skillKey, missing, SKILL_LOADER_TOOL.dsh) }
+      : { missing };
+  }
+
+  makeExecutor(
+    taskId: string,
+    ctx: ToolAuthCtx,
+    budget?: BudgetTracker,
+    scopeToolNames?: string[],
+    scopeObjectTypes?: string[],
+  ): GuardedToolExecutor {
     return new GuardedToolExecutor(
       {
         dataCore: this.deps.dataCore,
@@ -57,8 +566,11 @@ export class ExecutionEngine {
         repos: this.deps.repos,
         metrics: this.deps.metrics,
         skillResources: this.deps.skillResources,
+        ...(this.resourceRegistry
+          ? { retrieveResources: (ctx2: ToolAuthCtx, req) => this.resourceRegistry!.search(ctx2, req) }
+          : {}),
       },
-      { taskId, ctx, budget, scopeToolNames },
+      { taskId, ctx, budget, scopeToolNames, ...(scopeObjectTypes ? { scopeObjectTypes } : {}) },
     );
   }
 
@@ -100,7 +612,81 @@ export class ExecutionEngine {
   }
 
   /** Expand AgentToolRef[] → AgentToolSpec[] (BUILTIN / MCP discovered tools / WORKFLOW-as-tool). */
-  async expandAgentTools(agent: AgentDefinition): Promise<AgentToolSpec[]> {
+  /**
+   * WO-GENERAL-AGENT-DSH · **本体对象类型目录**（`GET /a/v1/ontology/object-types`）的现算键集。
+   *
+   * 单源：与 `discover(kind:"object_types")`、DRIL 的 object_type 投影**同一条 A 侧只读面**
+   * （`deps.dataCore.ontology.listObjectTypeKeys` ⇒ A 侧已按 ACTIVE 过滤），不新造第二份名单。
+   * ⛔ 不缓存：目录会变（新建对象类型），缓存会让「新类型」在 TTL 内读不到 —— 而本函数存在的
+   * 全部理由就是「新增类型自动跟随」。调用点是**声明了 allObjectTypes 的 agent** 的 run（低频）。
+   *
+   * 失败/空 ⇒ `undefined`（调用方**不收窄**，见 `runRegisteredAgent` 的注）。
+   */
+  private async objectTypeCatalogKeys(ctx: ToolAuthCtx | undefined): Promise<string[] | undefined> {
+    if (!ctx) return undefined;
+    try {
+      const keys = await this.deps.dataCore.ontology.listObjectTypeKeys(ctx);
+      return keys.length > 0 ? keys : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * WO-SOLVERS-MCP-REAL · 本 run 的求解器目录（`mcp__solvers__*` 的**唯一**供给源）。
+   *
+   * 与本体那件不同，求解器目录**随租户与 entitlement 变**（关某求解器 feature ⇒ 注册表不返回
+   * ⇒ 工具必须消失，R3 先于 authz），故**不能**像本体那样走静态投影。单源 = 与治理端点
+   * `/b/v1/mcp/servers/solvers` **同一只** `catalog.solverRegistry(ctx)`（不新造第二份名单）。
+   *
+   * 失败 ⇒ 空集（**诚实缺席**）：该 run 看不到任何求解器 MCP 工具，而不是看到一批调不通的名字。
+   * ⛔ 不缓存：目录随 entitlement 变，缓存会把「刚被关掉的求解器」继续发出去。
+   */
+  private async solverCatalogItems(ctx: ToolAuthCtx | undefined): Promise<SolverCatalogItem[]> {
+    if (!ctx) return [];
+    try {
+      const r = await this.deps.dataCore.catalog.solverRegistry(ctx);
+      return r.items.map((it) => ({
+        key: it.key,
+        name: it.name,
+        description: it.description,
+        domain: it.domain,
+        argHints: it.argHints,
+      }));
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * WO-ROSTER-RESPECT-TOOLFILTER · **求解器 MCP 面的授予白名单**（`tools[].toolFilter` 原文）——
+   * 导航切片把它当「可调用面」收窄广告面（判据：广告面 ⊆ 可调用面）。
+   *
+   * 单源 = `agent.tools` 里**求解器 MCP ref** 的 `toolFilter`，与 `expandAgentTools` 求解器分支
+   * 同一条判据（`serverName === SOLVERS_MCP_SERVER`）——不另抄一份「哪个 config 是求解器」的名单。
+   *
+   * 返回值语义（三态，别混）：
+   *   · `undefined` —— 未设过滤（该 ref 无 toolFilter）·**或**该 agent 没有求解器 MCP ref
+   *     ⇒ 广告面**不收窄**（「没设过滤」≠「什么都不给」）；
+   *   · 非空数组 —— 多 ref 取**并集**（授予面 = 各 ref 之并，同 expandAgentTools 的产出口径）；
+   *   · 空数组 —— `toolFilter: []` ⇒ 该 server 工具全丢，一条求解器都不广告。
+   */
+  private async solverMcpToolFilterOf(agent: AgentDefinition): Promise<string[] | undefined> {
+    const filters: string[][] = [];
+    for (const ref of agent.tools) {
+      if (ref.kind !== "MCP") continue;
+      const config = await this.deps.repos.mcpConfigs.get(ref.mcpConfigId);
+      if (!config) continue;
+      const serverName = config.serverName ?? mcpServerNameSlug(config.name);
+      if (serverName !== SOLVERS_MCP_SERVER) continue;
+      if (ref.toolFilter === undefined) return undefined; // 任一求解器 ref 未设过滤 = 全量授予 ⇒ 不收窄
+      filters.push(ref.toolFilter);
+    }
+    if (filters.length === 0) return undefined; // 无求解器 ref ⇒ 本 agent 不靠 MCP 面调 solver（旧行为）
+    return [...new Set(filters.flat())];
+  }
+
+  async expandAgentTools(agent: AgentDefinition, ctx?: ToolAuthCtx): Promise<AgentToolSpec[]> {
     const specs: AgentToolSpec[] = [];
     for (const ref of agent.tools) {
       if (ref.kind === "BUILTIN") {
@@ -113,12 +699,110 @@ export class ExecutionEngine {
           binding: { kind: "BUILTIN" },
         });
       } else if (ref.kind === "MCP") {
-        if (!this.deps.mcp) continue;
         const config = await this.deps.repos.mcpConfigs.get(ref.mcpConfigId);
         if (!config) continue;
         // 增量 §4.2 命名空间：模型可见名 = mcp__{serverName}__{toolName}（防重名冲突）；
         // serverName = config.serverName（创建时校验）/ 旧数据按 name 推导。
         const serverName = config.serverName ?? mcpServerNameSlug(config.name);
+        // WO-DSH-RESOURCE-REACH · 平台内置本体 MCP server：工具集平台固定（切片两件套），
+        // 走**静态投影**而非连一次 server —— 理由两条：① 宿主侧连接会踩 MCP_STDIO_ENABLED
+        // 白名单策略（默认关），部署态一改 env 才能列工具，是把配置面绑死在运维参数上；
+        // ② 每次 agent run 为「知道有哪些工具」多付一次子进程冷启动。工具清单的单一来源
+        // 仍是 BUILTIN 注册表（tools/ontology-mcp.ts 直取），不重抄 schema。
+        if (serverName === ONTOLOGY_MCP_SERVER) {
+          for (const t of buildOntologyMcpTools()) {
+            if (ref.toolFilter && !ref.toolFilter.includes(t.rawName) && !ref.toolFilter.includes(t.name)) continue;
+            specs.push({
+              name: t.name,
+              // 描述逐字取 t.description（内含 ONTOLOGY_MCP_DESC_PREFIX）——DSH 臂同一段文字
+              // 经 MCP wire 到达模型面，两内核文本逐字同（前缀禁在本处再拼一次）。
+              description: t.description,
+              inputSchema: t.inputSchema,
+              binding: { kind: "MCP", mcpConfigId: ref.mcpConfigId },
+            });
+          }
+          continue;
+        }
+        // WO-SOLVERS-MCP-REAL · 平台内置求解器 MCP server：工具集**随租户/entitlement 变**，
+        // 故这里**不能**静态投影（与上方本体分支的唯一差别）。走与治理端点同一只
+        // `catalog.solverRegistry(ctx)`；目录不可得 ⇒ 本 run 该 server 工具全缺席（诚实缺席）。
+        // 描述逐字取 `buildSolverMcpWireTools`（内含 SOLVERS_MCP_DESC_PREFIX）——DSH 臂同一段
+        // 文字经 MCP wire 到达模型面（engine.ts DSH 分叉把同一份清单注入子进程 env），两内核
+        // 文本逐字同（前缀禁在本处再拼一次）。
+        if (serverName === SOLVERS_MCP_SERVER) {
+          for (const t of buildSolverMcpWireTools(await this.solverCatalogItems(ctx))) {
+            if (ref.toolFilter && !ref.toolFilter.includes(t.rawName) && !ref.toolFilter.includes(t.name)) continue;
+            specs.push({
+              name: t.name,
+              description: t.description,
+              // 未登记 inputSchema ⇒ 发 `{type:"object"}`（不宣称任何属性），**不发**空 properties
+              // 空壳 —— 那等于替我们宣称「此求解器无入参」（诚实缺席 > 静默错答）。
+              inputSchema: (t.inputSchema ?? { type: "object" }) as Record<string, unknown>,
+              binding: { kind: "MCP", mcpConfigId: ref.mcpConfigId },
+            });
+          }
+          continue;
+        }
+        // WO-WORKFLOW-MCP · 平台内置工作流 MCP server：工具集是**租户数据**（随工作流发布变），
+        // 故不能像本体那样静态投影 —— 逐 run 从仓储现算，并按 `toolFilter`（全名）收窄。
+        // 产出**恒为 MCP 全名形态**，binding 仍记 WORKFLOW（workflowId/version 是执行期真需要
+        // 的东西；绑定表 = 端点上的唯一解析权威，wire 永远带不了它）。
+        // WO-AGENT-CONFIG-TO-DSH · 平台内置规则 MCP server：工具集**平台固定**（一只
+        // `evaluate_rules`，规则库是入参不是工具名）⇒ 与本体同走**静态投影**，不连 server。
+        // 描述逐字取 `buildRulesMcpTools`（内含 RULES_MCP_DESC_PREFIX）——DSH 臂同一段文字经
+        // MCP wire 到达模型面，两内核文本逐字同（前缀禁在本处再拼一次）。
+        if (serverName === RULES_MCP_SERVER) {
+          for (const t of buildRulesMcpTools()) {
+            if (ref.toolFilter && !ref.toolFilter.includes(t.rawName) && !ref.toolFilter.includes(t.name)) continue;
+            specs.push({
+              name: t.name,
+              description: t.description,
+              inputSchema: t.inputSchema,
+              binding: { kind: "MCP", mcpConfigId: ref.mcpConfigId },
+            });
+          }
+          continue;
+        }
+        // WO-BUILTIN-TO-DSH · 平台内置工具 MCP server：工具集**平台固定**（注册表现算的一族，
+        // 见 mcp/builtin-mcp.ts）⇒ 与本体/规则同走**静态投影**，不连 server（理由两条同上：
+        // 宿主侧连接会踩 MCP_STDIO_ENABLED 白名单策略；每次 run 多付一次子进程冷启动）。
+        // 描述逐字取 `buildBuiltinMcpTools`（内含 BUILTIN_MCP_DESC_PREFIX）——DSH 臂同一段文字
+        // 经 MCP wire 到达模型面，两内核文本逐字同（前缀禁在本处再拼一次）。
+        // ⛔ 收窄这里只是**授予面**的一半（另一半是 DSH 侧 spawn 时的 toolAllowlist，同源同滤）；
+        //    没被授予的工具在本函数里就不产出 ⇒ 原生臂模型面与宿主 scope 门同判据。
+        if (serverName === BUILTIN_MCP_SERVER) {
+          for (const t of buildBuiltinMcpTools()) {
+            if (ref.toolFilter && !ref.toolFilter.includes(t.rawName) && !ref.toolFilter.includes(t.name)) continue;
+            specs.push({
+              name: t.name,
+              description: t.description,
+              inputSchema: t.inputSchema,
+              binding: { kind: "MCP", mcpConfigId: ref.mcpConfigId },
+            });
+          }
+          continue;
+        }
+        if (serverName === WORKFLOW_MCP_SERVER) {
+          const wfs = await this.deps.repos.workflows.listByTenant(agent.tenantId);
+          for (const wf of wfs) {
+            // WO-GENERAL-AGENT-DSH · **全量面（ref 无 toolFilter）只列已发布工作流**：DRAFT 是还没发布
+            // 的定义，不是可调用工具（与技能/意图/对象类型「发布才外发」同一惯例，也正是上一行注释
+            // 「随工作流**发布**变」的字面含义 —— 此前没有 agent 走无过滤这支，故从没人碰上）。
+            // ⛔ 显式 `toolFilter` 点名者**照旧**（含 DRAFT 目标）：显式配置优先，且改了会让既有
+            //    filtered agent（如 risk_advisor → risk_digest）的工具**静默消失**——那是更坏的病。
+            if (!ref.toolFilter && wf.status !== "PUBLISHED") continue;
+            const spec = workflowMcpTool(wf);
+            if (ref.toolFilter && !ref.toolFilter.includes(wf.key) && !ref.toolFilter.includes(spec.name)) continue;
+            specs.push({
+              name: spec.name,
+              description: spec.description,
+              inputSchema: spec.inputSchema,
+              binding: { kind: "WORKFLOW", workflowId: wf.id, version: wf.version },
+            });
+          }
+          continue;
+        }
+        if (!this.deps.mcp) continue;
         let tools: { name: string; description: string; inputSchema: Record<string, unknown> }[];
         try {
           tools = await this.deps.mcp.listTools(ref.mcpConfigId);
@@ -137,12 +821,19 @@ export class ExecutionEngine {
           });
         }
       } else {
+        // WO-WORKFLOW-MCP · 旧记法（`{kind:"WORKFLOW", workflowId, version}`）**仍认**，
+        // 但产出与上面 MCP ref **同为 MCP 全名形态** —— 一条面、两种记法。这不是「两条路」：
+        // 契约 `AgentToolRefSchema` 里 WORKFLOW 分支仍在（`packages/**` 不在本单范围，改不掉），
+        // 存量/租户自建 agent 还会用它；若这里不产出 MCP 形态，那些 agent 的工具会在
+        // hostWorkflowTools 退场后**静默消失**（最坏的一类：不报错、少东西）。
+        // 先例：`buildExploratoryTools` 对切片白名单「全名/裸名两种记法都认，产出恒为 MCP 形态」。
         const wf = await this.deps.repos.workflows.get(ref.workflowId);
         if (!wf) continue;
+        const spec = workflowMcpTool(wf);
         specs.push({
-          name: `workflow_${wf.key}`,
-          description: `${wf.name}（这是一个多步流程，将按声明式步骤执行并返回结果）${wf.description ?? ""}`,
-          inputSchema: wf.inputs,
+          name: spec.name,
+          description: spec.description,
+          inputSchema: spec.inputSchema,
           binding: { kind: "WORKFLOW", workflowId: ref.workflowId, version: ref.version },
         });
       }
@@ -152,14 +843,48 @@ export class ExecutionEngine {
 
   /** Run a registered agent (B1 executor = §6.3 loop + scope gate + skills + rule POST_CHECK). */
   async runRegisteredAgent(opts: RunRegisteredAgentOpts): Promise<AgentLoopResult> {
-    const agent = await this.resolveAgent(opts.agentId, opts.version);
-    const model = await this.deps.llmSettings.roleModel(agent.tenantId, "agent", agent.model || undefined);
-    const expanded = await this.expandAgentTools(agent);
+    // WO-CLOSE-NATIVE-GAPS：两条来源 —— 持久化 agent（查仓储，既有）或运行期合成的探索 agent
+    // （`ephemeralAgent`，不落库）。后者走**同一条**装配链（scope 门/技能/后验/两内核分叉），
+    // 所以「合成体」不是第二条执行路：它只是没有版本、没有归属的一个 AgentDefinition。
+    const resolved = opts.ephemeralAgent ?? (await this.resolveAgent(opts.agentId!, opts.version ?? "latest"));
+    const model = await this.deps.llmSettings.roleModel(resolved.tenantId, "agent", resolved.model || undefined);
+    // WO-GENERAL-AGENT-DSH · **对象域「全量」= 目录现算**：`scopeDeclaration.allObjectTypes` 的 agent
+    // （通用 agent）在**本 run** 把有效对象域解析成对象类型目录的现全集（`GET /a/v1/ontology/object-types`，
+    // 与 `discover(kind:"object_types")` / DRIL 投影同一条 A 侧只读面 —— 不新造第二份名单）。
+    // 解析结果以**浅拷贝**形态往下一路走：executor 的对象域门、导航切片投影、DSH 的
+    // `governance.scopeObjectTypes` 读的都是同一个 `agent` 对象 ⇒ 三处同源，不会「宿主放行、子进程拦」。
+    // 目录不可得（A 侧不可达）⇒ **不收窄**（返回 undefined，落回「不设对象域门」= 本改造前探索路的
+    // 既有行为），因为此处是治理收窄不是安全边界（行级过滤在 A6），把 A 侧一次抖动放大成
+    // 「通用 agent 一个对象都读不了」是更坏的失败。
+    const allObjectTypes = resolved.scopeDeclaration.allObjectTypes === true;
+    const resolvedObjectTypes = allObjectTypes ? await this.objectTypeCatalogKeys(opts.ctx) : undefined;
+    const agent: AgentDefinition =
+      resolvedObjectTypes && resolvedObjectTypes.length > 0
+        ? { ...resolved, scopeDeclaration: { ...resolved.scopeDeclaration, objectTypes: resolvedObjectTypes } }
+        : resolved;
+    // ctx 透传（WO-SOLVERS-MCP-REAL）：求解器 MCP 工具集随租户/entitlement 变，目录要用本 run
+    // 的 OBO 身份去问 DataCore（`catalog.solverRegistry(ctx)`，与治理端点同源）。
+    const expanded = await this.expandAgentTools(agent, opts.ctx);
     const mcpSpecs = expanded.filter((t) => t.binding.kind === "MCP");
-    // §2.2 留痕：实际执行的 agent 版本
-    opts.onResolvedRef?.({ kind: "agent", key: agent.key, version: agent.version });
+    // §2.2 留痕：实际执行的 agent 版本。⛔ 合成探索 agent **没有**版本可留痕 —— 报一个
+    // 假版本会让「执行留痕」这个面从「可核」退化成「编的」，故整条跳过（归属见下）。
+    if (!opts.ephemeralAgent) opts.onResolvedRef?.({ kind: "agent", key: agent.key, version: agent.version });
 
-    const skills = [];
+    // WO-AGENTRUN-ATTRIBUTION · 归属取自**刚刚真解析出来的这一版** agent（`resolveAgent` 已按 latest/固定版落定），
+    // 不是调用方传进来的 `opts.agentId`——后者可能是 key/latest 之类的间接说法，拿它当归属就会把
+    // 「跑的是 v3」记成「跑的是 latest」，换版之后再也对不上。同一份 agent 也用于 tenantId（越租户绝不混）。
+    // WO-CLOSE-NATIVE-GAPS：合成探索 agent 例外 —— 它不是任何一版持久化定义，调用方显式给
+    // `{ tenantId }`（无 agentId）⇒ 正面记 EXPLORATORY，不把合成体冒充成一个真 agent。
+    const attribution: AgentRunAttributionInput = opts.attributionOverride ?? {
+      tenantId: agent.tenantId,
+      agentId: agent.id,
+      agentKey: agent.key,
+      agentVersion: agent.version,
+    };
+
+    // W1 注：显式标注 SkillDefinition[]——applyPostChecks 闭包在本行之后、push 完成之前捕获
+    // skills，TS 对「演进式 let/const []」遇闭包早引用会放弃推断（TS7005），标注为零行为改动。
+    const skills: SkillDefinition[] = [];
     for (const s of agent.skills) {
       // §2.1：skill 引用缺省 latest（执行时解析）；§2.2：留痕含 skill 版本（L8）
       const skill = await this.resolveSkill(agent.tenantId, s.skillId, s.version ?? "latest");
@@ -169,56 +894,670 @@ export class ExecutionEngine {
       }
     }
 
+    // WO-SKILL-2 · Skill 运行时策略聚合
+    const effectiveProvenancePolicy = skillProvenancePolicy(skills);
+    const writeMode = skillWriteMode(skills);
+
+    // WO-SKILL-2 · Skill 规则引用预检：任一 precondition BLOCK → 立即返回 rule_violation，不调用 LLM
+    const preRuleKeys = skillRuleRefs(skills, "precondition");
+    if (preRuleKeys.length > 0) {
+      try {
+        const verdicts = await this.deps.dataCore.rules.evaluate(opts.ctx, preRuleKeys, { queryText: opts.prompt });
+        for (const v of verdicts) {
+          if (v.ruleVersion !== undefined) {
+            opts.onResolvedRef?.({ kind: "rule", key: v.ruleId, version: v.ruleVersion });
+          }
+        }
+        if (verdicts.some((v) => !v.passed && v.severity === "BLOCK")) {
+          return {
+            outcome: "ANSWERED",
+            answer: ruleViolationAnswer(verdicts),
+            // WO-DSH-P2-UX（N5）：此早退点在 dsh 分叉**之前**——标「本会走哪个内核」，
+            // 该 run 未真执行任何循环，不许读成「真在 dsh 上跑过」。
+            // WO-CLOSE-NATIVE-GAPS：标值与下方分叉**同一个判据**（`kernelLabelThisRun()`），
+            // 不再读 agent.kernel / env DSH_HARNESS（两者都退役，见该函数头注）。
+            run: emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget, attribution, opts.placement, this.kernelLabelThisRun()),
+            sketch: [],
+          };
+        }
+      } catch {
+        // fail-open：规则引擎不可用时，预检不阻断主流程
+      }
+    }
+
+    // Phase6C MCP router：MCP 工具按 query 相关性收窄到 top-k（非 MCP 工具全保留；deferred 经 discover 发现）。
+    //
+    // ⚠ WO-BUILTIN-TO-DSH · **平台内置工具面（`mcp__builtin__*`）不参与这次收窄** —— 它们是
+    // 本次迁移才换上 MCP 载体的，迁移前是 `{kind:"BUILTIN"}` 授予（结构上**从不**被 top-k 收窄，
+    // 见上面那行注释「非 MCP 工具全保留」）。迁移只许换载体、不许换可见面：若把它们算进
+    // `mcpSpecs`，一个 agent 的内置工具面会被按 query 相关性砍到 8 条以内（通用 agent 26 件
+    // ⇒ 大多数 run 里模型**根本看不到** `query_objects`），那是比「DSH 侧没身份」更坏的回归。
+    // 故排除法派生 `routerSpecs`（参与收窄的那一份，= 迁移前的 MCP 面，**逐条相同**）；
+    // 内置工具面留在 `expanded` 里恒全量注入，embedder 的候选文本也只用 routerSpecs ——
+    // 迁移前后的相关性排序输入**逐字节相同**。
+    const routerSpecs = mcpSpecs.filter((t) => parseBuiltinMcpToolName(t.name) === undefined);
     // Phase8：路由用真 embedding provider（配置时一次性批量预算 query+候选文本向量，
     // 包成同步 Embedder 喂给 skill/MCP router；未配置或失败 → 上层回退 pseudoEmbed）。
     const cfg = this.deps.config;
     let embedder: Embedder | undefined;
     if (cfg.QOS_EMBEDDING_BASE_URL && cfg.QOS_EMBEDDING_MODEL) {
-      const texts = [opts.prompt, ...skills.map((s) => `${s.name ?? ""} ${s.summary ?? ""}`), ...mcpSpecs.map((t) => t.name)];
+      const texts = [opts.prompt, ...skills.map((s) => `${s.name ?? ""} ${s.summary ?? ""}`), ...routerSpecs.map((t) => t.name)];
       embedder = await buildProviderEmbedder(
         { baseUrl: cfg.QOS_EMBEDDING_BASE_URL, model: cfg.QOS_EMBEDDING_MODEL, apiKey: cfg.QOS_EMBEDDING_API_KEY },
         texts,
       );
     }
-
-    // Phase6C MCP router：MCP 工具按 query 相关性收窄到 top-k（非 MCP 工具全保留；deferred 经 discover 发现）。
     let tools = expanded;
-    if (mcpSpecs.length > 0) {
-      const { full } = selectMcpTools(opts.prompt, mcpSpecs, 8, embedder);
+    if (routerSpecs.length > 0) {
+      const { full } = selectMcpTools(opts.prompt, routerSpecs, 8, embedder);
       const keep = new Set(full.map((t) => t.name));
-      tools = expanded.filter((t) => t.binding.kind !== "MCP" || keep.has(t.name));
+      // 收窄只作用于**参与收窄的** MCP 面；内置工具面（builtinSpecs）+ 非 MCP 面全保留。
+      const narrowed = new Set(routerSpecs.filter((t) => !keep.has(t.name)).map((t) => t.name));
+      tools = expanded.filter((t) => !narrowed.has(t.name));
     }
-    // Phase5C skill 语义路由：按 query 相关性仅注入 top-k 全文 summary（其余 load_skill 按需取）。
-    const system = `${agent.systemPrompt}\n\n${AGENT_SYSTEM_CORE}${buildSkillSection(skills, { query: opts.prompt, embedder })}`;
 
-    const executor = this.makeExecutor(opts.taskId, opts.ctx, opts.nesting.budget, agent.scopeDeclaration.toolNames);
+    // WO-MCP-TOP8-VS-ROSTER · **模型面终态的求解器授予集**（供导航图广告面收窄：广告面 ⊆ 可调用面）。
+    //
+    // 今天的行为是 X：提示词目录段自称「**全部可调用的**求解器目录」，成员资格只过
+    //   `toolFilter ∩ 对象域`，**不看上面那次 top-k 收窄** —— 对 MCP 工具 >8 个的 agent
+    //   （如 16 求解器的 analyst）目录段点名的 16 条里，只有 6 条进了模型 `tools`；其余 10 条
+    //   既不在工具面上、`discover(kind:"mcp_tools")` 今天又是空表（按需加载模式未启用）
+    //   ⇒ 模型**真的调不到**，而那句话在断言它们可调（实测：真链路首轮 prompt 16 vs 授予 6，差集 10 条）。
+    // 应该是 Y：把本 run 真实的求解器工具面（`mcp__solvers__*`）随 scope 一起进投影，
+    //   广告面收窄到这批 —— 与 toolFilter 那层是同一条判据的两层，不是新判据。
+    //
+    // 三态（别混）：
+    //   · `undefined` —— **不收窄**（旧行为逐字节不变）。两种情形：①该 agent 的 solver 面不是
+    //     MCP 工具面（授予了 BUILTIN `invoke_solver` ⇒ 任意 solver 都调得动；或压根不调 solver）；
+    //     ②本 run 走 DSH 臂（子进程挂的 solver server 把 toolFilter 全量目录给模型，top-k 收窄
+    //     不在那条路上 —— 那边广告全量才是诚实的）。
+    //     ⚠ 该豁免**已于 2026-10-06 端到端实测**（不是据读码）：`agt_seed_analyst`（16 求解器）
+    //     与 `agt_capacity_planner`（5）在 DSH 臂上「广告面 == 可调用面」双向差集为空 ——
+    //     子进程 allow-list 与宿主 scope 门的名单**同源**（都是 `scopeDeclaration.toolNames ∪`
+    //     本 run 授予面），白名单里的求解器全在声明面内（出厂三面同改），故全量广告成立；
+    //     反事实配置（清空声明面）下同一台量具报得出 11 条非空差集 ⇒ 判据不瞎。
+    //     口径与证据见 `test/dsh-arm-ad-surface.seam.test.ts`。
+    //   · 非空数组 —— 收窄到这批全名；
+    //   · 空数组 —— 求解器 MCP 工具被 top-k 全截掉 ⇒ 一条求解器都不广告（诚实缺席）。
+    //
+    // ⚠ WO-CLOSE-NATIVE-GAPS：分叉判据与下方 DSH 守卫**同一个方法**（`kernelLabelThisRun()` /
+    //   `dshIsTheKernelThisRun()` 同源）。此处只用于**投影口径**：走进程内循环（测试装配）时
+    //   广告面收窄到本 run 授予的求解器集合；走 DSH 时不收窄（子进程 allow-list 与宿主同源）。
+    const nativeKernel = !this.dshIsTheKernelThisRun();
+    // ⚠ WO-BUILTIN-MIGRATE-REST：`invoke_solver` 迁到内置工具 MCP 面后，本判据若只看
+    // `binding.kind === "BUILTIN"` 会翻假 ⇒ 通用 agent 的求解器广告面会被**不必要地**收窄。
+    // 语义是「本 agent 手里有一件**可按 key 点名任意求解器**的入口」，与载体无关 ⇒ 按身份判。
+    const hasBuiltinInvokeSolver = tools.some(
+      (t) => parseBuiltinMcpToolName(t.name) === "invoke_solver" || (t.binding.kind === "BUILTIN" && t.name === "invoke_solver"),
+    );
+    const solverGrantedToolNames =
+      nativeKernel && !hasBuiltinInvokeSolver
+        ? tools.filter((t) => t.binding.kind === "MCP" && parseSolverMcpToolName(t.name) !== undefined).map((t) => t.name)
+        : undefined;
+    // WO-AGENT-RUNTIME-S01 · item 6（治 workflow_capacity_check DENIED）：scopeToolNames = 声明白名单 ∪ **本 agent 实际
+    // 被授予的工具名**（expanded：BUILTIN/workflow_<key>/mcp__…）。根因——seed 给 agt_capacity_planner 配了 workflow_capacity_check
+    // 工具，但其 scopeDeclaration.toolNames 漏列该名 → 调用即 AGENT_SCOPE_VIOLATION DENIED（子 agent 盲扫烧预算的一环）。
+    // 一个 agent 被显式配置的工具**绝不应被自身 scope 门拒**（「给它该工具」）；并集**只加不减**（声明已覆盖者 = 原集·byte-compatible），
+    // 越界工具（未配置给该 agent）仍被拒（安全语义不变）。此处修 scope 派生，不动 seed（seed.ts 禁碰）。
+    // WO-GENERAL-AGENT-DSH · **工具面「全量」**：`scopeDeclaration.allTools` 的 agent（通用 agent）
+    // 并的是**完整授予面 `expanded`**（= `tools[]` 里不设 `toolFilter` 的 ref 在运行期从各自目录
+    // 现算的并集），而不是被 Phase6C 上下文 top-k 收窄过的 `tools` —— 否则「目录新长出来的工具」
+    // 在宿主 scope 门 / DSH 子进程 allow-list 上被**静默拒掉**（子进程看得见、调用却 DENIED）。
+    // 缺省 agent 行为逐字节不变（并集只加不减，来源仍是收窄后的授予面）。
+    const scopeGrantedNames = (agent.scopeDeclaration.allTools === true ? expanded : tools).map((t) => t.name);
+    const effectiveScopeToolNames = [...new Set([...agent.scopeDeclaration.toolNames, ...scopeGrantedNames])];
+    // WO-GENERAL-AGENT-DSH · 对象域门的实参：全量 agent 用**目录现算**那一份；目录不可得 ⇒ undefined
+    // = 不收窄（见上方 `resolvedObjectTypes` 注）。既有 agent = 原样（enforceObjectScope 才收窄）。
+    const effectiveScopeObjectTypes = allObjectTypes
+      ? agent.scopeDeclaration.objectTypes.length > 0
+        ? agent.scopeDeclaration.objectTypes
+        : undefined
+      : opts.enforceObjectScope
+        ? agent.scopeDeclaration.objectTypes
+        : undefined;
+    // Phase5C skill 语义路由：按 query 相关性仅注入 top-k 全文 summary（其余 load_skill 按需取）。
+    // WO-CLOSE-NATIVE-GAPS：人设段为空（运行期合成的探索 agent 没有第二套人设）时**不产出**那对空行 ——
+    // 否则合成路的 system 会以 `"\n\n"` 开头，与它逐字节对齐的旧探索路产生无意义漂移
+    //（`system = AGENT_SYSTEM_CORE + skillSection`，见 orchestrator 旧路）。
+    const persona = agent.systemPrompt ? `${agent.systemPrompt}\n\n` : "";
+    const skillSection = buildSkillSection(skills, { query: opts.prompt, embedder });
+    const system =
+      opts.systemOverride !== undefined
+        ? `${opts.systemOverride}${skillSection}` // 整段覆盖（探索路 CEO/块级深问·口径同旧探索路 baseSystem）
+        : `${persona}${AGENT_SYSTEM_CORE}${skillSection}`;
+
+    // WO-QOS-2 · 导航切片注入（闭 G-AGENT-BLIND-REACT agent 侧半）：据本 agent 的 scopeDeclaration（objectTypes/toolNames）
+    // 确定性投影本题导航图（对口 solver + 输出形状 + 相关对象/规则）注入首轮 user——agent 有对口 solver 就一步到位。
+    // R6 纯投影（无 LLM）；空图返 ""（不注入·字节兼容）。sliceSolverKeys 供 loop plan 自检。
+    // ★ WO-CAPMAP-LIVE · 注入源 = **活资源目录**（59 solver）现取 top-N 相关候选，不再是那份 19 条手写镜像；
+    //   取不到（registry 未装配 / A 不可达 / 未开通）→ liveCatalog=undefined → 退降级镜像（fail-open·不阻断）。
+    //   跳过条件：本 agent 根本调不了 solver（scope 工具白名单无 invoke_solver / mcp 求解器工具）——
+    //   那样投影出的图里一条 solver 都不会列，取目录纯属白花一次 A 侧往返。
+    const liveCatalog = scopeCanInvokeSolvers(agent.scopeDeclaration.toolNames)
+      ? await fetchLiveSolverCatalog(this.capabilityMapSource(), opts.ctx, opts.prompt)
+      : undefined;
+    // WO-ROSTER-RESPECT-TOOLFILTER · 授予面（`tools[].toolFilter` 原文）随 scope 一起进投影：
+    // 目录段/详情段的成员资格 = 对象域 ∩ **可调用面**。缺省（undefined）⇒ 不收窄（旧行为逐字节不变）。
+    const solverToolFilter = await this.solverMcpToolFilterOf(agent);
+    // WO-MCP-TOP8-VS-ROSTER · 授予面随 scope 一起进投影（见上方 `solverGrantedToolNames` 三态）：
+    // 广告面 = 对象域 ∩ toolFilter（配置允许）∩ **本 run 模型面终态**（top-k 之后）。
+    const navSlice = projectNavigationSlice(
+      opts.prompt,
+      undefined,
+      { ...agent.scopeDeclaration, solverToolFilter, ...(solverGrantedToolNames !== undefined ? { solverGrantedToolNames } : {}) },
+      liveCatalog,
+    );
+    const sliceSection = renderNavigationSlice(navSlice);
+    // WO-QOS-ONTOLOGY-CONTEXT · 口径语义锚定（缺口③文档三层投喂第二层）：紧随导航图 append 各字段/规则口径
+    //（Metric formula/unit·派生公式·规则 expression·取自 A 单一真值 getTypeSemantics·TTL60s 缓存·只列涉及项）——
+    // 综合步看"带口径标注的数据"。fail-open·纯 additive（供解释·非数据源·数字仍标 ⟦ref:N⟧）。
+    const semanticSection = await buildOntologySemanticContext(navSlice, opts.ctx, this.deps.dataCore.ontology);
+    const userContent = [opts.prompt, sliceSection, semanticSection].filter(Boolean).join("\n\n");
+    const sliceSolverKeys = navigationSliceSolverKeys(navSlice);
+
+    const executor = this.makeExecutor(
+      opts.taskId,
+      opts.ctx,
+      opts.nesting.budget,
+      effectiveScopeToolNames,
+      effectiveScopeObjectTypes,
+    );
 
     // Phase8：生产可启用 LLM 滚动摘要（QOS_ROLLING_SUMMARY_LLM=1）；缺省确定性拼接。
     const summarizer = cfg.QOS_ROLLING_SUMMARY_LLM === "1" ? llmRollingSummarizer(this.deps.llm, model, agent.tenantId) : undefined;
+
+    // WO-DSH-PROD-READY · W1：两段 postcheck 后验（Skill 规则引用后验 + ruleBindings
+    // POST_CHECK）提为共享闭包——DSH 分叉与原生循环**同一出口**过同一份后验，不许另抄一份
+    // （此前「postcheck 不外挂 DSH 路径」正是两条返回路径各写返回的漂移代价：同一条 agent
+    // 配置，选原生被规则拦、选 DSH 直接放行 = 治理语义按内核分裂）。只判 ANSWERED——
+    // FAILED/BLOCKED 早退无答案可验，天然不过后验。
+    const applyPostChecks = async (result: AgentLoopResult): Promise<AgentLoopResult> => {
+      // WO-SKILL-2 · Skill 规则引用后验：postcheck BLOCK → 替换为 rule_violation（在 agent.ruleBindings POST_CHECK 之前）
+      const postRuleKeys = skillRuleRefs(skills, "postcheck");
+      if (postRuleKeys.length > 0 && result.outcome === "ANSWERED") {
+        const answerText = result.answer.blocks
+          .map((b) => (b.type === "text" ? b.markdown : ""))
+          .filter(Boolean)
+          .join("\n");
+        try {
+          const verdicts = await this.deps.dataCore.rules.evaluate(opts.ctx, postRuleKeys, { answerText });
+          for (const v of verdicts) {
+            if (v.ruleVersion !== undefined) {
+              opts.onResolvedRef?.({ kind: "rule", key: v.ruleId, version: v.ruleVersion });
+            }
+          }
+          if (verdicts.some((v) => !v.passed && v.severity === "BLOCK")) {
+            return { ...result, answer: ruleViolationAnswer(verdicts) };
+          }
+        } catch {
+          // fail-open
+        }
+      }
+
+      // ruleBindings POST_CHECK: BLOCK violation → replace answer with violation explanation
+      const mode = agent.ruleBindings.mode;
+      if ((mode === "POST_CHECK" || mode === "BOTH") && result.outcome === "ANSWERED") {
+        const answerText = result.answer.blocks
+          .map((b) => (b.type === "text" ? b.markdown : ""))
+          .filter(Boolean)
+          .join("\n");
+        try {
+          const verdicts = await this.deps.dataCore.rules.evaluate(opts.ctx, agent.ruleBindings.ruleKeys, {
+            answerText,
+          });
+          for (const v of verdicts) {
+            if (v.ruleVersion !== undefined) {
+              opts.onResolvedRef?.({ kind: "rule", key: v.ruleId, version: v.ruleVersion });
+            }
+          }
+          const blocking = verdicts.filter((v) => !v.passed && v.severity === "BLOCK");
+          if (blocking.length > 0) {
+            const answer: Answer = {
+              trustLevel: "AGENT_EXPLORATORY",
+              blocks: blocking.map((v) => ({
+                type: "rule_violation",
+                ruleId: v.ruleId,
+                severity: v.severity,
+                explanation: v.explanation,
+                provId: "prov_post_check",
+              })),
+              provenance: [],
+              unverifiedNumerics: false,
+            };
+            return { ...result, answer };
+          }
+        } catch {
+          /* post-check best effort: rules engine unavailable does not break the answer */
+        }
+      }
+      return result;
+    };
+
+    // -----------------------------------------------------------------------
+    // WO-CLOSE-NATIVE-GAPS（2026-10-09 仓主「都改掉，不考虑回退」）·
+    // **旧内核退役**：本分叉曾由 `agent.kernel`（显式 `"NATIVE"` 钉回）与进程 env
+    // `DSH_HARNESS`（部署面全局开关）共同决定 —— 两者都**不再是内核选择器**：
+    //   · `agent.kernel`：写侧拒 `"NATIVE"`（`POST/PUT /b/v1/agents`），存量记录里的值
+    //     一律**不再被读**（跑哪个内核不再由 agent 数据决定）；
+    //   · `DSH_HARNESS`：本文件一个字节都不再读（部署面见 docker-compose；休眠门口径已随之改写）。
+    // 现在唯一的判据是 `dshIsTheKernelThisRun()`：产品恒真（DSH 是唯一内核），
+    // 唯一能让它变假的是**测试专用装配位** `deps.agentKernelRuntime === "inprocess"`（见其头注）。
+    // 归因/投影点（上方 BLOCK 早退与 `nativeKernel`）都走同源方法，不再各写一份表达式。
+    if (this.dshIsTheKernelThisRun()) {
+      const { buildSessionSetup, mapMcpConfig, mapSkill, runDshAgent } = await import("./dsh-runtime/index.js");
+      // W8主：反向通道登记——runToken = per-run 一次性随机 token（newId 加密随机源），
+      // wire 上唯一凭证；登记 executor 用上方 :491 同一实例（scope/预算/readCache 同账本）。
+      // try/finally 保证 run 终（含异常路径）即注销——迟到的反向调用一律 401。
+      // ⚠ 位置在 mcpServers 映射**之前**（WO-DSH-RESOURCE-REACH）：本体 MCP server 的 stdio env
+      // 要在 spawn 前注入 DSH_RUN_TOKEN，若铸在下方原位则此处引用未初始化（TS2448 实测）。
+      // 铸点前移不改变任何语义——它仍是「本 run 一次」，只是早了几十行。
+      const runToken = newId("dshr");
+      // WO-MCP-FORWARD · additive 转发（静默丢字段同族病第四例）：agent.mcpServers 非空时
+      // 经 mapMcpConfig 逐个映射进 setup——serverName 白名单校验 + 映射期解密注入（安全注记
+      // 同 setup-spec.ts mapMcpConfig：明文仅过本机父子进程 stdio wire，不落日志）；凭据行缺失/
+      // 解不出 = fail-closed 抛错（mapMcpConfig credentialRef unresolvable），不静默降级为无凭据
+      // 连接。空/缺省 = 零 mcpServers 键（既有 `...(x ? {...} : {})` 散布形态），逐字节旧行为。
+      // 解密件在块内动态取：全部改动收在本分叉块，flag 关时零加载。
+      // WO-WORKFLOW-MCP · 本 run 的工作流工具目录（= 授予面里落在 workflow MCP 面上的那一支）。
+      // **单一来源 = `expanded`**（收窄后的授予面）：由此 wire 目录 ≡ 宿主静态投影 ≡ 授予面，
+      // 三者按构造同源，不存在「子进程自己查一遍仓储」这条会漂的第二来源。
+      // 两种 ref 记法（MCP ref / 旧 WORKFLOW ref）在 expandAgentTools 里已归一到同一 MCP 全名，
+      // 故此处**不区分记法**，只认面。
+      const workflowCatalog: WorkflowMcpToolSpec[] = [];
+      for (const t of expanded) {
+        const raw = parseWorkflowMcpToolName(t.name);
+        if (raw === undefined) continue;
+        workflowCatalog.push({ name: t.name, rawName: raw, description: t.description, inputSchema: t.inputSchema });
+      }
+      const workflowServerSpec = (): ReturnType<typeof mapMcpConfig> => ({
+        transport: "stdio",
+        serverName: WORKFLOW_MCP_SERVER,
+        command: process.execPath,
+        args: [resolveWorkflowMcpServerPath()],
+        cwd: process.cwd(),
+        env: {
+          PLATFORM_TOOL_EXEC_URL: cfg.DSH_TOOL_EXEC_URL ?? `http://127.0.0.1:${cfg.PORT}/b/v1/dsh/tool-execute`,
+          DSH_RUN_TOKEN: runToken,
+          ...(cfg.SERVICE_TOKEN ? { PLATFORM_TOOL_EXEC_TOKEN: cfg.SERVICE_TOKEN } : {}),
+          // 目录经 env 进子进程（租户数据，不能像本体那样静态投影）。畸形 ⇒ 子进程侧
+          // fail-closed 成空表（parseWorkflowMcpToolsEnv），不编空壳工具。
+          [WORKFLOW_MCP_TOOLS_ENV]: JSON.stringify(workflowCatalog),
+        },
+        // 与 mapMcpConfig 同值同源（缺省 20s / 首连失败不阻激活 / RECONNECT_DEFAULTS）
+        toolCallTimeoutMs: 20_000,
+        failOnStartupError: false,
+        reconnect: { enabled: true, initialDelayMs: 500, maxDelayMs: 30_000, maxAttempts: 10 },
+      });
+      const mcpServers: ReturnType<typeof mapMcpConfig>[] = [];
+      if (agent.mcpServers.length > 0) {
+        const { decryptSecret } = await import("./crypto.js");
+        for (const ref of agent.mcpServers) {
+          const mcpConfig = await this.deps.repos.mcpConfigs.get(ref.mcpConfigId);
+          if (!mcpConfig) throw new Error(`dsh mcp forward: mcp config not found: ${ref.mcpConfigId}`);
+          const credRow = mcpConfig.credentialRef ? await this.deps.repos.credentials.get(mcpConfig.credentialRef) : undefined;
+          const secret = credRow ? decryptSecret(credRow.ciphertext, cfg.CREDENTIAL_KEY) : undefined;
+          const spec = mapMcpConfig(mcpConfig, () => secret);
+          // WO-DSH-RESOURCE-REACH · 平台内置本体 MCP server：**运行期注入** command/args/env。
+          // 三样都不能写死在 seed 里 —— ① 绝对路径随机器/工作树变；② runToken 是 per-run 一次性量；
+          // ③ 端点 URL 要跟 cfg.PORT 走。故 seed 只声明「有这个 server + 它是 stdio + 工具过滤」，
+          // 落到真进程的形态由本处兑现（seed 里那份 command/args 是 cwd=仓根 时的可用回落，非唯一真相）。
+          // 执行仍归一回宿主反向通道（server 侧见 dsh-runtime/ontology-mcp-server.ts 头注），
+          // 因此本路径**不新增第二条执行路**：MCP wire 只是进同一只 executor 的另一种协议门。
+          const serverName = mcpConfig.serverName ?? mcpServerNameSlug(mcpConfig.name);
+          // 平台内置 MCP server 的**运行期形态**（本体 / 求解器 / 工作流共用这段 env 契约）：
+          // 绝对路径随机器/工作树变、runToken 是 per-run 一次性量、端点 URL 要跟 cfg.PORT 走，
+          // 三样都不能写死在 seed 里。落不到真进程的形态由本处兑现。
+          // WO-WORKFLOW-MCP · 工作流那支多一样目录 env（见上方 workflowServerSpec）。
+          if (serverName === WORKFLOW_MCP_SERVER) {
+            Object.assign(spec, workflowServerSpec());
+          }
+          const builtinPath =
+            serverName === ONTOLOGY_MCP_SERVER ? resolveOntologyMcpServerPath()
+            : serverName === SOLVERS_MCP_SERVER ? resolveSolversMcpServerPath()
+            : serverName === RULES_MCP_SERVER ? resolveRulesMcpServerPath()
+            // WO-BUILTIN-TO-DSH · 内置工具面（同一形态：真 server + 运行期形态注入）
+            : serverName === BUILTIN_MCP_SERVER ? resolveBuiltinMcpServerPath()
+            : undefined;
+          if (builtinPath) {
+
+            Object.assign(spec, {
+              transport: "stdio" as const,
+              command: process.execPath,
+              args: [builtinPath],
+              cwd: process.cwd(),
+              env: {
+                PLATFORM_TOOL_EXEC_URL: cfg.DSH_TOOL_EXEC_URL ?? `http://127.0.0.1:${cfg.PORT}/b/v1/dsh/tool-execute`,
+                DSH_RUN_TOKEN: runToken,
+                ...(cfg.SERVICE_TOKEN ? { PLATFORM_TOOL_EXEC_TOKEN: cfg.SERVICE_TOKEN } : {}),
+              },
+            });
+          }
+          // WO-SOLVERS-MCP-REAL · 求解器工具清单**注入子进程 env**：求解器目录随租户/entitlement
+          // 变，子进程又**不去连 DataCore**（那需要凭据与 OBO，会把这个「不读凭据」的适配器变成
+          // 第二个执行体）—— 故由宿主在 spawn 前现算并注入。
+          // 派生源 = **`expanded`（本 run 已算好的那一份）**，不是再问一次 DataCore：
+          // 这样子进程的 `tools/list` 与原生臂的模型面**同源同序**，两内核描述逐字同；
+          // 且 `parseSolverMcpToolName` 是契约单源反解，不靠字符串切片猜前缀。
+          if (serverName === SOLVERS_MCP_SERVER) {
+            const wireTools = expanded
+              .filter((t) => t.binding.kind === "MCP" && t.binding.mcpConfigId === ref.mcpConfigId)
+              .flatMap((t) => {
+                const rawName = parseSolverMcpToolName(t.name);
+                return rawName
+                  ? [{ rawName, description: t.description, inputSchema: t.inputSchema }]
+                  : [];
+              });
+            spec.env = { ...(spec.env ?? {}), SOLVERS_MCP_TOOLS_JSON: JSON.stringify(wireTools) };
+          }
+          // WO-DSH-PROD-READY · W8副（可见性 parity）：toolFilter 真源 = agent.tools 的 MCP ref
+          // （contracts AgentToolRefSchema；mcpServers 挂载行本身只有 mcpConfigId 不带 filter）。
+          // 同 config 首个带 filter 的 tools-ref 决定允许表——派生源 = expandAgentTools **收窄后**
+          // 结果（`expanded`，Phase6C router 收窄前，与 native 臂模型可见面同口径；router 二次
+          // 收窄只作用于宿主 tools/授予面，不在本 WO 复刻到子进程，登记为既有残差）。匹配键 =
+          // expanded 公开名（contracts mcpToolFullName 裸拼接）；子进程 mcp-client-tenant 以
+          // publicToolName 输出比对，exotic 裸名规范化后不匹配 ⇒ fail-closed 丢弃（收窄方向）。
+          // 无 tools-ref / toolFilter undefined ⇒ 键不出（A6 形态B：setup 帧逐字节旧行为）；
+          // toolFilter: [] ⇒ 空数组键在，该 server 工具全丢（与 native 臂全剔同语义）。
+          const toolRef = agent.tools.find((tr) => tr.kind === "MCP" && tr.mcpConfigId === ref.mcpConfigId);
+          if (toolRef && toolRef.kind === "MCP" && toolRef.toolFilter !== undefined) {
+            // ⚠ WO-WORKFLOW-MCP：工作流面的 binding 恒为 WORKFLOW（不是 MCP），故不能按
+            // `binding.mcpConfigId` 取成员 —— 那样会得到空表 ⇒ 子进程把工具**全丢**（静默少东西）。
+            // 改为按**公开名面**取：它正是子进程 publicToolName 的比对口径，同源同判据。
+            spec.toolAllowlist =
+              serverName === WORKFLOW_MCP_SERVER
+                ? workflowCatalog.map((t) => t.name)
+                : expanded
+                    .filter((t) => t.binding.kind === "MCP" && t.binding.mcpConfigId === ref.mcpConfigId)
+                    .map((t) => t.name);
+          }
+          mcpServers.push(spec);
+        }
+      }
+      // WO-WORKFLOW-MCP · 旧记法兜底：`agent.tools` 里带 `{kind:"WORKFLOW"}` 而 `mcpServers`
+      // 没挂工作流 server 行的 agent（存量/租户自建，契约不许改所以这种记法会长期并存），
+      // 自动挂上 —— 否则 hostWorkflowTools 退场后它们的工作流工具会**静默消失**。
+      // 只在目录非空时挂：空目录挂上去 = 白起一个子进程 + 一个永远空表的 server。
+      if (workflowCatalog.length > 0 && !mcpServers.some((s) => s.serverName === WORKFLOW_MCP_SERVER)) {
+        mcpServers.push(workflowServerSpec());
+      }
+      const setup = buildSessionSetup({
+        agent,
+        agentSystemCore: AGENT_SYSTEM_CORE,
+        // WO-GENERAL-AGENT-DSH · 与宿主 scope 门**同一份**授予面（`scopeGrantedNames`）——
+        // 全量 agent 这里拿到的是完整授予面，故子进程 allow-list 与宿主同判据；
+        // 既有 agent 逐字节不变（仍是收窄后的 `tools`）。
+        grantedToolNames: scopeGrantedNames,
+        // WO-DSH-SOLVER-GATE：逐条把 solver 类 precondition 的 key 带给 harness（空清单 ⇒ 该键
+        // 不出，逐字节旧行为）。抽取用的是 native 臂 loadSkill 门同一个 `skillRefKeys`——
+        // 两臂的**声明面**由此同源；**状态面**（跑没跑过）两边都问宿主的
+        // `unmetSolverPreconditions`（同一个 repos.toolCalls 事实源），故两臂判据逐位一致。
+        skills: skills.map((s) => mapSkill(s, undefined, skillRefKeys([s], "solver", "precondition"))),
+        ...(mcpServers.length ? { mcpServers } : {}),
+        ...(opts.expectsSchema ? { expectsSchema: opts.expectsSchema } : {}),
+        // W8主：BUILTIN 授予面下发（harness 侧注册成反向工具，execute = fetch 宿主
+        // tool-execute 端点）。scope 范围 = BUILTIN 28 件。空集 ⇒ 键不出（setup 帧逐字节
+        // 旧行为，dualrun 语料面零扰动）。W8.5：WORKFLOW 授予面同形态下发（下方第二个 IIFE）。
+        ...(() => {
+          const hostTools = tools
+            .filter((t) => t.binding.kind === "BUILTIN")
+            .map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema }));
+          return hostTools.length ? { hostTools } : {};
+        })(),
+        // ⛔ WO-WORKFLOW-MCP：`hostWorkflowTools` 那条**专用逐-run 字段通道已退场**。
+        // 工作流工具改经 DSH 原生 MCP 面到达（`mcp__workflow__{key}`，见上方 workflowServerSpec
+        // 注入 + mcpServers）。字段本身也从 DshSetupSpec 摘除（setup-spec.ts 同单同改）——
+        // 留着「声明了但不发」的空壳字段会让后来人以为还有一条活路。
+        // 执行体**没有换**：MCP wire → 反向通道 `kind:"workflow"` → engine.runWorkflowAsTool，
+        // 与退场前是同一个函数（绑定表 = 下方 workflowBindings，端点唯一解析权威）。
+      });
+      // WO-DSH-N1-PROVIDER：model spec（dcp:{providerId}:{modelId}）不再原样当 wire model——
+      // 经绑定矩阵解析出连接事实（modelId 剥前缀/kind/baseUrl/apiKey），env 缝注入子进程；
+      // provider 路由取 cfg.DSH_HARNESS_PROVIDER（生产值单源 = PRODUCTION_DSH_HARNESS_PROVIDER，
+      // 无 mock 回退）。非 dcp / custom_http ⇒ resolveConnectionFacts 诚实抛错。
+      const facts = await this.deps.llmSettings.resolveConnectionFacts(model, agent.tenantId);
+      // W9-full：侧表 Map 先铸——reassemble opts（下方 :657 区）持同一引用，端点 run 期间
+      // 累积，runner 在 run 终后才 fold（runner.ts:112 reassembleDshRun 在收束循环后）⇒ 时序自洽。
+      const hostToolCalls: DshToolExecuteRun["hostToolCalls"] = new Map();
+      // W8.5：workflow 绑定表 + 执行上下文随 run 条目铸造。绑定表源 = 授予面 `tools` 的
+      // WORKFLOW 成员（与上方 workflowCatalog 同源同滤：两者都从 `expanded` 现算）——
+      // 空表照常铸（字段恒在），端点 workflow 分支对 miss 一律 ERROR fail-closed。
+      // ⚠ 绑定表是**端点上的唯一解析权威**：MCP wire 只带全名（mcp__workflow__{key}），
+      // 带不了 workflowId/version；越权点名在端点侧查表即 miss（模型面拿到的名字不构成授权）。
+      const workflowBindings: DshToolExecuteRun["workflowBindings"] = new Map(
+        tools
+          .filter((t) => t.binding.kind === "WORKFLOW")
+          .map((t) => {
+            const b = t.binding as { kind: "WORKFLOW"; workflowId: string; version: number | "latest" };
+            return [t.name, { workflowId: b.workflowId, version: b.version }] as const;
+          }),
+      );
+      this.dshToolExecuteRuns.set(runToken, {
+        executor,
+        budget: opts.nesting.budget,
+        defaultTimeoutMs: 20_000, // 我方工具契约缺省 20s（mapMcpConfig toolCallTimeoutMs 同值）
+        seenCallIds: new Set<string>(),
+        hostToolCalls,
+        workflowBindings,
+        workflowCtx: {
+          taskId: opts.taskId,
+          ctx: opts.ctx,
+          nesting: opts.nesting,
+          emit: opts.emit,
+          onResolvedRef: opts.onResolvedRef,
+        },
+        // WO-DSH-SOLVER-GATE：恒铸（不是从 workflowCtx 派生）—— 见 DshToolExecuteRun.skillPrecondCtx 注。
+        skillPrecondCtx: { taskId: opts.taskId },
+      });
+      let dsh: Awaited<ReturnType<typeof runDshAgent>>;
+      try {
+        dsh = await runDshAgent(
+        {
+          prompt: userContent,
+          setup,
+          provider: cfg.DSH_HARNESS_PROVIDER,
+          model: facts.modelId,
+          reassemble: {
+            governance: { writeMode, provenancePolicy: effectiveProvenancePolicy },
+            ...(opts.expectsSchema ? { expectsSchema: opts.expectsSchema } : {}),
+            // WO-DSH-REFLECT-PARITY：复盘位。**这里传的 `userContent` 是拼接串**
+            // （`opts.prompt` + 导航切片 + 本体语义上下文，见本文件 `userContent` 的定义处）——
+            // 与原生臂 `runAgentLoop` 收到的 `opts.userContent` **是同一个局部量**，故此传法与原生路严格同判据。
+            // ⚠️ 已知后果（**不是本单引入的，原生臂同病**）：④ 的 `SOLVER_REQUIRED_RE` 撞的是
+            // 排产/优化/承诺/产能缺口/可行性 这一族词，而导航切片渲染体里**本来就带**
+            // solver capability 文案、solver roster 的 `brief`、规则 roster 的 `brief` 与 `slice.rules` 原文
+            // ⇒ 即便用户问的是一句无关的话，④ 也可能因**注入语料**而命中（过度触发，方向是"多报"不是"漏报"）。
+            // 接缝测试 `dsh-reflect-parity.seam.test.ts` §3 把这个面钉住防静默改变。
+            // 收紧它（④ 改吃"用户原话"而非拼接串）= 动原生路语义，**属产品裁决**，不在本单内。
+            ...(opts.reflect ? { reflect: { userContent: opts.reflectUserContent ?? userContent } } : {}),
+            // W9-full：宿主侧表（活引用——端点 run 期间累积，run 终 fold 时读全）。
+            hostToolCalls,
+          },
+          onSse: (e) => { void opts.emit(e.event, e.payload); },
+        },
+        {
+          // F-1（WO-DSH-PROD-READY）：cordis 档可配（缺省 "cordis.yml" 生产档 = 治理 http 模式；
+          // 测试经 cfg 钉 "cordis.poc.yml" mock 档）。键属 DshRunnerOptions（第二参），放错到
+          // 第一参会被静默忽略（血账：F-1 施工期实证，tsc 才咬得到）。
+          cordisFile: cfg.DSH_HARNESS_CORDIS_FILE,
+          env: {
+            PLATFORM_LLM_API: facts.kind === "anthropic" ? "anthropic-messages" : "openai-completions",
+            ...(facts.baseUrl ? { PLATFORM_LLM_BASE_URL: facts.baseUrl } : {}),
+            PLATFORM_LLM_MODEL: facts.modelId,
+            ...(facts.apiKey ? { PLATFORM_LLM_API_KEY: facts.apiKey } : {}),
+            ...(facts.contextWindow ? { PLATFORM_LLM_CONTEXT_WINDOW: String(facts.contextWindow) } : {}),
+            // F-1：生产档 platform-governance（http 模式）裁决端点与凭据经 env 缝注入，不落盘。
+            // fail-closed 链（不许削弱）：① http 模式无 url ⇒ 插件 initialize 抛错
+            // （platform-governance.mjs「requires config.url or PLATFORM_GOV_URL」）；
+            // ② 端点 requireServiceToken 未配置/不符 ⇒ 401 ⇒ 插件转 deny
+            // （server.ts requireServiceToken + 插件 HTTP !ok 分支）；③ 不可达/超时/畸形
+            // 应答 ⇒ 插件一律 deny。URL 缺省推导本进程裁决端点（zod default 引不了 PORT，
+            // 故在此推导），DSH_GOV_URL 显式覆盖。
+            PLATFORM_GOV_URL: cfg.DSH_GOV_URL ?? `http://127.0.0.1:${cfg.PORT}/b/v1/governance/adjudicate`,
+            ...(cfg.SERVICE_TOKEN ? { PLATFORM_GOV_TOKEN: cfg.SERVICE_TOKEN } : {}),
+            // W8主：tool-execute 反向通道三键（与上方治理两键同构）。URL 缺省推导本进程端点
+            // （DSH_TOOL_EXEC_URL 显式覆盖）；凭据 = SERVICE_TOKEN（未配置不发头 ⇒ 端点恒 401
+            // fail-closed）；DSH_RUN_TOKEN = 上方铸的 per-run 一次性 token。
+            PLATFORM_TOOL_EXEC_URL: cfg.DSH_TOOL_EXEC_URL ?? `http://127.0.0.1:${cfg.PORT}/b/v1/dsh/tool-execute`,
+            ...(cfg.SERVICE_TOKEN ? { PLATFORM_TOOL_EXEC_TOKEN: cfg.SERVICE_TOKEN } : {}),
+            // WO-DSH-SOLVER-GATE：solver 前置门反向通道。**另起一键、不复用 TOOL_EXEC_URL 的路径推导**
+            // ——端点不同（/skill-precondition），复用会让 harness 把门查询 POST 到 tool-execute 上，
+            // 那会以「模型调了一个未授予的工具」形态被 executor 的 scope 门拒（门恒关，且原因看不清）。
+            // 凭据/runToken 与 tool-execute 同源（同一枚 SERVICE_TOKEN、同一个 per-run token）。
+            // 与 GOV/TOOL_EXEC 两键同款：URL 缺省由本进程推导（zod default 引不了 PORT，故在此推导）。
+            PLATFORM_SKILL_PRECOND_URL: `http://127.0.0.1:${cfg.PORT}/b/v1/dsh/skill-precondition`,
+            DSH_RUN_TOKEN: runToken,
+          },
+        },
+        );
+      } finally {
+        this.dshToolExecuteRuns.delete(runToken);
+      }
+      if (!dsh.result.ok) {
+        // WO-DSH-REDLINE-PARITY：数字红线自 2026-10-03 起**不再走这条拒绝路**（原 `redlineBlocked`
+        // 分支已删）—— 它此前把 R-UI-4 合规的原文直接上屏而不套「dsh 重组装拒绝：」前缀，是唯一的
+        // 例外；对齐原生路后，dsh 出口只剩下面这些**真正的治理拒绝**（schema / provenance / writeMode），
+        // 一律维持既有前缀与文案，逐字节旧行为（dsh-e2e-honesty L5.P2a/P2b 两条断言咬的就是它们）。
+        return {
+          outcome: "FAILED",
+          answer: {
+            trustLevel: "AGENT_EXPLORATORY",
+            blocks: [
+              { type: "text", markdown: `dsh 重组装拒绝：${dsh.result.errors.join("; ")}` },
+            ],
+            provenance: [],
+            unverifiedNumerics: false,
+          },
+          run: emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget, attribution, opts.placement, "EXTERNAL"),
+          sketch: [],
+        };
+      }
+      // N2·D-2：dsh.result.stats 并入 answer 交叉类型（additive 运行时键；orchestrator:2187
+      // answer.final 整对象直发即自动带上，reducer :129 整对象落 state 零渲染副作用）。
+      // 失败路径（上方 :517-529）不造 stats；零 usage 帧时 reassemble 侧键整体不出。
+      // 类型从上方已动态 import 的 runDshAgent 派生（dormancy D3：全仓只许一处 dsh-runtime 入口，
+      // 类型位 import("./dsh-runtime/reassemble.js") 会被判第二入口）。
+      type DshOkResult = Extract<Awaited<ReturnType<typeof runDshAgent>>["result"], { ok: true }>;
+      if (dsh.result.degraded?.reason === "STALL_LOOP") this.deps.metrics.agentLoopRepeat.inc(); // N3：对位 loop.ts:641（两 fork 互斥无双计）
+      // W1：成功出口过共享 postcheck 闭包——与原生路径同一份后验，治理语义不按内核分裂。
+      // stats 回声与治理替换**正交**：后验 BLOCK 换掉的是答案内容，token/轮次等运行观测回声
+      // 不随答案一起消失（对拍驱动 A4 锚「dsh 臂必带 stats」不按后验结果分支）——
+      // 故 stats 在闭包**之后**重挂，而不是编进待后验的 answer。
+      // W2 批3（team-lead 2026-08-21 裁决·dsh 自体修复①）：dsh 自体对齐——reassemble outcome
+      // BUDGET_EXHAUSTED ⇒ run.budgetExhausted=true（对位 loop.ts:659 finishRun 同口径）。
+      // emptyAgentRunRecord 恒 false 会把 dsh 自己的 outcome 语义在出口丢掉：answer 带 degraded
+      // 而审计记录 budgetExhausted=false = 自体矛盾（管理台可见）。
+      const dshRun = emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget, attribution, opts.placement, "EXTERNAL");
+      if (dsh.result.outcome === "BUDGET_EXHAUSTED") dshRun.budgetExhausted = true;
+      // WO-DSH-PROD-READY W9-lite：审计记录骨架回填（PRD :366 宣言违例 + 计费逃单修复，
+      // ROLLOUT §1 落地即翻转——`orchestrator.persistRootRun` 的无条件记账自此对 EXTERNAL 真扣减）。
+      // ⚠️ 引用用**符号名**不用行号：本仓已登记「行号会漂，写死行号的引用天生带保质期」。
+      // 形态照 W1 stats 正交先例选**后置补丁**：run 记录穿 applyPostChecks 不被替换（后验只换
+      // answer），iterations/tokens 是运行观测不是答案内容，与治理替换正交。
+      //   · iterations = 帧流骨架透传（step 分组每 LLM 轮一迭代含空轮——team-lead 2026-08-21
+      //     裁决②，native 迭代粒度对位；两态 + 推导 durationMs；四态+tc_ 合流待 W9-full，REC §3 #10）；
+      //   · tokens 挂 run.total*（B11 载体 A 回填）——取 fold 的 tokenUsage 同源两桶；零 usage 帧
+      //     ⇒ stats 不出 ⇒ tokens 维持 0/0（诚实缺省）。
+      //
+      // ⚠️ 输入桶口径已于 2026-10-03 由**未命中缓存**改为**含缓存命中**（仓主裁决 · 见下）。
+      //
+      // ══ 为什么必须是含 cache 口径（WO-LEDGER-SINGLE-TAP 同批 · 2026-10-03 实测）══════════
+      // `run.totalInputTokens` 这个名字在两臂上曾**同名不同量**：
+      //   · native 取 `usage.prompt_tokens`（`llm-adapters/openai.ts`）——**含** cache 命中；
+      //   · dsh    取 `uncachedInputTokens`——**不含**。
+      // 而 `run.total*` 是租户 LLM 配额账本的**唯一写入源**（`orchestrator.persistRootRun` →
+      // `LlmBudgetPort.record`）。同一句问话双跑实测（2026-10-03 live）：
+      //   · 现口径账差 **79.9%**（native 116,591 vs dsh 23,382）—— 出 ROLLOUT §1-b 的 50% 区间；
+      //   · **同口径**（dsh uncached 18,550 + cacheRead 115,584）账差 **19.2%** —— 区间内。
+      // ⇒ 79.9% 是**单位差**不是用量差：同一份工作切内核，账本对 dsh 少记 5.86× 的输入 token，
+      //   配额治理在 EXTERNAL 上形同放宽。形态：
+      //   > 「我用『两个字段都叫 totalInputTokens』当作『它们是同一个量』的证据，而前者并不度量后者。」
+      //
+      // 裁决（仓主 2026-10-03）：**统一到含 cache 口径**——配额是成本治理，cache 命中在供应商侧
+      // 照样计费（打折计费，不是免费），漏计等于给出配额逃逸面。
+      //
+      // ⚠️ 与载体 B 的关系随之改写（ROLLOUT §6.5）：`run.totalInputTokens` = `answer.stats.tokenUsage`
+      //    的 **uncachedInputTokens + cacheReadTokens 两桶之和**，仍**同源**、仍**各读各的不许相加**
+      //    （相加 = 把载体 A 与载体 B 加一遍 = 双计；该禁令原文未变）。
+      dshRun.iterations = dsh.result.iterations;
+      if (dsh.result.stats) {
+        dshRun.totalInputTokens = dsh.result.stats.tokenUsage.uncachedInputTokens + dsh.result.stats.tokenUsage.cacheReadTokens;
+        dshRun.totalOutputTokens = dsh.result.stats.tokenUsage.outputTokens;
+      }
+      // WO-DSH-REDLINE-PARITY（仓主 2026-10-03 裁决）· dsh 路数字红线改为**只报不断**，对齐原生路：
+      // 与下方原生路采样点（`AGENT_NATIVE`/`would_block`）**同一阶段、同一判据、同一 action** ——
+      // 两处都在 `applyPostChecks` **之前**，量的都是 agent 交付出来的那份答案；判据同取
+      // `answer.unverifiedNumerics`（=`scanBlocks(blocks)` 单源）。⇒ 两路的数自此**直接可比**，
+      // 这正是 #17 DSH 双跑成立的前提（此前一个记 blocked、一个记 would_block，比值不度量任何东西）。
+      if (dsh.result.answer.unverifiedNumerics) {
+        this.deps.metrics.numericRedline.inc({ path: "AGENT_DSH", action: "would_block" });
+      }
+      const checked = await applyPostChecks({
+        outcome: dsh.result.outcome,
+        answer: dsh.result.answer,
+        run: dshRun,
+        sketch: dsh.result.sketch,
+        ...(dsh.result.structured ? { structured: dsh.result.structured } : {}),
+        ...(dsh.result.degraded ? { degraded: dsh.result.degraded } : {}),
+      });
+      return {
+        ...checked,
+        answer: { ...checked.answer, ...(dsh.result.stats ? { stats: dsh.result.stats } : {}) } as AgentLoopResult["answer"] & { stats?: DshOkResult["stats"] },
+      };
+    }
 
     const result = await runAgentLoop({
       taskId: opts.taskId,
       model,
       tenantId: agent.tenantId,
+      attribution, // WO-AGENTRUN-ATTRIBUTION：注册 agent 路 ⇒ REGISTERED（agentId/Key/Version 三件套齐）
+      // WO-AGENTRUN-FANOUT-PERSIST：纯透传（不传 = 不写位置字段·既有调用方字节兼容）。
+      ...(opts.placement ? { placement: opts.placement } : {}),
       system,
-      userContent: opts.prompt,
+      userContent,
+      ...(sliceSolverKeys.length > 0 ? { sliceSolverKeys } : {}),
       tools,
       llm: this.deps.llm,
       ...(summarizer ? { summarizer } : {}),
+      // WO-ROUTE-1（E9）· 纯透传：不传 = 逐字节沿用既有（loop 侧 `opts.emitNarration` 缺省 false → 不发）。
+      ...(opts.emitNarration ? { emitNarration: true } : {}),
+      // WO-DSH-REFLECT-PARITY · 纯透传：不传 = 逐字节沿用既有（loop 侧 `opts.reflect` 缺省 false → 收尾不跑复盘步）。
+      // 与上面 dsh 臂的 `reassemble.reflect` **同源门控、同判据**（同一份 `agent/reflect.ts` 的 `reflectAnswer`）。
+      ...(opts.reflect ? { reflect: true } : {}),
+      // ★ WO-REFLECT-INPUT-FIX：④ 判「用户在问排产/优化题吗」必须读**用户原话**，
+      // 不能读本层的 `userContent`（拼接材料里混着自己注入的 solver/规则文案 ⇒ 误报）。
+      ...(opts.reflectUserContent ? { reflectUserContent: opts.reflectUserContent } : {}),
       executor,
       budget: opts.nesting.budget,
+      llmCallTimeoutMs: cfg.QOS_AGENT_LLM_TIMEOUT_MS,
+      loopRepeatCap: cfg.QOS_AGENT_LOOP_REPEAT_CAP,
       repos: this.deps.repos,
       metrics: this.deps.metrics,
       emit: opts.emit,
       isCancelled: opts.isCancelled,
       expectsSchema: opts.expectsSchema,
+      provenancePolicy: effectiveProvenancePolicy,
+      writeMode,
       loadSkillEnabled: true,
-      scopeToolNames: agent.scopeDeclaration.toolNames,
+      scopeToolNames: effectiveScopeToolNames,
       loadSkill: async (skillId: string) => {
         const pinned = agent.skills.find((x) => x.skillId === skillId)?.version ?? "latest";
         const skill = await this.resolveSkill(agent.tenantId, skillId, pinned);
         if (!skill) return undefined;
         opts.onResolvedRef?.({ kind: "skill", key: skill.key, version: skill.version });
+        // WO-S05（#154）· solver 类 precondition 在**使用点**求值，而不是 runRegisteredAgent 开跑时。
+        // 为何不放在上面那条预检里：开跑那一刻求解器**必然还没跑**（agent 要在 loop 里先调 invoke_solver
+        // 才拿得到推演结论），开跑即拦 = 该技能永远用不了。本技能 body 写的正是「无结论则先跑推演」——
+        // 前置条件是在 loop 内由 unmet 翻成 met 的，所以门必须落在「模型来取正文」这一刻。
+        const missingSolvers = await unmetSolverPreconditions(
+          this.deps.repos,
+          opts.taskId,
+          skillRefKeys([skill], "solver", "precondition"),
+        );
+        if (missingSolvers.length > 0) {
+          // 下发的是门禁说明而非技能正文；治理位仍按**该技能真实声明**回报（只收紧不放宽的方向），
+          // 不因「这次没给正文」而放松闸门。
+          return { body: unmetPreconditionBody(skill.key, missingSolvers, SKILL_LOADER_TOOL.native), resources: [], ...skillGovernance(skill) };
+        }
         return {
           // 增量 §3：body 中的 {{resource:name}} 标注引用原样保留——资源清单（含 mime/description）
           // 告诉模型有哪些附件、何时用 read_skill_resource 读（渐进披露第三级）。
@@ -229,6 +1568,10 @@ export class ExecutionEngine {
             ...(r.mime ? { mime: r.mime } : {}),
             ...(r.description ? { description: r.description } : {}),
           })),
+          // WO-R4-FREEQA-GATE · 逐技能治理位回报（R4）。本路径本已有开跑静态聚合位，这里回报是**单调冗余**
+          // （只收紧不放宽 ⇒ 对本路径行为零改变），目的是让两条 loadSkill 路径**回报同一份口径**——
+          // 不允许「一条路报、另一条路不报」再次分叉。判定单源仍是契约 `isWriteModeSkill`。
+          ...skillGovernance(skill),
         };
       },
       runWorkflowTool: async (workflowId, version, input) =>
@@ -244,43 +1587,16 @@ export class ExecutionEngine {
         }),
     });
 
-    // ruleBindings POST_CHECK: BLOCK violation → replace answer with violation explanation
-    const mode = agent.ruleBindings.mode;
-    if ((mode === "POST_CHECK" || mode === "BOTH") && result.outcome === "ANSWERED") {
-      const answerText = result.answer.blocks
-        .map((b) => (b.type === "text" ? b.markdown : ""))
-        .filter(Boolean)
-        .join("\n");
-      try {
-        const verdicts = await this.deps.dataCore.rules.evaluate(opts.ctx, agent.ruleBindings.ruleKeys, {
-          answerText,
-        });
-        for (const v of verdicts) {
-          if (v.ruleVersion !== undefined) {
-            opts.onResolvedRef?.({ kind: "rule", key: v.ruleId, version: v.ruleVersion });
-          }
-        }
-        const blocking = verdicts.filter((v) => !v.passed && v.severity === "BLOCK");
-        if (blocking.length > 0) {
-          const answer: Answer = {
-            trustLevel: "AGENT_EXPLORATORY",
-            blocks: blocking.map((v) => ({
-              type: "rule_violation",
-              ruleId: v.ruleId,
-              severity: v.severity,
-              explanation: v.explanation,
-              provId: "prov_post_check",
-            })),
-            provenance: [],
-            unverifiedNumerics: false,
-          };
-          return { ...result, answer };
-        }
-      } catch {
-        /* post-check best effort: rules engine unavailable does not break the answer */
-      }
+    // WO-NUMERIC-REDLINE-BLOCK · 原生路**只报不断**：照常放行，只记「若阻断会拦下多少」。
+    // 无条件阻断会改既有行为、可能打断现有流程 ⇒ 先拿数，收不收紧是产品裁决（不在本单）。
+    // 采样点刻意与 dsh 阻断点**同一阶段**（都在 applyPostChecks 之前，量的都是 agent 交付出来的
+    // 那份答案）—— 一个量后验前、一个量后验后的话，两路的数就不可比了。
+    // 判据取 `result.answer.unverifiedNumerics`，它就是 loop 侧 `scanBlocks(blocks)` 的值（同一单源判据）。
+    if (result.answer.unverifiedNumerics) {
+      this.deps.metrics.numericRedline.inc({ path: "AGENT_NATIVE", action: "would_block" });
     }
-    return result;
+    // W1：原生出口与 DSH 出口共用上方 applyPostChecks 闭包（两段后验单源，禁漂移）。
+    return applyPostChecks(result);
   }
 
   /** Workflow-as-tool execution for agents (nested; shares the top-level budget). */
@@ -299,6 +1615,11 @@ export class ExecutionEngine {
     opts.onResolvedRef?.({ kind: "workflow", key: wf.key, version: wf.version });
     this.deps.metrics.nestedInvocations.inc({ kind: "workflow" });
     const child = enterNesting(opts.nesting, "workflow", wf.id);
+    // WO-SCENARIO-INPUT-PHASE0：嵌套 workflow 必须先消耗共享预算，防止无限烧。
+    const budgetOk = child.budget.tryConsumeWorkflow();
+    if (!budgetOk.ok) {
+      throw new Error(`${ErrorCodes.BUDGET_EXCEEDED}: ${budgetOk.reason}`);
+    }
     const result = await this.runWorkflowSteps({
       taskId: opts.taskId,
       steps: wf.steps,
@@ -310,6 +1631,9 @@ export class ExecutionEngine {
       trustLevel: "AGENT_EXPLORATORY",
       onResolvedRef: opts.onResolvedRef,
     });
+    if (result.status === "CANCELLED") {
+      throw new Error(`CANCELLED: ${result.reason}`);
+    }
     if (result.status === "FAILED") {
       throw new Error(`${result.error.code}: ${result.error.message}`);
     }
@@ -342,6 +1666,24 @@ export class ExecutionEngine {
     trustLevel?: "VERIFIED_WORKFLOW" | "AGENT_EXPLORATORY";
     budgetForTools?: BudgetTracker;
     onResolvedRef?: (ref: ResolvedRef) => void;
+    /** WO-FIVE-ROLE P1：本工作流内 invoke_agent 步是否强制被调 agent 的 objectTypes scope（Coordinator 扇出置 true）。 */
+    enforceAgentObjectScope?: boolean;
+    /**
+     * WO-ROUTE-1（闭 E9）· **纯透传**：本工作流内 invoke_agent 步启动的子 agent 是否发思考旁白
+     * （Coordinator 多角色扇出据 `qos.reasoning-trace` 置 true）。缺省不传 = 既有行为逐字节不变。
+     */
+    emitNarration?: boolean;
+    /**
+     * WO-DSH-REFLECT-PARITY · **纯透传**：本工作流内 `invoke_agent` 步启动的子 agent 收尾前是否做确定性复盘
+     * （`reflectEnabled(enabledFeatures)` 由 orchestrator 求值后传入·与 `emitNarration` 同模式）。
+     * 缺省不传 = 既有行为逐字节不变。
+     *
+     * ⚠ 今天只有 **Coordinator 扇出**这一条调用方置位；`runPathA`（确定性工作流路径）**未置** ——
+     * 差异被点名登记，不是漏写：路径 A 的 `invoke_agent` 步不在本单的目标半径内（见本单证据档「边界」段）。
+     */
+    reflect?: boolean;
+    /** ★ WO-REFLECT-INPUT-FIX · 同上：本工作流内 `invoke_agent` 步复盘判据要读的**用户原话**。 */
+    reflectUserContent?: string;
   }): Promise<WorkflowResult> {
     const executor = this.makeExecutor(opts.taskId, opts.ctx, opts.budgetForTools);
     return runWorkflow(
@@ -352,7 +1694,9 @@ export class ExecutionEngine {
         composeModel: await this.deps.llmSettings.roleModel(opts.ctx.tenantId, "compose"),
         emit: opts.emit,
         onResolvedRef: opts.onResolvedRef,
+        crossValidate: (req) => this.deps.dataCore.ontology.crossValidate(opts.ctx, req),
         runAgentStep: async (params) => {
+          const agentStepT0 = Date.now(); // WO77：降级帧 durationMs 计时起点（仅审计时长·不入答案/溯源）
           const r = await this.runRegisteredAgent({
             taskId: opts.taskId,
             agentId: params.agentId,
@@ -363,7 +1707,49 @@ export class ExecutionEngine {
             emit: opts.emit,
             expectsSchema: params.expectsSchema,
             onResolvedRef: opts.onResolvedRef,
+            // WO-FIVE-ROLE P1：Coordinator 扇出（enforceAgentObjectScope）或步显式声明 enforceObjectScope → 强制被调 agent 对象 scope。
+            ...(opts.enforceAgentObjectScope || params.enforceObjectScope ? { enforceObjectScope: true } : {}),
+            // WO-ROUTE-1（E9）· 纯透传：多角色扇出的每个子 agent 都发旁白（不传 = 既有行为字节不变）。
+            ...(opts.emitNarration ? { emitNarration: true } : {}),
+            // WO-DSH-REFLECT-PARITY · 纯透传：多角色扇出的每个子 agent 收尾都过一遍复盘（不传 = 既有行为字节不变）。
+            ...(opts.reflect ? { reflect: true } : {}),
+            // ★ WO-REFLECT-INPUT-FIX：同上——判据读用户原话，不读拼接材料。
+            ...(opts.reflectUserContent ? { reflectUserContent: opts.reflectUserContent } : {}),
+            // WO-AGENTRUN-FANOUT-PERSIST：这一步跑出来的是**子** agent 的运行（父任务的 taskId，但不是父任务那条）。
+            placement: { origin: "FANOUT", stepId: params.stepId },
           });
+          // ★★ WO-AGENTRUN-FANOUT-PERSIST · 缺口就在这一行原本不存在 ★★
+          // 此前这里只 `return { structured, answer }` —— `r.run`（这个子 agent 整整一轮循环的迭代、
+          // 工具调用、token、预算、上下文清理留痕）被**整个丢掉**，一个字节都没落库。
+          // 后果不是抽象的：多角色会诊真跑三个角色 agent，而 Agent 管理台「本 Agent 的运行」
+          // 里那三个角色一条都不在 —— 用户看到的是"这个 Agent 从没跑过"。
+          //
+          // 为什么落在 engine 而不是 orchestrator：`invoke_agent` 步可以出现在**任何**工作流里
+          // （多角色会诊只是其中一种），挂在 orchestrator 的 Coordinator 分支上就只补了这一条路，
+          // path-A 工作流里的 agent 步照样漏。这里是这类子运行的唯一必经之地。
+          //
+          // 不吞异常：与编排层三处顶层 insert（`orchestrator.ts` 的 runPathB / runRolePathB / runSceneAgent）同姿势。写失败就让它响，
+          // 静默 catch 会把「落库坏了」伪装成「这个 Agent 没跑过」——正是本单要修的那种病。
+          await this.deps.repos.agentRuns.insert(r.run);
+          // ★★ WO77 · 静默丢字段族第三例（G-9 降级冒泡）★★
+          // 此前这里只 `return { structured, answer }` —— `r.degraded`（子 run 有界终止降级置位·loop.ts degrade
+          // 唯一诚实出口）被**整个丢弃**：计量说降级了（agentLoopRepeat 已 +1）、汇总答案里带着子 agent 的诚实
+          // 降级块，唯独 SSE 帧流缺 step.completed{type:"agent_degraded"} 伪帧（前端/审计无感知）。
+          // 同族先例：orchestrator.ts runPathB 的 G-9 发射块（result.degraded → agent_degraded 伪 step）。
+          // 归属子 agentId + 扇出 stepId 原值（前端分栏/审计认 agent·非 newId 匿名）；outcome 取 reason 原值逐字。
+          // 发射点=子 run 完成即帧 ⇒ 必早于 executor 对父步的 step.completed{type:"invoke_agent"}
+          //（executor.ts 在 runAgentStep 返回后才 emitDone）与 answer.final（G-9 硬次序）。
+          // 纯增量：非降级子 run 零帧·流逐字节不变；不 inc 计量（loop.ts degrade 已计·不双计）；
+          // 不改 structured/answer 一个字节；不抛异常（emit 失败随调用链上抛·与 insert 同姿势不静默 catch）。
+          if (r.degraded) {
+            await opts.emit("step.completed", {
+              stepId: params.stepId,
+              agentId: params.agentId,
+              type: "agent_degraded",
+              outcome: r.degraded.reason,
+              durationMs: Date.now() - agentStepT0,
+            });
+          }
           return { structured: r.structured, answer: r.answer };
         },
       },

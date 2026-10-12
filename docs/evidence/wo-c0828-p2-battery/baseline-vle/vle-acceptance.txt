@@ -1,0 +1,51 @@
+
+ RUN  v3.2.6 /private/tmp/wt-base-dc/apps/datacore
+
+ ❯ test/vle-acceptance.test.ts (4 tests | 2 failed) 335979ms
+   × VLE 验收补齐 · VL2/VL4/VL5/VL7 > VL2 植入计算 bug（broken_aggregate）→ 独立参照比对处变红，报告 pass=false 133887ms
+     → Test timed out in 120000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   ✓ VLE 验收补齐 · VL2/VL4/VL5/VL7 > VL4 闭环收敛：注入偏差→提案(simulatedMapeAfter<mapeBefore)→批准应用→后续求解用新参数  54818ms
+   × VLE 验收补齐 · VL2/VL4/VL5/VL7 > VL5 混沌恢复：扰动运行(注入故障)不污染后续——一次性验证租户隔离 → 重跑回到基线 147266ms
+     → Test timed out in 120000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   ✓ VLE 验收补齐 · VL2/VL4/VL5/VL7 > VL7 静态独立性：VLE 参照预言机不 import 被测求解器（不可用被测算被测） 2ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/vle-acceptance.test.ts > VLE 验收补齐 · VL2/VL4/VL5/VL7 > VL2 植入计算 bug（broken_aggregate）→ 独立参照比对处变红，报告 pass=false
+Error: Test timed out in 120000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ test/vle-acceptance.test.ts:20:3
+     18| // 见 vle.test.ts 说明：VLE run 多次合成生成耗时，contended CI 下提到 120s（全局 30s 不动）。
+     19| describe("VLE 验收补齐 · VL2/VL4/VL5/VL7", { timeout: 120000 }, () => {
+     20|   it("VL2 植入计算 bug（broken_aggregate）→ 独立参照比对处变红，报告 pass=false", async …
+       |   ^
+     21|     const t = await makeApp();
+     22|     const clean = (await t.services.vle.run(t.adminCtx, "SMOKE", 42)).…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  test/vle-acceptance.test.ts > VLE 验收补齐 · VL2/VL4/VL5/VL7 > VL5 混沌恢复：扰动运行(注入故障)不污染后续——一次性验证租户隔离 → 重跑回到基线
+Error: Test timed out in 120000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ test/vle-acceptance.test.ts:54:3
+     52|   });
+     53| 
+     54|   it("VL5 混沌恢复：扰动运行(注入故障)不污染后续——一次性验证租户隔离 → 重跑回到基线", async () => {
+       |   ^
+     55|     const t = await makeApp();
+     56|     const baseline = (await t.services.vle.run(t.adminCtx, "SMOKE", 42…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 2 passed (4)
+   Start at  18:59:12
+   Duration  380.38s (transform 23.45s, setup 0ms, collect 39.66s, tests 335.98s, environment 0ms, prepare 1.07s)
+
+undefined
+/private/tmp/wt-base-dc/apps/datacore:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run test/vle-acceptance.test.ts --maxWorkers=1
+CAPTURED_RC=1

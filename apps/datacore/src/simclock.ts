@@ -6,7 +6,7 @@ import type { OntologyService } from "./ontology.js";
 import type { RuleScanService } from "./scheduler.js";
 import type { SolverService } from "./solvers/service.js";
 import { genPoint, maintWindowsFor, windowFor, type ScenarioModifiers, type TsGenSpec } from "./synthetic/tsgen.js";
-import { BATTERY_TEMPLATE } from "./synthetic/battery.js";
+import { BATTERY_TEMPLATE, outputLineScaleForBase } from "./synthetic/battery.js";
 import { newId } from "./ids.js";
 import { invalidState, notFound } from "./errors.js";
 import { round } from "./prng.js";
@@ -78,6 +78,11 @@ export class SimClockService {
   }
 
   async tick(ctx: AuthCtx, advance: "1d" | "7d"): Promise<{ tickJobId: string; report: ClockTickReport }> {
+    // WO-COLUMN-SECURITY-TAIL · 残口②：tick 内 `writeForecastDeviation` 调 `loadContext(ctx.tenantId)`
+    // （不带 AuthCtx → 列投影恒等），且把算出的偏差**写回共享世界态**。这里刻意**不**补投影：
+    // 补了就等于让"谁点的 tick"决定全租户看到的模拟结果 —— 一个用户的权限污染所有人的真值（R6 确定性也就没了）。
+    // 正确处置是拒：受列级约束的调用者不得推进模拟时钟。admin / 无列级策略 → 空集 → 逐字节现行为。
+    await this.solvers.assertContextColumnUnrestricted(ctx, "模拟时钟推进（tick）");
     const clock = await this.repos.simulationClocks.get(ctx.tenantId, ctx.tenantId);
     if (!clock) throw notFound("simulation clock (run a synthetic job first)");
     if (clock.status === "TICKING") throw invalidState("a tick is already running");
@@ -188,6 +193,9 @@ export class SimClockService {
     }));
     const windows = maintWindowsFor(maintPlans, clock.t0);
     const mods = this.scenarioModifiers(clock);
+    // WO-SCALE-COHERENCE：output:line 实现产出按基地夹定产能派生 per-base 尺度（与 generateHistory 同锚·tick 续接不断尺度）。
+    const baseCap = new Map<string, number>();
+    for (const b of await this.repos.objects.listByType(ctx.tenantId, "Base")) baseCap.set(str(b.props.baseId), num(b.props.formationCapDaily));
 
     // ① new ts points for the advanced day
     let newPoints = 0;
@@ -195,6 +203,7 @@ export class SimClockService {
       const entities = await this.repos.objects.listByType(ctx.tenantId, gen.entityType);
       const series = await this.ts.seriesByKey(ctx.tenantId, gen.seriesKey);
       if (!series) continue;
+      const scaleFor = (baseId: string) => (gen.seriesKey === "output:line" ? outputLineScaleForBase(baseCap.get(baseId) ?? 0) : undefined);
       const points = entities
         .sort((a, b) => (a.id < b.id ? -1 : 1))
         .map((e) => {
@@ -203,7 +212,7 @@ export class SimClockService {
           return {
             entityId,
             ts: `${dateIso}T00:00:00.000Z`,
-            values: genPoint(gen, { entityId, baseId }, dateIso, dayIndex, clock.seed, windowFor(windows, baseId, dateIso), mods),
+            values: genPoint(gen, { entityId, baseId, scale: scaleFor(baseId) }, dateIso, dayIndex, clock.seed, windowFor(windows, baseId, dateIso), mods),
             tick: tickIndex,
           };
         });
@@ -283,12 +292,29 @@ export class SimClockService {
       to: new Date(Date.parse(`${dateIso}T00:00:00Z`) + DAY_MS).toISOString(),
     });
     const c = await this.solvers.loadContext(ctx.tenantId);
+    // SA-3 Workshop 层：一个基地的 10 条"产线"实为 10 道串行工序车间（制浆→…→PACK），
+    // 基地当日成品产出 = 单道代表工序吞吐（各车间当日产出的均值），而非求和（会把同一批
+    // 在制品按车间数重复计入）。此口径与预测（受共享瓶颈约束）同尺度、与 Workshop 前单产线一致。
+    const allLines = await this.repos.objects.listByType(ctx.tenantId, "Line");
+    const linesByBase = new Map<string, string[]>();
+    for (const l of allLines) {
+      const b = String(l.props.baseId ?? "");
+      const arr = linesByBase.get(b) ?? [];
+      arr.push(String(l.props.lineId ?? l.id));
+      linesByBase.set(b, arr);
+    }
     let written = 0;
     for (const snap of snapshots) {
       const cert = c.certByModel.get(snap.modelId);
       if (!cert) continue;
-      const lineIds = new Set([...cert.keys()].map((baseId) => `LINE-${baseId}`));
-      const actualCells = points.filter((p) => lineIds.has(p.entityId)).reduce((a, p) => a + (p.values.output ?? 0), 0);
+      let actualCells = 0;
+      for (const baseId of cert.keys()) {
+        const baseLineIds = new Set(linesByBase.get(String(baseId)) ?? []);
+        if (baseLineIds.size === 0) continue;
+        const basePts = points.filter((p) => baseLineIds.has(p.entityId));
+        if (basePts.length === 0) continue;
+        actualCells += basePts.reduce((a, p) => a + (p.values.output ?? 0), 0) / basePts.length;
+      }
       const actualDaily = round(actualCells / packCellCount / 10000, 6);
       if (actualDaily <= 0) continue;
       const deviation = round(Math.abs(snap.predictedDaily - actualDaily) / actualDaily, 6);

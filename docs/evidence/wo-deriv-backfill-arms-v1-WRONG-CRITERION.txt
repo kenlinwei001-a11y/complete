@@ -1,0 +1,33 @@
+扰动落点：A = obj_model_2170-NCM.demandLoad  B = obj_base_changzhou.loadIndex   幅度 delta+20  推 5 拍
+  臂 Z  建好
+  臂 A  建好
+  臂 B  建好
+  臂 AB 建好
+
+=== 零扰动臂 Z：对照（预言 = **23 列全部逐位不动**）===
+  Z 臂 17 列合计移动格数 = 361，最大差 = 42.8368  ✗ 有残余位移
+
+变量                                Z 零扰动        A 只扰A        B 只扰B        AB 两扰
+------------------------------------------------------------------------------
+overduePressure               3格/0.2607    3格/0.2607    3格/0.2607    3格/0.2607
+qualificationQueue                 0格/0         0格/0         0格/0         0格/0
+   ✗ 预言失败：只扰 A 时 qualificationQueue 应当动，实际 0 格
+changeoverPressure            16格/26.29    16格/26.29    16格/26.29    16格/26.29
+clearanceQueueDays             1格/36.36     1格/36.36     1格/36.36     1格/36.36
+drawdownPressure               3格/2.663    3格/0.3102     3格/2.663    3格/0.3102
+queueDays                     20格/14.84    20格/14.84    20格/14.84    20格/14.84
+transferPressure               15格/21.9     15格/21.9     15格/21.2     15格/21.2
+windowSqueeze                  11格/5.67     11格/5.67     11格/5.67     11格/5.67
+switchPressure                 5格/16.78     5格/16.78     5格/16.78     5格/16.78
+turnoverPressure              24格/42.84    24格/42.84    24格/42.84    24格/42.84
+backlogQtyTop                      0格/0         0格/0         0格/0         0格/0
+backlogPriceTop                    0格/0         0格/0         0格/0         0格/0
+collectionPressure                 0格/0         0格/0         0格/0         0格/0
+inspectBacklog                56格/1.449    56格/1.449    76格/1.449    76格/1.449
+inboundExpeditePressure       11格/10.08    11格/10.08    11格/10.08    11格/10.08
+reviewPressure                10格/9.893    10格/9.893    10格/9.893    10格/9.893
+splitPressure                186格/30.72   186格/30.72   186格/30.72   186格/30.72
+
+=== 尾注 ===
+  · Z 臂 17 列合计移动 = 361 格（判据：0）
+  · 预言核验：有失败项，见上

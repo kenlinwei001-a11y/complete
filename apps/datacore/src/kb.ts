@@ -3,6 +3,7 @@ import type { Repos } from "./repo/repo.js";
 import type { AuthzService } from "./authz.js";
 import type { BlobStore } from "./blob.js";
 import type { EmbeddingProvider } from "./embeddings.js";
+import type { OutboxService } from "./outbox.js";
 import { chunkText } from "./embeddings.js";
 import { extractText } from "./ruledocs.js";
 import { newId } from "./ids.js";
@@ -29,6 +30,7 @@ export class KbService {
     private authz: AuthzService,
     private blob: BlobStore,
     private embeddings: EmbeddingProvider,
+    private outbox?: OutboxService,
   ) {}
 
   private async kbConnection(ctx: AuthCtx, connId: string) {
@@ -76,6 +78,13 @@ export class KbService {
     await this.repos.kbChunks.upsert(records);
     doc.chunkCount = records.length;
     await this.repos.kbDocs.put(doc);
+    // DF-6：知识库文档索引完成 → kb.indexed（失效 kb-search / search-test · DL10）。
+    await this.outbox?.emit(
+      ctx.tenantId,
+      "kb.indexed",
+      { connId, docId: doc.id, chunkCount: records.length, count: 1 },
+      `kb:${connId}`,
+    );
     return { doc, chunkCount: records.length };
   }
 
@@ -106,6 +115,13 @@ export class KbService {
       await this.repos.kbDocs.put(doc);
       chunks += parts.length;
     }
+    // DF-6：知识库连接器 sync 全量重嵌完成 → kb.indexed（失效 kb-search / search-test · DL10）。
+    await this.outbox?.emit(
+      ctx.tenantId,
+      "kb.indexed",
+      { connId, docs: docs.length, chunkCount: chunks, count: docs.length },
+      `kb:${connId}`,
+    );
     return { docs: docs.length, chunks };
   }
 

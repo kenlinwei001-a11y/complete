@@ -1,0 +1,4 @@
+
+> frontend-shell@0.1.0 typecheck /Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/frontend-shell
+> tsc -p tsconfig.json --noEmit
+

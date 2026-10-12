@@ -1,0 +1,15 @@
+- id: sym:apps/datacore/src/ontology/slice-index.ts#buildSliceIndex
+  name: buildSliceIndex
+  kind: function
+  file: apps/datacore/src/ontology/slice-index.ts
+  line: 38
+  brief: "建索引：每切片一条 {sliceKey, rootType, spannedTypes}"
+  docSource: jsdoc
+  tags: [datacore, ontology, slice]
+  wo: null
+  state: wired
+  reexportOf: null
+  inbound:
+    src:
+      - { file: apps/datacore/src/app.ts, line: 132 }
+    test: []

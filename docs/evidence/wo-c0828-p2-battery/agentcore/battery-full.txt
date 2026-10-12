@@ -1,0 +1,659 @@
+HEAD=51a13d002 START=09-28 18:44:33
+cmd: full pack (无参 include · maxWorkers=2 · testTimeout=1500000)
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/apps/agentcore
+
+ ✓ test/dsh-degraded-seams.test.ts (6 tests) 55016ms
+   ✓ WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧序） > A1 缝①正例·角色路 dsh STALL_LOOP → agent_degraded 恰一条·早于 answer.final·reason 原值·不双计  21485ms
+   ✓ WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧序） > A2 缝②正例·场景路 dsh STALL_LOOP → 同断言组（无 classification·确证 path=AGENT + 场景入口 note）  17278ms
+   ✓ WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧序） > A3 负向臂·异参剧本不触发降级 → 帧流零 agent_degraded ∧ COMPLETED 照常（咬守卫摘除 M5）  14881ms
+   ✓ WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧序） > A4 native 对位臂·DSH_HARNESS 不设走缝② → agent_degraded 同在同序（证修复 fork 无关·帧出自编排消费段）  302ms
+   ✓ WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧序） > A5① 回归零扰·缝①角色路正常剧本 → 帧流零 agent_degraded（正常态逐字节不变）  783ms
+ ✓ test/dsh-engine-tool-bridge.seam.test.ts (24 tests) 133369ms
+   ✓ W8主 · A 端点级：/b/v1/dsh/tool-execute 四态 + 鉴权 + 重放 + 截断 > A1 scope 门 DENIED（AGENT_SCOPE_VIOLATION）⇒ 审计行 DENIED + tc_ 回执  1862ms
+   ✓ W8主 · A 端点级：/b/v1/dsh/tool-execute 四态 + 鉴权 + 重放 + 截断 > A2 IAM 门 DENIED（PERMISSION_DENIED）  533ms
+   ✓ W8主 · A 端点级：/b/v1/dsh/tool-execute 四态 + 鉴权 + 重放 + 截断 > A4 预算门 BUDGET_EXCEEDED（maxToolCalls=0）⇒ reason 原值 + budget.exhausted 置位  310ms
+   ✓ W8主 · A 端点级：/b/v1/dsh/tool-execute 四态 + 鉴权 + 重放 + 截断 > A5 OK×2 同参 ⇒ readCache 命中（queryObjects 真调 1 次）+ 双 OK 审计行（单实例反咬）  609ms
+   ✓ W8主 · A 端点级：/b/v1/dsh/tool-execute 四态 + 鉴权 + 重放 + 截断 > A6 鉴权 fail-closed：无头 401 / 错头 401 / runToken 不识 401——全部零执行零审计  386ms
+   ✓ W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B1 真工具三键合流：tc_ 上模型面 ∧ 审计行 OK ∧ 本体真调一次（缺省推导锚）  9944ms
+   ✓ W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B2 IAM deny 过 wire：「无权访问」逐字（authored isError 通道，无 Error: 前缀）  9277ms
+   ✓ W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B3 B6 预算降级桥：BUDGET_EXCEEDED ⇒ cancel ⇒ BUDGET_EXHAUSTED + 诚实摘要头逐字  7376ms
+   ✓ W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B4 反向通道中途断（端点不可达）⇒ ERROR 回执不静默放行 ∧ 零审计行  6720ms
+   ✓ W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B5 宿主工具慢于子进程 deadline：宿主 withTimeout 收敛 ERROR ⇒ 行 ERROR + 帧 ERROR  8318ms
+   ✓ W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B6 孤儿审计行：桥 fetch 先放弃（100ms）< 宿主完成（400ms）⇒ 帧 ERROR 而宿主行 OK  8358ms
+   ✓ W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B7 watchdog 咬在反向调用中途：drain 语义——已起步结果帧照落 + turn 步边界收束  7926ms
+   ✓ W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B8 对象 scope 回归（B8 修复回咬）：enforceObjectScope 真到 executor ⇒ 越界 DENIED 逐字  8370ms
+   ✓ W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B9 双侧无 SERVICE_TOKEN ⇒ 端点 401 fail-closed ⇒ ERROR 回执 ∧ 零审计行（mutation a 锚）  7658ms
+   ✓ W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B10 端点畸形应答（200 但无 outcome）⇒ ERROR 回执 ∧ 零审计行（mutation b 锚）  10942ms
+   ✓ W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B11 >8KB 工具结果 e2e：子进程可见文案 = native 截断形逐字等 ∧ 审计行全量  14497ms
+   ✓ W8.5 · C workflow 反向化：模型可见 + 同端点反向执行 + 治理/审计/预算同账 > C1 workflow e2e OK：可见 + 真过宿主引擎 + 审计行三键 + 侧表 iterations + emit 透传  15324ms
+   ✓ W8.5 · C workflow 反向化：模型可见 + 同端点反向执行 + 治理/审计/预算同账 > C3 workflow 内部 FAILED ⇒ ERROR parity（两态词表 + ERROR 审计行 + isError 回执上模型面）  14193ms
+ ❯ test/dsh-fault-injection.seam.test.ts (9 tests | 3 failed) 54161ms
+   ✓ WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态 > F1 启动即死·缺 cordis 档（engine 级）⇒ 诚实抛错指名缺档，不挂起不静默  2845ms
+   ✓ WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态 > F2 启动即崩·bin 即死（engine 级）⇒ TransportClosedError 带 exit code + stderr tail，零残留  1970ms
+   × WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态 > F3 中途崩（runner 级）⇒ 百 ms 级收束 + outcome FAILED + 半截文本兜底不编造 1375ms
+     → 中途崩 ⇒ 百 ms 级收束（存活位第三收束源），不得空转到 requestTimeoutMs: expected 1342 to be less than 1000
+   ✓ WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态 > F4① hang·prompt 后哑（runner 级）⇒ deadline 有界收束 + FAILED + 诚实空答文本  2810ms
+   ✓ WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态 > F4② hang·全哑（runner 级）⇒ initialize 超时 RequestTimeoutError 诚实上抛  3662ms
+   × WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态 > F5 zombie 回收（runner 级）⇒ 健康×5 + 中途崩 + SIGTERM 抵抗，pgrep 计数恒 0 28958ms
+     → runtime process did not exit within 3000ms after SIGKILL was accepted
+   ✓ WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态 > F6 多租户并发（engine 级）⇒ 独立子进程 × setup 帧 tenantId 各自正确 × 互不串话  7358ms
+   ✓ WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态 > F7 资源形态（runner 级）⇒ 并发×4 各自独立子进程同时在跑（每 run 一进程·无池化上限 钉板）  1616ms
+   × WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态 > F8 编排级失败面（HTTP 级）⇒ 启动即崩 ⇒ task FAILED + 错误含子进程诊断（非挂起非空答案） 3565ms
+     → task.error 必须留住子进程原始死因（#109 诚实终态：系统知道真因就必须说）: expected 'JSON-RPC input closed\nstderr tail:\n…' to contain 'exit code: 1'
+ ✓ test/dsh-engine-mcp-forward.seam.test.ts (8 tests) 140969ms
+   ✓ WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发 > A1 · agent.mcpServers 配 mock stdio server ⇒ 子进程世界收到 mcp__fwdmock__echo 工具且解密凭据到达 server 进程  25484ms
+   ✓ WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发 > A2 · 阴性臂：agent.mcpServers 空 ⇒ stub 请求 tools 零 mcp__ 前缀工具，运行照常 ANSWERED（零扰）  19597ms
+   ✓ WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发 > A3 · fail-closed：credentialRef 凭据行缺失 ⇒ 诚实抛错 /credentialRef unresolvable/，不静默降级  564ms
+   ✓ WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发 > A4 · WO-DSH-PROD-READY W9-lite 审计骨架 e2e：dsh 臂 run.iterations 非空（两态+推导 duration）+ run.total* == 剧本 usage 折出和（B11 同源等值）  23523ms
+   ✓ WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发 > A5 · W8副 toolFilter 映射 e2e：滤一留一（echo 留 / echo2 全轮不可见）+ exotic 裸名 util.calc 注册期 fail-closed 丢弃，outcome ANSWERED  24807ms
+   ✓ WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发 > A5b · W8副 toolFilter 全名形态（mcp__fwdmock2__echo）同断言成立：echo 留、echo2/exotic 全轮不可见  28928ms
+   ✓ WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发 > A6-A · 零扰动锚 e2e：无 toolFilter ⇒ 三工具全含（含 exotic 规范化名 mcp__fwdmock2__util_calc），帧行为逐字节旧  18063ms
+stdout | test/dsh-e2e-real-triad.test.ts
+[dsh-e2e-real-triad] 真供应商臂 skip：需 DSH_REAL_API_KEY + DSH_REAL_BASE_URL（旧名 KIMI_API_KEY/KIMI_BASE_URL 同样接受）；另可选 DSH_REAL_MODEL（缺省 kimi-k3）/ DSH_REAL_KIND（openai_compatible|anthropic）。L2.A1/L2.A4 跳过。
+
+stdout | test/dsh-e2e-real-triad.test.ts > L2.A1′ · 判别力金丝雀的变异反证（免凭据） > 固定应答端点：两问回答相同 ⇒ isDiscriminating 必须判 false
+[L2.A1′ 变异反证] A=<<固定端点写死串>> B=<<固定端点写死串>>
+
+ ✓ test/dsh-e2e-real-triad.test.ts (8 tests | 2 skipped) 122282ms
+   ✓ L2.A1′ · 判别力金丝雀的变异反证（免凭据） > 固定应答端点：两问回答相同 ⇒ isDiscriminating 必须判 false  35613ms
+   ✓ L2.A2 · 真规则：platform-governance http → POST /b/v1/governance/adjudicate → deps.dataCore.rules.evaluate > allow 臂：C03 + {demandDelta:0.1} ⇒ 放行 ∧ 工具真执行（whoami 对位 only_t1:t1）∧ 端点→rules.evaluate 计数≥2  20992ms
+   ✓ L2.A2 · 真规则：platform-governance http → POST /b/v1/governance/adjudicate → deps.dataCore.rules.evaluate > deny 臂：C03 + {demandDelta:0.9} ⇒ BLOCK ⇒ 工具体不执行 ∧ reason 含真 verdict 文案（无 mock 前缀）  16110ms
+   ✓ L2.A3 · 真 MCP：SetupSpec.mcpServers 挂 mock-mcp-tenant ⇒ whoami 携租户标记 > whoami 应答 whoami:t1 ∧ pidFile 计数=1 ∧ 审计工具名 mcp__erp__whoami 在帧流  14579ms
+   ✓ L2.A5 · 变异负向臂（fail-closed 红位常设） > ⑤a PLATFORM_GOV_URL 指已关闭端口 ⇒ 裁决不可达 fail-closed deny ∧ 工具体不执行  18634ms
+   ✓ L2.A5 · 变异负向臂（fail-closed 红位常设） > ⑤b 缺 PLATFORM_LLM_API_KEY ⇒ MISSING_CREDENTIAL 含 env 引用名 ∧ stub 零请求（fail 在出网前）  16348ms
+ ✓ test/dsh-e2e-honesty.test.ts (6 tests) 108389ms
+   ✓ WO-DSH-E2E · L5 诚实层穿透 > L5.P1 provenance 溯源到真对象（load_skill 实调可回查）+ ⟦ref:1⟧ 标记逐字保真  15538ms
+   ✓ WO-DSH-E2E · L5 诚实层穿透 > L5.P2a governance 负向（engine 级·engine.ts:520 锚）：provenancePolicy=required 缺 provenance ⇒ FAILED + 诚实文案  19100ms
+   ✓ WO-DSH-E2E · L5 诚实层穿透 > L5.P2b governance 负向：writeMode 技能缺 action_draft ⇒ FAILED + 诚实文案  17372ms
+   ✓ WO-DSH-E2E · L5 诚实层穿透 > L5.P3 EMPTY 口径保真：软收尾逐字 == 末 assistant 文本；空文本 ⇒ 诚实兜底逐字；provenance 空  27812ms
+   ✓ WO-DSH-E2E · L5 诚实层穿透 > L5.P4 拒绝口径帧保真：deny 理由帧流逐字 + SSE 面 ERROR 不漂白  13396ms
+   ✓ WO-DSH-E2E · L5 诚实层穿透 > L5.P5 降级链：finish_reason=length ⇒ turn/end max-tokens ⇒ BUDGET_EXHAUSTED + degraded 原值 + 诚实复述 + narration 保真  15168ms
+ ✓ test/dsh-e2e-tenant-collision.test.ts (3 tests) 74425ms
+   ✓ WO-DSH-E2E · L4 租户隔离穿透（双 tenant × 同 serverName 对撞） > L4.A1 对撞双成：各回各 whoami 标记 / 事件流零跨租户串字 / 工具表各只见各 / pidFile 恰 2 异 pid  34810ms
+   ✓ WO-DSH-E2E · L4 租户隔离穿透（双 tenant × 同 serverName 对撞） > L4.A2 世界层互不可达：allow-list 误配异租户工具名 ⇒ 执行 isError（fail-closed），成功标记零出现  27286ms
+   ✓ WO-DSH-E2E · L4 租户隔离穿透（双 tenant × 同 serverName 对撞） > L4.A3 跨租户凭据解析 fail-closed（E3′ 前缀白名单形态）+ 凭据值零上帧  12324ms
+ ✓ test/dsh-watchdog.test.ts (7 tests) 70958ms
+   ✓ N3 · runner 级 stall_loop 剧本（B1-B4） > B1 正例：stall_loop + cap=3 → abort cause=stall-loop ∧ STALL_LOOP 降级 ∧ tool/call===3  14813ms
+   ✓ N3 · runner 级 stall_loop 剧本（B1-B4） > B2 异参对照（不误伤）：stall_loop_varying + cap=3 → 无 stall-loop ∧ ANSWERED ∧ tool/call===8  15931ms
+   ✓ N3 · runner 级 stall_loop 剧本（B1-B4） > B3 自定义 cap=4（≠缺省 3）：cause.cap===4 ∧ tool/call===4 —— cap 由 env 驱动非硬编码  14569ms
+   ✓ N3 · runner 级 stall_loop 剧本（B1-B4） > B4 无 cap env → 无 stall-loop ∧ tool/call===8 ∧ ANSWERED（opt-in 缺省禁用，对位 loop.ts:533）  13382ms
+   ✓ N3 · runner 级 stall_loop 剧本（B1-B4） > B5 meta 守卫（M2 补咬）：stall_loop_meta + cap=3 → 8 轮同参 final_answer **不触发** stall-loop ∧ ANSWERED  12236ms
+stderr | test/dc-providers.test.ts > L3 · 无结构化输出 → JSON-mode 降级 + zod 重试 ≤2 → 既有失败语义（转路径 B） > noso 端点永远回非 JSON：每次分类尝试 ≤3 次 JSON-mode 请求（无 response_format），最终转路径 B
+[llm-adapters/degrade.extractJsonObject] 模型输出的 JSON 有 1 处结构破损，已保守修复后解析：⛔ 认输：偏移 0 处是裸文本 "我不会输出"，不是合法 JSON 字面量 —— 把它当值缝进去等于替模型编内容（⚠ 解析成功 ≠ 模型输出正常 —— 该模型/提示词需要复核）
+
+stderr | test/dc-providers.test.ts > L3 · 无结构化输出 → JSON-mode 降级 + zod 重试 ≤2 → 既有失败语义（转路径 B） > noso 端点永远回非 JSON：每次分类尝试 ≤3 次 JSON-mode 请求（无 response_format），最终转路径 B
+[llm-adapters/degrade.extractJsonObject] 模型输出的 JSON 有 1 处结构破损，已保守修复后解析：⛔ 认输：偏移 0 处是裸文本 "我不会输出"，不是合法 JSON 字面量 —— 把它当值缝进去等于替模型编内容（⚠ 解析成功 ≠ 模型输出正常 —— 该模型/提示词需要复核）
+
+stderr | test/dc-providers.test.ts > L3 · 无结构化输出 → JSON-mode 降级 + zod 重试 ≤2 → 既有失败语义（转路径 B） > noso 端点永远回非 JSON：每次分类尝试 ≤3 次 JSON-mode 请求（无 response_format），最终转路径 B
+[llm-adapters/degrade.extractJsonObject] 模型输出的 JSON 有 1 处结构破损，已保守修复后解析：⛔ 认输：偏移 0 处是裸文本 "我不会输出"，不是合法 JSON 字面量 —— 把它当值缝进去等于替模型编内容（⚠ 解析成功 ≠ 模型输出正常 —— 该模型/提示词需要复核）
+
+stderr | test/dc-providers.test.ts > L3 · 无结构化输出 → JSON-mode 降级 + zod 重试 ≤2 → 既有失败语义（转路径 B） > noso 端点永远回非 JSON：每次分类尝试 ≤3 次 JSON-mode 请求（无 response_format），最终转路径 B
+[llm-adapters/degrade.extractJsonObject] 模型输出的 JSON 有 1 处结构破损，已保守修复后解析：⛔ 认输：偏移 0 处是裸文本 "我不会输出"，不是合法 JSON 字面量 —— 把它当值缝进去等于替模型编内容（⚠ 解析成功 ≠ 模型输出正常 —— 该模型/提示词需要复核）
+
+stderr | test/dc-providers.test.ts > L3 · 无结构化输出 → JSON-mode 降级 + zod 重试 ≤2 → 既有失败语义（转路径 B） > noso 端点永远回非 JSON：每次分类尝试 ≤3 次 JSON-mode 请求（无 response_format），最终转路径 B
+[llm-adapters/degrade.extractJsonObject] 模型输出的 JSON 有 1 处结构破损，已保守修复后解析：⛔ 认输：偏移 0 处是裸文本 "我不会输出"，不是合法 JSON 字面量 —— 把它当值缝进去等于替模型编内容（⚠ 解析成功 ≠ 模型输出正常 —— 该模型/提示词需要复核）
+
+stderr | test/dc-providers.test.ts > L3 · 无结构化输出 → JSON-mode 降级 + zod 重试 ≤2 → 既有失败语义（转路径 B） > noso 端点永远回非 JSON：每次分类尝试 ≤3 次 JSON-mode 请求（无 response_format），最终转路径 B
+[llm-adapters/degrade.extractJsonObject] 模型输出的 JSON 有 1 处结构破损，已保守修复后解析：⛔ 认输：偏移 0 处是裸文本 "我不会输出"，不是合法 JSON 字面量 —— 把它当值缝进去等于替模型编内容（⚠ 解析成功 ≠ 模型输出正常 —— 该模型/提示词需要复核）
+
+stderr | test/dc-providers.test.ts > L3 · 无结构化输出 → JSON-mode 降级 + zod 重试 ≤2 → 既有失败语义（转路径 B） > noso 端点永远回非 JSON：每次分类尝试 ≤3 次 JSON-mode 请求（无 response_format），最终转路径 B
+[llm-adapters/degrade.extractJsonObject] 模型输出的 JSON 有 1 处结构破损，已保守修复后解析：⛔ 认输：偏移 0 处是裸文本 "我不会输出"，不是合法 JSON 字面量 —— 把它当值缝进去等于替模型编内容（⚠ 解析成功 ≠ 模型输出正常 —— 该模型/提示词需要复核）
+
+stderr | test/dc-providers.test.ts > L3 · 无结构化输出 → JSON-mode 降级 + zod 重试 ≤2 → 既有失败语义（转路径 B） > noso 端点永远回非 JSON：每次分类尝试 ≤3 次 JSON-mode 请求（无 response_format），最终转路径 B
+[llm-adapters/degrade.extractJsonObject] 模型输出的 JSON 有 1 处结构破损，已保守修复后解析：⛔ 认输：偏移 0 处是裸文本 "我不会输出"，不是合法 JSON 字面量 —— 把它当值缝进去等于替模型编内容（⚠ 解析成功 ≠ 模型输出正常 —— 该模型/提示词需要复核）
+
+stderr | test/dc-providers.test.ts > L3 · 无结构化输出 → JSON-mode 降级 + zod 重试 ≤2 → 既有失败语义（转路径 B） > noso 端点永远回非 JSON：每次分类尝试 ≤3 次 JSON-mode 请求（无 response_format），最终转路径 B
+[llm-adapters/degrade.extractJsonObject] 模型输出的 JSON 有 1 处结构破损，已保守修复后解析：⛔ 认输：偏移 0 处是裸文本 "我不会输出"，不是合法 JSON 字面量 —— 把它当值缝进去等于替模型编内容（⚠ 解析成功 ≠ 模型输出正常 —— 该模型/提示词需要复核）
+
+ ✓ test/dc-providers.test.ts (6 tests) 13968ms
+   ✓ L1 · 用途绑定后分类走配置端点（审计含 providerId） > classifier 绑定 llmp1/m1 → 分类经 mock 端点（bearer 凭证）；任务审计含 providerId/modelId；token 指标带 provider 标签  3657ms
+   ✓ L3 · 无结构化输出 → JSON-mode 降级 + zod 重试 ≤2 → 既有失败语义（转路径 B） > noso 端点永远回非 JSON：每次分类尝试 ≤3 次 JSON-mode 请求（无 response_format），最终转路径 B  1586ms
+   ✓ L4 · provider 故障 → fallback 接管；禁止链式 > llmp_bad 故障 → llmp2 接管（指标 qos_llm_fallback_total 可见）  1322ms
+   ✓ L4 · provider 故障 → fallback 接管；禁止链式 > fallback 的 fallback 不生效：llmp2 也故障 → 直接失败，llmp3 零调用  2724ms
+   ✓ 执行语义 §5 · 熔断：主 provider 连续 5xx → OPEN → 直接走 fallback 不再探测主 > 达阈值后主端点零新增调用，全部走 fallback；指标记录状态变更  3894ms
+ ✓ test/dsh-gov-production.seam.test.ts (5 tests) 63762ms
+   ✓ WO-DSH-PROD-READY F-1 · 生产档 governance http 裁决接线（engine 级） > ① 真端点 + 双侧同 token + 规则 BLOCK ⇒ deny 理由逐字回灌模型面 ∧ 工具体零执行 ∧ step ERROR  20067ms
+   ✓ WO-DSH-PROD-READY F-1 · 生产档 governance http 裁决接线（engine 级） > ② 同构放行 ⇒ 工具体真执行 ∧ 裁决覆盖 echo + final_answer ∧ 答案原样交付  12574ms
+   ✓ WO-DSH-PROD-READY F-1 · 生产档 governance http 裁决接线（engine 级） > ③ PLATFORM_GOV_URL 指已关闭端口 ⇒ fail-closed deny（reason 含 unreachable）∧ 零执行 ∧ 零求值  11524ms
+   ✓ WO-DSH-PROD-READY F-1 · 生产档 governance http 裁决接线（engine 级） > ④ SERVICE_TOKEN 缺失 ⇒ 端点 fail-closed 401 ⇒ 插件转 deny（reason 含 HTTP 401）∧ 零执行 ∧ 零求值  9897ms
+   ✓ WO-DSH-PROD-READY F-1 · 生产档 governance http 裁决接线（engine 级） > ⑤ 不钉 DSH_GOV_URL ⇒ engine 缺省推导本进程裁决端点真被打到 ∧ 放行真执行  9697ms
+stdout | test/scenario-phrasing-seam.test.ts > 场景启动器 · 措辞鲁棒性接缝门（20 场景 × 4 种说法） > ② 效果层：80 条说法**全部**落到各自注册的 intentKey
+
+  ── 措辞鲁棒性基线 ──
+  原句            20/20
+  V1 加实体词     20/20
+  V2 实体词变形   20/20
+  V3 句式动词变形 20/20
+  合计            80/80
+
+
+stdout | test/scenario-phrasing-seam.test.ts > 场景启动器 · 探索型推演接缝门（16 条真开放题） > 四条判据同时成立：进得去 · 出得来 · 真探索 · 有出处
+
+  ── 探索型基线 16/16 ──
+  （全绿）
+
+
+ ✓ test/scenario-phrasing-seam.test.ts (5 tests) 25431ms
+   ✓ 场景启动器 · 措辞鲁棒性接缝门（20 场景 × 4 种说法） > ② 效果层：80 条说法**全部**落到各自注册的 intentKey  14109ms
+   ✓ 场景启动器 · 过程可见接缝门（旁白须在每条 agent 路径上都到达） > ① 单 agent 探索路径（path-B）：旁白到达（对照组·证机制本身是通的）  1280ms
+   ✓ 场景启动器 · 过程可见接缝门（旁白须在每条 agent 路径上都到达） > ② 多角色 Coordinator 扇出：旁白**同样**必须到达（E9·今天红）  928ms
+   ✓ 场景启动器 · 探索型推演接缝门（16 条真开放题） > 四条判据同时成立：进得去 · 出得来 · 真探索 · 有出处  9105ms
+ ✓ test/dsh-provider-seam.test.ts (12 tests) 53678ms
+   ✓ A2 · cordis.yml 生产形态与部署治理门 > yml 含 platform-llm 且不含 mock-llm；poc 专档含 mock-llm 反向锚定；真仓门绿；compose 缺 DSH_HARNESS_PROVIDER 行的镜像 ⇒ 门必红  637ms
+   ✓ A3 · SEAM 端到端：engine 分叉 → 绑定矩阵解析 → env 注入 → stub OpenAI 端点 > dcp spec 剥出 modelId；provider=PRODUCTION_DSH_HARNESS_PROVIDER；stub 见 model 无前缀、Authorization=Bearer key  11376ms
+   ✓ A4 · usage 缓存透传 > prompt_cache_hit_tokens=60 ⇒ usage 块 inputTokens=40/cacheReadTokens=60/outputTokens=20；usage 在 finish 前  9416ms
+   ✓ A5 · 凭据红线 > 注入 key：事件流/结果/stub 请求体零 key 子串；runner 参数构造无 key；缺 key ⇒ MISSING_CREDENTIAL 含 env 引用名  32209ms
+ ✓ test/dsh-postcheck.seam.test.ts (4 tests) 146793ms
+   ✓ WO-DSH-PROD-READY W1 · DSH 路径 postcheck 后验对拍 > ① ruleBindings POST_CHECK BLOCK ⇒ DSH 答案同样被替换为 rule_violation（prov_post_check）  17262ms
+   ✓ WO-DSH-PROD-READY W1 · DSH 路径 postcheck 后验对拍 > ② 对拍 · ruleBindings POST_CHECK 通过 ⇒ DSH 答案原样放行（后验真跑了但不冤枉好人）  37305ms
+   ✓ WO-DSH-PROD-READY W1 · DSH 路径 postcheck 后验对拍 > ③ skill postcheck 引用 BLOCK ⇒ DSH 答案被替换（prov_skill_rule_check，先于 ruleBindings 段）  39012ms
+   ✓ WO-DSH-PROD-READY W1 · DSH 路径 postcheck 后验对拍 > ④ 诚实位 · rules 引擎抛错 ⇒ fail-open 放行（与原生 catch 语义一致，不把后验故障变成答案故障）  53212ms
+stderr | test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > gated 槽鸣报：角色路/场景路 STALL_LOOP 覆盖维持 gated（缝已落线；缺口=编排层驱动级+触发通道缺，REC §3 #7 裁决口径）
+GATED dr50-gated-role-stall（runRolePathB STALL_LOOP）：gate 维持：缝① 886c436a7 已落线；缺口 = 编排层驱动级 + STALL_LOOP 确定性触发通道缺（非发射缝）；裁决不建编排层双跑驱动级，parity = 码对称论证，转 W7 输入
+GATED dr50-gated-scene-stall（runSceneAgent STALL_LOOP）：gate 维持：缝② 886c436a7 已落线；缺口 = 编排层驱动级 + STALL_LOOP 确定性触发通道缺（非发射缝）；裁决不建编排层双跑驱动级，parity = 码对称论证，转 W7 输入
+
+ ❯ test/dsh-e2e-dualrun50.test.ts (76 tests | 1 failed) 1392771ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > A0 语料自检：构成 / 四维覆盖 / gated 槽在册 114ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-aa [answer] 双臂四面对账  19805ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ab [answer] 双臂四面对账  16872ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ac [answer] 双臂四面对账  15304ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ad [answer] 双臂四面对账  10013ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ae [answer] 双臂四面对账  10901ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-af [answer] 双臂四面对账  10756ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ag [answer] 双臂四面对账  8250ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ah [answer] 双臂四面对账  6711ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ai [answer] 双臂四面对账  7207ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-aj [answer] 双臂四面对账  9125ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ak [answer] 双臂四面对账  8676ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-al [answer] 双臂四面对账  8299ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-am [answer] 双臂四面对账  8473ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-an [answer] 双臂四面对账  7718ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ao [answer] 双臂四面对账  13441ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ap [answer] 双臂四面对账  15848ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-aq [answer] 双臂四面对账  14980ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ar [answer] 双臂四面对账  13304ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-as [answer] 双臂四面对账  15078ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-at [answer] 双臂四面对账  17959ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-au [answer] 双臂四面对账  20388ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-av [answer] 双臂四面对账  20564ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-aw [answer] 双臂四面对账  20871ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ax [answer] 双臂四面对账  20769ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ay [answer] 双臂四面对账  19258ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-az [answer] 双臂四面对账  23761ms
+   × WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ba [answer] 双臂四面对账 35385ms
+     → runtime process did not exit within 3000ms after SIGKILL was accepted
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bb [answer] 双臂四面对账  22533ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bc [answer] 双臂四面对账  17176ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bd [answer] 双臂四面对账  18649ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-be [answer] 双臂四面对账  22720ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bf [answer] 双臂四面对账  20654ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bg [answer] 双臂四面对账  15948ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bh [answer] 双臂四面对账  15393ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bi [answer] 双臂四面对账  12714ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bj [answer] 双臂四面对账  19242ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bk [deny_pre] 双臂四面对账  19594ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bl [deny_pre] 双臂四面对账  18586ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bm [deny_pre] 双臂四面对账  15960ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bn [deny_pre] 双臂四面对账  15978ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bo [deny_mid] 双臂四面对账  16671ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bp [deny_mid] 双臂四面对账  15619ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bq [deny_mid] 双臂四面对账  13146ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-br [deny_mid] 双臂四面对账  12953ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bs [deny_all] 双臂四面对账  15447ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bt [deny_all] 双臂四面对账  17048ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bu [deny_all] 双臂四面对账  17696ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bv [deny_all] 双臂四面对账  17129ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bw [deny_prefork] 双臂四面对账  307ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bx [deny_prefork] 双臂四面对账 239ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-by [answer] 双臂四面对账  13430ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bz [answer] 双臂四面对账  12226ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ca [answer] 双臂四面对账  11377ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-cb [answer] 双臂四面对账  17498ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-cc [answer] 双臂四面对账  18211ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-cd [answer] 双臂四面对账  18788ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ce [answer] 双臂四面对账  19425ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-cf [answer] 双臂四面对账  16432ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-cg [answer] 双臂四面对账  14058ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ch [answer] 双臂四面对账  14236ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ci [answer] 双臂四面对账  15772ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-cj [answer] 双臂四面对账  17091ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ck [answer] 双臂四面对账  13807ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-cl [answer] 双臂四面对账  11438ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-cm [answer] 双臂四面对账  9228ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > A5 确定性（同臂连跑两遍，比对器不得把噪声当差集） > dr50-ac 双臂各复跑一遍过同一比对器  18002ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > A5 确定性（同臂连跑两遍，比对器不得把噪声当差集） > dr50-ad 双臂各复跑一遍过同一比对器  19523ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > A5 确定性（同臂连跑两遍，比对器不得把噪声当差集） > dr50-an 双臂各复跑一遍过同一比对器  19107ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > A5 确定性（同臂连跑两遍，比对器不得把噪声当差集） > dr50-ag 双臂各复跑一遍过同一比对器  19551ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > A5 确定性（同臂连跑两遍，比对器不得把噪声当差集） > dr50-bk 双臂各复跑一遍过同一比对器  24729ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > A5 确定性（同臂连跑两遍，比对器不得把噪声当差集） > dr50-bs 双臂各复跑一遍过同一比对器  60848ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > A5 确定性（同臂连跑两遍，比对器不得把噪声当差集） > dr50-cb 双臂各复跑一遍过同一比对器  61901ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > A5 确定性（同臂连跑两遍，比对器不得把噪声当差集） > dr50-ce 双臂各复跑一遍过同一比对器  95175ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > A3c 事件族覆盖矩阵：15 族每族真触发或登记不可达，不冒充覆盖  89658ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > gated 槽鸣报：角色路/场景路 STALL_LOOP 覆盖维持 gated（缝已落线；缺口=编排层驱动级+触发通道缺，REC §3 #7 裁决口径） 5ms
+ ❯ test/dsh-poc-acceptance.test.ts (6 tests | 2 failed) 103897ms
+   × E1 · 配置驱动行为（request/header 为观测点） > 改 persona/finalAnswer ⇒ header.system/header.tools 随之变；还原即复原 60369ms
+     → Test timed out in 60000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   × E2 · 规则闸（PRE_CHECK deny ⇒ 执行计数 0 + 拦截入流） > deny ⇒ count 0 且 tool/result isError 带 deny 理由；基线 ⇒ count 1 43379ms
+     → runtime process did not exit within 3000ms after SIGKILL was accepted
+   ✓ E3/E3′ · 租户密钥路由（credentialRef 前缀白名单） > E3：本租户 ref 解析并注入 Bearer 2ms
+   ✓ E3/E3′ · 租户密钥路由（credentialRef 前缀白名单） > E3′：租户 t2 持 t1 的 ref ⇒ undefined ⇒ MISSING_CREDENTIAL 类抛错（fail-closed） 13ms
+   ✓ E4 · MCP 工具名零迁移（与上游 dist 逐字节对拍） > 全语料逐字节相等（含规整/截断/压线边界） 20ms
+   ✓ E6 · 三档 verdict 表（帧 → 外壳语义） > tier1 帧可映射且形状正确；tier2/tier3 帧 createSseMapper 返回 undefined 1ms
+ ❯ test/agent-run-attribution.seam.test.ts (14 tests | 1 failed) 131514ms
+   ✓ WO-AGENTRUN-ATTRIBUTION · 运行归属接缝 > ① 真跑注册 agent → 引擎把归属写进库 → 端点按 agent 读回同一条（不是端点自己拼的）  10340ms
+   ✓ WO-AGENTRUN-ATTRIBUTION · 运行归属接缝 > ② 跨版本按 key 聚合：同一 Agent 升到 v2 再跑 → 两条都在（按 id 查会当场归零，故必须按 key）  3507ms
+   ✓ WO-AGENTRUN-ATTRIBUTION · 运行归属接缝 > ③ 诚实位 · 通用探索路真的无归属对象 → EXPLORATORY，且**不挂到任何 agent 名下**  2858ms
+   ✓ WO-AGENTRUN-ATTRIBUTION · 运行归属接缝 > ④ 诚实位 · 归属上线前的旧记录（无归属字段）一条都不许挂到 agent 名下充数  1689ms
+   ✓ WO-AGENTRUN-ATTRIBUTION · 运行归属接缝 > ⑤ 诚实位 · 未绑 LLM provider 的环境（AGENT 路但引擎没进循环）→ 空列表而非报错，也不凭空造记录  786ms
+   ✓ WO-AGENTRUN-ATTRIBUTION · 运行归属接缝 > ⑥ 租户隔离：别家租户的 agent 一律 404，且它的运行绝不经本租户的 key 漏出去  821ms
+   ✓ WO-AGENTRUN-ATTRIBUTION · 运行归属接缝 > ⑦ 归属不干扰既有读端：同一条运行经 /queries/:taskId/agent-run 读回时也带着归属（两个读端同源）  1403ms
+   ✓ WO-DSH-P2-UX · 内核标识写入对拍（A7） > DSH_HARNESS=1 ⇒ dsh 分叉产出的 run.kernel === "EXTERNAL"  46549ms
+   ✓ WO-DSH-P2-UX · 内核标识写入对拍（A7） > flag off（缺省休眠）⇒ 同入口落 native 循环 run.kernel === "NATIVE"  590ms
+   × WO-DSH-P2-UX · 内核标识写入对拍（A7） > agent.kernel="EXTERNAL" + env 关 ⇒ 走 dsh 分叉 run.kernel === "EXTERNAL" 59776ms
+     → runtime process did not exit within 3000ms after SIGKILL was accepted
+   ✓ WO-DSH-P2-UX · 内核标识写入对拍（A7） > agent.kernel="NATIVE" 显式 + DSH_HARNESS=1 ⇒ 显式配置压过 env，落 native run.kernel === "NATIVE"  874ms
+   ✓ WO-DSH-P2-UX · 内核标识写入对拍（A7） > A10 BLOCK 早退 · DSH_HARNESS=1 ⇒ kernel === "EXTERNAL"（本会走外部运行时，未真执行）  766ms
+   ✓ WO-DSH-P2-UX · 内核标识写入对拍（A7） > A10 对拍 · 同剧本 flag off ⇒ kernel === "NATIVE"  1088ms
+   ✓ WO-DSH-P2-UX · 内核标识写入对拍（A7） > A10 BLOCK 早退 · agent.kernel="EXTERNAL" + env 关 ⇒ kernel === "EXTERNAL"（WO-AGENT-KERNEL-SELECT per-agent 臂）  455ms
+ ✓ test/dsh-dualrun-reconcile.test.ts (3 tests) 39895ms
+   ✓ WO-DSH-N2 · A5/A6 双跑逐字节对账（flag off/on 同剧本） > A5：滤收缩白名单 + 删 stats 键后序列逐项相等；差集实际项 ⊆ ALLOWED_PSEUDO_TYPES（白名单不膨胀）  21274ms
+   ✓ WO-DSH-N2 · A5/A6 双跑逐字节对账（flag off/on 同剧本） > A6：answer.final 附加键限 {stats}（dsh 臂 answer 键集 == native 臂 ∪ {stats}）  18616ms
+ ❯ test/dsh-deny-budget.seam.test.ts (5 tests | 1 failed) 69368ms
+   ✓ WO-DSH-GOV-CREDENTIAL 修② · deny 侧上界（pre-execute 拒绝的有界终止） > ① 连续 deny 达 cap ⇒ 在**有界轮次内**终止，终态诚实且说清为什么  16514ms
+   ✓ WO-DSH-GOV-CREDENTIAL 修② · deny 侧上界（pre-execute 拒绝的有界终止） > ② 变异反证臂：显式禁用上界（cap=0）⇒ 同一剧本跑满 8 轮、无 abort ⇒ 证明喊停的确是上界  14486ms
+   × WO-DSH-GOV-CREDENTIAL 修② · deny 侧上界（pre-execute 拒绝的有界终止） > ③ 不误伤：全程 allow 的正常 run 不受 deny 上界影响（cap=1 亦然） 37325ms
+     → initialize timed out after 30000ms waiting for the DeepSeek Harness runtime
+   ✓ WO-DSH-GOV-CREDENTIAL 修② · deny 侧上界（pre-execute 拒绝的有界终止） > ④ 缺省**启用**：未设 env ⇒ 上界仍在（不许是「接了线没数据」）  1035ms
+   ✓ WO-DSH-GOV-CREDENTIAL 修② · deny 侧上界（pre-execute 拒绝的有界终止） > ⑤ 计数不设 meta 豁免（这正是既有看门狗致盲的第二条原因） 5ms
+ ✓ test/dsh-e2e-degradation-screen.test.ts (3 tests) 93419ms
+   ✓ WO-DSH-E2E · L3 降级路径穿透（后端半） > A1 · dsh 臂同参工具环 + cap=3 ⇒ degraded{STALL_LOOP} + 诚实块 + tool/call===cap（dsh 口径）+ G-9 段源码锚直证  25356ms
+   ✓ WO-DSH-E2E · L3 降级路径穿透（后端半） > A3a · 两臂对齐规则 deny：skill precondition BLOCK（分叉前预检·两臂对称）⇒ flag off/on 拒绝 Answer 逐字节等  393ms
+   ✓ WO-DSH-E2E · L3 降级路径穿透（后端半） > A3b · dsh PRE_CHECK 执行点：governance mock deny ⇒ tool/result isError ∧ 理由原串到模型面 ∧ 工具体零执行  67666ms
+ ❯ test/solver-cancel-seam.test.ts (3 tests | 1 failed) 5564ms
+   ✓ WO-D1 · 求解取消（超时/断开 → 底层作业真停，非仅不再等待） > ① 超时 504 后底层作业不再 finish（对照：不超时则 finish=1）  3191ms
+   × WO-D1 · B→A 真 HTTP 接缝（取消跨进程传到 DataCore 侧，非只在 B 内部打转） > ② 超时 → 真 fetch 被 abort → DataCore 侧观察到断链且底层作业不再 finish 369ms
+     → expected +0 to be 1 // Object.is equality
+   ✓ WO-D1 · B→A 真 HTTP 接缝（取消跨进程传到 DataCore 侧，非只在 B 内部打转） > ③ 客户端主动断开（前端 AbortController 同款）→ 同一条取消路径（超时阈值远未到）  1995ms
+ ❯ test/solver-timeout-incumbent-seam.test.ts (7 tests | 1 failed) 7269ms
+   ✓ WO-D2 · 超时前先回可行解（incumbent·诚实标注非最优） > ① 有 incumbent → 200 + 诚实标注（标注字段真在·真解带回）；对照：不超时则无任何 incumbent 标注  2827ms
+   ✓ WO-D2 · 超时前先回可行解（incumbent·诚实标注非最优） > ② 无 incumbent 的三种形态 → 一律仍 504，绝不编造  1870ms
+   ✓ WO-D2 · 超时前先回可行解（incumbent·诚实标注非最优） > ③ 最优解绝不被改标成 incumbent（即便它在交卷窗口内才回来） 143ms
+   ✓ WO-D3 · 超时诊断带真值（不是常数占位） > ④ 耗时是真耗时（不是把阈值抄一遍）· 规模是真规模（换入参 → 真跟着变）  965ms
+   ✓ WO-D3 · 超时诊断带真值（不是常数占位） > ⑤ 有 incumbent 时规模并入**实测**解规模（source 升级 mixed·非入参猜的） 205ms
+   ✓ WO-D3 · 超时诊断带真值（不是常数占位） > ⑥ 加性向后兼容：504 的既有 error 信封逐字节不变（老前端只读 error.code/message/requestId 仍成立）  393ms
+   × WO-D2 · B→A 真 HTTP 接缝（DataCore 自有预算交卷 → 诚实标注穿到 B 返回体） > ⑦ A 侧预算 < B 侧超时 → 可行解真跨过网线，且一路带着「非最优」自述（不被 B 抹平成最优） 850ms
+     → expected 504 to be 200 // Object.is equality
+ ✓ test/deploy-governance-seam.test.ts (6 tests) 21093ms
+   ✓ #88 SEAM · 出货 compose 的治理开关 → 真管线里的真早停 > ③ 用出货 env 起真 app：病态同签名循环被出货 cap 早停（STALL_LOOP），不烧满 maxIterations=24  3316ms
+   ✓ #88 SEAM · 出货 compose 的治理开关 → 真管线里的真早停 > ④ 归属取证：同病态同 mock，去掉出货 env（= 修前出货态）→ 烧满 24 轮不早停（证③的早停来自 compose 那几行）  966ms
+   ✓ #88 SEAM · ③′④′ DSH_HARNESS=1 对位副本（N3 看门狗·engine 级缝） > ③′ 出货 env（含 cap）+ DSH_HARNESS=1：病态同签名循环被 watchdog 在 cap 处打断（STALL_LOOP），不烧满 8 轮剧本  6638ms
+   ✓ #88 SEAM · ③′④′ DSH_HARNESS=1 对位副本（N3 看门狗·engine 级缝） > ④′ 归因臂：同剧本仅去掉 QOS_AGENT_LOOP_REPEAT_CAP → 无 STALL_LOOP ∧ metric 0 ∧ 烧满 8 轮（差值=compose 那行字节买到的治理）  10154ms
+ ✓ test/role-model-fallback.test.ts (8 tests) 2614ms
+   ✓ #4 SEAM · role/coordinator 路 keyless-provider 回落（消静默空答） > ① role agent 硬编 claude-opus-4-8（anthropic 无 key）→ 回落租户 kimi 绑定 → 真出非空答（非 gap）  2111ms
+   ✓ #4 SEAM · role/coordinator 路 keyless-provider 回落（消静默空答） > ② 连租户绑定也无（仅 classifier 绑 kimi·无 agent 绑定）→ 诚实 gap 错误（provider 缺失码）·非「探索模式未能产出回答」占位  451ms
+ ✓ test/dril-quality.test.ts (13 tests) 4075ms
+   ✓ WO-DRIL-P3 · Quality EWMA（§5.4·R6 确定性） > ResourceQualityService.record：连续观测的仓储态与手算 EWMA byte 一致（R6）  1039ms
+   ✓ WO-DRIL-P3 · 端到端 SEAM：质量探针 → 仓储 → registry 叠加 → 再检索排名位移 > capacity_forecast 探成功→history 升→排名上移；再探失败→history 降→排名回落（自参照真移动）  2285ms
+   ✓ WO-DRIL-P3 · 端到端 SEAM：质量探针 → 仓储 → registry 叠加 → 再检索排名位移 > relations 端点 1-hop：capacity_check 工作流出边含 invokes→capacity_forecast  515ms
+ ✓ test/runtime-workflow.test.ts (9 tests) 3162ms
+   ✓ 增量 §2 · Workflow 执行语义 > §2-1 发布校验：Σ步骤超时 > 5 分钟 → 拒绝发布  1016ms
+   ✓ R6 · read_skill_resource（增量 §3） > 文本附件可读且 64KB 截断规则生效；二进制返回元信息「无法直接读取」；load_skill 附资源清单  467ms
+   ✓ R10 · 工具并行执行（增量 §5） > 含 COMPUTE 的混合轮全部串行  1020ms
+ ✓ test/scenario-growth-wiring.test.ts (6 tests) 2541ms
+   ✓ O9 · growScenario 自动调 runGrowthLoop（缺件→自动补→诚实定级） > 缺件卡（无意图死路）grow → 触发自成长 LOOP（账本+ growth_triggered 事件）→ 诚实 PROVISIONAL + GrowthTicket（不假 GOVERNED）  895ms
+   ✓ O9 · growScenario 自动调 runGrowthLoop（缺件→自动补→诚实定级） > 已就绪卡 S01 grow → 首验即 VERIFIED → 不触发 LOOP（无谓不浪费）→ GOVERNED  460ms
+   ✓ O9 · growScenario 自动调 runGrowthLoop（缺件→自动补→诚实定级） > RENDER_NOT_PROJECTED 纯指针卡 grow → 触发 LOOP（gapCode 可自动补类）但补不上 → PROVISIONAL + 诚实门保持（不假 GOVERNED）  390ms
+   ✓ O12 · ADVISORY 三态（自动发育所得待人工坐实，不冒充 GOVERNED 不降格 PROVISIONAL） > grow 一张路径B探索出非空答案的卡（capability 在但当前视图无候选→agent 推出 advisory 答案）→ maturity=ADVISORY（诚实中间态）  423ms
+ ✓ test/escalation-reroute-seam.test.ts (4 tests) 4806ms
+   ✓ WO-LOOP-CONTROL-P2.5 · Escalation Ladder rung②（反应式重路由到 Coordinator·SEAM 头号） > ① rung② 先于 degrade：escalation 开 → agent_escalated(REROUTE)→Coordinator 扇出(多角色)→非 degrade 综合答案  2398ms
+   ✓ WO-LOOP-CONTROL-P2.5 · Escalation Ladder rung②（反应式重路由到 Coordinator·SEAM 头号） > ② 红咬对照：escalation 关 → 同题单 agent 停滞 → 无 reroute → 直接 degrade（byte-compat 同 P2·round3 早停）  676ms
+   ✓ WO-LOOP-CONTROL-P2.5 · Escalation Ladder rung②（反应式重路由到 Coordinator·SEAM 头号） > ③ 防双 Coordinator：跨域题命中 proactive Coordinator → proactive 扇出一次 → 不反应式重入（无 REROUTE）  505ms
+   ✓ WO-LOOP-CONTROL-P2.5 · Escalation Ladder rung②（反应式重路由到 Coordinator·SEAM 头号） > ⑤ R6：rung② 路径两跑路由决策一致（reroute/coordinator/扇出角色数 全同）  1223ms
+ ✓ test/qos-g-tools.test.ts (10 tests) 2648ms
+   ✓ New builtin tools (QOS-PRD §7.1 additions: search_knowledge / query_timeseries_agg) > search_knowledge (mock, 3 seeded chunks): topK respected; path B provenance → KB_CHUNK with kb meta  1341ms
+   ✓ New builtin tools (QOS-PRD §7.1 additions: search_knowledge / query_timeseries_agg) > G8: aggregate_objects (path B) returns grouped rows; audit asserts agent did NOT pull full object rows  320ms
+ ✓ test/qos-cross-domain-seam.test.ts (16 tests) 20762ms
+   ✓ WO-QOS-CROSS-DOMAIN-UNIFIED · 活系统 SEAM（真跑 orchestrator） > SEAM-Q2（头号·治 300s）：Q2 flag 开 → 不进 Coordinator·model=deterministic:multi-domain·agentRequests=0·并行 ≥3 solver·⟦ref⟧·耦合诚实标  19490ms
+   ✓ WO-QOS-CROSS-DOMAIN-UNIFIED · 活系统 SEAM（真跑 orchestrator） > SEAM-Q2 对照（根治证·门序随 D1 更新）：Q2 flag 关 → 拿不到 ② 的确定性多域待遇；且**不再**掉进 Coordinator 烧 agent  354ms
+stderr | test/coord-yield-terminal-seam.test.ts > WO-COORD-YIELD-AND-TERMINAL §3.2 · 终态门（EXECUTING_AGENT 必须有终态责任人） > Coordinator 扇出永不返回（HANG）→ 越过阈值后落终态·completedAt 非空·答案说真话（未收敛/已中止 + 已完成到哪一步）
+{"level":50,"module":"orchestrator","where":"terminal-watchdog","taskId":"task_01M3KYH1SQNEFAZQ4T31HBSYG2","msg":"Error: task stuck in EXECUTING_AGENT for 1s (phase=3 角色会诊, doneSteps=1) — forced to FAILED","stack":"Error: task stuck in EXECUTING_AGENT for 1s (phase=3 角色会诊, doneSteps=1) — forced to FAILED\n    at Orchestrator.forceTerminalOnTimeout (/Users/apple/deploy/complete/apps/agentcore/src/router/orchestrator.ts:1470:7)\n    at runNextTicks (node:internal/process/task_queues:64:5)\n    at processTimers (node:internal/timers:538:9)"}
+
+stderr | test/coord-yield-terminal-seam.test.ts > WO-COORD-YIELD-AND-TERMINAL §3.2 · 终态门（EXECUTING_AGENT 必须有终态责任人） > 看门狗是**状态机层**的，不是 Coordinator 专属：单 agent path-B 永不返回 → 同样落终态
+{"level":50,"module":"orchestrator","where":"terminal-watchdog","taskId":"task_01M3KYH2D310N52Z2HHRR7P0D7","msg":"Error: task stuck in EXECUTING_AGENT for 1s (phase=探索模式（单 agent 自由多跳）, doneSteps=0) — forced to FAILED","stack":"Error: task stuck in EXECUTING_AGENT for 1s (phase=探索模式（单 agent 自由多跳）, doneSteps=0) — forced to FAILED\n    at Orchestrator.forceTerminalOnTimeout (/Users/apple/deploy/complete/apps/agentcore/src/router/orchestrator.ts:1470:7)"}
+
+ ✓ test/coord-yield-terminal-seam.test.ts (5 tests) 23021ms
+   ✓ WO-COORD-YIELD-AND-TERMINAL §3.1 · 措辞对照门（同义问句必须被同一套判据对待） > 头号判据：A「交期风险波及哪些在手单」与 B「有哪些单要被拖累」→ 同一路由指纹·都 COMPLETED·都不进 Coordinator  20823ms
+   ✓ WO-COORD-YIELD-AND-TERMINAL §3.1 · 措辞对照门（同义问句必须被同一套判据对待） > Coordinator 没被删掉·只是降级为兜底：同一问句 A + 分类器域外 → 仍会诊（关键词判据 = 必要不充分）  831ms
+   ✓ WO-COORD-YIELD-AND-TERMINAL §3.2 · 终态门（EXECUTING_AGENT 必须有终态责任人） > Coordinator 扇出永不返回（HANG）→ 越过阈值后落终态·completedAt 非空·答案说真话（未收敛/已中止 + 已完成到哪一步）  729ms
+   ✓ WO-COORD-YIELD-AND-TERMINAL §3.2 · 终态门（EXECUTING_AGENT 必须有终态责任人） > 看门狗是**状态机层**的，不是 Coordinator 专属：单 agent path-B 永不返回 → 同样落终态  466ms
+ ✓ test/optimize-whatif-conversational-seam.test.ts (16 tests) 2348ms
+   ✓ WO-OPTWHATIF-NL-WIRING · 活系统头号 SEAM（真跑 orchestrator） > 头号：flag 开 → path-A·model=deterministic:opt-whatif·solverKey=optimize_whatif·**决策方案切换**（openFacilities f1→f2·Δ 符号正确）·agentRequests=0  1054ms
+   ✓ WO-OPTWHATIF-NL-WIRING · 活系统头号 SEAM（真跑 orchestrator） > ③ 对照真开放题「如果市场变化未来会怎样」→ 路径B（route≠optimize_whatif·不误伤）  448ms
+   ✓ WO-OPTWHATIF-NL-WIRING · 活系统头号 SEAM（真跑 orchestrator） > ④ 暗发关 → 同问句落路径B·无 optimize_whatif 路由（字节兼容）  568ms
+ ✓ test/skill-ref-closure.seam.test.ts (13 tests) 5166ms
+   ✓ WO-SKILL-REFCLOSURE-A · skill 发布路的引用可校验门（接缝：HTTP → 探针 → DataCore 注册表） > 金丝雀：mock 求解器目录含 capacity_forecast、不含假 key（否则本文件全部断言失去意义）  2095ms
+   ✓ WO-SKILL-REFCLOSURE-A · skill 发布路的引用可校验门（接缝：HTTP → 探针 → DataCore 注册表） > ① 引用不存在的求解器 key → 422 SKILL_REF_UNRESOLVED 且未落库（接线前：200 PUBLISHED）  737ms
+   ✓ WO-SKILL-REFCLOSURE-A · skill 发布路的引用可校验门（接缝：HTTP → 探针 → DataCore 注册表） > ① force=true 不豁免引用门（force 豁免的是质量门；死路是事实错误，审计签字不能让不存在的求解器存在）  364ms
+   ✓ WO-SKILL-REFCLOSURE-A · skill 发布路的引用可校验门（接缝：HTTP → 探针 → DataCore 注册表） > ③ agent 发布路同享 fail-closed（探针是共用实现，不许只在 skill 路关 fail-open）  330ms
+ ✓ test/agent-run-fanout.seam.test.ts (7 tests) 7272ms
+   ✓ WO-AGENTRUN-FANOUT-PERSIST · 会诊扇出落库接缝 > ① 头号判据：真会诊 → 三个角色子 agent 各自真跑 → 三条 run 真落库 → 每个 agent 按 key 读回自己那次  3699ms
+   ✓ WO-AGENTRUN-FANOUT-PERSIST · 会诊扇出落库接缝 > ② 次数就是次数：同一个角色 agent 参加两次会诊 → 它的运行数 = 2（一次一条，不互相覆盖）  1437ms
+   ✓ WO-AGENTRUN-FANOUT-PERSIST · 会诊扇出落库接缝 > ③ 向后兼容 · 单数读端语义一字不改：会诊任务上仍 404，绝不拿三条里的某一条冒充「本次运行」  584ms
+   ✓ WO-AGENTRUN-FANOUT-PERSIST · 会诊扇出落库接缝 > ④ 向后兼容 · 普通探索路不受影响：顶层那条仍是 ROOT，单数读端照旧读得到它  523ms
+   ✓ WO-AGENTRUN-FANOUT-PERSIST · 会诊扇出落库接缝 > ⑥ 租户隔离：别家租户的任务问运行清单一律 404（与「不存在」同码，不泄漏存在性）  523ms
+   ✓ WO-AGENTRUN-FANOUT-PERSIST · 会诊扇出落库接缝 > ⑦ 修的不是「会诊」这一条路：任何工作流里的 invoke_agent 子运行同样落库（证明补在 engine 是对的地方）  461ms
+ ❯ test/skill-orchestrator.seam.test.ts (18 tests | 1 failed) 584069ms
+   ✓ SEAM · 两层 Skill Graph：第二层真的拿到了第一层的输出 > HTTP 入口 → 真实种子技能 → 边 → 求解器：数据流过了边  2700ms
+   ✓ SEAM · 两层 Skill Graph：第二层真的拿到了第一层的输出 > 变异反证（掐掉边）：同一张图删掉边 → 第二层拿不到第一层输出 → FAILED 36ms
+   ✓ SEAM · 两层 Skill Graph：第二层真的拿到了第一层的输出 > ★ 无边即不可见：上游已完成且产物在手，但没有边连过来 → 仍然读不到  725ms
+   ✓ SEAM · 两层 Skill Graph：第二层真的拿到了第一层的输出 > 同层并发：两个 solver 兄弟同层，且**都**拿到了第一层的输出 160ms
+   ✓ SEAM · 环检测有牙（不许静默跑成线性） > 有环的图 → 422 + CYCLIC_INVOCATION + 可读环路径，且一个节点都没跑 222ms
+   ✓ SEAM · 诚实边界：未实现的节点类型显式 NOT_IMPLEMENTED，不静默跳过 > rule 节点 → 422 NOT_IMPLEMENTED 并点名是哪个节点、哪个 kind  354ms
+   × SEAM · 诚实边界：未实现的节点类型显式 NOT_IMPLEMENTED，不静默跳过 > cond 边 → 422 NOT_IMPLEMENTED（不许当成 seq 悄悄跑） 574996ms
+     → Hook timed out in 20000ms.
+If this is a long-running hook, pass a timeout value as the last argument or configure it globally with "hookTimeout".
+   ✓ SEAM · R6 确定性 + R2 租户隔离 + 鉴权 > 同一张图跑两次：layers[] 与 nodeResults 逐字节一致  1687ms
+   ✓ SEAM · R6 确定性 + R2 租户隔离 + 鉴权 > 跨租户看不到本租户技能 → skill 节点 SKILL_NOT_FOUND（R2）  895ms
+   ✓ SEAM · R6 确定性 + R2 租户隔离 + 鉴权 > 无凭据 → 401 错误信封  612ms
+   ✓ SEAM · R6 确定性 + R2 租户隔离 + 鉴权 > 并发上限不许无上限：maxParallelNodes 越界 → 400 VALIDATION_ERROR 27ms
+   ✓ SEAM · Skill.execution 对名裁决：执行来源在响应里可见 > execution.graph（新路·图）→ source=execution.graph 且真跑出结果  476ms
+   ✓ SEAM · Skill.execution 对名裁决：执行来源在响应里可见 > execution.steps（新路·线性，元素就是 PlanStep）→ source=execution.steps 且编成 seq 链  384ms
+   ✓ SEAM · Skill.execution 对名裁决：执行来源在响应里可见 > ★ 只给 legacy plan.steps → source=legacy.plan.steps（回落**可见**，不静默） 42ms
+   ✓ SEAM · Skill.execution 对名裁决：执行来源在响应里可见 > ★ 三路皆空 → 422，不是「跑通了但什么都没做」 29ms
+   ✓ SEAM · Skill.execution 对名裁决：执行来源在响应里可见 > ★ ExtraToolStep 三类不得在解析层被挡掉，且要拿到**点名**的诚实错误  567ms
+   ✓ SEAM · Skill.execution 对名裁决：执行来源在响应里可见 > ★ 约束①真接线：线性路上 validatePlanSteps 的语义错真的会拦（不是只写在注释里） 132ms
+   ✓ SEAM · Skill.execution 对名裁决：执行来源在响应里可见 > 优先级 graph > steps > legacy：三路同给，走图且如实上报 21ms
+ ✓ test/coordinator-a2a.test.ts (8 tests) 584129ms
+   ✓ WO-FIVE-ROLE P1 · SEAM 跨域真拆→invoke_agent 真调 ≥2 角色→scope 真隔离越界拒→汇总 > 头号判据：常州交付风险 → 真调 supply_chain+capacity_planner 两不同 agent·各受自身 scope 约束·汇总合并  577838ms
+   ✓ WO-FIVE-ROLE P1 · SEAM 跨域真拆→invoke_agent 真调 ≥2 角色→scope 真隔离越界拒→汇总 > SEAM 有牙：改一角色 scope（供应链去掉 Material）→ 其 Material 取证被拒（scope 真约束·非装饰）  5007ms
+   ✓ WO-FIVE-ROLE P1 · C4 不劫持：feature 关（默认 ALL）→ 跨域问题走既有 path（Coordinator 不触发） > 默认 ALL + 跨域问句 → classification.model≠coordinator（暗发默认关·字节兼容）  846ms
+   ✓ WO-FIVE-ROLE P1 · C2 path-B 按 role 选对应 agent（单域·非永远 universal） > 单域「物料齐套」问句 + coordinator 开 → 走供应链角色 agent（agent:role:supply-chain）  410ms
+ ✓ test/dril-registry.test.ts (10 tests) 5188ms
+   ✓ WO-DRIL-P1 · Resource Registry 一次发现全量资源 > GET /b/v1/resources 跨 7+ 类返回，无空描述资源（SEAM）  2347ms
+   ✓ WO-DRIL-P1 · Resource Registry 一次发现全量资源 > 新 4 kind（rule/workflow/skill/agent）各至少一条带非空 description（漏则红）  641ms
+   ✓ WO-DRIL-P1 · Resource Registry 一次发现全量资源 > kind 过滤 + 单资源详情端点  619ms
+   ✓ WO-DRIL-P1 · Resource Registry 一次发现全量资源 > R3 entitlement 先于 authz：关 view.project-sim → capacity_forecast solver 不出现  834ms
+   ✓ WO-DRIL-P1 · Resource Registry 一次发现全量资源 > R13 派生投影落三表：intelligence_resources + resource_relations 有行  452ms
+ ✓ test/capability-map-live-seam.test.ts (18 tests) 7330ms
+   ✓ WO-CAPMAP-LIVE · SEAM ① 注入源 = 活资源目录（镜像里没有的求解器进得了候选集） > ★ 镜像里没有的求解器**真的**进了发给模型的首轮 prompt（活目录接线·非蒙）  2634ms
+   ✓ WO-CAPMAP-LIVE · SEAM ① 注入源 = 活资源目录（镜像里没有的求解器进得了候选集） > 候选条目带**活目录的**输出形状（A 侧 SOLVER_OUTPUT_SHAPES 经 REST 透传·接缝不丢）  638ms
+   ✓ WO-TOOLS-LIST · SEAM ①c 两段式：目录段列全 · 详情段仍收窄 > 金丝雀：两段的量法各自有判别力（详情段数得出来 · 目录段数得出来 · 两段不是同一批）  413ms
+   ✓ WO-TOOLS-LIST · SEAM ①c 两段式：目录段列全 · 详情段仍收窄 > ★ 活目录里**每一条**求解器都进了发给模型的目录段（不是前 6·差集算出来·不抄 key）  389ms
+   ✓ WO-TOOLS-LIST · SEAM ①c 两段式：目录段列全 · 详情段仍收窄 > ★ 目录**轻**、详情**重**：同一条求解器的目录行显著短于它的详情行（证明不是把全文抄了两遍）  513ms
+   ✓ WO-TOOLS-LIST · SEAM ①c 两段式：目录段列全 · 详情段仍收窄 > 目录段**与问句无关**（R6·按 key 字典序不按热度）—— 两道完全不同的题渲染出同一份目录  322ms
+   ✓ WO-TOOLS-LIST · SEAM ①c 两段式：目录段列全 · 详情段仍收窄 > 全集条数必须留在取回上限之内 —— 越线目录会**静默**退化成『前 100 名』（机器先说话）  406ms
+   ✓ WO-CAPMAP-LIVE · SEAM ② 提示词不再封死 discover > 注入段明说『候选不是全集』并鼓励再检索（旧文案『选型已替你做完』已废）  336ms
+   ✓ WO-CAPMAP-LIVE · SEAM ③ R6 确定性 + fail-open 降级 > 无关问句不被灌噪声：相关性全在门槛下 → 不注入求解器候选（同改造前『无族信号不注入』）  428ms
+stdout | test/base-slot-unify.seam.test.ts > WO-BASE-SLOT-UNIFY §E-1 · capacity_feasibility 四种基地写法 → 全部 COMPLETED 且 DataCore 收到同一个 base > ★ 命门：常州 / changzhou / 常州基地 / 常州工厂 —— 终态全 COMPLETED·零反问·base 归一后全等
+
+  ── §E-1 四写法端到端（断言落终态·非 routedIntent）──
+  写法「常州」 status=COMPLETED rounds=0 slots.base={"objectType":"Base","objectId":"base_changzhou","label":"常州"} → solver args.base={"objectType":"Base","objectId":"base_changzhou","label":"常州"} 归一=changzhou
+  写法「changzhou」 status=COMPLETED rounds=0 slots.base={"objectType":"Base","objectId":"base_changzhou","label":"常州"} → solver args.base={"objectType":"Base","objectId":"base_changzhou","label":"常州"} 归一=changzhou
+  写法「常州基地」 status=COMPLETED rounds=0 slots.base={"objectType":"Base","objectId":"base_changzhou","label":"常州"} → solver args.base={"objectType":"Base","objectId":"base_changzhou","label":"常州"} 归一=changzhou
+  写法「常州工厂」 status=COMPLETED rounds=0 slots.base={"objectType":"Base","objectId":"base_changzhou","label":"常州"} → solver args.base={"objectType":"Base","objectId":"base_changzhou","label":"常州"} 归一=changzhou
+
+stdout | test/base-slot-unify.seam.test.ts > WO-BASE-SLOT-UNIFY §E-1 · capacity_feasibility 四种基地写法 → 全部 COMPLETED 且 DataCore 收到同一个 base > 不指定基地的全网问句仍 COMPLETED（别把「治后缀」治成「必须给基地」·守 {{slots.base}} 的 null 直通语义）
+
+  ── §E-1 无基地（全网）──
+  status=COMPLETED rounds=0 slots.base=null args.base=null error=undefined
+
+stdout | test/base-slot-unify.seam.test.ts > WO-BASE-SLOT-UNIFY §E-1 · capacity_feasibility 四种基地写法 → 全部 COMPLETED 且 DataCore 收到同一个 base > 语义真达成（非「参数到达了就算通」）：带基地 vs 全网 P50 必须不同
+
+  ── §E-1 语义真达成 ──
+  「常州工厂」capWanP50=24.2  vs  全网 capWanP50=74.7
+
+stdout | test/base-slot-unify.seam.test.ts > WO-BASE-SLOT-UNIFY §A · 全意图 base 槽口径统一（数据半·纯函数直测·零数据依赖） > ★ 单值 base 语义槽一律 objectRef+refType:Base；数组维（baseIds/scopeObjectIds）保持 json
+
+  ── §A 全意图 base 槽扫描 ──
+  affected_orders.base:objectRef(Base)
+  capacity_feasibility.base:objectRef(Base)
+  risk_root_cause.base:objectRef(Base)
+  adopt_mitigation.base:objectRef(Base)
+  order_deep_360.base:objectRef(Base)
+  kit_analysis.base:objectRef(Base)
+  yield_diag.base:objectRef(Base)
+  carbon_q.baseName:objectRef(Base)
+  ceo_bottleneck.baseIds:json
+  ceo_base_outlook.baseId:objectRef(Base)
+  ceo_whatif.scopeObjectIds:json
+
+ ✓ test/llm-budget-seam.test.ts (8 tests) 1347444ms
+   ✓ #92 SEAM · LLM token 配额账本终于有了真消费方 > ① 记账无条件发生：一次 path-B 跑完，本次真实 token 用量进了账本（不受暗发门控）  1344581ms
+   ✓ #92 SEAM · LLM token 配额账本终于有了真消费方 > ② 执行门关（缺省）：硬线早已耗尽也照常放行 —— 只记账不拦（既有行为字节不变）  752ms
+   ✓ #92 SEAM · LLM token 配额账本终于有了真消费方 > ④ 执行门开但软线（未过硬线）→ 不拦（软线是降级信号，不是闸门）  685ms
+   ✓ #92 SEAM · LLM token 配额账本终于有了真消费方 > ⑤ fail-open 铁律：账本不可用（status 返 undefined）时门开也不拦 —— 一次 DataCore 抖动不该让用户不能提问  464ms
+   ✓ #92 SEAM · LLM token 配额账本终于有了真消费方 > ⑧ 未配服务间凭证 → Noop：不记不拦（部署没接 A 侧时既有行为字节不变）  426ms
+stdout | test/base-slot-unify.seam.test.ts > WO-BASE-SLOT-UNIFY §D · 豁免题：澄清 → 用户回答 → COMPLETED（断言落回答后的终态） > ★ 「采纳常州工厂的三班制方案」→ 问 factor → 答「物料齐套」→ COMPLETED（base 用后缀写法也不许多问一句）
+
+  ── §D 澄清轮 ──
+  status=AWAITING_CLARIFICATION rounds=1 问的槽=["factor"] slots.base=undefined
+
+stdout | test/base-slot-unify.seam.test.ts > WO-BASE-SLOT-UNIFY §D · 豁免题：澄清 → 用户回答 → COMPLETED（断言落回答后的终态） > ★ 「采纳常州工厂的三班制方案」→ 问 factor → 答「物料齐套」→ COMPLETED（base 用后缀写法也不许多问一句）
+  ── §D 回答之后 ──
+  status=COMPLETED rounds=1 slots.base={"objectType":"Base","objectId":"base_changzhou","label":"常州"} slots.factor="物料齐套" error=undefined
+
+ ✓ test/base-slot-unify.seam.test.ts (7 tests) 4423ms
+   ✓ WO-BASE-SLOT-UNIFY §E-1 · capacity_feasibility 四种基地写法 → 全部 COMPLETED 且 DataCore 收到同一个 base > ★ 命门：常州 / changzhou / 常州基地 / 常州工厂 —— 终态全 COMPLETED·零反问·base 归一后全等  3645ms
+   ✓ WO-BASE-SLOT-UNIFY §E-1 · capacity_feasibility 四种基地写法 → 全部 COMPLETED 且 DataCore 收到同一个 base > 不指定基地的全网问句仍 COMPLETED（别把「治后缀」治成「必须给基地」·守 {{slots.base}} 的 null 直通语义）  345ms
+ ❯ test/compose-plan-seam.test.ts (5 tests | 1 failed) 2078966ms
+   × WO-Phase2-C-COMPLETE · SEAM-1 组合命中 → runAgentLoop 零调用（命门·服务端多步 + 一次综合） > 锂电跨基地重排 + 根因（sop_reschedule ∥ gap_attribution）→ executePlan 服务端跑两步·综合一次·runAgentLoop spy==0 2072957ms
+     → Test timed out in 1500000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   ✓ WO-Phase2-C-COMPLETE · SEAM-1 组合命中 → runAgentLoop 零调用（命门·服务端多步 + 一次综合） > SEAM-1b serial argsFrom 接线（直驱 executePlan·真 executor × 真 mock solver）：group0→group1·上游产物按 outputPath 填下游 arg  3395ms
+   ✓ WO-Phase2-C-COMPLETE · SEAM-2 退化单步防双算（sop_reschedule 内含 capacity_forecast → 单步·不拉前置） > SO-3402 提前两周交 + 产能够不够 → 单步 sop_reschedule（capacity_forecast 被 COMPOSE_SELF_SUFFICIENT 抑制·仅 1 次 invoke·无双算）  1534ms
+   ✓ WO-Phase2-C-COMPLETE · SEAM-3 编不出 → fallback react·runAgentLoop 被调（命门·防误降级开放题） > 无对口已登记 solver 的真开放题 → compiled.ok===false·why 可诊断·真走 runAgentLoop（spy≥1）  350ms
+   ✓ WO-Phase2-C-COMPLETE · SEAM-4 不劫持既有（path-A 命中题仍走 path-A 单 solver·组合器不抢） > 块级定向短问句 → 确定性 block-route（path=WORKFLOW·单跳）·compose/runAgentLoop 均零调用  369ms
+ ❯ test/retry-manager-seam.test.ts (3 tests | 1 failed) 2079494ms
+   × WO-LOOP-CONTROL-P2 · Retry Manager（SEAM·经真 submitQuery→runPathB→runAgentLoop） > ① 瞬时错（DataCore 不可达）前 1 次 ERROR 后成功 → 真重试且不计停滞·COMPLETED·retry_total=1 2071422ms
+     → Test timed out in 1500000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   ✓ WO-LOOP-CONTROL-P2 · Retry Manager（SEAM·经真 submitQuery→runPathB→runAgentLoop） > ② 确定性错（未知切片·TOOL_ERROR）×多轮 → 不重试·S01 停滞早停 degraded{BUDGET_EXHAUSTED}·retry_total=0  7384ms
+   ✓ WO-LOOP-CONTROL-P2 · Retry Manager（SEAM·经真 submitQuery→runPathB→runAgentLoop） > ③ R6：瞬时错重试路径两跑字节级一致（retry_total / 轮数 / COMPLETED 全同）  682ms
+ ✓ test/perception-out-of-domain.test.ts (5 tests) 1912ms
+   ✓ A5 感知层·实体域外信号 + 最近邻候选 + 误触发率埋点 > 纯函数：编辑距离相似度 + 子串包含对 CJK/拉丁稳定（确定性 R6）  873ms
+   ✓ A5 感知层·实体域外信号 + 最近邻候选 + 误触发率埋点 > 域外实体 → 发 entity.out_of_domain 事件，payload 带最近邻候选（常州）  358ms
+ ✓ test/refs.test.ts (6 tests) 2666ms
+   ✓ L6 · 意图 → 计划 planRef（修订 QOS-PRD §4.1：执行时解析） > planRef=latest：计划发新版后下一次命中即执行新版；pin=1 的另一意图不变  1217ms
+   ✓ L8 · skill 更新：latest 引用下次加载即新内容；任务留痕含 skill 版本 > skill v2 发布后，引用 latest 的 agent 下次运行用 v2；resolvedRefs 记录实际版本  881ms
+ ✓ test/skill-graph-render-closure.seam.test.ts (11 tests) 3498ms
+   ✓ R11 在 HTTP 入口的落点 > 没收口的图 → 422 RENDER_CLOSURE_MISSING + 可读原因 + 统一错误信封  1932ms
+   ✓ T4 · 端到端：render 节点真的跑了，并产出可消费的答案形态 > ★ 头号判据：求解器算出的**真值**流进了 render，产出带 provenance 的 Answer  564ms
+   ✓ T4 · 端到端：render 节点真的跑了，并产出可消费的答案形态 > render 节点缺 params.blocks → 该节点 FAILED 并点名，不是静默产出空答案  556ms
+   ✓ T4 · 端到端：render 节点真的跑了，并产出可消费的答案形态 > render 只看得见祖先：没有边连过来的节点，它的数进不了答案（与模板作用域同一口径）  426ms
+ ✓ test/skill-compiler.seam.test.ts (10 tests) 5390ms
+   ✓ WO-SKILL-COMPILER-S1 · SEAM：真实种子技能 → HTTP compile → 推理图与声明的引用对账 > ① 每个出厂技能：graph 的节点集合 === 它 references[] 声明的资源（逐个技能对账，一条都不许漏或多）  2122ms
+   ✓ WO-SKILL-COMPILER-S1 · SEAM：真实种子技能 → HTTP compile → 推理图与声明的引用对账 > ② 具体到一条真实技能（capacity_threshold）：solver + rule 各自长出对口节点类型与工具  527ms
+   ✓ WO-SKILL-COMPILER-S1 · SEAM：真实种子技能 → HTTP compile → 推理图与声明的引用对账 > ③ 变异反证锚点 · Validator 真的接了 lintSkill：坏 summary 的技能必出 GV-LINT 错误诊断  474ms
+   ✓ WO-SKILL-COMPILER-S1 · SEAM：真实种子技能 → HTTP compile → 推理图与声明的引用对账 > ④ R6 确定性：同一技能编译两次，ast 与 graph 逐字节一致  594ms
+   ✓ WO-SKILL-COMPILER-S1 · SEAM：真实种子技能 → HTTP compile → 推理图与声明的引用对账 > ⑤ 诚实边界：未实现的段显式标 NOT_IMPLEMENTED 并写明归谁，不返回空对象  327ms
+   ✓ WO-SKILL-COMPILER-S1 · SEAM：真实种子技能 → HTTP compile → 推理图与声明的引用对账 > ⑥ tenant_id everywhere：跨租户编译一律 404 且错误信封统一（不泄漏存在性）  490ms
+ ✓ test/platform.test.ts (8 tests) 4024ms
+   ✓ platform acceptance > WF1: invoke_agent with expectsSchema → structured output referenced by next step  1879ms
+   ✓ platform acceptance > WF2: depth 3 ok; depth 4 → NESTING_DEPTH_EXCEEDED; static cycle → publish rejected  553ms
+   ✓ platform acceptance > SC1: WORKFLOW_ONLY vs AGENT_FIRST behave differently for the same question  465ms
+   ✓ platform acceptance > SK1: load_skill body lands in the next prompt; summary always in system  302ms
+   ✓ platform acceptance > MC1: MCP tool call (mock client) audited + wrapped as untrusted (增量 §4.2 命名空间全名)  366ms
+ ✓ test/real-llm-free-query-seam.test.ts (13 tests) 4618ms
+   ✓ WO-REAL-LLM-FREE-QUERY · SEAM ① 真 LLM 多跳 + ② 上下文真生效（routed mock·非蒙） > ①真进 runAgentLoop·agent 调 ≥2 工具（query_objects→invoke_solver·多跳）·path=AGENT·非确定性单跳  2097ms
+   ✓ WO-REAL-LLM-FREE-QUERY · SEAM ① 真 LLM 多跳 + ② 上下文真生效（routed mock·非蒙） > ②不同 blockData → 工具入参不同（demandPct 28.5 vs 51.4·证上下文真达工具·非写死）  904ms
+ ✓ test/s01-variant-routing-seam.test.ts (10 tests) 5606ms
+   ✓ WO-AGENT-RUNTIME-S01 · SEAM ① 会话继承变体 → capacity_forecast · path-A · 非 AGENT · 不进 Coordinator > 带 conversationId 继承 S01 → capacity_feasibility → capacity_forecast{4680-NCM,0.1,8}·runAgentLoop 零调用·无 coordinator.planned  2418ms
+   ✓ WO-AGENT-RUNTIME-S01 · SEAM ② 变体 compose 直路（无会话继承）→ capacity_forecast · runAgentLoop 零调用 > qos.compose-path 开 · 自由变体落 path-B → compose 跑 capacity_forecast · agentRequests==0（不掉回 agent 盲跳）  951ms
+   ✓ WO-AGENT-RUNTIME-S01 · SEAM ③ 停滞早停（连续工具失败 + 无成功产出 → 预算耗尽前早 degrade） > 脚本化连续 invoke_solver ERROR（无成功产出）→ loop 在 ~3 轮早 degrade（<< maxIterations 24）·BUDGET_EXHAUSTED  791ms
+   ✓ WO-AGENT-RUNTIME-S01 · SEAM ③ 停滞早停（连续工具失败 + 无成功产出 → 预算耗尽前早 degrade） > 不误伤「先错后恢复」：失败与成功工具交替 → 计数复位 → 不早停·正常收尾  738ms
+   ✓ WO-AGENT-RUNTIME-S01 · SEAM ④ 字节兼容（原 S01 + 真开放题路由不变·加性） > 原 S01（presetSlots·无继承）→ deterministic:scenario-bind · path-A · runAgentLoop 零调用（逐字节不变）  498ms
+ ✓ test/loop-detector-seam.test.ts (3 tests) 5751ms
+   ✓ WO-LOOP-CONTROL-P1 · Loop Detector 环检测（SEAM·经真 submitQuery→runPathB→runAgentLoop） > ① 同签名反复 query_objects → ≤ cap+1 轮内 STALL_LOOP 收尾（不烧满 maxIterations=24）+ 诚实部分发现  3311ms
+   ✓ WO-LOOP-CONTROL-P1 · Loop Detector 环检测（SEAM·经真 submitQuery→runPathB→runAgentLoop） > ② 每轮不同入参 → 各签名独立计数不累加 → 跑过 cap+1 轮不早停（不误伤·对照组）  1366ms
+   ✓ WO-LOOP-CONTROL-P1 · Loop Detector 环检测（SEAM·经真 submitQuery→runPathB→runAgentLoop） > ③ R6：同签名病态输入两跑字节级一致（reason / 轮数 / 答案 markdown 全同）  1071ms
+ ✓ test/agent-budget.test.ts (6 tests) 3727ms
+   ✓ WO-Phase4 · 硬预算 → 优雅降级（BUDGET_EXHAUSTED·确定性 R6） > ① maxRoundTrips=4：5 轮工具 → 第 5 轮前硬预算降级·outcome=BUDGET_EXHAUSTED·答案含前缀+provenance  2163ms
+   ✓ WO-Phase4 · 硬预算 → 优雅降级（BUDGET_EXHAUSTED·确定性 R6） > ② maxDiscoverCalls=1：discover 调 2 次 → 第 2 次 deny(BUDGET_EXCEEDED)+硬预算降级  505ms
+   ✓ WO-Phase4 · residual path-B 硬预算 SEAM（config→orchestrator→loop 接缝） > QOS_AGENT_MAX_ROUND_TRIPS=2 → 真开放深问 2 轮后有界降级·COMPLETED·agentBudgetExhausted=1·降级事件早于 final  762ms
+ ✓ test/e2e-dialogue-acceptance.test.ts (17 tests | 4 skipped) 4800ms
+   ✓ S1 · 预设命中 → path-A（分类器→router 真接线·真绿） > 场景卡触发问句『常州基地影响哪些订单』→ 命中 affected_orders → path-A WORKFLOW 出答案  2120ms
+   ✓ S1 · 预设命中 → path-A（分类器→router 真接线·真绿） > PageContext 焦点触发 CEO 确定性路由『储能为什么没达标』→ path-A gap_attribution（无需真 LLM 分类）  514ms
+   ✓ S1/S2 · 无 LLM provider 开放题 → 诚实降级不崩（真绿·守 WO-0） > 对照：注入 provider 凭据 → 降级不触发·不劫持既有路径（字节兼容）  381ms
+   ✓ S4/S7 · CEO 深问 agent 调 solver + 决策结构化接地输出（scripted 真接线·真绿） > S4：agent 真进 path-B 循环并调 invoke_solver（Solver-first·非自己算）  344ms
+   ✓ S5 · 缺数据自动补：growth probe 诊断 + 补齐建议（端到端真绿·databuilder-harness） > /api/v1/growth/probe 开放题真跑 orchestrator → 结构化 GapReport 诊断触发（findings 非空·非天花板）  315ms
+ ✓ test/skill-solver-precondition.seam.test.ts (8 tests) 1033232ms
+   ✓ WO-S05 · solver 类 skill precondition 真的被求值（#154） > 出厂声明驱动：capacity_forecast 未跑 → load_skill 拿不到正文；跑完 → 拿到正文  2123ms
+   ✓ WO-S05 · solver 类 skill precondition 真的被求值（#154） > 不带 solver precondition 的技能不受影响（门只在声明处生效）  501ms
+   ✓ WO-S05 · 防复发：不可执行的引用声明必须被 lint 报出来 > 🔗 门真的挂在发布路上：带不可执行声明的技能 publish → 422 SKILL_LINT_FAILED  1030493ms
+ ✓ test/agent-run-readsurface.seam.test.ts (4 tests) 1034901ms
+   ✓ WO-AGENT-ADMIN-CONSOLE · agent-run 读端接缝 > ① 真 path-B 跑完 → 端点 200，且下发的是**引擎真产出**（迭代/工具/预算/token 全对得上库里那条）  2440ms
+   ✓ WO-AGENT-ADMIN-CONSOLE · agent-run 读端接缝 > ② 上下文清理留痕：默认阈值下 contextOps 为空是**真值**（#91），≤128k provider 下同一条链会真写出 fold  1031998ms
+   ✓ WO-AGENT-ADMIN-CONSOLE · agent-run 读端接缝 > ③ 诚实位：AGENT 路但引擎没跑（无 run 记录）→ 404 AGENT_RUN_NOT_FOUND，与「任务不存在」可区分  380ms
+ ❯ test/skill-partial-a-seam.test.ts (12 tests | 1 failed) 1577785ms
+   ✓ A · maxBudgetRounds 接线（PRD-skill-contract-dsl §4.6 · Track E 约束 4） > 单源纯函数 skillBudgetOverride：未声明→undefined（字节兼容）；声明→取 min(声明, 平台上界)（只收紧不放宽） 3ms
+   × A · maxBudgetRounds 接线（PRD-skill-contract-dsl §4.6 · Track E 约束 4） > SEAM · 声明 maxBudgetRounds=1 → 探针真跑时第二轮 LLM 调用**不再发生**（效果层，非“字段读出来了”） 1574867ms
+     → Test timed out in 1500000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   ✓ A · maxBudgetRounds 接线（PRD-skill-contract-dsl §4.6 · Track E 约束 4） > SEAM 对照 · 同一 skill 不声明 maxBudgetRounds → 第二轮照跑（证上一条红的是预算，不是别的东西）  935ms
+   ✓ A · maxBudgetRounds 接线（PRD-skill-contract-dsl §4.6 · Track E 约束 4） > 出厂种子里有活体演练者：seedRegistry 至少一个 skill 声明 maxBudgetRounds 且被单源函数收下 10ms
+   ✓ B · dependsOn 出厂数据（消费方此前从不触发） > seedRegistry 的 dependsOn 非空，且每条 kind=skill 的依赖都能在同批种子里解析到 PUBLISHED 目标 3ms
+   ✓ B · dependsOn 出厂数据（消费方此前从不触发） > WO-SKILL-4 抽取器 + 出厂数据这一对现在成立（extractRelations 对种子真产 dependsOn 边） 2ms
+   ✓ B · dependsOn 出厂数据（消费方此前从不触发） > SEAM · 生产投影链路真把 skill 的 references/dependsOn 边落进 resource_relations（闭 G-SKILL-REFGRAPH-DEAD-EXTRACTOR ①）  831ms
+   ✓ B · dependsOn 出厂数据（消费方此前从不触发） > SEAM 反侧 · ontologyType 引用与悬挂依赖**不**产边（接线不许接出死路）  329ms
+   ✓ B · dependsOn 出厂数据（消费方此前从不触发） > SEAM · 出厂种子过发布门的 lint（含 requirePublishedDeps 与依赖图环检测两条跨资源规则） 36ms
+   ✓ C · POST /b/v1/skills/lint 干跑与发布门同口径 > SEAM · dependsOn 指向不存在的 skill → 干跑 lint 必须红（此前恒绿，发布时才 422 = 两套输入）  592ms
+   ✓ C · POST /b/v1/skills/lint 干跑与发布门同口径 > SEAM · 干跑与发布门对同一 skill 给出同一批 dependsOn 判定（口径不再分叉） 132ms
+   ✓ C · POST /b/v1/skills/lint 干跑与发布门同口径 > 干跑 body 直传（无 id）也带上工业级字段 → 非法 references 当场红 31ms
+ ❯ test/deterministic-multi-domain-seam.test.ts (9 tests | 1 failed) 1578004ms
+   ✓ WO-DETERMINISTIC-CROSS-DOMAIN · 纯函数判定（R6·零 LLM） > R6：同问句同 PageContext → domainResolveMulti 字节一致·风控员例枚举三域 [margin, atp, yield]（统一单 SEAM-1：并行 3 solver） 7ms
+   ✓ WO-DETERMINISTIC-CROSS-DOMAIN · 纯函数判定（R6·零 LLM） > 无 PageContext → perDomainScore=0 → 判定 null（不冒进·上游照落单域/LLM） 1ms
+   ✓ WO-DETERMINISTIC-CROSS-DOMAIN · 纯函数判定（R6·零 LLM） > 诚实边界：任一域被 open/orchestration 惩罚压到阈下 → 整体回落 null（不硬凑·不出假组合方案） 0ms
+   ✓ WO-DETERMINISTIC-CROSS-DOMAIN · 纯函数判定（R6·零 LLM） > 单域族 → <2 → null（只对≥2 独立域启用·不劫持单域） 0ms
+   ✓ WO-DETERMINISTIC-CROSS-DOMAIN · 纯函数判定（R6·零 LLM） > R13 耦合诚实标：供需↔交期检出耦合对·装配顶部标「独立测算·未链式传导·见 L3」·装配不造跨域新数字 1ms
+   × WO-DETERMINISTIC-CROSS-DOMAIN · 活系统 SEAM（真跑 orchestrator） > SEAM-1：flag 开 → 风控员跨域题被确定性接住·model=deterministic:multi-domain·agentRequests=0·无 classify·并行 2 solver·各 ⟦ref⟧ 1574771ms
+     → Test timed out in 1500000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+   ✓ WO-DETERMINISTIC-CROSS-DOMAIN · 活系统 SEAM（真跑 orchestrator） > SEAM-2（头号·根治证）：同一跨域题 flag 关→落 LLM（agent 被调）· flag 开→确定性接住（agentRequests=0·classify 耗时=0）  2857ms
+   ✓ WO-DETERMINISTIC-CROSS-DOMAIN · 活系统 SEAM（真跑 orchestrator） > SEAM-4：耦合跨域题 flag 开 → 确定性接住但综合顶部**诚实标**耦合（未链式传导·见 L3）·coupledPairs 非空 239ms
+   ✓ WO-DETERMINISTIC-CROSS-DOMAIN · 活系统 SEAM（真跑 orchestrator） > SEAM-5（零回归）：flag 关（默认 ALL）→ 跨域题**不**被多路劫持（沿用现单域 deterministic:ceo-route·非 multi-domain） 124ms
+ ✓ test/block-dialogue-seam.test.ts (8 tests) 737866ms
+   ✓ WO-BLOCK-DIALOGUE SEAM · 块级定向路由 + blockData 真达 agent（闭 G-3 块级） > C-SEAM 端到端：块 pageContext 经**真 orchestrator** → hasBlockContext 门开 → 按 blockType 落求解器（deterministic:block-route）  3879ms
+   ✓ WO-BLOCK-DIALOGUE SEAM · 块级定向路由 + blockData 真达 agent（闭 G-3 块级） > C-SEAM 端到端：blockType 决定求解器——metric-strip→ceo_metric·decision-options→ceo_decision（同泛问不同块→不同求解器）  526ms
+   ✓ WO-BLOCK-DIALOGUE SEAM · 块级定向路由 + blockData 真达 agent（闭 G-3 块级） > C4 seam red-bite：改块真实数据 → 推给 agent 的 blockData 变（extractedSlots.blockData + prompt 均随之变）  477ms
+   ✓ WO-BLOCK-DIALOGUE SEAM · 块级定向路由 + blockData 真达 agent（闭 G-3 块级） > C5 退化（不破 CEO-6-FE·诚实）：无活跃块 → hasBlockContext 假·不走 block-route（退页面级 CEO 问句路由）  731613ms
+   ✓ WO-BLOCK-DIALOGUE SEAM · 块级定向路由 + blockData 真达 agent（闭 G-3 块级） > 未登记 blockType → resolveBlockRoute undefined（不劫持·退化）  597ms
+ ✓ test/skill-lint.test.ts (14 tests) 744227ms
+   ✓ Skill 编写规范 §1-§4 — 结构 lint（SA1/SA4） > 出厂正例通过 lint  602ms
+   ✓ Skill 编写规范 §4 — 发布门禁（endpoint） > 结构 lint 不过 → publish 422 SKILL_LINT_FAILED；force=true 审计豁免可发布  4705ms
+   ✓ Skill 编写规范 §4 — 发布门禁（endpoint） > 合规技能（lint 过）→ publish 200，响应附 lint 结果（门禁二评测门见 skill-eval-gate，此处 force 豁免）  735110ms
+   ✓ Skill 编写规范 §4 — 发布门禁（endpoint） > 编辑器干跑 lint 端点（不改状态）  1092ms
+   ✓ WO-SKILL-3 · Skill 工业级契约静态 lint 与发布依赖闭合 > publish：dependsOn 指向 DRAFT skill → 422 SKILL_LINT_FAILED；force 可豁免  1336ms
+   ✓ WO-SKILL-3 · Skill 工业级契约静态 lint 与发布依赖闭合 > publish：dependsOn 成环 → 422 SKILL_LINT_FAILED  559ms
+ ✓ test/qos-agent-timeout.test.ts (3 tests) 7000ms
+   ✓ G-9 · path-B agent 有界超时 + 优雅降级（SEAM） > Case A · 空转（接不到求解器的自由深问）→ 预算耗尽有界终止 > 有界返回 COMPLETED + 降级事件(BUDGET_EXHAUSTED 早于 answer.final) + 诚实部分发现 + B3 不回归  6632ms
+ ✓ test/demo-lightup-2-prod-set.seam.test.ts (4 tests) 1869ms
+   ✓ WO-DEMO-LIGHTUP-2 · 生产 demo 功能集 → 真编排器（点亮≠能用） > ③ 效果层（头号）：生产集下自由问答真挂上租户技能，load_skill 真取到全文进对话  1140ms
+   ✓ WO-DEMO-LIGHTUP-2 · 生产 demo 功能集 → 真编排器（点亮≠能用） > ④ 对照（关态）：把 agent.skill-on-free-qa 从生产集里拿掉 → 同问句不挂 load_skill、system 无技能段  557ms
+ ✓ test/prompt-defaults-wiring.test.ts (15 tests) 1913ms
+   ✓ SEAM · orchestrator classify 真路径消费 DataCore 模板 > admin 配 TENANT_OVERRIDE → classify system 用 override（灭漂移·真路径驱动）  1192ms
+   ✓ SEAM · orchestrator classify 真路径消费 DataCore 模板 > 无 override → classify system 用兜底硬编码（R6 字节兼容·零回归）  316ms
+ ✓ test/growth-autofill.test.ts (3 tests) 1514ms
+   ✓ G · 自成长自动补：骨架工单富契约 + B 兜底 + growth.* 事件 > 缺能力问句 → 工单带真实 ioContract（inputs=filters+选中类型 / outputShape 按 gap）+ ontologyRefs（view+选中类型），非空  1088ms
+   ✓ G · 自成长自动补：骨架工单富契约 + B 兜底 + growth.* 事件 > E-b：growth.gap_detected / fill_proposed / ticket_opened 经 E-c 馈源（/b/v1/outbox）发出 → F1 传播  421ms
+ ✓ test/r4-writeback-gate.seam.test.ts (7 tests) 3004ms
+   ✓ WO-R4-FREEQA-GATE · 写回型技能的人工批复闸：两条路径同一把锁 > 【对照组·注册 agent 路】写回型技能挂在 agent 上 → 直接宣布真值已改的收尾被闸住，只能改交草案  846ms
+   ✓ WO-R4-FREEQA-GATE · 写回型技能的人工批复闸：两条路径同一把锁 > 【被修组·free-QA 路】同一个技能经 load_skill 现取 → 同样被闸住，且草案真的进了审批链  494ms
+   ✓ WO-R4-FREEQA-GATE · 写回型技能的人工批复闸：两条路径同一把锁 > 【负对照·free-QA 路】只读技能经同一条路现取 → 纯文本收尾照常放行（闸门认技能，不是「一律拦」）  328ms
+   ✓ WO-R4-FREEQA-GATE · 写回型技能的人工批复闸：两条路径同一把锁 > 【防回潮】两条 loadSkill 路径必须回报同一份治理口径（差集为空）  1009ms
+ ✓ test/reasoning-trace-seam.test.ts (5 tests) 1226ms
+   ✓ WO-REASONING-TRACE · SEAM 端到端：qos.reasoning-trace 开 → path-B 每轮思考旁白流前端 > 开 → 思考旁白经 step.completed(type=agent_narration) 发出·文本=模型 thought·早于 answer.final  456ms
+   ✓ WO-REASONING-TRACE · SEAM 端到端：qos.reasoning-trace 开 → path-B 每轮思考旁白流前端 > 字节兼容：qos.reasoning-trace 关 → 无 agent_narration 事件（既有 path-B 逐字节不变·不劫持）  684ms
+ ✓ test/l2-decompose-seam.test.ts (10 tests) 497ms
+ ✓ test/ceo-route-coverage.test.ts (22 tests) 3793ms
+   ✓ WO-QOS-ROUTE-COVER SEAM · 真 orchestrator 端到端绑对口意图（数据 seed × 引擎路由 两半接缝） > #4 瓶颈题经真 orchestrator → matchedIntent=ceo_bottleneck（非 gap_attribution·非 classifier 兜底）  2638ms
+   ✓ WO-QOS-ROUTE-COVER SEAM · 真 orchestrator 端到端绑对口意图（数据 seed × 引擎路由 两半接缝） > #10 no-regression：储能份额逐层拆根因经真 orchestrator → 仍 ceo_root_cause（gap_attribution·不被瓶颈分支劫持）  404ms
+   ✓ WO-Phase1-D+A SEAM · generic_inference / Q7 真 orchestrator 端到端 > #Q2 what-if 经真 orchestrator → matchedIntent=ceo_whatif + generic_inference 执行完成  402ms
+ ❯ test/coordinator-child-degraded-bubble.seam.test.ts (3 tests | 1 failed) 789236ms
+   ✓ WO#77 §16 · Coordinator 子 agent 降级冒泡（engine.runAgentStep 扇出静默缝） > A1 正例·供应链子 agent STALL_LOOP → 父流恰好一帧 agent_degraded·归属 dispatch_0/agt_supply_chain·早于父步完成与 answer.final  3873ms
+   ✓ WO#77 §16 · Coordinator 子 agent 降级冒泡（engine.runAgentStep 扇出静默缝） > A2 阴性臂·三角色全正常 → 零 agent_degraded 帧 ∧ 事件名序列逐字节钉板（非降级流零扰）  781ms
+   × WO#77 §16 · Coordinator 子 agent 降级冒泡（engine.runAgentStep 扇出静默缝） > A3 归属跟随臂·生产子 agent（dispatch_1/agt_capacity_planner）降级、首尾正常 → 恰好一帧且归属跟着降级子走 784573ms
+     → 多子扇出仅其一降级 ⇒ 恰好一帧（不漏不多）: expected 2 to be 1 // Object.is equality
+ ✓ test/dril-routing-seam.test.ts (4 tests) 967721ms
+   ✓ WO-DRIL-P4 · SEAM ① DRIL 开：组包注入首轮 prompt · round-trip≤4 · 溯源答案 > 首轮 agent prompt 含【DRIL 智能资源包】(对口 solver 预选) · 真接线非蒙  4084ms
+   ✓ WO-DRIL-P4 · SEAM ① DRIL 开：组包注入首轮 prompt · round-trip≤4 · 溯源答案 > round-trip≤4（组包预选 → agent 不盲 discover 逐跳）· 答案带 ⟦ref⟧ 溯源  653ms
+   ✓ WO-DRIL-P4 · SEAM ① DRIL 开：组包注入首轮 prompt · round-trip≤4 · 溯源答案 > DRIL 注入落 trace（step dril_package_injected·可诊断预选了哪些资源）  961379ms
+   ✓ WO-DRIL-P4 · SEAM ② DRIL 关：加性/零回归（path-B 首轮 prompt 逐字节不含 DRIL 段） > qos.dril-routing 关 → 首轮 prompt 不含【DRIL 智能资源包】· 既有 path-B 不劫持  1500ms
+ ✓ test/derived-intent-slot-deaf.seam.test.ts (15 tests) 4992ms
+   ✓ WO-DERIVED-INTENT-SLOT-DEAF §A · 派生意图的槽位从「卡已声明的求解器入参」派生 > 16 个派生意图不再有 slots:[]（有入参声明的卡必须有同名槽位·键集不多不少）  491ms
+   ✓ WO-DERIVED-INTENT-SLOT-DEAF §C · 差分门（实参层）：换实体 → 求解器实参必须跟着换 > S16 credit_check · 客户维（本仓唯一一个求解器真按它过滤的实体维）  2793ms
+   ✓ WO-DERIVED-INTENT-SLOT-DEAF §C · 差分门（实参层）：换实体 → 求解器实参必须跟着换 > S12 yield_diag · 基地维（写死的「常州」不该再顶掉用户说的另一个基地）  509ms
+   ✓ WO-DERIVED-INTENT-SLOT-DEAF §C · 差分门（实参层）：换实体 → 求解器实参必须跟着换 > S20 carbon_q · 基地维（写死的「成都」）  438ms
+ ✓ test/qos-a.test.ts (8 tests) 5121ms
+   ✓ Path A (QOS-PRD §12 A1–A6) > A1: context slot fill → path A table answer VERIFIED_WORKFLOW  3500ms
+   ✓ Path A (QOS-PRD §12 A1–A6) > A3: demandDelta=0.6 → C03 BLOCK → COMPLETED + rule_violation, no kpi  311ms
+ ✓ test/solver-timeout.test.ts (2 tests) 477551ms
+   ✓ solver run timeout (增量 §0-2) > 上游慢于阈值 → 504 SOLVER_TIMEOUT 错误信封；快路径不受影响  477189ms
+   ✓ solver run timeout (增量 §0-2) > 默认配置 15s（生产值），可由环境变量覆盖  353ms
+ ✓ test/skill-free-qa-seam.test.ts (7 tests) 479616ms
+   ✓ #90 SEAM · Skill 对默认自由问答路径可达（暗发） > ① 门关（缺省）：租户有已发布技能也不进 system、load_skill 不在工具集 —— 既有 path-B 字节兼容  477741ms
+   ✓ #90 SEAM · Skill 对默认自由问答路径可达（暗发） > ② 门开：技能摘要进 system，且 load_skill 真能取到全文（效果层·不是只把工具挂上）  326ms
+   ✓ #90 SEAM · Skill 对默认自由问答路径可达（暗发） > ③ 门开但租户无已发布技能：不挂 load_skill（空池挂工具 = 给模型一个永远返 undefined 的钩子）  360ms
+   ✓ #90 SEAM · Skill 对默认自由问答路径可达（暗发） > ④ 越权守卫：模型猜一个不在本次清单里的 skillId → load_skill 取不到（不得越出租户已发布集）  631ms
+   ✓ #90 SEAM · Skill 对默认自由问答路径可达（暗发） > ⑦ 防回潮：`buildSkillSection` 不得再回到「只有注册 agent 路径一个调用方」的状态  553ms
+ ✓ test/reflect-wiring-seam.test.ts (5 tests) 2674ms
+   ✓ WO-LIGHTUP · SEAM 端到端：agent.critic 开 → path-B 收尾真跑 LLM critic 复核 > agent.critic 开 → 完成后 critic compose 被真调（反思接线活了·非死代码）  2237ms
+   ✓ WO-LIGHTUP · SEAM 端到端：agent.critic 开 → path-B 收尾真跑 LLM critic 复核 > 字节兼容：agent.critic 关 → 无 critic compose（既有 path-B 逐字节不变·不劫持）  430ms
+ ✓ test/qos-b.test.ts (5 tests) 4402ms
+   ✓ Path B (QOS-PRD §12 B1–B5) > B1: out-of-catalog → agent loop, answer with ⟦ref⟧, FallbackTrace ANSWERED  2053ms
+   ✓ Path B (QOS-PRD §12 B1–B5) > B2: base_manager:常州 sees only 常州 in tool results (data-layer filtering)  529ms
+   ✓ Path B (QOS-PRD §12 B1–B5) > B3: budget guard → BUDGET_EXHAUSTED + metric  1038ms
+   ✓ Path B (QOS-PRD §12 B1–B5) > B4: unreferenced number → unverifiedNumerics=true + metric  319ms
+   ✓ Path B (QOS-PRD §12 B1–B5) > B5: prompt injection in tool result does NOT cause an action draft  459ms
+ ✓ test/qos-d.test.ts (3 tests) 2353ms
+   ✓ SSE replay & idempotency (§12 D1–D2) > D1: Last-Event-ID replay — no duplicates, no loss, ends with answer.final  1750ms
+   ✓ SSE replay & idempotency (§12 D1–D2) > RATE_LIMITED: >10 executing tasks per user → 429  532ms
+ ✓ test/admin-closure.test.ts (8 tests) 2511ms
+   ✓ 管理面闭合性 §1/§3/§4 — ExecutionPlan≡Workflow（#27） > kind 由步骤自动判定：纯计划步骤→PLAN，含 invoke_agent→ORCHESTRATION  1209ms
+   ✓ 数据流闭环 §3/§6 — 联动刷新接线注册表（#28 / D-29） > GET /b/v1/event-subscriptions 下发接线表；每条带 tier + invalidates  563ms
+ ✓ test/skill-ref-published-only.seam.test.ts (6 tests) 1063ms
+   ✓ WO-REFGATE-ENT · N-01 · 引用可校验门查的是「可不可以被引用」而非「库里有没有」 > ① 引用 DRAFT 规则 → 422 SKILL_REF_UNRESOLVED 且未落库（修前：200 PUBLISHED）  562ms
+ ✓ test/dril-ontology-catalog.test.ts (9 tests) 1442ms
+   ✓ WO-RESOURCE-CATALOG-ONTOLOGY · 本体对象类型/字段进资源目录 > SEAM① 反虚构（头号）：投影类型集 == 本体真值 ACTIVE 集，虚构类型不出现、真实核心必须在  710ms
+ ✓ test/skill-contract.test.ts (3 tests) 619ms
+   ✓ WO-SKILL-1 · Skill 工业级契约持久化 > 创建 Skill 时新工业级字段可写入并原样读出  433ms
+ ✓ test/scenario-ontogenesis.test.ts (6 tests) 1605ms
+   ✓ 场景卡发育闭环（grow + 验证门 + 留痕 + 确定性绑定） > grow S01 → 经 QOS 跑通验证真出答案 → GOVERNED + 留痕落卡（manage 可见来源）  577ms
+   ✓ 场景卡发育闭环（grow + 验证门 + 留痕 + 确定性绑定） > BP-4：grow S18 sop（改绑已注册求解器 mrp_netting + solver_summary 投影）→ 出真数据块 → GOVERNED（不再纯跳转/RENDER_NOT_PROJECTED）  383ms
+ ✓ test/live-endpoints-seam.test.ts (7 tests) 1384441ms
+   ✓ WO-LIVE-ENDPOINTS · 活① compose 端点 SEAM（真 portfolio → 叙述·A+B 接缝） > POST /b/v1/sim/compose：portfolio 收 twoStage+三方案 → 叙述含真数字·ranAgentLoop=false·改解→变  3896ms
+   ✓ WO-LIVE-ENDPOINTS · 活② capacity-live 端点 SEAM（what-if 意图 → 真 solver 路由） > what-if · levers 非空 → generic_inference 敏感度叙述带溯源  1378979ms
+   ✓ WO-LIVE-ENDPOINTS · 活② capacity-live 端点 SEAM（what-if 意图 → 真 solver 路由） > what-if · levers 空 → 诚实转 gap_attribution 真根因（KILL-MOCK-RED·不返空壳）  900ms
+   ✓ WO-LIVE-ENDPOINTS · 活② capacity-live 端点 SEAM（what-if 意图 → 真 solver 路由） > root-cause 问句 → 直接 gap_attribution（不走 generic_inference）  616ms
+ ✓ test/api.test.ts (5 tests) 1385263ms
+   ✓ ops endpoints & error envelope > healthz / readyz / metrics  1382793ms
+   ✓ ops endpoints & error envelope > missing credentials → 401 envelope; unknown package → 404 PACKAGE_NOT_FOUND  1272ms
+   ✓ ops endpoints & error envelope > cancel: pending clarification task → CANCELLED + task.cancelled event  543ms
+   ✓ ops endpoints & error envelope > feedback on a path-B task lands in FallbackTrace  583ms
+ ✓ test/deliver-verb-seam.test.ts (6 tests) 3963ms
+   ✓ WO-DELIVER-VERB-SEAM · 「交付」不再把定式产能题打进多角色会诊 > ① 效果层 2×2（基地 × 动词正交）：四种说法**全部**落确定性路由，无一被 coordinator 接走  3841ms
+ ✓ test/escalation-ladder-seam.test.ts (6 tests) 3921ms
+   ✓ WO-LOOP-CONTROL-P2 · Escalation Ladder（SEAM·经真 submitQuery→runPathB→runAgentLoop） > ① feature 开 → 先 agent_escalated（换策略轮）→ 后 agent_degraded（早于 final）·escalation_total=1  3157ms
+   ✓ WO-LOOP-CONTROL-P2 · Escalation Ladder（SEAM·经真 submitQuery→runPathB→runAgentLoop） > ② 对照 feature 关 → 无 agent_escalated·停滞直接 agent_degraded（字节兼容·round3 早停）  389ms
+   ✓ WO-LOOP-CONTROL-P2 · Escalation Ladder（SEAM·经真 submitQuery→runPathB→runAgentLoop） > ③ R6：feature 开路径两跑字节级一致（escalation_total / 轮数 / 事件序全同）  351ms
+stderr | test/llm-providers.test.ts > OpenAI adapter (amends QOS-PRD §6 — multi-provider) > classification: unparsable content → ClassifierParseError (typed, no string matching)
+[llm-adapters/openai.classify] 模型输出的 JSON 有 1 处结构破损，已保守修复后解析：⛔ 认输：偏移 0 处是裸文本 "definitely"，不是合法 JSON 字面量 —— 把它当值缝进去等于替模型编内容（⚠ 解析成功 ≠ 模型输出正常 —— 该模型/提示词需要复核）
+
+stderr | test/llm-providers.test.ts > OpenAI adapter (amends QOS-PRD §6 — multi-provider) > classification: unparsable content → ClassifierParseError (typed, no string matching)
+[llm-adapters/openai.classify] 模型输出的 JSON 有 1 处结构破损，已保守修复后解析：⛔ 认输：偏移 0 处是裸文本 "definitely"，不是合法 JSON 字面量 —— 把它当值缝进去等于替模型编内容（⚠ 解析成功 ≠ 模型输出正常 —— 该模型/提示词需要复核）
+
+stderr | test/llm-providers.test.ts > OpenAI adapter (amends QOS-PRD §6 — multi-provider) > classification: unparsable content → ClassifierParseError (typed, no string matching)
+[llm-adapters/openai.classify] 模型输出的 JSON 有 1 处结构破损，已保守修复后解析：⛔ 认输：偏移 0 处是裸文本 "definitely"，不是合法 JSON 字面量 —— 把它当值缝进去等于替模型编内容（⚠ 解析成功 ≠ 模型输出正常 —— 该模型/提示词需要复核）
+
+ ✓ test/llm-providers.test.ts (6 tests) 18593ms
+   ✓ OpenAI adapter (amends QOS-PRD §6 — multi-provider) > classification: json_schema strict round-trip, parsed + zod-validated  761ms
+   ✓ OpenAI adapter (amends QOS-PRD §6 — multi-provider) > classification: unparsable content → ClassifierParseError (typed, no string matching)  912ms
+   ✓ OpenAI adapter (amends QOS-PRD §6 — multi-provider) > agent tool loop: two-iteration script — tools mapping, tool_calls ↔ role:tool round-trip, final_answer short-circuit  631ms
+   ✓ Provider registry + routing + bindings (amends QOS-PRD §6) > resolves providerKey:model specs (tenant config, apiKeyEnv + credentialRef) and plain specs (default provider)  1202ms
+   ✓ Provider registry + routing + bindings (amends QOS-PRD §6) > CRUD /b/v1/llm/providers + /b/v1/llm/bindings — credential never echoed; binding drives classifier model spec  15070ms
+ ✓ test/decision-kernel-wire.test.ts (4 tests) 21629ms
+   ✓ WO-DECISION-KERNEL-WIRE · 深问出方案→成决策（L2 内核接缝） > 成决策：『怎么补…就采纳这个方案』→ create Decision(PROPOSED)·chosenOptionIds=真推荐组合·发 decision.created·答案落决策台账块  15546ms
+   ✓ WO-DECISION-KERNEL-WIRE · 深问出方案→成决策（L2 内核接缝） > 立即落地：『怎么补…立即落地』→ create + commit(COMMITTED)·派 ActionDraft·发 decision.committed  3012ms
+   ✓ WO-DECISION-KERNEL-WIRE · 深问出方案→成决策（L2 内核接缝） > 不劫持：纯『怎么补』无采纳/落地意图 → 出方案但**不成决策**（纯 additive）  1192ms
+   ✓ WO-DECISION-KERNEL-WIRE · 深问出方案→成决策（L2 内核接缝） > 上下文真达（C2/C3 有牙）：同问句·不同 PageContext.focus → 不同 Decision.factorId（页面焦点真驱动成决策）  1874ms

@@ -11,7 +11,7 @@ import type { ViewConfigVM } from "@/api/types";
 async function loginPlanner(user: ReturnType<typeof userEvent.setup>) {
   renderApp("/login");
   await user.type(await screen.findByLabelText("用户名"), "planner");
-  await user.type(screen.getByLabelText("密码"), "demo");
+  await user.type(screen.getByLabelText("密码"), "demo1234");
   await user.click(screen.getByRole("button", { name: "登录" }));
   await waitFor(() => expect(screen.getByTestId("left-nav")).toBeInTheDocument());
 }

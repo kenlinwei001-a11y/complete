@@ -1,0 +1,22 @@
+  · dist 新鲜度已核：apps/datacore  产物 2026-10-09 04:03:39 ≥ 源码 2026-10-09 03:44:26（领先 19.2 分钟）   [agent-config-complete:check]
+  · dist 新鲜度已核：apps/agentcore  产物 2026-10-09 03:53:59 ≥ 源码 2026-10-09 03:51:48（领先 2.2 分钟）   [agent-config-complete:check]
+✅ 金丝雀 11 项全中（必中 4 · 必不中 5 · 规模下界 2；与主逻辑共用 judgeAgent）
+· agent-config-complete：AgentCore 注册表 12 个 agent · DataCore AGENT_SEEDS 3 条 · 两侧 key 交集 0 · 违规 12 条（已豁免 11）
+  ✗ [agentcore] code_assistant → C2_EMPTY_SCOPE【基线豁免】
+  ✗ [agentcore] code_assistant → C3_EMPTY_RULE_BINDINGS【基线豁免】
+  ✗ [agentcore] general → C2_EMPTY_SCOPE
+  ✗ [datacore] learning-agent → C1_NO_TOOLS【基线豁免】
+  ✗ [datacore] learning-agent → C2_NO_SCOPE_FIELD【基线豁免】
+  ✗ [datacore] learning-agent → C4_ORPHAN_KEY【基线豁免】
+  ✗ [datacore] risk-agent → C1_NO_TOOLS【基线豁免】
+  ✗ [datacore] risk-agent → C2_NO_SCOPE_FIELD【基线豁免】
+  ✗ [datacore] risk-agent → C4_ORPHAN_KEY【基线豁免】
+  ✗ [datacore] report-agent → C1_NO_TOOLS【基线豁免】
+  ✗ [datacore] report-agent → C2_NO_SCOPE_FIELD【基线豁免】
+  ✗ [datacore] report-agent → C4_ORPHAN_KEY【基线豁免】
+· ⓘ 反向（不进红）：AgentCore 有而映射表未展示的 agent 12 个 —— analyst / explore_agent / risk_advisor / capacity_planner / quality_inspector / supply_chain / finance_analyst / carbon_auditor / external_market / code_assistant / coordinator / general
+· ⚠ 诚实边界：只看出厂种子两处注册表；只证「配置字段非空」，不证「配置对不对」（工具名/对象类型是否真实存在不在射程）。
+
+✗ agent-config-complete:check 未通过（1 条）：
+  - C2 agentcore 侧 agent `general`：`scopeDeclaration.objectTypes` 是空数组 —— 声明了「我不碰任何业务对象」
+      修法：补齐该 agent 的能力配置；确属「展示节点而非可执行 agent」的，别混在同一张注册表里 —— 那正是本门要分辨的两件事。

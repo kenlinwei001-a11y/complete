@@ -1,0 +1,10 @@
+
+ RUN  v3.2.6 /Users/apple/deploy/wo-edge-wire/apps/frontend-shell
+
+ ✓ test/decision-console-model.test.ts (29 tests) 616ms
+
+ Test Files  1 passed (1)
+      Tests  29 passed (29)
+   Start at  18:39:50
+   Duration  30.34s (transform 7.87s, setup 18.78s, collect 78ms, tests 616ms, environment 7.33s, prepare 845ms)
+

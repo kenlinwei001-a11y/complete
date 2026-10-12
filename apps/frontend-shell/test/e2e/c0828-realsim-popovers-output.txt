@@ -1,0 +1,99 @@
+== ① 登录（不手敲 URL）==
+== ② 点首页卡片进「统一推演控制台」 ==
+入口点击方式: home-card
+== ③ 记「未推演态」基线读数（与推演后对照用）==
+  未推演态: idle=true verdict=false · 全屏 aria-expanded 触发器 21 个
+  可落地事件: ["c0828-ev-material-price-up","c0828-ev-due-change","c0828-ev-inbound-delay","c0828-ev-equipment-down","c0828-ev-forecast-bias"]
+  全部事件: [{"id":"c0828-ev-material-price-up","landable":"1"},{"id":"c0828-ev-batch-defect","landable":"0"},{"id":"c0828-ev-rush-order","landable":"0"},{"id":"c0828-ev-due-change","landable":"1"},{"id":"c0828-ev-order-cancel","landable":"0"},{"id":"c0828-ev-inbound-delay","landable":"1"},{"id":"c0828-ev-material-short","landable":"0"},{"id":"c0828-ev-equipment-down","landable":"1"},{"id":"c0828-ev-capacity-loss","landable":"0"},{"id":"c0828-ev-ship-to-change","landable":"0"},{"id":"c0828-ev-order-reprice","landable":"0"},{"id":"c0828-ev-forecast-bias","landable":"1"}]
+  ── 未推演态（同一把尺子先量） ──
+  页签 board：可见「?」13 个 · 能抽出气泡正文的 13 个 · 收完仍开着的浮层 0（必须 0）· 该页签第一层 772 字节 · 右栏 data-ai=open
+  页签 options：可见「?」11 个 · 能抽出气泡正文的 11 个 · 收完仍开着的浮层 0（必须 0）· 该页签第一层 297 字节 · 右栏 data-ai=collapsed
+  页签 scan：可见「?」14 个 · 能抽出气泡正文的 14 个 · 收完仍开着的浮层 0（必须 0）· 该页签第一层 404 字节 · 右栏 data-ai=collapsed
+  「?」触发器合计 = 38；其中能抽出气泡正文的 = 38
+== ④ 左栏加一件**可落地**的扰动事件（走屏上默认值）==
+  {
+ "ok": true,
+ "id": "due-change",
+ "picked": "广汽集团 · SO-3391",
+ "log": [
+  "material-price-up:下拉无选项",
+  "due-change:已加入（落点=广汽集团 · SO-3391·幅度=20）→ 已添加 1 件扰动事件"
+ ]
+}
+== ⑤ 点「开始推演」并等真出结果 ==
+  按钮: {"found":true,"disabled":false,"text":"开始推演"}
+  推演中指示器 c0828-running 出现过: true
+  推演耗时约 33s
+== ⑤ 网络证据：点「开始推演」之后打向 4001/4002 的成功请求 ==
+  条数 = 19
+    GET 200 http://127.0.0.1:4001/a/v1/sim/sessions/sims_demo_seed_world/metric-series?limit=500&stateVars=backlogPriceTop%2CbacklogQtyTop%2Cb
+    OPTIONS 204 http://127.0.0.1:4001/a/v1/sim/sessions/sims_demo_seed_world/pricing
+    OPTIONS 204 http://127.0.0.1:4001/a/v1/objects?type=Material&q=&page=1&pageSize=500
+    OPTIONS 204 http://127.0.0.1:4001/a/v1/outbox?since=2026-10-08T03%3A20%3A22.044Z
+    OPTIONS 204 http://127.0.0.1:4001/a/v1/sim/sessions/sims_demo_seed_world/world
+    POST 200 http://127.0.0.1:4001/a/v1/sim/sessions/sims_demo_seed_world/pricing
+    GET 200 http://127.0.0.1:4001/a/v1/objects?type=Material&q=&page=1&pageSize=500
+    GET 200 http://127.0.0.1:4001/a/v1/outbox?since=2026-10-08T03%3A20%3A22.044Z
+    GET 200 http://127.0.0.1:4001/a/v1/sim/sessions/sims_demo_seed_world/world
+    OPTIONS 204 http://127.0.0.1:4001/a/v1/sim/sessions/sims_demo_seed_world/counterfactual
+    POST 200 http://127.0.0.1:4001/a/v1/sim/sessions/sims_demo_seed_world/counterfactual
+    OPTIONS 204 http://127.0.0.1:4001/a/v1/sim/sessions/sims_demo_seed_world/perturbations
+    POST 201 http://127.0.0.1:4001/a/v1/sim/sessions/sims_demo_seed_world/perturbations
+    OPTIONS 204 http://127.0.0.1:4001/a/v1/sim/sessions/sims_demo_seed_world/tick
+    POST 200 http://127.0.0.1:4001/a/v1/sim/sessions/sims_demo_seed_world/tick
+    OPTIONS 204 http://127.0.0.1:4001/a/v1/sim/sessions/sims_demo_seed_world/world
+    GET 200 http://127.0.0.1:4001/a/v1/sim/sessions/sims_demo_seed_world/world
+    OPTIONS 204 http://127.0.0.1:4001/a/v1/sim/sessions/sims_demo_seed_world/perturbations
+    GET 200 http://127.0.0.1:4001/a/v1/sim/sessions/sims_demo_seed_world/perturbations
+== ⑥ 逐个页签抽「?」+ 第一层正文（推演后态）==
+  ── 推演后态（六个页签） ──
+  页签 board：可见「?」12 个 · 能抽出气泡正文的 12 个 · 收完仍开着的浮层 0（必须 0）· 该页签第一层 772 字节 · 右栏 data-ai=open
+  页签 options：可见「?」11 个 · 能抽出气泡正文的 11 个 · 收完仍开着的浮层 0（必须 0）· 该页签第一层 399 字节 · 右栏 data-ai=collapsed
+  页签 scan：可见「?」14 个 · 能抽出气泡正文的 14 个 · 收完仍开着的浮层 0（必须 0）· 该页签第一层 609 字节 · 右栏 data-ai=collapsed
+  页签 cust：可见「?」11 个 · 能抽出气泡正文的 11 个 · 收完仍开着的浮层 0（必须 0）· 该页签第一层 397 字节 · 右栏 data-ai=open
+  页签 money：可见「?」11 个 · 能抽出气泡正文的 11 个 · 收完仍开着的浮层 0（必须 0）· 该页签第一层 162 字节 · 右栏 data-ai=open
+  页签 log：可见「?」12 个 · 能抽出气泡正文的 12 个 · 收完仍开着的浮层 0（必须 0）· 该页签第一层 263 字节 · 右栏 data-ai=open
+  「?」触发器合计 = 71；其中能抽出气泡正文的 = 71
+  ── 同一把尺子对照：未推演态 38 个触发器 / 38 个可抽正文 → 推演后 71 / 71
+== ⑦ 三个目标气泡：逐个打开 + dump 正文原文 ==
+  ✓ info-c0828-donothing-note —— 可见=true 打开=true 气泡testid=info-body-c0828-donothing-note
+      aria-label: 这一栏为什么没有按钮 —— 说明（悬停或聚焦查看）
+      气泡正文原文: "这一栏为什么没有按钮第四栏无按钮 —— 不处置无需操作，属默认发生。"
+      原位（触发器所在容器）第一层文本: "?"
+  ✓ info-c0828-agent-regen —— 可见=true 打开=true 气泡testid=info-body-c0828-agent-regen
+      aria-label: 「交由 agent 生成对策」会做什么 —— 说明（悬停或聚焦查看）
+      气泡正文原文: "「交由 agent 生成对策」会做什么系统已把这一处能走的路枚举穷尽；点上面那个按钮，会改由 agent 读取同一份对策菜单，重新生成一版。"
+      原位（触发器所在容器）第一层文本: "本处可选对策已穷尽 | ?"
+  右栏收起态: 探前 data-ai=collapsed → 探时 data-ai=open（点了一次 c0828-ai-expand 展开）
+  收起态第一层剩下的记号（c0828-ai-collapsed）: "推演助手\n‹"
+  ✓ info-c0828-ai-actions-cal —— 可见=true 打开=true 气泡testid=info-body-c0828-ai-actions-cal
+      aria-label: 本栏与中栏的关系 —— 说明（悬停或聚焦查看）
+      气泡正文原文: "本栏与中栏的关系口径：系统不给推荐，决策由使用方作出。四栏完整比较（含「不处置」那一栏）在中栏「对策方案」面板里，本栏只列出名与两维。"
+      原位（触发器所在容器）第一层文本: "?"
+== ⑧ 第一层正文 / testid 清单 / 一屏尺子 ==
+  本次推演徽标: "1 件扰动 · 推演至 2026-03-05（第 63 拍）"
+  看板行数: 12 · 对策候选条数: 0
+  第一层正文长度: 2169 字节；已写 /tmp/c0828-realsim/realsim-firstlayer.txt
+  网络命中合计: 62 条（其中推演段 19 条）
+== ⑨ 判定 ==
+{
+ "目标气泡": 3,
+ "在DOM里": 3,
+ "打开并抽出正文": 3,
+ "推演后_全部页签": {
+  "触发器": 71,
+  "能抽出正文": 71
+ },
+ "推演后_基线3页签": {
+  "触发器": 37,
+  "能抽出正文": 37
+ },
+ "未推演态_基线3页签": {
+  "触发器": 38,
+  "能抽出正文": 38
+ },
+ "推演段网络成功请求": 19,
+ "网络判据": true
+}
+PASS（三个目标气泡全部找到、打开、抽出正文，且有真推演网络自证）
+RC=0

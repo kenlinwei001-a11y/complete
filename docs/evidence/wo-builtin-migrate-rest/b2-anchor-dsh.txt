@@ -1,0 +1,695 @@
+npm warn Unknown env config "side-effects-cache". This will stop working in the next major version of npm.
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/agent-adfaa59886e57c31c/apps/agentcore
+
+ ❯ test/dsh-engine-tool-bridge.seam.test.ts (24 tests | 1 failed) 94263ms
+   ✓ W8主 · A 端点级：/b/v1/dsh/tool-execute 四态 + 鉴权 + 重放 + 截断 > A1 scope 门 DENIED（AGENT_SCOPE_VIOLATION）⇒ 审计行 DENIED + tc_ 回执  971ms
+   ✓ W8主 · A 端点级：/b/v1/dsh/tool-execute 四态 + 鉴权 + 重放 + 截断 > A2 IAM 门 DENIED（PERMISSION_DENIED） 253ms
+   ✓ W8主 · A 端点级：/b/v1/dsh/tool-execute 四态 + 鉴权 + 重放 + 截断 > A3 OBO 门 DENIED（OBO_TOKEN_EXPIRING，token 60s 内到期） 123ms
+   ✓ W8主 · A 端点级：/b/v1/dsh/tool-execute 四态 + 鉴权 + 重放 + 截断 > A4 预算门 BUDGET_EXCEEDED（maxToolCalls=0）⇒ reason 原值 + budget.exhausted 置位 181ms
+   ✓ W8主 · A 端点级：/b/v1/dsh/tool-execute 四态 + 鉴权 + 重放 + 截断 > A5 OK×2 同参 ⇒ readCache 命中（queryObjects 真调 1 次）+ 双 OK 审计行（单实例反咬） 251ms
+   ✓ W8主 · A 端点级：/b/v1/dsh/tool-execute 四态 + 鉴权 + 重放 + 截断 > A6 鉴权 fail-closed：无头 401 / 错头 401 / runToken 不识 401——全部零执行零审计 111ms
+   ✓ W8主 · A 端点级：/b/v1/dsh/tool-execute 四态 + 鉴权 + 重放 + 截断 > A7 callId 重放 ⇒ 409（同 runToken 域内一次性） 163ms
+   ✓ W8主 · A 端点级：/b/v1/dsh/tool-execute 四态 + 鉴权 + 重放 + 截断 > A8 载荷畸形（缺 toolName）⇒ 400 VALIDATION_ERROR 61ms
+   ✓ W8主 · A 端点级：/b/v1/dsh/tool-execute 四态 + 鉴权 + 重放 + 截断 > A9 >8KB 工具结果 ⇒ payloadJson 与单源 truncateToolResultJson 逐字等 ∧ 审计行全量 111ms
+   ✓ W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B1 真工具三键合流：tc_ 上模型面 ∧ 审计行 OK ∧ 本体真调一次（缺省推导锚）  5327ms
+   ✓ W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B2 IAM deny 过 wire：「无权访问」逐字（authored isError 通道，无 Error: 前缀）  5527ms
+   ✓ W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B3 B6 预算降级桥：BUDGET_EXCEEDED ⇒ cancel ⇒ BUDGET_EXHAUSTED + 诚实摘要头逐字  6828ms
+   ✓ W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B4 反向通道中途断（端点不可达）⇒ ERROR 回执不静默放行 ∧ 零审计行  5406ms
+   ✓ W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B5 宿主工具慢于子进程 deadline：宿主 withTimeout 收敛 ERROR ⇒ 行 ERROR + 帧 ERROR  4650ms
+   × W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B6 孤儿审计行：桥 fetch 先放弃（100ms）< 宿主完成（400ms）⇒ 帧 ERROR 而宿主行 OK 13414ms
+     → waitForToolRows timeout: task_w8_b6 rows=0
+   ✓ W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B7 watchdog 咬在反向调用中途：drain 语义——已起步结果帧照落 + turn 步边界收束  6261ms
+   ✓ W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B8 对象 scope 回归（B8 修复回咬）：enforceObjectScope 真到 executor ⇒ 越界 DENIED 逐字  6201ms
+   ✓ W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B9 双侧无 SERVICE_TOKEN ⇒ 端点 401 fail-closed ⇒ ERROR 回执 ∧ 零审计行（mutation a 锚）  4975ms
+   ✓ W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B10 端点畸形应答（200 但无 outcome）⇒ ERROR 回执 ∧ 零审计行（mutation b 锚）  7407ms
+   ✓ W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B11 >8KB 工具结果 e2e：子进程可见文案 = native 截断形逐字等 ∧ 审计行全量  7606ms
+   ✓ W8.5 · C workflow 反向化：模型可见 + 同端点反向执行 + 治理/审计/预算同账 > C1 workflow e2e OK：可见 + 真过宿主引擎 + 审计行三键 + 侧表 iterations + emit 透传  7490ms
+   ✓ W8.5 · C workflow 反向化：模型可见 + 同端点反向执行 + 治理/审计/预算同账 > C2 端点级：绑定表 miss ⇒ ERROR fail-closed + ERROR 审计行（wire workflowId 被无视） 40ms
+   ✓ W8.5 · C workflow 反向化：模型可见 + 同端点反向执行 + 治理/审计/预算同账 > C3 workflow 内部 FAILED ⇒ ERROR parity（两态词表 + ERROR 审计行 + isError 回执上模型面）  9336ms
+   ✓ W8.5 · C workflow 反向化：模型可见 + 同端点反向执行 + 治理/审计/预算同账 > C4 零扰动锚：专用字段已退净（源码零残留 + 键缺席）；wire 无 kind ⇒ tool 路逐字节旧；kind 畸形 ⇒ 400  1566ms
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · A 组：DSH 侧真看到的这批工具（MCP wire 面） > A1 tools/list（判据②）：真 spawn + 真握手，本批每一件都在 ∧ 名/描述/入参模式与注册表逐字同源
+
+  ── A1 DSH 侧真 tools/list（25 件 · 真 spawn 子进程）──
+  本批（模型面名）：query_objects=mcp__builtin__query_objects · get_object=mcp__builtin__get_object · aggregate_objects=mcp__builtin__aggregate_objects · search_knowledge=mcp__builtin__search_knowledge · query_timeseries_agg=mcp__builtin__query_timeseries_agg · search_experience=mcp__builtin__search_experience · discover=mcp__builtin__discover · retrieve_knowledge=mcp__builtin__retrieve_knowledge · query_ontology=mcp__builtin__query_ontology · query_system_ontology=mcp__builtin__query_system_ontology
+  仍未迁（同 server 也广告，但出厂 agent 未授予 ⇒ 反向通道）：get_breakpoint · impact_of · invoke_solver · read_skill_resource · fill_data · run_synthetic · build_domain · sim_init · sim_tick · sim_world · sim_certify · create_action_draft · discover_growth_tickets · claim_growth_ticket · submit_growth_ticket
+
+
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · A 组：DSH 侧真看到的这批工具（MCP wire 面） > A2 tools/call：宿主收到的是**全名** + 入参逐键原文；模型面回执是逐字 <tool_data> 包络
+
+  ── A2 tools/call 回环 ──
+  宿主收到 toolName=mcp__builtin__query_ontology input={"rootType":"Base","select":[{"type":"Order","fields":["so","qty"]}],"probe":"wo-builtin-rest-probe"}
+  模型面回执=<tool_data tool_call_id="tc_loopback">{"data":{"hits":[{"docId":"doc-9","text":"回环回执"}]},"snapshotVersion":"sv-1"}</tool_data>
+
+
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · A 组：DSH 侧真看到的这批工具（MCP wire 面） > A3 对照（减输入）：无宿主桥 ⇒ fail-closed 明确失败 ∧ 不静默成功
+
+  ── A3 fail-closed（无宿主桥）──
+  MCP server 未接上宿主执行通道（缺 PLATFORM_TOOL_EXEC_URL/DSH_RUN_TOKEN）——本 run 的本服务器工具一律 fail-closed，不做任何静默降级。
+
+
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · B 组：MCP 全名归一回同一具执行体（门一道不松） > B2 审计名归一（逐件真跑）：以**全名**调用本批每一件，落行名一律是**裸名** ∧ 不许落到 unknown-tool
+
+  ── B2 逐件真跑（全名调用 → 审计行裸名）──
+  query_objects/OK · get_object/ERROR · aggregate_objects/OK · search_knowledge/OK · query_timeseries_agg/OK · search_experience/OK · discover/OK · retrieve_knowledge/OK · query_ontology/OK · query_system_ontology/OK
+
+
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · C 组：三面同改 + 只剩一条授予路 > C4 engine 真装配（通用 agent）：裸名面 = 未迁件 ∧ Phase6C 不砍内置工具面（原生臂真跑）
+
+  ── C4 通用 agent 原生臂模型面 · 内置工具面 10 件（已迁全量）· 收窄面 8 件 ──
+
+
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E1 迁后（DSH 原生 MCP）：模型面有全名 ∧ 真调 ∧ 数据面真查 ∧ 审计行（裸名）
+
+  ── E1 迁后臂 · DSH 模型面（首轮 · 97 件）──
+  探针件在模型面：true（名=mcp__builtin__query_ontology）
+  ── 审计行 ──
+  ["query_ontology/OK"]
+  ── 回执原文 ──
+  <tool_data tool_call_id="tc_01M4G4HW43E2R1Q1ZPF4XJ64VF">{"data":{"rows":[{"Order.so":"SO-0001","Order.qty":1200},{"Order.so":"SO-0002","Order.qty":800}],"columns":["Order.so","Order.qty"],"provenance":[{"typeKey":"Order","objId":"obj_order_
+
+
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E2 迁前（对照臂·同一 query · 同一 agent · 单变量）：能力在反向工具面（裸名）∧ 同一执行体同一行审计名
+
+  ── 判据① 迁前/迁后 run 记录对照（同一条 query · 同一个 agent agt_general · 只有载体变）──
+  载体（模型面名）  迁前=query_ontology  迁后=mcp__builtin__query_ontology   ← 唯一变的一格
+  审计行名          迁前=query_ontology  迁后=query_ontology
+  outcome           迁前=OK  迁后=OK
+  实参              {"rootType":"Base","select":[{"type":"Order","fields":["so","qty"]}],"probe":"wo-builtin-rest-probe"}
+                    byteEqual=true
+  审计回执(前 200)  {"data":{"rows":[{"Order.so":"SO-0001","Order.qty":1200},{"Order.so":"SO-0002","Order.qty":800}],"columns":["Order.so","Order.qty"],"provenance":[{"typeKey":"Order","objId":"obj_order_SO-0001","linkPa
+                    迁前迁后 byteEqual=true（len=682）
+  模型面回执(内层)  迁前迁后 byteEqual=true
+
+
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E3 反向对照（判据③·e2e）：授予面拿掉 ⇒ DSH 侧读不到它 ∧ 宿主零数据面调用（那条读数是活的）
+
+  ── E3 反向对照 · 模型面里的内置工具面 ──
+  mcp__builtin__aggregate_objects, mcp__builtin__discover, mcp__builtin__get_breakpoint, mcp__builtin__get_object, mcp__builtin__query_objects, mcp__builtin__query_system_ontology, mcp__builtin__query_timeseries_agg, mcp__builtin__retrieve_knowledge, mcp__builtin__search_experience, mcp__builtin__search_knowledge
+  ── 审计行 ──
+  []
+
+
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E4 §4.2 端到端 + 失败点名：DSH 臂上调它读**域外**对象 ⇒ 对象域门照样拒 ∧ 答案尾部点得出名
+
+  ── E4 失败点名（DSH 臂 · 全名载体）──
+  [{"type":"text","markdown":"已读到所需数据，结论见下。"},{"type":"text","markdown":"【本次运行中有工具调用未成功】以下结论未包含这些调用的结果，请勿把它们当作已核实的数据： - mcp__builtin__get_object（DENIED）：Error: AGENT_SCOPE_VIOLATION: 该工具超出本 Agent 的能力声明"}]
+  ── 审计行 ──
+  ["get_object/DENIED"]
+
+
+ ✓ test/dsh-builtin-rest-mcp.seam.test.ts (21 tests) 54801ms
+   ✓ WO-BUILTIN-MIGRATE-REST · A 组：DSH 侧真看到的这批工具（MCP wire 面） > A1 tools/list（判据②）：真 spawn + 真握手，本批每一件都在 ∧ 名/描述/入参模式与注册表逐字同源  1664ms
+   ✓ WO-BUILTIN-MIGRATE-REST · A 组：DSH 侧真看到的这批工具（MCP wire 面） > A2 tools/call：宿主收到的是**全名** + 入参逐键原文；模型面回执是逐字 <tool_data> 包络  1602ms
+   ✓ WO-BUILTIN-MIGRATE-REST · A 组：DSH 侧真看到的这批工具（MCP wire 面） > A3 对照（减输入）：无宿主桥 ⇒ fail-closed 明确失败 ∧ 不静默成功  1473ms
+   ✓ WO-BUILTIN-MIGRATE-REST · B 组：MCP 全名归一回同一具执行体（门一道不松） > B5 探索配额（`DISCOVER_TOOLS`）按**身份**咬：全名形态照样消耗同一份配额 ∧ 超额即 BUDGET_EXCEEDED  863ms
+   ✓ WO-BUILTIN-MIGRATE-REST · C 组：三面同改 + 只剩一条授予路 > C4 engine 真装配（通用 agent）：裸名面 = 未迁件 ∧ Phase6C 不砍内置工具面（原生臂真跑）  562ms
+   ✓ WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E1 迁后（DSH 原生 MCP）：模型面有全名 ∧ 真调 ∧ 数据面真查 ∧ 审计行（裸名）  13929ms
+   ✓ WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E2 迁前（对照臂·同一 query · 同一 agent · 单变量）：能力在反向工具面（裸名）∧ 同一执行体同一行审计名  10304ms
+   ✓ WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E3 反向对照（判据③·e2e）：授予面拿掉 ⇒ DSH 侧读不到它 ∧ 宿主零数据面调用（那条读数是活的）  14640ms
+   ✓ WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E4 §4.2 端到端 + 失败点名：DSH 臂上调它读**域外**对象 ⇒ 对象域门照样拒 ∧ 答案尾部点得出名  8921ms
+stdout | test/dsh-builtin-mcp.seam.test.ts > WO-BUILTIN-TO-DSH · C 组：内置工具面三面同改 + 只剩一条授予路 > C3b Phase6C 收窄豁免（原生臂真跑）：内置工具面不参与 top-k，其余 MCP 面照旧收窄到 8
+
+  ── C3b 原生臂模型面 · MCP 工具（14 件）──
+  mcp__builtin__query_objects
+  mcp__builtin__get_object
+  mcp__builtin__search_knowledge
+  mcp__builtin__query_timeseries_agg
+  mcp__builtin__search_experience
+  mcp__ontology__plan_slice
+  mcp__ontology__resolve_slice
+  mcp__solvers__affected_orders
+  mcp__solvers__base_capacity_outlook
+  mcp__solvers__decision_play
+  mcp__solvers__gap_attribution
+  mcp__solvers__generic_inference
+  mcp__solvers__supply_demand_gap_attribution
+  mcp__workflow__capacity_check
+
+
+  ── C3b 原生臂模型面 · MCP 工具（14 件）──
+  mcp__builtin__query_objects
+  mcp__builtin__get_object
+  mcp__builtin__search_knowledge
+  mcp__builtin__query_timeseries_agg
+  mcp__builtin__search_experience
+  mcp__ontology__plan_slice
+  mcp__ontology__resolve_slice
+  mcp__solvers__affected_orders
+  mcp__solvers__base_capacity_outlook
+  mcp__solvers__decision_play
+  mcp__solvers__gap_attribution
+  mcp__solvers__generic_inference
+  mcp__solvers__supply_demand_gap_attribution
+  mcp__workflow__capacity_check
+  （授予求解器 16 件 → 可见 6 件 ⇒ top-k 真在跑）
+
+
+stdout | test/dsh-builtin-mcp.seam.test.ts > WO-BUILTIN-TO-DSH · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E1 迁后（DSH 原生 MCP）：模型面有 mcp__builtin__query_objects ∧ 真调 ∧ 数据面真查 ∧ 审计行（裸名）
+
+  ── E1 迁后臂 · DSH 模型面（首轮）──
+  final_answer :: 终止工具：当你已收集到足够事实时调用，输出结构化回答 blocks 与 provenance。回答中的每个业务数字必须用 ⟦ref:N⟧ 标
+  mcp__builtin__get_object :: [MCP·内置] 按类型与 ID 获取单个本体对象。当已知对象 ID 需要详情时调用。
+  mcp__builtin__query_objects :: [MCP·内置] 按对象类型与过滤条件查询本体对象列表。当需要原始业务对象（基地/型号/订单等）数据时调用。limit 上限 200。
+  mcp__builtin__query_timeseries_agg :: [MCP·内置] 时序聚合查询：按 seriesKey/实体/时间窗/粒度返回聚合桶（如设备日 OEE、产线实绩）。仅返回聚合值，绝不返回原
+  mcp__builtin__search_experience :: [MCP·内置] 经验记忆库检索：按自然语言问题检索历史任务沉淀的案例（问句+解法+结果）。在选择分析路径前调用，可借鉴过往有效解法；结果仅
+  mcp__builtin__search_knowledge :: [MCP·内置] 知识库语义检索：按自然语言问题检索已同步的文档分块（SOP/工艺文件/物流说明等）。命中可作为回答的 KB_CHUNK 溯
+  mcp__ontology__plan_slice :: [MCP·本体] 动态规划一个本体切片。当用户问题需要跨越多个对象类型（如订单→基地→物料→客户）且预置切片不满足时调用；返回的 slice
+  mcp__ontology__resolve_slice :: [MCP·本体] 解析一个预定义的本体切片（子图）。当需要某型号的可产基地网络或某基地的风险画像等预定义视图时调用。
+  mcp__rules__evaluate_rules :: [MCP·规则] 按规则库评估给定 payload 是否违反业务规则（C01–C23）。在给出结论或生成草稿前调用。
+  mcp__solvers__affected_orders :: [MCP·求解器] 给定扰动，返回受影响订单清单（problems/rootChain）。
+  mcp__solvers__atp_check :: [MCP·求解器] 对一张销售订单净读对象图三源供给——成品现货(FinishedGoodsInventory.qtyOnHand)/在制未
+  mcp__solvers__base_capacity_outlook :: [MCP·求解器] 给定基地，按 30/60/90 天窗口前瞻推演四线对比：可用产能(Σ Line.capacityDaily×(1−uti
+  mcp__solvers__bottleneck_matrix :: [MCP·求解器] 按基地×工序输出瓶颈强度矩阵，定位约束工序。
+  mcp__solvers__capacity_forecast :: [MCP·求解器] 给定型号/数量/周数，推演产能满足度（P50/P90、缺口率、主瓶颈）。
+  mcp__solvers__credit_exposure :: [MCP·求解器] 敞口=应收+在产；可用额与逾期判定（C32）。
+  mcp__solvers__decision_play :: [MCP·求解器] 对某根因(gap_attribution 产物)生成≥3 个决策方案(读真供应链对象·各维度真算:补缺口/代价/周期/风
+  mcp__solvers__finance_pnl :: [MCP·求解器] 读 FinancePlan+DemandSegment 出收入/销售成本/毛利 预算vs滚动vs差异 + 毛利率行 + 
+  mcp__solvers__gap_attribution :: [MCP·求解器] 总目标缺口(Metric.target−Metric.actual)→沿本体反向多跳结构分摊(gap 单位·每层 Σ子+
+  mcp__solvers__generic_inference :: [MCP·求解器] 对任意已发布本体套假设源属性值、前向重算下游派生链，返回 before/after deltas（不落库、确定性）。回答
+  mcp__solvers__kit_readiness :: [MCP·求解器] 逐单算齐套率（含在途按 ETA），输出缺料与建议。
+  mcp__solvers__metric_rollup :: [MCP·求解器] 从对象库读 Metric 一等对象，对齐目标树(PlanTarget) target 算 delta/miss，输出 M
+  mcp__solvers__mrp_netting :: [MCP·求解器] 读 MaterialBalance 出物料净需求/长协覆盖/现货缺口/最早齐套表（C06 齐套口径）。S&OP 供应评审
+  mcp__solvers__risk_timeline :: [MCP·求解器] 按日推演风险时序（越线点/根因链）。
+  mcp__solvers__supply_demand_gap_attribution :: [MCP·求解器] 产销缺口(SopVersionRow Σmax(0,demand−supply))→双向分摊到需求端(预测偏差 Σ|P5
+  mcp__solvers__yield_diagnosis :: [MCP·求解器] 2σ 滑窗突变检测 + 根因候选按时间贴近度排序。
+  mcp__workflow__capacity_check :: [MCP·工作流] 产能校核流程（这是一个多步流程，将按声明式步骤执行并返回结果）型号需求增量可行性校核（resolve → solve →
+  skill :: Load the full instructions for an available skill. Call this with the 
+  ── 审计行 ──
+  ["query_objects/OK"]
+  ── 回执原文 ──
+  <tool_data tool_call_id="tc_01M4G4KGBKVEQWQ5EH1HYG0CDC">{"data":{"items":[],"total":0},"total":0,"truncated":false,"snapshotVersion":"ont-snap-001@1","empty":true,"hint":"对象类型 Order 存在但 0 实例：可能租户未引导，请先 run_synthetic/bootstrap 合成计划域，而非判定\"无数据\"。"}</tool_data>
+
+
+stdout | test/dsh-builtin-mcp.seam.test.ts > WO-BUILTIN-TO-DSH · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E2 迁前（对照臂·同一 query）：能力在反向工具面（裸名）∧ DSH 侧零内置工具 server ∧ 同一执行体同一行审计名
+
+  ── 判据① 迁前/迁后 run 记录对照（同一条 query · 同一个 agent agt_seed_analyst）──
+  载体（模型面名）  迁前=query_objects  迁后=mcp__builtin__query_objects   ← 唯一变的一格
+  审计行名          迁前=query_objects  迁后=query_objects
+  outcome           迁前=OK  迁后=OK
+  实参              {"objectType":"Order","filter":{"baseId":"base-cz"},"limit":5}
+                    byteEqual=true
+  审计回执(前 200)  {"data":{"items":[],"total":0},"total":0,"truncated":false,"snapshotVersion":"ont-snap-001@1","empty":true,"hint":"对象类型 Order 存在但 0 实例：可能租户未引导，请先 run_synthetic/bootstrap 合成计划域，而非判定\"无数据\"。"}
+                    迁前迁后 byteEqual=true（len=190）
+  模型面回执(内层)  迁前迁后 byteEqual=true
+                    原文(前 200)={"data":{"items":[],"total":0},"total":0,"truncated":false,"snapshotVersion":"ont-snap-001@1","empty":true,"hint":"对象类型 Order 存在但 0 实例：可能租户未引导，请先 run_synthetic/bootstrap 合成计划域，而非判定\"无数据\"。"}
+
+
+  ── E2 迁前臂 · 模型面里 name 含 query 的那条 ──
+  mcp__builtin__query_timeseries_agg, query_objects
+  ── 审计行 ──
+  ["query_objects/OK"]
+
+
+stdout | test/dsh-builtin-mcp.seam.test.ts > WO-BUILTIN-TO-DSH · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E3 反向对照（判据③·e2e）：授予面拿掉 ⇒ DSH 侧模型面**没有它** ∧ 宿主零数据面调用（那条读数是活的）
+
+  ── E3 反向对照 · 模型面里的内置工具面 ──
+  mcp__builtin__query_timeseries_agg
+  ── 审计行 ──
+  []
+
+
+ ✓ test/dsh-builtin-mcp.seam.test.ts (20 tests) 39101ms
+   ✓ WO-BUILTIN-TO-DSH · A 组：DSH 侧真看到的内置工具（MCP wire 面） > A1 tools/list：DSH 侧真拿到 query_objects，描述/入参模式与宿主静态投影逐字同源（两内核同源锚点）  852ms
+   ✓ WO-BUILTIN-TO-DSH · A 组：DSH 侧真看到的内置工具（MCP wire 面） > A2 tools/call：宿主收到的是**全名** + 入参逐键原文；模型面回执是逐字 <tool_data> 包络  979ms
+   ✓ WO-BUILTIN-TO-DSH · A 组：DSH 侧真看到的内置工具（MCP wire 面） > A3 对照（减输入）：无宿主桥 ⇒ fail-closed 明确失败 ∧ 宿主零转发（不静默放行）  724ms
+   ✓ WO-BUILTIN-TO-DSH · C 组：内置工具面三面同改 + 只剩一条授予路 > C3b Phase6C 收窄豁免（原生臂真跑）：内置工具面不参与 top-k，其余 MCP 面照旧收窄到 8  322ms
+   ✓ WO-BUILTIN-TO-DSH · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E1 迁后（DSH 原生 MCP）：模型面有 mcp__builtin__query_objects ∧ 真调 ∧ 数据面真查 ∧ 审计行（裸名）  10750ms
+   ✓ WO-BUILTIN-TO-DSH · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E2 迁前（对照臂·同一 query）：能力在反向工具面（裸名）∧ DSH 侧零内置工具 server ∧ 同一执行体同一行审计名  9700ms
+   ✓ WO-BUILTIN-TO-DSH · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E3 反向对照（判据③·e2e）：授予面拿掉 ⇒ DSH 侧模型面**没有它** ∧ 宿主零数据面调用（那条读数是活的）  9005ms
+   ✓ WO-BUILTIN-TO-DSH · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E4 §4.2 端到端：DSH 臂上调它读**域外**对象 ⇒ 对象域门照样拒（正文点名）∧ 域内放行  6105ms
+stdout | test/dsh-e2e-real-triad.test.ts
+[dsh-e2e-real-triad] 真供应商臂 skip：需 DSH_REAL_API_KEY + DSH_REAL_BASE_URL（旧名 KIMI_API_KEY/KIMI_BASE_URL 同样接受）；另可选 DSH_REAL_MODEL（缺省 kimi-k3）/ DSH_REAL_KIND（openai_compatible|anthropic）。L2.A1/L2.A4 跳过。
+
+stdout | test/dsh-e2e-real-triad.test.ts > L2.A1′ · 判别力金丝雀的变异反证（免凭据） > 固定应答端点：两问回答相同 ⇒ isDiscriminating 必须判 false
+[L2.A1′ 变异反证] A=<<固定端点写死串>> B=<<固定端点写死串>>
+
+ ✓ test/dsh-e2e-real-triad.test.ts (8 tests | 2 skipped) 17405ms
+   ✓ L2.A1′ · 判别力金丝雀的变异反证（免凭据） > 固定应答端点：两问回答相同 ⇒ isDiscriminating 必须判 false  5414ms
+   ✓ L2.A2 · 真规则：platform-governance http → POST /b/v1/governance/adjudicate → deps.dataCore.rules.evaluate > allow 臂：C03 + {demandDelta:0.1} ⇒ 放行 ∧ 工具真执行（whoami 对位 only_t1:t1）∧ 端点→rules.evaluate 计数≥2  2752ms
+   ✓ L2.A2 · 真规则：platform-governance http → POST /b/v1/governance/adjudicate → deps.dataCore.rules.evaluate > deny 臂：C03 + {demandDelta:0.9} ⇒ BLOCK ⇒ 工具体不执行 ∧ reason 含真 verdict 文案（无 mock 前缀）  2433ms
+   ✓ L2.A3 · 真 MCP：SetupSpec.mcpServers 挂 mock-mcp-tenant ⇒ whoami 携租户标记 > whoami 应答 whoami:t1 ∧ pidFile 计数=1 ∧ 审计工具名 mcp__erp__whoami 在帧流  2566ms
+   ✓ L2.A5 · 变异负向臂（fail-closed 红位常设） > ⑤a PLATFORM_GOV_URL 指已关闭端口 ⇒ 裁决不可达 fail-closed deny ∧ 工具体不执行  2334ms
+   ✓ L2.A5 · 变异负向臂（fail-closed 红位常设） > ⑤b 缺 PLATFORM_LLM_API_KEY ⇒ MISSING_CREDENTIAL 含 env 引用名 ∧ stub 零请求（fail 在出网前）  1900ms
+stdout | test/dsh-resource-reach.seam.test.ts > RESOURCE-REACH · B e2e：DSH 臂经 MCP 真调切片（真 fork + 真 MCP 子进程 + 真 HTTP 回环） > B1 MCP 模式端到端：模型真调 mcp__ontology__* ∧ 切片数据真回模型面 ∧ 同源 executor
+
+  ── B1 DSH 模型面（首轮）──
+  final_answer :: 终止工具：当你已收集到足够事实时调用，输出结构化回答 blocks 与 provenance。回答中的每个业务数字必须用
+  mcp__builtin__query_objects :: [MCP·内置] 按对象类型与过滤条件查询本体对象列表。当需要原始业务对象（基地/型号/订单等）数据时调用。limit 
+  mcp__ontology__plan_slice :: [MCP·本体] 动态规划一个本体切片。当用户问题需要跨越多个对象类型（如订单→基地→物料→客户）且预置切片不满足时调用
+  mcp__ontology__resolve_slice :: [MCP·本体] 解析一个预定义的本体切片（子图）。当需要某型号的可产基地网络或某基地的风险画像等预定义视图时调用。
+  mcp__solvers__affected_orders :: [MCP·求解器] 给定扰动，返回受影响订单清单（problems/rootChain）。
+  mcp__solvers__base_capacity_outlook :: [MCP·求解器] 给定基地，按 30/60/90 天窗口前瞻推演四线对比：可用产能(Σ Line.capacityDa
+  mcp__solvers__bottleneck_matrix :: [MCP·求解器] 按基地×工序输出瓶颈强度矩阵，定位约束工序。
+  mcp__solvers__capacity_forecast :: [MCP·求解器] 给定型号/数量/周数，推演产能满足度（P50/P90、缺口率、主瓶颈）。
+  mcp__solvers__mrp_netting :: [MCP·求解器] 读 MaterialBalance 出物料净需求/长协覆盖/现货缺口/最早齐套表（C06 齐套口径）
+  mcp__workflow__capacity_check :: [MCP·工作流] 产能校核流程（这是一个多步流程，将按声明式步骤执行并返回结果）型号需求增量可行性校核（resolve
+  skill :: Load the full instructions for an available skill. Call this
+
+
+stdout | test/dsh-resource-reach.seam.test.ts > RESOURCE-REACH · B e2e：DSH 臂经 MCP 真调切片（真 fork + 真 MCP 子进程 + 真 HTTP 回环） > B1 MCP 模式端到端：模型真调 mcp__ontology__* ∧ 切片数据真回模型面 ∧ 同源 executor
+
+  ── B1 回执对（模型面原文，各截 260 字）──
+  ① mcp__ontology__plan_slice → <tool_data tool_call_id="tc_01M4G4NGT8WKAT18XBE0E655QS">{"planned":true,"reused":false,"sliceKey":"biz.Order.Base_Line_Model","rootType":"Order","spannedDomains":["mock"],"pathCount":3,"plan":{"sliceKey":"biz.Order.Base_Line_Model","rootType":"Order","paths":[
+  ② mcp__ontology__resolve_slice → <tool_data tool_call_id="tc_01M4G4NGXKM7YW9HA3MAEJJQY7">{"data":{"rootType":"Order","targets":["Base_Line_Model"],"nodes":[{"type":"Base_Line_Model","id":"Order_to_Base_Line_Model"}],"edges":[{"from":"Order","to":"Base_Line_Model","kind":"Order_to_Base_Line_Mo
+  审计行=["plan_slice/OK","resolve_slice/OK"]
+
+
+  ── B1 iterations.toolCalls 原文 ──
+  [{"toolCallId":"call_1","toolName":"mcp__ontology__plan_slice","input":{"rootType":"Order","targets":["Base","Line","Model"],"question":"型号需求增量可不可行"},"outcome":"OK","durationMs":202},{"toolCallId":"call_2","toolName":"mcp__ontology__resolve_slice","input":{"sliceKey":"biz.Order.Base_Line_Model","args":{}},"outcome":"OK","durationMs":58}]
+
+
+stdout | test/dsh-resource-reach.seam.test.ts > RESOURCE-REACH · B e2e：DSH 臂经 MCP 真调切片（真 fork + 真 MCP 子进程 + 真 HTTP 回环） > B2 MCP 真身（结构面，不依赖模型）：MCP server 入口不在 ⇒ DSH 面**拿不到**切片，调用 fail-closed
+
+  ── B2 MCP server 入口移走后：模型面工具数=9（含切片=false）
+  ── 回执原文 ──
+  Error: unknown tool "mcp__ontology__plan_slice"
+
+
+stdout | test/dsh-resource-reach.seam.test.ts > RESOURCE-REACH · B e2e：DSH 臂经 MCP 真调切片（真 fork + 真 MCP 子进程 + 真 HTTP 回环） > B3 workflow 端到端（交付②）：同一条工作流，超限输入被治理闸挡下 / 合规输入真跑通
+
+  ── B3 对照对（同工具、仅入参不同）──
+  ① demandDelta=100 回执：Error: C03: 需求增量 100 超过产能上限约束（>0.5 触发 BLOCK）
+  ② demandDelta=0.2  回执：<tool_data>{"status":"COMPLETED","answer":{"trustLevel":"AGENT_EXPLORATORY","blocks":[{"type":"text","markdown":"产能校核结论（见步骤溯源）"}],"provenance":[],"unverifiedNumerics":false,"validationTrace":{"slicesUsed":[],"consistency":{"checks":[{"kind":"AXIOM","ref":"C03","status":"PASS","detail":"需求增量在产能上限之内"}
+  审计行=["query_objects/OK","invoke_solver/OK","evaluate_rules/OK","mcp__workflow__capacity_check/OK"]
+
+
+stdout | test/dsh-resource-reach.seam.test.ts > RESOURCE-REACH · B e2e：DSH 臂经 MCP 真调切片（真 fork + 真 MCP 子进程 + 真 HTTP 回环） > B6 对照实验（workflow MCP 入口移走）：工作流工具不可见 ∧ 宿主零执行 ∧ 零审计行，且本体面**不受影响**
+
+  ── B6 对照（workflow MCP 入口移走）：模型面工具数=10（含 workflow=false / 含本体切片=true）
+  ── workflow 执行体调用次数=0，审计行=1 ──
+  Error: unknown tool "mcp__workflow__capacity_check"
+
+
+stdout | test/dsh-resource-reach.seam.test.ts > RESOURCE-REACH · B e2e：DSH 臂经 MCP 真调切片（真 fork + 真 MCP 子进程 + 真 HTTP 回环） > B4 fail-closed：请求**不在授予集内**的工具 ⇒ 明确拒绝 ∧ 宿主零执行（不静默放行）
+
+  ── B4 fail-closed 回执原文（模型面，工具名 create_action_draft）──
+  Error: tool create_action_draft not in agent scope allow-list (scopeDeclaration ∪ granted)
+
+
+stdout | test/dsh-resource-reach.seam.test.ts > RESOURCE-REACH · B e2e：DSH 臂经 MCP 真调切片（真 fork + 真 MCP 子进程 + 真 HTTP 回环） > B5 变异反证（文件内，不靠外部改动）：整条 MCP 授予拿掉 ⇒ 不可见 ∧ 调用 fail-closed ∧ 宿主零审计行
+
+  ── B5 无授予臂回执原文（模型面，工具名 mcp__ontology__resolve_slice）──
+  Error: tool mcp__ontology__resolve_slice not in agent scope allow-list (scopeDeclaration ∪ granted)
+
+
+stdout | test/dsh-resource-reach.seam.test.ts > RESOURCE-REACH · C 两内核一致：同一 query 同剧本，逐条比 > C1 同源：两臂同 query 同剧本 ⇒ 可见工具（名+描述）、执行体入参、回执形态、审计行全同；差异逐条列出
+
+  ── C1 两内核差异清单（逐条）──
+  [D1] run.kernel: native=NATIVE external=EXTERNAL
+  [D2] 可见工具顺序不同（集合相同）
+  [D3] 技能加载器名两臂不同（native=load_skill / dsh=skill，归 P2A 换名）
+
+
+stdout | test/dsh-resource-reach.seam.test.ts > RESOURCE-REACH · D 收敛判据：切片只剩 MCP 一条授予路（全仓扫描 + path-B 真跑） > D1 全仓收敛：`{kind:"BUILTIN", name:切片裸名}` = 0 ∧ 白名单裸名 = 0（金丝雀 query_objects 必须非 0）
+
+  ── D1 扫描面 1696 个源码文件（四包 src/test + harness .mjs，不含 dist）──
+
+  ── D1 读数 ──
+  授予形状: 切片裸名命中 0 / 金丝雀 query_objects 命中 27
+  白名单  : 切片裸名命中 0 / 金丝雀 query_objects 命中 40
+
+
+stdout | test/dsh-resource-reach.seam.test.ts > RESOURCE-REACH · D 收敛判据：切片只剩 MCP 一条授予路（全仓扫描 + path-B 真跑） > D3 path-B e2e（真跑）：退裸名之后模型仍能真调切片 —— 走 MCP 授予面、回到同一只执行体
+
+  ── D3 path-B 模型面（共 27 件，切片相关列出）──
+  query_ontology
+  query_system_ontology
+  mcp__ontology__plan_slice
+  mcp__ontology__resolve_slice
+
+
+stdout | test/dsh-resource-reach.seam.test.ts > RESOURCE-REACH · D 收敛判据：切片只剩 MCP 一条授予路（全仓扫描 + path-B 真跑） > D3 path-B e2e（真跑）：退裸名之后模型仍能真调切片 —— 走 MCP 授予面、回到同一只执行体
+
+  ── D3 审计行 ──
+  ["resolve_slice/OK"]
+
+
+ ❯ test/dsh-resource-reach.seam.test.ts (14 tests | 2 failed) 76869ms
+   × RESOURCE-REACH · A 授予面契约（seed → expandAgentTools → setup 映射） > A1 出厂 agt_capacity_planner **以 MCP 模式**获得切片：工具面/声明面/mcpServers 三面同步，且反向工具面里没有它 1333ms
+     → 旧载体金丝雀②：反向面 + MCP 面 = 花名册全量: expected 26 to be 25 // Object.is equality
+   × RESOURCE-REACH · A 授予面契约（seed → expandAgentTools → setup 映射） > A2 对照（把 MCP 授予拿掉）：展开面 / 允许表 / mcpServers **三面一起**收缩——这是 D1 变异能红的前提 203ms
+     → 旧载体金丝雀：反向面 + MCP 面 = 花名册全量: expected 26 to be 25 // Object.is equality
+   ✓ RESOURCE-REACH · B e2e：DSH 臂经 MCP 真调切片（真 fork + 真 MCP 子进程 + 真 HTTP 回环） > B1 MCP 模式端到端：模型真调 mcp__ontology__* ∧ 切片数据真回模型面 ∧ 同源 executor  12608ms
+   ✓ RESOURCE-REACH · B e2e：DSH 臂经 MCP 真调切片（真 fork + 真 MCP 子进程 + 真 HTTP 回环） > B2 MCP 真身（结构面，不依赖模型）：MCP server 入口不在 ⇒ DSH 面**拿不到**切片，调用 fail-closed  8938ms
+   ✓ RESOURCE-REACH · B e2e：DSH 臂经 MCP 真调切片（真 fork + 真 MCP 子进程 + 真 HTTP 回环） > B3 workflow 端到端（交付②）：同一条工作流，超限输入被治理闸挡下 / 合规输入真跑通  9693ms
+   ✓ RESOURCE-REACH · B e2e：DSH 臂经 MCP 真调切片（真 fork + 真 MCP 子进程 + 真 HTTP 回环） > B6 对照实验（workflow MCP 入口移走）：工作流工具不可见 ∧ 宿主零执行 ∧ 零审计行，且本体面**不受影响**  8424ms
+   ✓ RESOURCE-REACH · B e2e：DSH 臂经 MCP 真调切片（真 fork + 真 MCP 子进程 + 真 HTTP 回环） > B4 fail-closed：请求**不在授予集内**的工具 ⇒ 明确拒绝 ∧ 宿主零执行（不静默放行）  9702ms
+   ✓ RESOURCE-REACH · B e2e：DSH 臂经 MCP 真调切片（真 fork + 真 MCP 子进程 + 真 HTTP 回环） > B5 变异反证（文件内，不靠外部改动）：整条 MCP 授予拿掉 ⇒ 不可见 ∧ 调用 fail-closed ∧ 宿主零审计行  9862ms
+   ✓ RESOURCE-REACH · C 两内核一致：同一 query 同剧本，逐条比 > C1 同源：两臂同 query 同剧本 ⇒ 可见工具（名+描述）、执行体入参、回执形态、审计行全同；差异逐条列出  11523ms
+   ✓ RESOURCE-REACH · C 两内核一致：同一 query 同剧本，逐条比 > C2 同源反证：MCP 授予拿掉后**两臂一起**收缩（不是只有 DSH 臂变） 212ms
+   ✓ RESOURCE-REACH · D 收敛判据：切片只剩 MCP 一条授予路（全仓扫描 + path-B 真跑） > D0 扫描器金丝雀（合成样例·与 D1 共用同一实现）：正样例必中 ∧ 全名形态必不中 ∧ 注释里的同串必不中 3ms
+   ✓ RESOURCE-REACH · D 收敛判据：切片只剩 MCP 一条授予路（全仓扫描 + path-B 真跑） > D1 全仓收敛：`{kind:"BUILTIN", name:切片裸名}` = 0 ∧ 白名单裸名 = 0（金丝雀 query_objects 必须非 0）  4006ms
+   ✓ RESOURCE-REACH · D 收敛判据：切片只剩 MCP 一条授予路（全仓扫描 + path-B 真跑） > D2 通用 path-B 的工具装配：切片只以 MCP 形态产出（白名单不给 ⇒ 一件没有；旧记法仍认 ⇒ 不丢能力） 3ms
+   ✓ RESOURCE-REACH · D 收敛判据：切片只剩 MCP 一条授予路（全仓扫描 + path-B 真跑） > D3 path-B e2e（真跑）：退裸名之后模型仍能真调切片 —— 走 MCP 授予面、回到同一只执行体  356ms
+ ✓ test/dsh-e2e-honesty.test.ts (6 tests) 34542ms
+   ✓ WO-DSH-E2E · L5 诚实层穿透 > L5.P1 provenance 溯源到真对象（dsh 臂 `skill` 实调可回查）+ ⟦ref:1⟧ 标记逐字保真  5770ms
+   ✓ WO-DSH-E2E · L5 诚实层穿透 > L5.P2a governance 负向（engine 级·engine.ts:520 锚）：provenancePolicy=required 缺 provenance ⇒ FAILED + 诚实文案  5715ms
+   ✓ WO-DSH-E2E · L5 诚实层穿透 > L5.P2b governance 负向：writeMode 技能缺 action_draft ⇒ FAILED + 诚实文案  5865ms
+   ✓ WO-DSH-E2E · L5 诚实层穿透 > L5.P3 EMPTY 口径保真：软收尾逐字 == 末 assistant 文本；空文本 ⇒ 诚实兜底逐字；provenance 空  8240ms
+   ✓ WO-DSH-E2E · L5 诚实层穿透 > L5.P4 拒绝口径帧保真：deny 理由帧流逐字 + SSE 面 ERROR 不漂白  4792ms
+   ✓ WO-DSH-E2E · L5 诚实层穿透 > L5.P5 降级链：finish_reason=length ⇒ turn/end max-tokens ⇒ BUDGET_EXHAUSTED + degraded 原值 + 诚实复述 + narration 保真  4156ms
+ ✓ test/dsh-gov-production.seam.test.ts (5 tests) 25227ms
+   ✓ WO-DSH-PROD-READY F-1 · 生产档 governance http 裁决接线（engine 级） > ① 真端点 + 双侧同 token + 规则 BLOCK ⇒ deny 理由逐字回灌模型面 ∧ 工具体零执行 ∧ step ERROR  5800ms
+   ✓ WO-DSH-PROD-READY F-1 · 生产档 governance http 裁决接线（engine 级） > ② 同构放行 ⇒ 工具体真执行 ∧ 裁决覆盖 echo + final_answer ∧ 答案原样交付  5652ms
+   ✓ WO-DSH-PROD-READY F-1 · 生产档 governance http 裁决接线（engine 级） > ③ PLATFORM_GOV_URL 指已关闭端口 ⇒ fail-closed deny（reason 含 unreachable）∧ 零执行 ∧ 零求值  4363ms
+   ✓ WO-DSH-PROD-READY F-1 · 生产档 governance http 裁决接线（engine 级） > ④ SERVICE_TOKEN 缺失 ⇒ 端点 fail-closed 401 ⇒ 插件转 deny（reason 含 HTTP 401）∧ 零执行 ∧ 零求值  4619ms
+   ✓ WO-DSH-PROD-READY F-1 · 生产档 governance http 裁决接线（engine 级） > ⑤ 不钉 DSH_GOV_URL ⇒ engine 缺省推导本进程裁决端点真被打到 ∧ 放行真执行  4791ms
+stderr | test/dsh-e2e-dualrun50.test.ts > WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > gated 槽鸣报：角色路/场景路 STALL_LOOP 覆盖维持 gated（缝已落线；缺口=编排层驱动级+触发通道缺，REC §3 #7 裁决口径）
+GATED dr50-gated-role-stall（runRolePathB STALL_LOOP）：gate 维持：缝① 886c436a7 已落线；缺口 = 编排层驱动级 + STALL_LOOP 确定性触发通道缺（非发射缝）；裁决不建编排层双跑驱动级，parity = 码对称论证，转 W7 输入
+GATED dr50-gated-scene-stall（runSceneAgent STALL_LOOP）：gate 维持：缝② 886c436a7 已落线；缺口 = 编排层驱动级 + STALL_LOOP 确定性触发通道缺（非发射缝）；裁决不建编排层双跑驱动级，parity = 码对称论证，转 W7 输入
+
+ ✓ test/dsh-e2e-dualrun50.test.ts (76 tests) 387230ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-aa [answer] 双臂四面对账  6497ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ab [answer] 双臂四面对账  6365ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ac [answer] 双臂四面对账  6917ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ad [answer] 双臂四面对账  5488ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ae [answer] 双臂四面对账  4428ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-af [answer] 双臂四面对账  5420ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ag [answer] 双臂四面对账  4833ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ah [answer] 双臂四面对账  4276ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ai [answer] 双臂四面对账  5791ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-aj [answer] 双臂四面对账  5846ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ak [answer] 双臂四面对账  5375ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-al [answer] 双臂四面对账  7092ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-am [answer] 双臂四面对账  7711ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-an [answer] 双臂四面对账  5961ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ao [answer] 双臂四面对账  7931ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ap [answer] 双臂四面对账  7173ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-aq [answer] 双臂四面对账  6532ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ar [answer] 双臂四面对账  6042ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-as [answer] 双臂四面对账  5781ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-at [answer] 双臂四面对账  6143ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-au [answer] 双臂四面对账  4659ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-av [answer] 双臂四面对账  4476ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-aw [answer] 双臂四面对账  5333ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ax [answer] 双臂四面对账  6373ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ay [answer] 双臂四面对账  6121ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-az [answer] 双臂四面对账  3116ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ba [answer] 双臂四面对账  3461ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bb [answer] 双臂四面对账  4142ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bc [answer] 双臂四面对账  4053ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bd [answer] 双臂四面对账  3503ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-be [answer] 双臂四面对账  3809ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bf [answer] 双臂四面对账  4091ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bg [answer] 双臂四面对账  4236ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bh [answer] 双臂四面对账  3768ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bi [answer] 双臂四面对账  4519ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bj [answer] 双臂四面对账  4845ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bk [deny_pre] 双臂四面对账  2688ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bl [deny_pre] 双臂四面对账  2541ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bm [deny_pre] 双臂四面对账  2309ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bn [deny_pre] 双臂四面对账  2893ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bo [deny_mid] 双臂四面对账  3421ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bp [deny_mid] 双臂四面对账  3653ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bq [deny_mid] 双臂四面对账  2106ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-br [deny_mid] 双臂四面对账  2403ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bs [deny_all] 双臂四面对账  2325ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bt [deny_all] 双臂四面对账  2641ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bu [deny_all] 双臂四面对账  2207ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bv [deny_all] 双臂四面对账  2518ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-by [answer] 双臂四面对账  3277ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-bz [answer] 双臂四面对账  5845ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ca [answer] 双臂四面对账  4908ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-cb [answer] 双臂四面对账  4570ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-cc [answer] 双臂四面对账  4641ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-cd [answer] 双臂四面对账  3788ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ce [answer] 双臂四面对账  4513ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-cf [answer] 双臂四面对账  4334ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-cg [answer] 双臂四面对账  4286ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ch [answer] 双臂四面对账  3354ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ci [answer] 双臂四面对账  5348ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-cj [answer] 双臂四面对账  4206ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-ck [answer] 双臂四面对账  3758ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-cl [answer] 双臂四面对账  4549ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > dr50-cm [answer] 双臂四面对账  7081ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > A5 确定性（同臂连跑两遍，比对器不得把噪声当差集） > dr50-ac 双臂各复跑一遍过同一比对器  9472ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > A5 确定性（同臂连跑两遍，比对器不得把噪声当差集） > dr50-ad 双臂各复跑一遍过同一比对器  10697ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > A5 确定性（同臂连跑两遍，比对器不得把噪声当差集） > dr50-an 双臂各复跑一遍过同一比对器  10568ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > A5 确定性（同臂连跑两遍，比对器不得把噪声当差集） > dr50-ag 双臂各复跑一遍过同一比对器  10466ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > A5 确定性（同臂连跑两遍，比对器不得把噪声当差集） > dr50-bk 双臂各复跑一遍过同一比对器  9207ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > A5 确定性（同臂连跑两遍，比对器不得把噪声当差集） > dr50-bs 双臂各复跑一遍过同一比对器  9783ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > A5 确定性（同臂连跑两遍，比对器不得把噪声当差集） > dr50-cb 双臂各复跑一遍过同一比对器  9373ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > A5 确定性（同臂连跑两遍，比对器不得把噪声当差集） > dr50-ce 双臂各复跑一遍过同一比对器  8814ms
+   ✓ WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务） > A3c 事件族覆盖矩阵：15 族每族真触发或登记不可达，不冒充覆盖  16386ms
+stdout | test/dsh-arm-ad-surface.seam.test.ts > WO-DSH-ARM-AD-SURFACE · ① agt_capacity_planner（5 求解器·≤8） > DSH 臂：广告面 == 可调用面（双向差集为空）且 == 其 toolFilter
+
+  ── ① capacity_planner · DSH 臂 ──
+  广告面 A(5) = affected_orders,base_capacity_outlook,bottleneck_matrix,capacity_forecast,mrp_netting
+  scope 面实值(5) = affected_orders,base_capacity_outlook,bottleneck_matrix,capacity_forecast,mrp_netting
+  逐键真调通过(5) = affected_orders,base_capacity_outlook,bottleneck_matrix,capacity_forecast,mrp_netting
+  A − C = []  ·  C − A = []
+
+
+stdout | test/dsh-arm-ad-surface.seam.test.ts > WO-DSH-ARM-AD-SURFACE · ②④ agt_seed_analyst（16 求解器·>8） > DSH 臂：双向差集为空 + 被原生臂 top-k 截掉的那条端到端真通（非 DENIED）
+
+  ── ②④ analyst · DSH 臂 ──
+  提示词目录段(15) = affected_orders,atp_check,base_capacity_outlook,bottleneck_matrix,capacity_forecast,credit_exposure,decision_play,finance_pnl,gap_attribution,generic_inference,kit_readiness,metric_rollup,risk_timeline,supply_demand_gap_attribution,yield_diagnosis
+  广告面 A(16) = affected_orders,atp_check,base_capacity_outlook,bottleneck_matrix,capacity_forecast,credit_exposure,decision_play,finance_pnl,gap_attribution,generic_inference,kit_readiness,metric_rollup,mrp_netting,risk_timeline,supply_demand_gap_attribution,yield_diagnosis
+  scope 面实值(16) = affected_orders,atp_check,base_capacity_outlook,bottleneck_matrix,capacity_forecast,credit_exposure,decision_play,finance_pnl,gap_attribution,generic_inference,kit_readiness,metric_rollup,mrp_netting,risk_timeline,supply_demand_gap_attribution,yield_diagnosis
+  逐键真调通过(16) = affected_orders,atp_check,base_capacity_outlook,bottleneck_matrix,capacity_forecast,credit_exposure,decision_play,finance_pnl,gap_attribution,generic_inference,kit_readiness,metric_rollup,mrp_netting,risk_timeline,supply_demand_gap_attribution,yield_diagnosis
+  A − C = []  ·  C − A = []
+  负对照 lta_gap ⇒ DENIED
+
+
+stdout | test/dsh-arm-ad-surface.seam.test.ts > WO-DSH-ARM-AD-SURFACE · ②④ agt_seed_analyst（16 求解器·>8） > DSH 臂：双向差集为空 + 被原生臂 top-k 截掉的那条端到端真通（非 DENIED）
+
+  ── ②④ 端到端回执（模型面原文，各截 200 字） ──
+  gap_attribution → <tool_data tool_call_id="tc_01M4G4V07KQTDVJ062J4REYMGX">{"data":{"solverKey":"gap_attribution","ok":true,"args":{}},"snapshotVersion":"ont-snap-001"}</tool_data>
+  lta_gap → Error: tool mcp__solvers__lta_gap not in agent scope allow-list (scopeDeclaration ∪ granted)
+  宿主审计行 = ["invoke_solver/OK","invoke_solver/OK","invoke_solver/OK","invoke_solver/OK","invoke_solver/OK","invoke_solver/OK","invoke_solver/OK","invoke_solver/OK","invoke_solver/OK","invoke_solver/OK","invoke_solver/OK","invoke_solver/OK","mcp__solvers__lta_gap/DENIED","invoke_solver/OK","invoke_solver/OK","invoke_solver/OK","invoke_solver/OK","invoke_solver/OK"]
+
+
+ ✓ test/dsh-e2e-tenant-collision.test.ts (3 tests) 32118ms
+   ✓ WO-DSH-E2E · L4 租户隔离穿透（双 tenant × 同 serverName 对撞） > L4.A1 对撞双成：各回各 whoami 标记 / 事件流零跨租户串字 / 工具表各只见各 / pidFile 恰 2 异 pid  15255ms
+   ✓ WO-DSH-E2E · L4 租户隔离穿透（双 tenant × 同 serverName 对撞） > L4.A2 世界层互不可达：allow-list 误配异租户工具名 ⇒ 执行 isError（fail-closed），成功标记零出现  12326ms
+   ✓ WO-DSH-E2E · L4 租户隔离穿透（双 tenant × 同 serverName 对撞） > L4.A3 跨租户凭据解析 fail-closed（E3′ 前缀白名单形态）+ 凭据值零上帧  4528ms
+stdout | test/dsh-arm-ad-surface.seam.test.ts > WO-DSH-ARM-AD-SURFACE · ③ 对照：白名单进一条 ⇒ 广告面进一条；声明面清空 ⇒ 差集非空 > 同一台量具：加白名单 ⇒ 键出现（有牙）；声明面清空（反事实配置）⇒ A − C 必然非空（不瞎）
+
+  ── ③ 反事实配置 · DSH 臂 ──
+  广告面 A(17) = affected_orders,atp_check,base_capacity_outlook,bottleneck_matrix,capacity_forecast,credit_exposure,decision_play,finance_pnl,gap_attribution,generic_inference,kit_readiness,lta_gap,metric_rollup,mrp_netting,risk_timeline,supply_demand_gap_attribution,yield_diagnosis
+  逐键真调通过(6) = atp_check,base_capacity_outlook,capacity_forecast,decision_play,gap_attribution,supply_demand_gap_attribution
+  A − C(11) = affected_orders,bottleneck_matrix,credit_exposure,finance_pnl,generic_inference,kit_readiness,lta_gap,metric_rollup,mrp_netting,risk_timeline,yield_diagnosis
+
+
+ ✓ test/dsh-arm-ad-surface.seam.test.ts (3 tests) 47284ms
+   ✓ WO-DSH-ARM-AD-SURFACE · ① agt_capacity_planner（5 求解器·≤8） > DSH 臂：广告面 == 可调用面（双向差集为空）且 == 其 toolFilter  19902ms
+   ✓ WO-DSH-ARM-AD-SURFACE · ②④ agt_seed_analyst（16 求解器·>8） > DSH 臂：双向差集为空 + 被原生臂 top-k 截掉的那条端到端真通（非 DENIED）  15930ms
+   ✓ WO-DSH-ARM-AD-SURFACE · ③ 对照：白名单进一条 ⇒ 广告面进一条；声明面清空 ⇒ 差集非空 > 同一台量具：加白名单 ⇒ 键出现（有牙）；声明面清空（反事实配置）⇒ A − C 必然非空（不瞎）  11450ms
+ ✓ test/dsh-postcheck.seam.test.ts (4 tests) 16260ms
+   ✓ WO-DSH-PROD-READY W1 · DSH 路径 postcheck 后验对拍 > ① ruleBindings POST_CHECK BLOCK ⇒ DSH 答案同样被替换为 rule_violation（prov_post_check）  4661ms
+   ✓ WO-DSH-PROD-READY W1 · DSH 路径 postcheck 后验对拍 > ② 对拍 · ruleBindings POST_CHECK 通过 ⇒ DSH 答案原样放行（后验真跑了但不冤枉好人）  4268ms
+   ✓ WO-DSH-PROD-READY W1 · DSH 路径 postcheck 后验对拍 > ③ skill postcheck 引用 BLOCK ⇒ DSH 答案被替换（prov_skill_rule_check，先于 ruleBindings 段）  3281ms
+   ✓ WO-DSH-PROD-READY W1 · DSH 路径 postcheck 后验对拍 > ④ 诚实位 · rules 引擎抛错 ⇒ fail-open 放行（与原生 catch 语义一致，不把后验故障变成答案故障）  4044ms
+ ✓ test/dsh-engine-mcp-forward.seam.test.ts (8 tests) 26554ms
+   ✓ WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发 > A1 · agent.mcpServers 配 mock stdio server ⇒ 子进程世界收到 mcp__fwdmock__echo 工具且解密凭据到达 server 进程  5646ms
+   ✓ WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发 > A2 · 阴性臂：agent.mcpServers 空 ⇒ stub 请求 tools 零 mcp__ 前缀工具，运行照常 ANSWERED（零扰）  3785ms
+   ✓ WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发 > A4 · WO-DSH-PROD-READY W9-lite 审计骨架 e2e：dsh 臂 run.iterations 非空（两态+推导 duration）+ run.total* == 剧本 usage 折出和（B11 同源等值）  4632ms
+   ✓ WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发 > A5 · W8副 toolFilter 映射 e2e：滤一留一（echo 留 / echo2 全轮不可见）+ exotic 裸名 util.calc 注册期 fail-closed 丢弃，outcome ANSWERED  3828ms
+   ✓ WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发 > A5b · W8副 toolFilter 全名形态（mcp__fwdmock2__echo）同断言成立：echo 留、echo2/exotic 全轮不可见  3950ms
+   ✓ WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发 > A6-A · 零扰动锚 e2e：无 toolFilter ⇒ 三工具全含（含 exotic 规范化名 mcp__fwdmock2__util_calc），帧行为逐字节旧  4648ms
+ ✓ test/dsh-watchdog.test.ts (7 tests) 12484ms
+   ✓ N3 · runner 级 stall_loop 剧本（B1-B4） > B1 正例：stall_loop + cap=3 → abort cause=stall-loop ∧ STALL_LOOP 降级 ∧ tool/call===3  2214ms
+   ✓ N3 · runner 级 stall_loop 剧本（B1-B4） > B2 异参对照（不误伤）：stall_loop_varying + cap=3 → 无 stall-loop ∧ ANSWERED ∧ tool/call===8  2241ms
+   ✓ N3 · runner 级 stall_loop 剧本（B1-B4） > B3 自定义 cap=4（≠缺省 3）：cause.cap===4 ∧ tool/call===4 —— cap 由 env 驱动非硬编码  3056ms
+   ✓ N3 · runner 级 stall_loop 剧本（B1-B4） > B4 无 cap env → 无 stall-loop ∧ tool/call===8 ∧ ANSWERED（opt-in 缺省禁用，对位 loop.ts:533）  2773ms
+   ✓ N3 · runner 级 stall_loop 剧本（B1-B4） > B5 meta 守卫（M2 补咬）：stall_loop_meta + cap=3 → 8 轮同参 final_answer **不触发** stall-loop ∧ ANSWERED  2168ms
+ ✓ test/dsh-fault-injection.seam.test.ts (9 tests) 20871ms
+   ✓ WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态 > F1 启动即死·缺 cordis 档（engine 级）⇒ 诚实抛错指名缺档，不挂起不静默  1228ms
+   ✓ WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态 > F2 启动即崩·bin 即死（engine 级）⇒ TransportClosedError 带 exit code + stderr tail，零残留  728ms
+   ✓ WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态 > F3 中途崩（runner 级）⇒ 百 ms 级收束 + outcome FAILED + 半截文本兜底不编造  382ms
+   ✓ WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态 > F4① hang·prompt 后哑（runner 级）⇒ deadline 有界收束 + FAILED + 诚实空答文本  2277ms
+   ✓ WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态 > F4② hang·全哑（runner 级）⇒ initialize 超时 RequestTimeoutError 诚实上抛  2119ms
+   ✓ WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态 > F5 zombie 回收（runner 级）⇒ 健康×5 + 中途崩 + SIGTERM 抵抗，pgrep 计数恒 0  12020ms
+   ✓ WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态 > F6 多租户并发（engine 级）⇒ 独立子进程 × setup 帧 tenantId 各自正确 × 互不串话  643ms
+   ✓ WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态 > F7 资源形态（runner 级）⇒ 并发×4 各自独立子进程同时在跑（每 run 一进程·无池化上限 钉板）  853ms
+   ✓ WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态 > F8 编排级失败面（HTTP 级）⇒ 启动即崩 ⇒ task FAILED + 错误含子进程诊断（非挂起非空答案）  618ms
+stdout | test/dsh-rules-mcp.seam.test.ts > WO-AGENT-CONFIG-TO-DSH · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E1 迁后（DSH 原生 MCP）：模型面有 mcp__rules__evaluate_rules ∧ 真调 ∧ 规则引擎真执行 ∧ 审计行
+
+  ── E1 迁后臂 · DSH 模型面（首轮）──
+  final_answer :: 终止工具：当你已收集到足够事实时调用，输出结构化回答 blocks 与 provenance。回答中的每个业务数字必须用 ⟦ref:N⟧ 标
+  mcp__builtin__get_object :: [MCP·内置] 按类型与 ID 获取单个本体对象。当已知对象 ID 需要详情时调用。
+  mcp__builtin__query_objects :: [MCP·内置] 按对象类型与过滤条件查询本体对象列表。当需要原始业务对象（基地/型号/订单等）数据时调用。limit 上限 200。
+  mcp__builtin__query_timeseries_agg :: [MCP·内置] 时序聚合查询：按 seriesKey/实体/时间窗/粒度返回聚合桶（如设备日 OEE、产线实绩）。仅返回聚合值，绝不返回原
+  mcp__builtin__search_experience :: [MCP·内置] 经验记忆库检索：按自然语言问题检索历史任务沉淀的案例（问句+解法+结果）。在选择分析路径前调用，可借鉴过往有效解法；结果仅
+  mcp__builtin__search_knowledge :: [MCP·内置] 知识库语义检索：按自然语言问题检索已同步的文档分块（SOP/工艺文件/物流说明等）。命中可作为回答的 KB_CHUNK 溯
+  mcp__ontology__plan_slice :: [MCP·本体] 动态规划一个本体切片。当用户问题需要跨越多个对象类型（如订单→基地→物料→客户）且预置切片不满足时调用；返回的 slice
+  mcp__ontology__resolve_slice :: [MCP·本体] 解析一个预定义的本体切片（子图）。当需要某型号的可产基地网络或某基地的风险画像等预定义视图时调用。
+  mcp__rules__evaluate_rules :: [MCP·规则] 按规则库评估给定 payload 是否违反业务规则（C01–C23）。在给出结论或生成草稿前调用。
+  mcp__solvers__affected_orders :: [MCP·求解器] 给定扰动，返回受影响订单清单（problems/rootChain）。
+  mcp__solvers__atp_check :: [MCP·求解器] 对一张销售订单净读对象图三源供给——成品现货(FinishedGoodsInventory.qtyOnHand)/在制未
+  mcp__solvers__base_capacity_outlook :: [MCP·求解器] 给定基地，按 30/60/90 天窗口前瞻推演四线对比：可用产能(Σ Line.capacityDaily×(1−uti
+  mcp__solvers__bottleneck_matrix :: [MCP·求解器] 按基地×工序输出瓶颈强度矩阵，定位约束工序。
+  mcp__solvers__capacity_forecast :: [MCP·求解器] 给定型号/数量/周数，推演产能满足度（P50/P90、缺口率、主瓶颈）。
+  mcp__solvers__credit_exposure :: [MCP·求解器] 敞口=应收+在产；可用额与逾期判定（C32）。
+  mcp__solvers__decision_play :: [MCP·求解器] 对某根因(gap_attribution 产物)生成≥3 个决策方案(读真供应链对象·各维度真算:补缺口/代价/周期/风
+  mcp__solvers__finance_pnl :: [MCP·求解器] 读 FinancePlan+DemandSegment 出收入/销售成本/毛利 预算vs滚动vs差异 + 毛利率行 + 
+  mcp__solvers__gap_attribution :: [MCP·求解器] 总目标缺口(Metric.target−Metric.actual)→沿本体反向多跳结构分摊(gap 单位·每层 Σ子+
+  mcp__solvers__generic_inference :: [MCP·求解器] 对任意已发布本体套假设源属性值、前向重算下游派生链，返回 before/after deltas（不落库、确定性）。回答
+  mcp__solvers__kit_readiness :: [MCP·求解器] 逐单算齐套率（含在途按 ETA），输出缺料与建议。
+  mcp__solvers__metric_rollup :: [MCP·求解器] 从对象库读 Metric 一等对象，对齐目标树(PlanTarget) target 算 delta/miss，输出 M
+  mcp__solvers__mrp_netting :: [MCP·求解器] 读 MaterialBalance 出物料净需求/长协覆盖/现货缺口/最早齐套表（C06 齐套口径）。S&OP 供应评审
+  mcp__solvers__risk_timeline :: [MCP·求解器] 按日推演风险时序（越线点/根因链）。
+  mcp__solvers__supply_demand_gap_attribution :: [MCP·求解器] 产销缺口(SopVersionRow Σmax(0,demand−supply))→双向分摊到需求端(预测偏差 Σ|P5
+  mcp__solvers__yield_diagnosis :: [MCP·求解器] 2σ 滑窗突变检测 + 根因候选按时间贴近度排序。
+  mcp__workflow__capacity_check :: [MCP·工作流] 产能校核流程（这是一个多步流程，将按声明式步骤执行并返回结果）型号需求增量可行性校核（resolve → solve →
+  skill :: Load the full instructions for an available skill. Call this with the 
+  ── 审计行 ──
+  ["evaluate_rules/OK"]
+  ── 回执原文 ──
+  <tool_data tool_call_id="tc_01M4G4X9YNGJKB5KPXSGH0VGJ4">[{"ruleId":"C03","passed":true,"severity":"BLOCK","explanation":"需求增量在产能上限之内","ruleVersion":1}]</tool_data>
+
+
+stdout | test/dsh-rules-mcp.seam.test.ts > WO-AGENT-CONFIG-TO-DSH · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E2 迁前（对照臂·同一 query）：能力在反向工具面（裸名）∧ DSH 侧零规则 server ∧ 同一执行体
+
+  ── E2 迁前臂 · 模型面里的规则工具名 ──
+  evaluate_rules
+  ── 审计行 ──
+  ["evaluate_rules/OK"]
+
+
+ ❯ test/dsh-rules-mcp.seam.test.ts (14 tests | 1 failed) 26709ms
+   ✓ WO-AGENT-CONFIG-TO-DSH · A 组：DSH 侧真看到的规则资源（MCP wire 面） > 前置自证：server 入口文件真实存在（不存在则本组全无意义） 3ms
+   ✓ WO-AGENT-CONFIG-TO-DSH · A 组：DSH 侧真看到的规则资源（MCP wire 面） > A1 tools/list：DSH 侧真拿到 evaluate_rules，且描述逐字 = 宿主静态投影（两内核同源锚点）  1179ms
+   ✓ WO-AGENT-CONFIG-TO-DSH · A 组：DSH 侧真看到的规则资源（MCP wire 面） > A2 tools/call：宿主收到的是**全名** + 入参逐键原文；模型面回执是逐字 <tool_data> 包络  937ms
+   ✓ WO-AGENT-CONFIG-TO-DSH · A 组：DSH 侧真看到的规则资源（MCP wire 面） > A3 对照（减输入）：无宿主桥 ⇒ fail-closed 明确失败 ∧ 宿主零转发（不静默放行）  1337ms
+   ✓ WO-AGENT-CONFIG-TO-DSH · B 组：MCP 全名归一回同一只执行体 > B1 值校验：按声明面调用 ⇒ 规则引擎实参逐键等于原文（ruleIds/payload 不许被丢成 undefined） 5ms
+   ✓ WO-AGENT-CONFIG-TO-DSH · B 组：MCP 全名归一回同一只执行体 > B2 字面量形态：ruleIds=ALL_APPLICABLE 原样透传（契约两条路都不许被改写） 1ms
+   ✓ WO-AGENT-CONFIG-TO-DSH · B 组：MCP 全名归一回同一只执行体 > B3 对照实验（改工具名 ⇒ 结果按可预言的方式变）：授予名→真执行；未授予名→零实参 + 审计 DENIED 1ms
+   ✓ WO-AGENT-CONFIG-TO-DSH · B 组：MCP 全名归一回同一只执行体 > B4 审计名归一到裸名（并以同一条读法做对照，证明读的是真落行） 19ms
+   ✓ WO-AGENT-CONFIG-TO-DSH · C 组：规则面三面同改 + 只剩一条授予路 > C1 出厂 analyst：授予面 ∧ 挂载面 ∧ 声明面三面一致，裸名已退净 4ms
+   × WO-AGENT-CONFIG-TO-DSH · C 组：规则面三面同改 + 只剩一条授予路 > C2 engine 真装配：expanded 面出全名 ∧ hostTools 面**没有**它（单路证明） 722ms
+     → 旧载体金丝雀：反向面 + MCP 面 = 花名册全量: expected 26 to be 25 // Object.is equality
+   ✓ WO-AGENT-CONFIG-TO-DSH · D 组：迁前/迁后单变量对照（setup 层） > D1 迁前臂：裸 BUILTIN 授予 ⇒ 能力在 hostTools（平台组装的反向工具），DSH 侧零 server 123ms
+   ✓ WO-AGENT-CONFIG-TO-DSH · D 组：迁前/迁后单变量对照（setup 层） > D2 迁后臂：同一条能力改走 MCP ⇒ DSH 侧有 server 且允许表恰为一件；能力数不变 166ms
+   ✓ WO-AGENT-CONFIG-TO-DSH · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E1 迁后（DSH 原生 MCP）：模型面有 mcp__rules__evaluate_rules ∧ 真调 ∧ 规则引擎真执行 ∧ 审计行  12433ms
+   ✓ WO-AGENT-CONFIG-TO-DSH · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E2 迁前（对照臂·同一 query）：能力在反向工具面（裸名）∧ DSH 侧零规则 server ∧ 同一执行体  9773ms
+ ✓ test/dsh-solvers-mcp.seam.test.ts (16 tests) 21607ms
+   ✓ WO-SOLVERS-MCP-REAL · A 组：真 stdio MCP server（MCP wire 面） > A1 tools/list：工具名 == 独立拼出来的 mcp__solvers__{key}，且声明模式逐字段透传  2933ms
+   ✓ WO-SOLVERS-MCP-REAL · A 组：真 stdio MCP server（MCP wire 面） > A2 tools/call：宿主收到的是**全名 + 扁平原文**；模型面回执是逐字 <tool_data> 包络  3738ms
+   ✓ WO-SOLVERS-MCP-REAL · A 组：真 stdio MCP server（MCP wire 面） > A3 对照实验（减输入）：拿掉 SOLVERS_MCP_TOOLS_JSON ⇒ 工具数 2 → 0（证明 env 是真来源）  5510ms
+   ✓ WO-SOLVERS-MCP-REAL · A 组：真 stdio MCP server（MCP wire 面） > A4 对照实验（改输入）：改 argHints ⇒ wire 上 description 按可预言的方式变  5719ms
+   ✓ WO-SOLVERS-MCP-REAL · A 组：真 stdio MCP server（MCP wire 面） > A5 未授予的工具：回 isError 且宿主收到 **0** 次转发（fail-closed，不猜）  2988ms
+ ✓ test/dsh-solver-precondition.seam.test.ts (3 tests) 26108ms
+   ✓ WO-DSH-SOLVER-GATE · dsh 臂 solver 前置门 > ① dsh 两态：未跑求解器 ⇒ 模型面拿门禁说明（正文不下发）且技能仍在目录可见；真跑完 ⇒ 拿正文  11099ms
+   ✓ WO-DSH-SOLVER-GATE · dsh 臂 solver 前置门 > ② 金丝雀：未声明 precondition 的技能，两态都拿正文（防「门恒关」被读成「门生效」）  6537ms
+   ✓ WO-DSH-SOLVER-GATE · dsh 臂 solver 前置门 > ③ 跨臂对齐：同一技能两臂门禁文案除加载器真名外逐字同；native 臂两态同形  8470ms
+ ✓ test/dsh-poc-acceptance.test.ts (6 tests) 30502ms
+   ✓ E1 · 配置驱动行为（request/header 为观测点） > 改 persona/finalAnswer ⇒ header.system/header.tools 随之变；还原即复原  17817ms
+   ✓ E2 · 规则闸（PRE_CHECK deny ⇒ 执行计数 0 + 拦截入流） > deny ⇒ count 0 且 tool/result isError 带 deny 理由；基线 ⇒ count 1  12674ms
+ ✓ test/dsh-deny-budget.seam.test.ts (5 tests) 17774ms
+   ✓ WO-DSH-GOV-CREDENTIAL 修② · deny 侧上界（pre-execute 拒绝的有界终止） > ① 连续 deny 达 cap ⇒ 在**有界轮次内**终止，终态诚实且说清为什么  6393ms
+   ✓ WO-DSH-GOV-CREDENTIAL 修② · deny 侧上界（pre-execute 拒绝的有界终止） > ② 变异反证臂：显式禁用上界（cap=0）⇒ 同一剧本跑满 8 轮、无 abort ⇒ 证明喊停的确是上界  5269ms
+   ✓ WO-DSH-GOV-CREDENTIAL 修② · deny 侧上界（pre-execute 拒绝的有界终止） > ③ 不误伤：全程 allow 的正常 run 不受 deny 上界影响（cap=1 亦然）  6103ms
+ ✓ test/dsh-provider-seam.test.ts (12 tests) 29158ms
+   ✓ A2 · cordis.yml 生产形态与部署治理门 > yml 含 platform-llm 且不含 mock-llm；poc 专档含 mock-llm 反向锚定；真仓门绿；compose 缺 DSH_HARNESS_PROVIDER 行的镜像 ⇒ 门必红  500ms
+   ✓ A3 · SEAM 端到端：engine 分叉 → 绑定矩阵解析 → env 注入 → stub OpenAI 端点 > dcp spec 剥出 modelId；provider=PRODUCTION_DSH_HARNESS_PROVIDER；stub 见 model 无前缀、Authorization=Bearer key  8250ms
+   ✓ A4 · usage 缓存透传 > prompt_cache_hit_tokens=60 ⇒ usage 块 inputTokens=40/cacheReadTokens=60/outputTokens=20；usage 在 finish 前  6759ms
+   ✓ A5 · 凭据红线 > 注入 key：事件流/结果/stub 请求体零 key 子串；runner 参数构造无 key；缺 key ⇒ MISSING_CREDENTIAL 含 env 引用名  13553ms
+ ✓ test/dsh-degraded-seams.test.ts (6 tests) 23171ms
+   ✓ WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧序） > A1 缝①正例·角色路 dsh STALL_LOOP → agent_degraded 恰一条·早于 answer.final·reason 原值·不双计  7337ms
+   ✓ WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧序） > A2 缝②正例·场景路 dsh STALL_LOOP → 同断言组（无 classification·确证 path=AGENT + 场景入口 note）  6526ms
+   ✓ WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧序） > A3 负向臂·异参剧本不触发降级 → 帧流零 agent_degraded ∧ COMPLETED 照常（咬守卫摘除 M5）  8123ms
+   ✓ WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧序） > A5① 回归零扰·缝①角色路正常剧本 → 帧流零 agent_degraded（正常态逐字节不变）  652ms
+ ✓ test/dsh-e2e-degradation-screen.test.ts (3 tests) 17497ms
+   ✓ WO-DSH-E2E · L3 降级路径穿透（后端半） > A1 · dsh 臂同参工具环 + cap=3 ⇒ degraded{STALL_LOOP} + 诚实块 + tool/call===cap（dsh 口径）+ G-9 段源码锚直证  7614ms
+   ✓ WO-DSH-E2E · L3 降级路径穿透（后端半） > A3b · dsh PRE_CHECK 执行点：governance mock deny ⇒ tool/result isError ∧ 理由原串到模型面 ∧ 工具体零执行  9798ms
+ ✓ test/dsh-dualrun-reconcile.test.ts (3 tests) 20112ms
+   ✓ WO-DSH-N2 · A5/A6 双跑逐字节对账（flag off/on 同剧本） > A5：滤收缩白名单 + 删 stats 键后序列逐项相等；差集实际项 ⊆ ALLOWED_PSEUDO_TYPES（白名单不膨胀）  11108ms
+   ✓ WO-DSH-N2 · A5/A6 双跑逐字节对账（flag off/on 同剧本） > A6：answer.final 附加键限 {stats}（dsh 臂 answer 键集 == native 臂 ∪ {stats}）  8995ms
+ ✓ test/dsh-two-arm-account-diff.seam.test.ts (4 tests | 1 skipped) 28416ms
+   ✓ WO-TWO-ARM-ACCOUNT-DIFF · §1-a③ 同 task 双臂 token 账对照（stub 臂） > 场景 A · 基线：第 1 轮真命中（100 里 60 命中），第 2 轮无命中（50）  11680ms
+   ✓ WO-TWO-ARM-ACCOUNT-DIFF · §1-a③ 同 task 双臂 token 账对照（stub 臂） > 场景 B · **只动命中桶**（60→20，其余不动）⇒ 总量按 OpenAI 语义不该动，只有桶间分配动  9141ms
+   ✓ WO-TWO-ARM-ACCOUNT-DIFF · §1-a③ 同 task 双臂 token 账对照（stub 臂） > 场景 C · **动总量**（第 2 轮 prompt 50→70）⇒ 两臂总量按同一增量抬到 170  7593ms
+ ✓ test/dsh-reflect-wiring.seam.test.ts (4 tests) 2400ms
+   ✓ WO-DSH-REFLECT-PARITY · 接线 SEAM：orchestrator 求门 × engine 透传 × 注册 agent 路真跑复盘 > 门关（无 agent.critic）⇒ 答案逐字节不变：只有模型自己那句，没有平台追加的缺口块  1190ms
+   ✓ WO-DSH-REFLECT-PARITY · 接线 SEAM：orchestrator 求门 × engine 透传 × 注册 agent 路真跑复盘 > 门开（显式 agent.critic）⇒ 同一份脚本的产出**必须**多出残余缺口块（接线真通）  721ms
+ ✓ test/dsh-token-bucket-carrying.seam.test.ts (1 test) 7195ms
+   ✓ WO-LEDGER-SINGLE-TAP · 载体 A 输入桶口径（EXTERNAL 臂） > 缓存命中必须计入 run.totalInputTokens（未命中 90 + 命中 60 = 150，不是 90）  7193ms
+ ✓ test/dsh-runtime-reassemble.test.ts (47 tests) 478ms
+ ✓ test/dsh-gov-datacore-credential.seam.test.ts (5 tests) 1389ms
+   ✓ WO-AGENT-DSH-DEFAULT · DSH 治理带外通道 → DataCore 凭据接缝 > ① 裁决端点经**真 HTTP 客户端**问 DataCore 时，带着服务间凭据到达 ⇒ 拿得到裁决（断点已修·正向不变量）  1048ms
+ ✓ test/dsh-skill-provider.seam.test.ts (17 tests) 250ms
+ ✓ test/dsh-skill-routing-parity.seam.test.ts (12 tests | 1 skipped) 635ms
+ ✓ test/dsh-solver-gate-wire.seam.test.ts (6 tests) 196ms
+ ✓ test/dsh-reflect-parity.seam.test.ts (11 tests) 64ms
+ ✓ test/dsh-runtime-map.test.ts (15 tests) 42ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/dsh-engine-tool-bridge.seam.test.ts > W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedToolExecutor > B6 孤儿审计行：桥 fetch 先放弃（100ms）< 宿主完成（400ms）⇒ 帧 ERROR 而宿主行 OK
+Error: waitForToolRows timeout: task_w8_b6 rows=0
+ ❯ waitForToolRows test/dsh-engine-tool-bridge.seam.test.ts:263:47
+    261|     const rows = await t.repos.toolCalls.listByTask(taskId);
+    262|     if (rows.length >= n) return rows;
+    263|     if (Date.now() - start > timeoutMs) throw new Error(`waitForToolRo…
+       |                                               ^
+    264|     await sleep(20);
+    265|   }
+ ❯ test/dsh-engine-tool-bridge.seam.test.ts:651:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  test/dsh-resource-reach.seam.test.ts > RESOURCE-REACH · A 授予面契约（seed → expandAgentTools → setup 映射） > A1 出厂 agt_capacity_planner **以 MCP 模式**获得切片：工具面/声明面/mcpServers 三面同步，且反向工具面里没有它
+AssertionError: 旧载体金丝雀②：反向面 + MCP 面 = 花名册全量: expected 26 to be 25 // Object.is equality
+
+- Expected
++ Received
+
+- 25
++ 26
+
+ ❯ test/dsh-resource-reach.seam.test.ts:591:83
+    589|     const generalHost = (general.spec.hostTools ?? []).map((x) => x.na…
+    590|     const generalMcp = (general.spec.tools ?? []).map((x) => x.name).f…
+    591|     expect(generalHost.length + generalMcp.length, "旧载体金丝雀②：反向面 + MCP …
+       |                                                                                   ^
+    592|       BUILTIN_MCP_TOOL_NAMES.length,
+    593|     );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  test/dsh-resource-reach.seam.test.ts > RESOURCE-REACH · A 授予面契约（seed → expandAgentTools → setup 映射） > A2 对照（把 MCP 授予拿掉）：展开面 / 允许表 / mcpServers **三面一起**收缩——这是 D1 变异能红的前提
+AssertionError: 旧载体金丝雀：反向面 + MCP 面 = 花名册全量: expected 26 to be 25 // Object.is equality
+
+- Expected
++ Received
+
+- 25
++ 26
+
+ ❯ test/dsh-resource-reach.seam.test.ts:625:82
+    623|     const generalHost = (general.spec.hostTools ?? []).map((x) => x.na…
+    624|     const generalMcp = (general.spec.tools ?? []).map((x) => x.name).f…
+    625|     expect(generalHost.length + generalMcp.length, "旧载体金丝雀：反向面 + MCP 面…
+       |                                                                                  ^
+    626|       BUILTIN_MCP_TOOL_NAMES.length,
+    627|     );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  test/dsh-rules-mcp.seam.test.ts > WO-AGENT-CONFIG-TO-DSH · C 组：规则面三面同改 + 只剩一条授予路 > C2 engine 真装配：expanded 面出全名 ∧ hostTools 面**没有**它（单路证明）
+AssertionError: 旧载体金丝雀：反向面 + MCP 面 = 花名册全量: expected 26 to be 25 // Object.is equality
+
+- Expected
++ Received
+
+- 25
++ 26
+
+ ❯ test/dsh-rules-mcp.seam.test.ts:445:87
+    443|     const generalHostNames = (general.spec.hostTools ?? []).map((x) =>…
+    444|     const generalMcp = (general.spec.tools ?? []).map((x) => x.name).f…
+    445|     expect(generalHostNames.length + generalMcp.length, "旧载体金丝雀：反向面 + …
+       |                                                                                       ^
+    446|       BUILTIN_MCP_TOOL_NAMES.length,
+    447|     );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  3 failed | 30 passed (33)
+      Tests  4 failed | 390 passed | 4 skipped (398)
+   Start at  18:47:55
+   Duration  686.78s (transform 6.91s, setup 0ms, collect 184.12s, tests 1138.71s, environment 17ms, prepare 16.53s)
+

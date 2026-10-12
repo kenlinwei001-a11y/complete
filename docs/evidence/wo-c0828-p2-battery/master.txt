@@ -1,0 +1,12 @@
+VERIFIED_COMMIT=51a13d002 FULL=51a13d0028ec740b16c9c44562d9dbde7e0bb14c START=09-28 12:06:17
+== build @platform/contracts START 12:06:17 ==
+BUILD_RC[@platform/contracts]=0 END=12:07:07
+== build @platform/llm-adapters START 12:07:07 ==
+BUILD_RC[@platform/llm-adapters]=0 END=12:07:19
+== build datacore START 12:07:19 ==
+BUILD_RC[datacore]=0 END=12:08:55
+== build agentcore START 12:08:55 ==
+BUILD_RC[agentcore]=0 END=12:10:11
+== build frontend-shell START 12:10:11 ==
+BUILD_RC[frontend-shell]=0 END=12:19:52
+== datacore 电池 START 12:19:52 ==

@@ -114,8 +114,10 @@ function DocReview({ doc }: { doc: RuleDocVM }) {
           {groups
             ? Object.entries(groups).map(([label, items]) => (
                 <div key={label}>
+                  {/* WO-UNIT-MEANING：diff 分组标题括号内此前是裸数——label 是**差异类别**（新增/变更/疑似删除）
+                      而非被数之物，故点明数的是"条规则候选"。 */}
                   <div className="section-title">
-                    {label} ({items.length})
+                    {label}（{items.length} 条规则候选）
                   </div>
                   {items.map((c) => (
                     <CandidateCard key={c.id} cand={c} active={activeId === c.id} onActivate={() => setActiveId(c.id)} onDone={() => void queryClient.invalidateQueries({ queryKey: ["a", "rule-candidates"] })} />
@@ -219,7 +221,7 @@ function CandidateCard({
       <p style={{ fontSize: 12, color: "var(--muted)", margin: "6px 0" }}>{cand.candidate.description}</p>
       <textarea
         className="mono"
-        style={{ width: "100%", fontSize: 11.5, minHeight: 44 }}
+        style={{ width: "100%", fontSize: 12, minHeight: 44 }}
         value={expression}
         aria-label="expression"
         onChange={(e) => setExpression(e.target.value)}
@@ -234,11 +236,11 @@ function CandidateCard({
       </div>
       {/* 置信度条 */}
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-        <span style={{ fontSize: 10.5, color: "var(--muted2)" }}>{t.confidence}</span>
+        <span style={{ fontSize: 12, color: "var(--muted2)" }}>{t.confidence}</span>
         <div style={{ flex: 1, height: 4, background: "var(--bg2)", borderRadius: 2 }}>
           <div style={{ width: `${conf * 100}%`, height: "100%", borderRadius: 2, background: conf > 0.7 ? "var(--ok)" : "var(--amber)" }} />
         </div>
-        <span className="mono" style={{ fontSize: 10.5 }}>{(conf * 100).toFixed(0)}%</span>
+        <span className="mono" style={{ fontSize: 12 }}>{(conf * 100).toFixed(0)}%</span>
       </div>
       {cand.status === "PENDING" && (
         <div style={{ display: "flex", gap: 6 }}>

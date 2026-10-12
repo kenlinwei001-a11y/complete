@@ -1,0 +1,17 @@
+== rebase 后复验（推正线前的 gate）09-29 17:05:09 ==
+HEAD=18227747d0932c4ed9b6f5ce38d585679d60da53  基线=d68ad6ed6（FF 安全：merge-base --is-ancestor 通过）
+--- 全仓命名门 quantile-unit-onscreen §2b ---
+
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+   Start at  17:04:21
+   Duration  35.77s (transform 6.07s, setup 6.93s, collect 2.49s, tests 23.98s, environment 1.50s, prepare 241ms)
+
+  GATE_RC=0
+--- datacore option-pricing ---
+ Test Files  1 passed (1)
+      Tests  25 passed (25)
+   Start at  17:05:00
+   Duration  4.51s (transform 2.20s, setup 0ms, collect 3.82s, tests 38ms, environment 0ms, prepare 232ms)
+
+  DC_RC=0

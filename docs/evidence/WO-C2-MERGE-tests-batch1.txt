@@ -1,0 +1,25 @@
+### 合并后 diff 半径测试 · 批 1 ###
+树 = a54c6f1a5  时刻 = 2026-10-03 17:05:16
+
+ RUN  v3.2.6 /Users/apple/deploy/wo-c2-merge/apps/datacore
+
+stdout | test/sim-seed-world.seam.test.ts > WO-SIM-SEED-WORLD · 种子世界接缝 > ⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身
+[SIM-SEED-WORLD ⑤b] 白名单对象=223 每对象最多7格 ⇒ 批大小=71 批数=4（上限=500）
+
+stdout | test/sim-seed-world.seam.test.ts > WO-SIM-SEED-WORLD · 种子世界接缝 > ⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身
+[SIM-SEED-WORLD ⑤b] 合并后 1167 格（一次发完会是 1167>500 ⇒ truncated:true，这就是本条曾经的红）
+
+ ✓ test/sim-seed-world.seam.test.ts (4 tests) 90955ms
+   ✓ WO-SIM-SEED-WORLD · 种子世界接缝 > ① 播种 → GET /a/v1/sim/sessions 里有一条 RUNNING(curTick≥1)、baseSnapshot 非空；② tick 态落盘且真动过；③ 幂等  22533ms
+   ✓ WO-SIM-SEED-WORLD · 种子世界接缝 > ⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身  31734ms
+   ✓ WO-SIM-SEED-WORLD · 种子世界接缝 > ⑥ 确定性（R6）：同一份世界重播一遍，选出来的落点与幅度**逐字节一致**  36025ms
+   ✓ WO-SIM-SEED-WORLD · 种子世界接缝 > ④ 诚实缺席：零传导规则/零物化对象的租户**不建空世界**（空 baseSnapshot 的 RUNNING = 另一种占位）  661ms
+ ✓ test/prop-clamp-decay.seam.test.ts (16 tests) 309ms
+ ✓ test/sim-disclosure.seam.test.ts (15 tests) 49ms
+
+ Test Files  3 passed (3)
+      Tests  35 passed (35)
+   Start at  17:05:19
+   Duration  113.33s (transform 8.97s, setup 0ms, collect 19.17s, tests 91.31s, environment 2ms, prepare 1.04s)
+
+VITEST_RC=0

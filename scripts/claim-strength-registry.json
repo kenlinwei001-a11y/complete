@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "_doc": "WO-OPTIMAL-WORDING · 屏上强承诺词登记册（check-claim-strength.mjs 的对账表，不是免检白名单）。每条必须答一句：这个词被什么撑着？verdict: backed=有东西撑 / negation=否定句（撤销承诺） / not-a-claim=技术名词非承诺 / glossary=术语释义。solverField 若给，门会机械验证它真存在于 apps/datacore/src/solvers/optimizer-client.ts。屏上串改掉后这条必须删（死账即红）。",
+  "allowed": [
+    {
+      "file": "apps/frontend-shell/src/locales/zh.ts",
+      "textIncludes": "保证后端不可能多发一个字段",
+      "verdict": "backed",
+      "backedBy": "zod strictObject 在契约层真实拒绝未知键（contracts 的 strictObject 语义），「后端不可能多发一个字段而前端没接到」是对该机制的事实描述，有契约行为撑着。"
+    },
+    {
+      "file": "apps/frontend-shell/src/locales/zh.ts",
+      "textIncludes": "不是引擎保证",
+      "verdict": "negation",
+      "backedBy": "否定句：原文「同名即同一件事 —— 这是个约定，**不是**引擎保证」，明确撤销承诺而非承诺，不存在用户误读为「有保证」的方向。"
+    },
+    {
+      "file": "apps/frontend-shell/src/locales/zh.ts",
+      "textIncludes": "每列最优",
+      "verdict": "backed",
+      "backedBy": "「每列最优」= 比对矩阵在屏上已展示的 N 个方案之间按维取最值（对回包真值做 argmax/argmin，DecisionPlayPanel 逐维计算），是对屏上数据的数学事实，不是求解器最优性承诺。"
+    },
+    {
+      "file": "apps/frontend-shell/src/locales/zh.ts",
+      "textIncludes": "最优化引擎",
+      "verdict": "not-a-claim",
+      "backedBy": "「最优化引擎」(optimization engine) 是组件的技术名词（「怎么把最优化引擎接上」是部署指引标题），指物不指结果，不构成对结果最优性的承诺。"
+    },
+    {
+      "file": "apps/frontend-shell/src/views/DecisionPlayPanel.tsx",
+      "textIncludes": "每列最优",
+      "verdict": "backed",
+      "backedBy": "「比对矩阵 · 每列最优高亮」= 在屏上已展示的各方案行之间按维取最值（对回包真值 argmax/argmin，better 方向语义来自 DIM_META），是对屏上数据的数学事实，不是求解器最优性承诺。"
+    },
+    {
+      "file": "apps/frontend-shell/src/views/OptimizeWhatifView.tsx",
+      "textIncludes": "最优决策怎么变",
+      "verdict": "backed",
+      "solverField": "optimal",
+      "backedBy": "本页五个 family（datacore app.ts OPT_FAMILIES：facility_location/min_cost_flow/set_cover/independent_set/combinatorial_auction）在内存态 InProc 均未实现 → 后端显式抛「未接入」→ 页显诚实未接入态；结果只在 CP-SAT sidecar（未设挂钟时限、证到 OPTIMAL 才标 optimal:true）接入时产生。"
+    },
+    {
+      "file": "apps/frontend-shell/src/views/OptimizeWhatifView.tsx",
+      "textIncludes": "只求基线最优",
+      "verdict": "backed",
+      "solverField": "optimal",
+      "backedBy": "同上：基线求解走 POST /a/v1/opt/solve 的 OPT_FAMILIES 五模型，内存态一律「未接入」诚实态，能出结果的部署必是 CP-SAT 可证最优路径。"
+    },
+    {
+      "file": "apps/frontend-shell/src/views/OptimizeWhatifView.tsx",
+      "textIncludes": "可证最优",
+      "verdict": "backed",
+      "solverField": "optimal",
+      "backedBy": "动态标注：`baseSolve.optimal ? \"可证最优\" : status`，跟求解器自述字段 optimal 走（CP-SAT 证到 OPTIMAL 才为 true），不是写死的静态承诺。"
+    },
+    {
+      "file": "apps/frontend-shell/src/views/OptimizeWhatifView.tsx",
+      "textIncludes": "非最优",
+      "verdict": "negation",
+      "backedBy": "「非最优」是上述三元的另一分支文案，在 optimal:false 时**明示**非最优，是撤销承诺的诚实标注。"
+    },
+    {
+      "file": "apps/frontend-shell/src/views/OptimizeWhatifView.tsx",
+      "textIncludes": "未接入最优化引擎",
+      "verdict": "not-a-claim",
+      "backedBy": "诚实未接入态的标题：内存态无 OPTIMIZER_BASE_URL 时本页显式披露「未接入」，「最优化引擎」为技术名词，此句本身是披露无结果而非承诺结果。"
+    },
+    {
+      "file": "apps/frontend-shell/src/views/OptimizeWhatifView.tsx",
+      "textIncludes": "最优决策不变",
+      "verdict": "backed",
+      "solverField": "optimal",
+      "backedBy": "结论文案仅在基线/扰动两次求解都成功时出现；两次求解均走 CP-SAT-only 的 OPT_FAMILIES 五模型（内存态必显未接入、到不了这一句），「最优决策不变」比较的是两个可证最优解。"
+    },
+    {
+      "file": "apps/frontend-shell/src/views/OptimizeWhatifView.tsx",
+      "textIncludes": "最优方案变了",
+      "verdict": "backed",
+      "solverField": "optimal",
+      "backedBy": "同上：what-if 切换说明比较的是 CP-SAT 两次可证最优解（内存态两次求解都抛「未接入」，此句不会出现）。"
+    },
+    {
+      "file": "apps/frontend-shell/src/views/sim/GlobalSimView.tsx",
+      "textIncludes": "可证最优",
+      "verdict": "glossary",
+      "backedBy": "verdict 徽标的 title 释义串：定义「可证最优」（精确求解器数学证明）与「可行解 · 未证最优」（满足约束但未证明）两个术语的边界，把承诺强度讲清楚而非加码承诺。"
+    },
+    {
+      "file": "apps/frontend-shell/src/views/sim/MultiObjWhatifPanel.tsx",
+      "textIncludes": "可证最优",
+      "verdict": "backed",
+      "solverField": "optimal",
+      "backedBy": "WO-OPTIMAL-WORDING 改后的动态徽标：`occ.data.optimal` 为 true（CP-SAT 证到 OPTIMAL）才显示「CP-SAT 可证最优」，否则显示「优选解（可行 · 未证最优）」——跟求解器自述字段走，不写死。"
+    },
+    {
+      "file": "apps/frontend-shell/src/views/sim/MultiObjWhatifPanel.tsx",
+      "textIncludes": "未证明它是最优",
+      "verdict": "negation",
+      "backedBy": "optimal:false 分支的 title 文案，明确披露「满足约束但未证明最优（内存态为确定性贪心）」，是撤销承诺的诚实标注。"
+    },
+    {
+      "file": "apps/frontend-shell/src/views/sim/MultiObjWhatifPanel.tsx",
+      "textIncludes": "未证最优",
+      "verdict": "negation",
+      "backedBy": "optimal:false 分支的徽标文案「优选解（可行 · 未证最优）」，内存态 InProc 贪心解的如实标注，明示未证最优。"
+    },
+    {
+      "file": "apps/frontend-shell/src/views/sim/sandboxModes.ts",
+      "textIncludes": "求最优",
+      "verdict": "backed",
+      "solverField": "optimal",
+      "backedBy": "沙盘模式名描述动作意图（求 = 寻求）；其承载页 OptimizeWhatifView 的五个 family 仅 CP-SAT 实现（内存态显「未接入最优化引擎」诚实态、不产出结果），能出结果即是可证最优路径；结果区标注跟 optimal 字段走。"
+    },
+    {
+      "file": "apps/frontend-shell/src/views/sim/sandboxModes.ts",
+      "textIncludes": "最优解是什么",
+      "verdict": "backed",
+      "solverField": "optimal",
+      "backedBy": "同「求最优」：模式引导语，指向 CP-SAT-only 的优化推演页；内存态该页显诚实未接入态，不会产出无撑的「最优解」。"
+    }
+  ]
+}

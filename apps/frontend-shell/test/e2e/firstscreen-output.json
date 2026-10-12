@@ -1,0 +1,80 @@
+{
+  "at": "2026-09-08T04:01:52.204Z",
+  "note": "修前无对应值：那三张卡在首页不存在（见 before-output.json 的 foundOnHome:false）",
+  "landed": "http://127.0.0.1:5193/",
+  "noMock": {
+    "ok": true,
+    "realHits": 5,
+    "sample": [
+      "200 POST http://127.0.0.1:4032/a/v1/auth/login",
+      "200 GET http://127.0.0.1:4032/a/v1/me/workspace",
+      "200 GET http://127.0.0.1:4032/a/v1/history/watermark",
+      "200 GET http://127.0.0.1:4032/a/v1/data-health",
+      "200 GET http://127.0.0.1:4042/b/v1/scenarios"
+    ]
+  },
+  "viewportH": 1050,
+  "probes": [
+    {
+      "key": "sim-unified",
+      "present": true,
+      "orderOnHome": 2,
+      "totalHomeViews": 36,
+      "topPx": 515,
+      "inFirstScreen": true,
+      "scrollNeededPx": 0,
+      "text": "统一推演控制台"
+    },
+    {
+      "key": "sim-sandbox",
+      "present": true,
+      "orderOnHome": 3,
+      "totalHomeViews": 36,
+      "topPx": 515,
+      "inFirstScreen": true,
+      "scrollNeededPx": 0,
+      "text": "推演沙盘"
+    },
+    {
+      "key": "decision-console",
+      "present": true,
+      "orderOnHome": 1,
+      "totalHomeViews": 36,
+      "topPx": 515,
+      "inFirstScreen": true,
+      "scrollNeededPx": 0,
+      "text": "事件影响与对策"
+    },
+    {
+      "key": "dash",
+      "present": true,
+      "orderOnHome": 4,
+      "totalHomeViews": 36,
+      "topPx": 515,
+      "inFirstScreen": true,
+      "scrollNeededPx": 0,
+      "text": "经营驾驶舱"
+    }
+  ],
+  "canary": {
+    "key": "dash",
+    "present": true,
+    "orderOnHome": 4,
+    "totalHomeViews": 36,
+    "topPx": 515,
+    "inFirstScreen": true,
+    "scrollNeededPx": 0,
+    "text": "经营驾驶舱"
+  },
+  "verdict": "量法可信（金丝雀命中），下面的数可用",
+  "guidance": {
+    "present": true,
+    "topPx": 384,
+    "inFirstScreen": true,
+    "chips": 4
+  },
+  "shot": "F-firstscreen-home.png",
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ]
+}

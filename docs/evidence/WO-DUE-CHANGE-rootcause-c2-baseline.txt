@@ -1,0 +1,40 @@
+# C2 对照实验判据 @ http://127.0.0.1:4019  2026-10-02T07:17:29.760Z
+# 目标对象=obj_order_SO-3391  leadDays=-3
+
+判据 A · 派生格存活（无扰动推 10 拍，session=sims_b0fyc34d3m1kb345 curTick=10）
+  Model.demandLoad      n=6 非零=0 max=0.0000
+  Order.demandPressure  n=150 非零=0 max=0.0000
+  ⇒ 判据 A ❌ 挂
+
+判据 B · 钱链（两臂对照 扰动=sims_gnnb8y3de9520by4 对照=sims_7pczkkb2std4w2pk，共 6375 格）
+  差异格=64
+    order.leadDays                               n=   1  Δ=-17.000000
+    customerlocation_LOC-cust.deliveryHoldRisk   n=  11  Δ=0.002265
+    arinvoice_arinvoice_18.overduePressure       n=   3  Δ=0.001343
+    arinvoice_arinvoice_0.overduePressure        n=   3  Δ=0.001340
+    arinvoice_arinvoice_14.overduePressure       n=   3  Δ=0.000874
+    arinvoice_arinvoice_1.overduePressure        n=   3  Δ=0.000582
+    customer_cust.receivablePressure             n=   7  Δ=0.000466
+    arinvoice_arinvoice_4.overduePressure        n=   3  Δ=0.000436
+    order.costPressure                           n=  24  Δ=0.000262
+    arinvoice_arinvoice_5.overduePressure        n=   3  Δ=0.000167
+    arinvoice_arinvoice_8.overduePressure        n=   3  Δ=0.000118
+  钱相关类差集：11 类
+    order.leadDays                               n=   1  Δ=-17.000000
+    customerlocation_LOC-cust.deliveryHoldRisk   n=  11  Δ=0.002265
+    arinvoice_arinvoice_18.overduePressure       n=   3  Δ=0.001343
+    arinvoice_arinvoice_0.overduePressure        n=   3  Δ=0.001340
+    arinvoice_arinvoice_14.overduePressure       n=   3  Δ=0.000874
+    arinvoice_arinvoice_1.overduePressure        n=   3  Δ=0.000582
+    customer_cust.receivablePressure             n=   7  Δ=0.000466
+    arinvoice_arinvoice_4.overduePressure        n=   3  Δ=0.000436
+    order.costPressure                           n=  24  Δ=0.000262
+    arinvoice_arinvoice_5.overduePressure        n=   3  Δ=0.000167
+    arinvoice_arinvoice_8.overduePressure        n=   3  Δ=0.000118
+  ⇒ 判据 B ✅ 过
+
+s2n(扰动臂) userContribution=17.007853545757 worldDrift=92971.96197048548 changedCells=64
+
+★★ 总结：未达成（A=挂 B=过）
+
+原始落盘：/tmp/wo-console-e2e/evidence-1002/c2-raw.json

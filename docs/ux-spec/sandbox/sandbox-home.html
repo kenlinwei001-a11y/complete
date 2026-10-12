@@ -1,0 +1,516 @@
+<title>推演沙盘指控台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+
+<style>
+:root{
+  --ink:#223251; --panel:#2c3d5e; --panel2:#1c2942; --rail:#1c2942;
+  --hair:rgba(226,235,245,0.08); --hair2:rgba(226,235,245,0.14);
+  --txt:#e9eef5; --dim:#ced7e1; --dim2:#bbc5ce;
+  --cy:#43b7d7; --cy2:#4c90f0;
+  --amb:#e8b54a; --red:#e0626c; --grn:#62be77; --blu:#4c90f0;
+  --fs:"Inter", "Segoe UI", system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;  /* 与 tokens.css --font-sans 逐字对齐（2026-08-21 裁决：产品 token 是真值，规格随它） */
+  --fm:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--ink);color:var(--txt);font-family:var(--fs);font-size:12px;
+  line-height:1.35;-webkit-font-smoothing:antialiased}
+.app{width:1440px;height:897px;display:flex;flex-direction:column;overflow:hidden}
+
+/* ══ 顶栏 ══ */
+.tb{display:flex;align-items:center;gap:10px;padding:6px 12px 0;background:var(--ink)}
+.logo{width:26px;height:26px;border-radius:50%;border:1px solid var(--cy2);
+  display:grid;place-items:center;color:var(--cy);font-size:13px}
+.tt{display:flex;flex-direction:column;line-height:1.15}
+.tt b{font-size:14px;letter-spacing:.14em;color:#e9eef5}
+.tt i{font-style:normal;font-size:8px;letter-spacing:.34em;color:var(--dim2)}
+.hole{width:92px;height:13px;background:#1c2942;border-radius:2px;margin-left:8px}
+.mb{display:flex;gap:20px;padding:5px 14px 6px;font-size:11.5px;color:var(--dim);
+  border-bottom:1px solid var(--hair)}
+.mb span{cursor:default}
+
+/* ══ 主体 ══ */
+.body{flex:1;display:flex;min-height:0}
+.rail{width:44px;background:var(--rail);border-right:1px solid var(--hair);
+  display:flex;flex-direction:column;align-items:center;gap:8px;padding:8px 0}
+.rbtn{width:28px;height:28px;border-radius:4px;border:1px solid var(--hair2);
+  display:grid;place-items:center;font-size:13px;color:var(--dim)}
+.rbtn.on{background:rgba(232,181,74,.16);border-color:var(--amb);color:var(--amb)}
+.main{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;padding:6px;gap:6px}
+.row1{height:518px;flex:none;display:flex;gap:6px;min-height:0}
+
+/* ══ 面板外壳 ══ */
+.pan{background:var(--panel);border:1px solid var(--hair);position:relative;
+  display:flex;flex-direction:column;min-height:0;min-width:0}
+.pan::before,.pan::after{content:"";position:absolute;width:9px;height:9px;border:1px solid var(--cy2);opacity:.5}
+.pan::before{left:-1px;top:-1px;border-right:0;border-bottom:0}
+.pan::after{right:-1px;bottom:-1px;border-left:0;border-top:0}
+.ph{display:flex;align-items:center;gap:6px;padding:5px 9px;border-bottom:1px solid var(--hair);
+  background:var(--panel2);flex:none}
+.ph i{font-style:normal;color:var(--cy);font-size:9px}
+.ph b{font-size:11.5px;font-weight:600;letter-spacing:.06em;color:#e9eef5}
+.ph .rt{margin-left:auto;display:flex;gap:5px;color:var(--dim2);font-size:11px}
+.pb{flex:1;min-height:0;overflow:hidden;position:relative}
+
+/* ══ 左：扰动因素 ══ */
+.left{width:304px;flex:none}
+.sel{margin:7px 8px 6px;position:relative}
+.sel select{width:100%;background:var(--panel2);border:1px solid var(--hair2);color:var(--txt);
+  padding:5px 8px;font-size:11.5px;font-family:inherit;border-radius:2px;appearance:none}
+.sel::after{content:"⌄";position:absolute;right:8px;top:2px;color:var(--dim2);pointer-events:none}
+.wv{display:flex;align-items:center;gap:0;margin:0 8px 6px;border-bottom:1px solid var(--hair)}
+.wv b{font-weight:400;font-size:11px;padding:4px 7px;color:var(--dim2);cursor:default;white-space:nowrap}
+.wv b.on{color:var(--cy);border-bottom:1px solid var(--cy)}
+.wv .nav{margin-left:auto;display:flex;gap:2px;color:var(--dim2)}
+.wv .nav u{text-decoration:none;padding:0 4px;border:1px solid var(--hair);font-size:10px}
+
+.grid2{display:grid;grid-template-columns:1fr 84px;gap:0 16px;padding:0 8px 8px;position:relative}
+.it .mk{font-family:var(--fm);font-size:9px;color:var(--dim2);width:11px;flex:none;text-align:center}
+.it .rg{margin-left:auto;font-size:8.5px;color:var(--amb);border:1px solid rgba(232,181,74,.45);padding:0 3px;line-height:1.25}
+.it.ro{color:var(--dim2);opacity:.55}
+.it.ro .tg{border-style:dashed}
+.dp{height:15px;display:flex;align-items:center;gap:4px;font-size:10px;color:var(--dim2)}
+.dp b{font-weight:400;color:var(--dim)}
+.grp{margin-bottom:4px}
+.gh{display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--dim);
+  height:15px;border-bottom:1px dotted var(--hair2);margin-bottom:2px}
+.gh em{font-style:normal;color:var(--dim2);font-size:10px}
+.it{display:flex;align-items:center;gap:4px;height:15px;font-size:10.5px;color:var(--dim);white-space:nowrap;overflow:hidden}
+.it .tg{width:11px;height:11px;border:1px solid var(--hair2);display:grid;place-items:center;
+  font-size:7px;color:var(--dim2);flex:none}
+.it .dots{color:var(--dim2);letter-spacing:1px;font-size:9px}
+.it.on{background:rgba(232,181,74,.12);outline:1px solid rgba(232,181,74,.4);color:var(--amb)}
+.it.on .tg{border-color:var(--amb);color:var(--amb)}
+.it.hot{color:var(--red)}
+.it.hot .tg{border-color:var(--red);color:var(--red)}
+.it.mute{color:var(--dim2);opacity:.62}
+.link{position:absolute;left:0;top:0;pointer-events:none;overflow:visible}
+
+.ctx{position:absolute;left:196px;top:498px;background:#1c2942;border:1px solid var(--hair2);
+  min-width:96px;z-index:5;box-shadow:0 6px 20px rgba(0,0,0,.6)}
+.ctx u{display:block;text-decoration:none;font-size:11px;color:var(--dim);padding:4px 9px;
+  border-bottom:1px dotted var(--hair)}
+.ctx u:first-child{color:var(--dim2);font-size:10px}
+.ctx u:last-child{border-bottom:0}
+
+/* ══ 中右：端到端流程图 ══ */
+.map{flex:1;min-width:0}
+.mapwrap{position:absolute;inset:0}
+.mapwrap svg{width:100%;height:100%;display:block}
+.rulerL,.rulerR{position:absolute;top:0;bottom:0;width:26px;display:flex;flex-direction:column;
+  justify-content:space-around;align-items:center;font-family:var(--fm);font-size:8px;color:var(--dim2)}
+.rulerL{left:0;border-right:1px solid var(--hair)} .rulerR{right:0;border-left:1px solid var(--hair)}
+.rulerL u,.rulerR u{text-decoration:none;writing-mode:vertical-rl}
+.tick{position:absolute;top:0;left:26px;right:26px;height:16px;border-bottom:1px solid var(--hair);
+  display:flex;justify-content:space-between;align-items:flex-end;
+  font-family:var(--fm);font-size:8px;color:var(--dim2);padding:0 4px}
+.tick span{border-left:1px solid var(--hair2);padding-left:2px;line-height:1}
+.north{position:absolute;right:34px;top:22px;text-align:center;color:var(--dim);font-size:10px}
+.north b{display:block;font-size:12px;color:var(--cy)}
+.lgd{position:absolute;right:32px;bottom:8px;display:flex;flex-direction:column;gap:3px;
+  font-size:9.5px;color:var(--dim2);background:rgba(28,41,66,.86);padding:6px 8px;border:1px solid var(--hair)}
+.lgd div{display:flex;align-items:center;gap:6px;justify-content:flex-end}
+.lgd s{text-decoration:none;width:26px;height:0;border-top:2px solid currentColor;display:block}
+.lgd .el{width:18px;height:9px;border-radius:50%;background:rgba(98,190,119,.30);border:1px solid var(--grn)}
+.lgd .num{font-family:var(--fm);letter-spacing:.02em}
+
+/* ══ 下：指标 ══ */
+.bot{height:300px;flex:none}
+.btabs{display:flex;align-items:center;gap:0;padding:0 8px;border-bottom:1px solid var(--hair);flex:none}
+.btabs b{font-weight:400;font-size:11px;padding:5px 9px;color:var(--dim2)}
+.btabs b.on{color:var(--cy);border-bottom:1px solid var(--cy)}
+.btabs .nav{margin-left:auto;display:flex;gap:2px;color:var(--dim2)}
+.btabs .nav u{text-decoration:none;padding:0 4px;border:1px solid var(--hair);font-size:10px}
+.gantt{height:246px;flex:none;overflow:hidden;display:grid;
+  grid-template-columns:22px 128px 62px 62px 1fr}
+.gcol{border-right:1px solid var(--hair);display:flex;flex-direction:column}
+.gcap{flex:none;height:18px;border-bottom:1px solid var(--hair);display:flex;align-items:center;
+  justify-content:center;font-size:10px;color:var(--dim2);flex:none}
+.gcell{flex:none;height:18px;border-bottom:1px solid rgba(226,235,245,0.05);display:flex;align-items:center;
+  padding:0 7px;font-size:10.5px;color:var(--dim);white-space:nowrap;overflow:hidden}
+.gcell.mono{font-family:var(--fm);font-size:10px;justify-content:flex-end;color:var(--txt)}
+.gcell.up{color:var(--red)} .gcell.dn{color:var(--grn)}
+.vgrp{flex:none;font-size:9.5px;color:var(--dim);letter-spacing:0;text-align:center;line-height:1.18;display:flex;flex-direction:column;align-items:center;justify-content:center;border-bottom:1px solid var(--hair)}
+.lane{position:relative;overflow:hidden}
+.laneHead{flex:none;height:18px;border-bottom:1px solid var(--hair);display:flex;position:relative}
+.laneHead span{position:absolute;top:4px;font-family:var(--fm);font-size:8.5px;color:var(--dim2);
+  border-left:1px solid var(--hair2);padding-left:3px;line-height:1}
+.grow{flex:none;height:18px;border-bottom:1px solid rgba(226,235,245,0.05);position:relative}
+.seg{position:absolute;top:3px;height:13px;display:flex;align-items:center;gap:4px;
+  padding:0 5px;font-size:9.5px;white-space:nowrap;border-radius:1px}
+.seg.b{background:rgba(76,144,240,.18);border:1px solid #4c90f0;color:#a2c6f7}
+.seg.a{background:rgba(232,181,74,.16);border:1px solid #e8b54a;color:var(--amb)}
+.seg.r{background:rgba(224,98,108,.16);border:1px solid #e0626c;color:#f0b4b8}
+.seg.g{background:rgba(98,190,119,.16);border:1px solid #62be77;color:#91d2a0}
+.seg.o{background:transparent;border:1px solid var(--hair2);color:var(--dim2)}
+.seg em{font-style:normal;font-family:var(--fm);font-size:8.5px;opacity:.85}
+.play{position:absolute;top:0;bottom:0;width:1px;background:var(--amb);z-index:3}
+.play::before{content:"";position:absolute;top:0;left:-3px;border:3px solid transparent;border-top-color:var(--amb)}
+
+/* ══ 左下三格 ══ */
+.crew{display:flex;flex-direction:column;gap:5px;margin-top:auto;padding-bottom:4px;align-items:center}
+.cw{width:30px;display:flex;flex-direction:column;align-items:center;gap:2px}
+.cw u{text-decoration:none;font-family:var(--fm);font-size:8px;color:var(--dim2)}
+.cw i{width:22px;height:22px;border-radius:50%;border:1px solid var(--hair2);display:grid;
+  place-items:center;font-size:10px;color:var(--dim);font-style:normal}
+.cw s{text-decoration:none;width:26px;height:2px;display:block}
+
+/* ══ 传导边抽屉（WO-EDGE-PANEL-4PAGES · 仓主批准「挂，并接受版面变化」）══
+   画布 .app 是**定死的 1440×897 且 overflow:hidden** ⇒ 塞进画布的任何东西都得挤掉既有内容。
+   故抽屉挂在画布**外**、紧贴其下，**默认折叠**：收起态只占 26px 一条，画布内逐像素不动；
+   展开才向下顶开页面。
+   ⚠ 展开后的内容是**共享件 EdgeActivePanel**（四页同一个，源码 views/sim/EdgeActivePanel.tsx
+   + 它自己的 .module.css）。它不在本规格里复刻 —— 本规格只定义「抽屉这条壳」的版面；
+   把共享件抄进四份规格 = 造出四份会各自漂移的第二真相源。
+   色值移植对照：--panel2→var(--panel2) · --hair→var(--line) · --txt→var(--txt) · --dim→var(--muted) */
+.dock{width:1440px;background:var(--panel2);border:1px solid var(--hair);border-top:0;
+  color:var(--txt);font-family:var(--fs);font-size:11.5px}
+.dockSum{height:26px;display:flex;align-items:center;gap:6px;padding:0 12px;cursor:pointer;
+  color:var(--dim);letter-spacing:0.06em;list-style:none}
+.dockSum::-webkit-details-marker{display:none}
+.dock[open] .dockSum{border-bottom:1px solid var(--hair);color:var(--txt)}
+</style>
+
+<div class="app">
+
+  <!-- ══ 顶栏 ══ -->
+  <div class="tb">
+    <span class="logo">◈</span>
+    <span class="tt"><b>推演沙盘</b><i>simulation console</i></span>
+    <span class="hole"></span>
+  </div>
+  <div class="mb"><span>File</span><span>Edit</span><span>View</span><span>Window</span><span>Tools</span><span>Help</span></div>
+
+  <div class="body">
+    <!-- ══ 左轨 ══ -->
+    <div class="rail">
+      <span class="rbtn on">◉</span>
+      <span class="rbtn">✎</span>
+      <div class="crew">
+        <span class="cw"><u>01</u><i>◔</i><s style="background:var(--amb)"></s></span>
+        <span class="cw"><u>02</u><i>◑</i><s style="background:var(--cy)"></s></span>
+        <span class="cw"><u>03</u><i>◕</i><s style="background:var(--dim2)"></s></span>
+      </div>
+    </div>
+
+    <div class="main">
+      <div class="row1">
+
+        <!-- ══ 左：扰动因素 ══ -->
+        <section class="pan left">
+          <div class="ph"><i>▤</i><b>扰动因素</b><span class="rt">▤ ⤢</span></div>
+          <div class="pb" style="overflow:auto">
+            <div class="sel"><select><option>常州基地 · 动力线-B</option><option>盐城基地</option><option>合肥基地</option><option>全网</option></select></div>
+            <div class="wv">
+              <b class="on">第一轮次</b><b>第二轮次</b><b>第三轮次</b><b>第四轮次</b>
+              <span class="nav"><u>‹</u><u>›</u></span>
+            </div>
+            <div class="grid2" id="grid2">
+              <svg class="link" id="link"></svg>
+
+              <div>
+                <div class="grp">
+                  <div class="gh"><em>▤</em>节拍与产出</div>
+                  <div class="it" id="f0"><span class="mk">①</span><span class="tg">▤</span>节拍 CT</div>
+                  <div class="it" id="f1"><span class="mk">②</span><span class="tg">▤</span>通道数<span class="rg">C03</span></div>
+                  <div class="it hot" id="f2"><span class="mk">③</span><span class="tg">▤</span>设备OEE</div>
+                  <div class="it ro" id="f3"><span class="mk">④</span><span class="tg">／</span>性能 OEE-P</div>
+                  <div class="it" id="f4"><span class="mk">⑧</span><span class="tg">▤</span>利用率</div>
+                  <div class="it" id="f5"><span class="mk">⑯</span><span class="tg">▤</span>班次时长×班次</div>
+                </div>
+                <div class="grp">
+                  <div class="gh"><em>▤</em>良率与人力</div>
+                  <div class="it hot" id="f6"><span class="mk">⑥</span><span class="tg">▤</span>工序良率</div>
+                  <div class="it ro" id="f7"><span class="mk">⑦</span><span class="tg">／</span>质量 OEE-Q</div>
+                  <div class="it ro" id="f8"><span class="mk">⑨</span><span class="tg">／</span>良率爬坡</div>
+                  <div class="it" id="f9"><span class="mk">⑰</span><span class="tg">▤</span>在岗出勤/熟练</div>
+                </div>
+                <div class="grp">
+                  <div class="gh"><em>▤</em>产线</div>
+                  <div class="it" id="f10"><span class="mk">⑩</span><span class="tg">▤</span>瓶颈工序</div>
+                  <div class="it ro" id="f11"><span class="mk">⑪</span><span class="tg">／</span>在制 WIP</div>
+                  <div class="it ro" id="f12"><span class="mk">⑫</span><span class="tg">／</span>产线平衡</div>
+                </div>
+                <div class="grp">
+                  <div class="gh"><em>▤</em>物料</div>
+                  <div class="it hot" id="f13"><span class="mk">⑬</span><span class="tg">▤</span>物料齐套<span class="rg">C06</span></div>
+                  <div class="it ro" id="f14"><span class="mk">⑭</span><span class="tg">／</span>BOM 齐套</div>
+                  <div class="it on" id="f15"><span class="mk">⑮</span><span class="tg">▤</span>物料到货<span class="rg">C16</span></div>
+                </div>
+                <div class="grp">
+                  <div class="gh"><em>▤</em>投产</div>
+                  <div class="it ro" id="f16"><span class="mk">⑳</span><span class="tg">／</span>投产爬坡</div>
+                </div>
+                <div class="grp">
+                  <div class="gh"><em>▤</em>其他</div>
+                  <div class="it" id="f17"><span class="mk">⑤</span><span class="tg">▤</span>换型损失<span class="rg">C08</span></div>
+                  <div class="it ro" id="f18"><span class="mk">⑱</span><span class="tg">／</span>设备检修</div>
+                  <div class="it ro" id="f19"><span class="mk">⑲</span><span class="tg">／</span>需求</div>
+                </div>
+              </div>
+
+              <div>
+                <div class="grp">
+                  <div class="gh"><em>▤</em>落点</div>
+                  <div class="dp" id="d0">▸ <b>设备</b></div>
+                  <div class="dp" id="d1">▸ <b>工序</b></div>
+                  <div class="dp" id="d2">▸ <b>设备</b></div>
+                  <div class="dp" id="d3">▸ <b>设备</b></div>
+                  <div class="dp" id="d4">▸ <b>工序</b></div>
+                  <div class="dp" id="d5">▸ <b>工序</b></div>
+                </div>
+                <div class="grp">
+                  <div class="gh"><em>▤</em>落点</div>
+                  <div class="dp" id="d6">▸ <b>工序</b></div>
+                  <div class="dp" id="d7">▸ <b>设备</b></div>
+                  <div class="dp" id="d8">▸ <b>产线</b></div>
+                  <div class="dp" id="d9">▸ <b>工序</b></div>
+                </div>
+                <div class="grp">
+                  <div class="gh"><em>▤</em>落点</div>
+                  <div class="dp" id="d10">▸ <b>产线</b></div>
+                  <div class="dp" id="d11">▸ <b>产线</b></div>
+                  <div class="dp" id="d12">▸ <b>产线</b></div>
+                </div>
+                <div class="grp">
+                  <div class="gh"><em>▤</em>落点</div>
+                  <div class="dp" id="d13">▸ <b>物料</b></div>
+                  <div class="dp" id="d14">▸ <b>物料</b></div>
+                  <div class="dp" id="d15">▸ <b>物料</b></div>
+                </div>
+                <div class="grp">
+                  <div class="gh"><em>▤</em>落点</div>
+                  <div class="dp" id="d16">▸ <b>产线</b></div>
+                </div>
+                <div class="grp">
+                  <div class="gh"><em>▤</em>落点</div>
+                  <div class="dp" id="d17">▸ <b>换型</b></div>
+                  <div class="dp" id="d18">▸ <b>检修</b></div>
+                  <div class="dp" id="d19">▸ <b>订单</b></div>
+                </div>
+              </div>
+
+              <div class="ctx">
+                <u>添加扰动</u>
+                <u>＋ 需求突变</u>
+                <u>＋ 供应中断</u>
+                <u>＋ 产能损失</u>
+                <u>＋ 成本冲击</u>
+                <u>＋ 质量事件</u>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ══ 中右：端到端流程图 ══ -->
+        <section class="pan map">
+          <div class="ph"><i>▤</i><b>端到端流程图</b><span class="rt">▤ ⤢</span></div>
+          <div class="pb">
+            <div class="mapwrap"><svg id="flow" viewBox="0 0 1060 470" preserveAspectRatio="xMidYMid slice"></svg></div>
+            <div class="rulerL"><u>12000</u><u>13000</u><u>14000</u><u>15000</u><u>16000</u></div>
+            <div class="rulerR"><u>12000</u><u>13000</u><u>14000</u><u>15000</u><u>16000</u></div>
+            <div class="tick" id="tick"></div>
+            <div class="north"><b>↑</b>下游</div>
+            <div class="lgd">
+              <div style="color:var(--red)"><span>阻滞区间</span><s></s></div>
+              <div><span>缓冲区</span><span class="el"></span></div>
+              <div style="color:var(--dim2)"><span>传导关系</span><s style="border-top-style:dotted"></s></div>
+              <div style="color:var(--red)"><span>阻滞发生</span><span class="num">00:00</span></div>
+              <div style="color:var(--grn)"><span>缓冲到达</span><span class="num">00:00</span></div>
+              <div style="color:var(--blu)"><span>计划路径</span><s></s></div>
+              <div style="color:var(--blu)"><span>预测路径</span><s style="border-top-style:dashed"></s></div>
+              <div style="color:#e9bb8f"><span>实际路径</span><s style="border-top-style:dashed"></s></div>
+              <div style="color:#e9bb8f"><span>补货路径</span><s style="border-top-style:dotted"></s></div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ══ 下：指标 ══ -->
+      <section class="pan bot">
+        <div class="ph"><i>▤</i><b>指标</b><span class="rt">▤ ⤢</span></div>
+        <div class="btabs">
+          <b class="on">全局</b><b>交付域</b><b>成本域</b><b>库存域</b><b>产能域</b>
+          <span class="nav"><u>‹</u><u>›</u></span>
+        </div>
+        <div class="gantt" id="gantt"></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<!-- ══ 传导边抽屉（画布外·默认折叠）══
+     收起态就是基准 PNG 里那条 26px 的标题条。展开后是共享件 EdgeActivePanel：
+     每行一条传导边（源类型.状态变量 —链路→ 目标类型.状态变量 + 系数/延迟），
+     勾掉一条即发一次对照跑，下方出差值表。见 views/sim/EdgeActivePanel.tsx。 -->
+<details class="dock" data-testid="sim-console-edge-dock">
+  <summary class="dockSum" data-testid="sim-console-edge-summary">关掉一条传导边，看这次推演的数怎么变 ▸</summary>
+</details>
+
+<script>
+"use strict";
+var NS="http://www.w3.org/2000/svg";
+function E(n,a,p){var e=document.createElementNS(NS,n);for(var k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e;}
+
+/* ─────────── 左栏连线（组间括号式黄线） ─────────── */
+(function(){
+  var grid=document.getElementById("grid2"),svg=document.getElementById("link");
+  var r0=grid.getBoundingClientRect();
+  svg.setAttribute("width",r0.width);svg.setAttribute("height",r0.height);
+  var pairs=[];for(var q=0;q<20;q++)pairs.push(["f"+q,"d"+q]);
+  pairs.forEach(function(p){
+    var A=document.getElementById(p[0]).getBoundingClientRect();
+    var B=document.getElementById(p[1]).getBoundingClientRect();
+    var x1=A.right-r0.left+2,y1=A.top-r0.top+A.height/2;
+    var x2=B.left-r0.left-2,y2=B.top-r0.top+B.height/2;
+    var mx=x1+(x2-x1)*0.42;
+    E("path",{d:"M"+x1+" "+y1+" H"+mx+" V"+y2+" H"+x2,fill:"none",
+      stroke:"#e8b54a",'stroke-width':1,opacity:.34},svg);
+  });
+})();
+
+/* ─────────── 地铁线路图 ───────────
+   24 站 5 段逐字取自 packages/contracts/src/chain-sim.ts 的 CHAIN_NODE_REGISTRY。
+   站圈半径 ∝ 该环节吃掉的全链损失占比（面积法）。
+   阻滞区间 = 干线上被加粗的**相邻站区段**，不是跨段斜线（斜线会被读成错误连线）。 */
+(function(){
+  var s=document.getElementById("flow");
+  var LANES=[
+    {k:"需求",c:"#d2b04c",n:[["客户预告接收",1],["询报价",1],["S&OP 共识会",3]]},
+    {k:"订单",c:"#36bfa5",n:[["订单评审",2],["开票对账 / 月结",1],["订单回款",1]]},
+    {k:"产能",c:"#43b7d7",n:[["产能与瓶颈复核",4],["主计划排产",5,1],["工单下达",2],["过程质检攒批",13,1],["质量与返工",6],["老化静置",34,1],["计划检修窗",2]]},
+    {k:"物料",c:"#dd9551",n:[["MRP 运行",2],["请购",1],["采购下单",1],["入厂在途与清关",3],["到货检验",2],["关键物料补货",4],["齐套发料",21,1],["发运节拍",2]]},
+    {k:"交付",c:"#5e8fe8",n:[["成品入库",1],["干线运输在途",2],["客户验收",1]]}
+  ];
+  var X0=104,X1=884,Y0=54,LH=84;
+  function px(li,i){var n=LANES[li].n.length;return X0+i*(n>1?(X1-X0)/(n-1):0);}
+  function py(li){return Y0+li*LH;}
+
+  for(var i=0;i<11;i++)E("line",{x1:0,y1:i*47,x2:1060,y2:i*47,stroke:"rgba(226,235,245,0.04)"},s);
+  for(var j=0;j<22;j++)E("line",{x1:j*50,y1:0,x2:j*50,y2:470,stroke:"rgba(226,235,245,0.04)"},s);
+
+  /* 缓冲区（画在站之前，不压站名） */
+  E("ellipse",{cx:(px(3,5)+px(3,6))/2,cy:py(3),rx:78,ry:22,fill:"rgba(98,190,119,.15)",
+    stroke:"#62be77","stroke-width":1.1},s);
+
+  LANES.forEach(function(L,li){
+    var y=py(li),n=L.n.length;
+    var lb=E("text",{x:X0-18,y:y+4,"text-anchor":"end",fill:L.c,"font-size":12,"font-weight":700},s);
+    lb.textContent=L.k;
+    E("line",{x1:X0,y1:y,x2:n>1?X1:X0,y2:y,stroke:L.c,"stroke-width":3.4,"stroke-linecap":"round",opacity:.62},s);
+    if(li<LANES.length-1){
+      E("path",{d:"M"+X1+" "+y+" L"+(X1+22)+" "+y+" L"+(X1+22)+" "+(y+LH/2)+
+        " L"+(X0-22)+" "+(y+LH/2)+" L"+(X0-22)+" "+(y+LH)+" L"+X0+" "+(y+LH),
+        fill:"none",stroke:"rgba(226,235,245,0.12)","stroke-width":1.4,"stroke-dasharray":"4 4"},s);
+    }
+  });
+
+  /* 阻滞区间：干线上的加粗区段（同段相邻站之间） */
+  [[2,3,5],[3,5,6]].forEach(function(g){
+    E("line",{x1:px(g[0],g[1]),y1:py(g[0]),x2:px(g[0],g[2]),y2:py(g[0]),
+      stroke:"#e0626c","stroke-width":5,"stroke-linecap":"round",opacity:.95},s);
+  });
+
+  /* 站 */
+  LANES.forEach(function(L,li){
+    var y=py(li);
+    L.n.forEach(function(nd,i){
+      var x=px(li,i),loss=nd[1],hit=nd[2],r=4.4+Math.sqrt(loss)*2.2;
+      if(hit)E("circle",{cx:x,cy:y,r:r+6,fill:"none",stroke:"#e0626c","stroke-width":1.1,opacity:.5},s);
+      E("circle",{cx:x,cy:y,r:r,fill:hit?"#e0626c":L.c,stroke:"#2c3d5e","stroke-width":2.2},s);
+      if(loss>=10){var pv=E("text",{x:x,y:y-r-7,"text-anchor":"middle",fill:"#eabd5d","font-size":10,"font-family":"var(--fm)"},s);pv.textContent=loss+"%";}
+      var w=nd[0],parts=w.length>6?[w.slice(0,6),w.slice(6)]:[w];
+      parts.forEach(function(t,pi){
+        var e=E("text",{x:x,y:y+r+13+pi*11,"text-anchor":"middle",
+          fill:hit?"#f0b4b8":"rgba(190,208,224,.78)","font-size":9.5,"font-weight":hit?600:400},s);
+        e.textContent=t;
+      });
+    });
+  });
+
+  /* 呼出卡：一律落在**段间空隙**，横坐标避开站位 */
+  var CALL=[
+    {ax:px(2,5),ay:py(2),cx:px(2,5)+30,cy:py(2)-72,t:"38:42",c:"#62be77",
+     L:["老化静置 C3","批号 P0001","在制 4.2k 套","库存 3.8k 套","节拍 1.2/h"]},
+    {ax:px(2,3),ay:py(2),cx:px(2,3)-150,cy:py(2)-72,t:"47:32",c:"#e0626c",
+     L:["过程质检 Y2","批号 P0001","在制 4.2k 套","库存 3.8k 套","节拍 1.2/h"]},
+    {ax:px(3,6),ay:py(3),cx:px(3,1)-34,cy:py(3)+52,t:"32:42",c:"#e0626c",
+     L:["齐套发料 P2","批号 P0002","节拍 1.2/h"]}
+  ];
+  CALL.forEach(function(c){
+    E("line",{x1:c.ax,y1:c.ay,x2:c.cx+(c.cx<c.ax?110:4),y2:c.cy+6,
+      stroke:"rgba(120,160,200,.28)","stroke-width":1},s);
+    var tx=E("text",{x:c.cx,y:c.cy,"font-size":15,fill:c.c,"font-family":"var(--fm)","font-weight":700},s);
+    tx.textContent=c.t;
+    c.L.forEach(function(l,k){
+      var e=E("text",{x:c.cx,y:c.cy+14+k*11,"font-size":9,fill:"rgba(233,238,245,.88)"},s);e.textContent=l;});
+  });
+})();
+
+/* ─────────── 顶部时间刻度 ─────────── */
+(function(){
+  var t=document.getElementById("tick"),h="";
+  for(var i=0;i<=14;i++)h+="<span>"+String(i*2).padStart(2,"0")+":00</span>";
+  t.innerHTML=h;
+})();
+
+/* ─────────── 指标甘特 ─────────── */
+(function(){
+  var ROWS=[
+    {g:"交付域",n:"交付准时率",b:"94.2%",a:"88.6%",d:"up",s:[[2,9,"o","请购"],[13,17,"b","齐套发料 3/16"],[32,16,"b","老化静置 3/16"],[52,12,"g","缓冲释放"],[70,9,"o","结转"]]},
+    {n:"订单履约率",b:"96.8%",a:"91.2%",d:"up",s:[[3,10,"o","采购下单"],[15,16,"b","齐套发料 3/16"],[34,15,"b","老化静置 3/16"],[54,13,"g","缓冲释放"],[73,8,"o","结转"]]},
+    {n:"受影响客户",b:"0 家",a:"7 家",d:"up",s:[[2,10,"o","到货检验"],[15,15,"b","齐套发料 3/16"],[33,16,"b","老化静置 3/16"],[54,12,"g","缓冲释放"],[73,8,"o","结转"]]},
+    {n:"受影响订单",b:"0 批",a:"23 批",d:"up",s:[[4,8,"o","入厂在途"],[14,17,"b","齐套发料 3/16"],[35,14,"b","老化静置 3/16"],[55,11,"g","缓冲释放"],[71,9,"o","结转"]]},
+    {g:"成本域",n:"单位成本",b:"¥0.403/Wh",a:"¥0.412/Wh",d:"up",s:[[3,9,"o","采购下单"],[14,16,"b","齐套发料 3/16"],[33,15,"b","老化静置 3/16"],[53,13,"g","缓冲释放"],[72,9,"o","结转"]]},
+    {n:"外协兜底成本",b:"¥0",a:"¥1,840万",d:"up",s:[[4,8,"o","请购"],[14,17,"b","齐套发料 3/16"],[35,14,"b","老化静置 3/16"],[55,11,"g","缓冲释放"],[71,9,"o","结转"]]},
+    {n:"跨基地调拨费",b:"¥210万",a:"¥620万",d:"up",s:[[2,11,"o","到货检验"],[16,15,"b","齐套发料 3/16"],[34,16,"b","老化静置 3/16"],[54,12,"g","缓冲释放"],[72,9,"o","结转"]]},
+    {g:"库存域",n:"在制库存",b:"¥2.14亿",a:"¥2.47亿",d:"up",s:[[3,10,"o","采购下单"],[15,16,"b","齐套发料 3/16"],[34,15,"b","老化静置 3/16"],[54,13,"g","缓冲释放"],[73,8,"o","结转"]]},
+    {n:"成品库存周转",b:"18.2 次",a:"15.4 次",d:"up",s:[[2,12,"o","入厂在途"],[16,14,"b","齐套发料 3/16"],[33,17,"b","老化静置 3/16"],[53,13,"g","缓冲释放"],[71,10,"o","结转"]]},
+    {g:"产能域",n:"产线稼动率",b:"89.3%",a:"71.3%",d:"dn",s:[[2,11,"o","到货检验"],[15,14,"b","齐套发料 3/16"],[32,17,"b","老化静置 3/16"],[54,12,"g","缓冲释放"],[71,10,"o","结转"]]},
+    {n:"Q3 产能缺口",b:"0 万套",a:"6.0 万套",d:"up",s:[[1,11,"o","请购"],[14,14,"r","齐套发料 3/16"],[31,17,"b","老化静置 3/16"],[53,12,"g","缓冲释放"],[72,10,"o","结转"]]},
+    {n:"全链非增值",b:"18.4 D",a:"21.6 D",d:"up",s:[[3,10,"o","采购下单"],[16,15,"b","齐套发料 3/16"],[34,16,"b","老化静置 3/16"],[55,11,"g","缓冲释放"],[72,9,"o","结转"]]}
+  ];
+
+  var host=document.getElementById("gantt");
+  var cV=document.createElement("div"),cN=document.createElement("div"),
+      cB=document.createElement("div"),cA=document.createElement("div"),cL=document.createElement("div");
+  [cV,cN,cB,cA].forEach(function(c){c.className="gcol";});
+  cL.className="gcol lane";cL.style.borderRight="0";
+
+  cV.innerHTML='<div class="gcap"></div>';
+  cN.innerHTML='<div class="gcap">指标名称</div>';
+  cB.innerHTML='<div class="gcap">基线</div>';
+  cA.innerHTML='<div class="gcap">扰动后</div>';
+
+  var head='<div class="laneHead">';
+  for(var i=0;i<=14;i++)head+='<span style="left:'+(i/14*100)+'%">'+String(i*2).padStart(2,"0")+':00</span>';
+  head+='</div>';
+  cL.innerHTML=head;
+
+  var vbuf=[];
+  ROWS.forEach(function(r,ri){
+    if(r.g)vbuf.push({t:r.g,n:0});
+    vbuf[vbuf.length-1].n++;
+    cN.innerHTML+='<div class="gcell">'+r.n+'</div>';
+    cB.innerHTML+='<div class="gcell mono">'+r.b+'</div>';
+    cA.innerHTML+='<div class="gcell mono '+r.d+'">'+r.a+'</div>';
+    var row='<div class="grow">';
+    r.s.forEach(function(sg){
+      var lab=sg[2]==="o"?("‹ "+sg[3]+" ›"):sg[3];
+      row+='<div class="seg '+sg[2]+'" style="left:'+sg[0]+'%;width:'+sg[1]+'%"><em>▤</em>'+lab+'</div>';
+    });
+    row+='</div>';
+    cL.innerHTML+=row;
+  });
+  vbuf.forEach(function(v){
+    cV.innerHTML+='<div class="vgrp" style="height:'+(v.n*18)+'px">'+v.t.split("").join("<br>")+'</div>';
+  });
+
+  var play=document.createElement("div");
+  play.className="play";play.style.left="41%";
+  cL.appendChild(play);
+
+  host.appendChild(cV);host.appendChild(cN);host.appendChild(cB);host.appendChild(cA);host.appendChild(cL);
+})();
+</script>

@@ -1,0 +1,49 @@
+HEAD=f6484af67（canonical 本地 tip） START=09-27 11:42:47
+cmd: 2 文件真 lone（逐个串行 maxWorkers=1）
+
+ RUN  v3.2.6 /Users/apple/deploy/wo-edge-wire/apps/datacore
+
+ ✓ test/dynamic-drill-resolve.seam.test.ts (6 tests) 265982ms
+   ✓ WO-DYNAMIC-DRILL-RESOLVE · DYNAMIC-* 占位查询期解析 SEAM > DR-0 金丝雀 · 数据半：种子里 DYNAMIC-* 仍是占位且自带挑选口径（播种期解析即红）  12072ms
+   ✓ WO-DYNAMIC-DRILL-RESOLVE · DYNAMIC-* 占位查询期解析 SEAM > DR-1 · **对上率**：本次全部落点都能对上因子，且 MaterialBalance 那一族一条不落  116859ms
+   ✓ WO-DYNAMIC-DRILL-RESOLVE · DYNAMIC-* 占位查询期解析 SEAM > DR-2 · **头号判据**：TYPE 档解析出的实例 == 这条落点自己的那一张，且读数与库里真对象逐位相等  76439ms
+   ✓ WO-DYNAMIC-DRILL-RESOLVE · DYNAMIC-* 占位查询期解析 SEAM > DR-3 · **三档禁塌**：EXACT / TYPE / NONE 三态在同一次种子上同时可复现，且 TYPE 不冒充 EXACT  31185ms
+   ✓ WO-DYNAMIC-DRILL-RESOLVE · DYNAMIC-* 占位查询期解析 SEAM > DR-4 · 归因期解析走的是**因子自己声明的 drillPick**（不是候选池首条），且 R6 两跑字节一致  22983ms
+   ✓ WO-DYNAMIC-DRILL-RESOLVE · DYNAMIC-* 占位查询期解析 SEAM > DR-5 · 归因期占位解析**只连坐 demand_attain 一个域**（其余指标域产物逐字节不变的结构理由）  6440ms
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  11:42:56
+   Duration  283.86s (transform 9.32s, setup 0ms, collect 16.46s, tests 265.98s, environment 0ms, prepare 408ms)
+
+
+ RUN  v3.2.6 /Users/apple/deploy/wo-edge-wire/apps/datacore
+
+ ✓ test/seed-demo-propagation.test.ts (22 tests) 328513ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 种子后 view-config：propagationCount≥2 + stateVars 非空（消空世界）  24043ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 种的规则沿真链路（Order/Model/Base）：发布且 viaLinkKey 是 demo 真链路  1662ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 🔴 方向可达门：每条种子规则的 source─via→target 在**真链路表**上真的走得通（#158 复发闸）  22030ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 🔴 方向可达门的变异反证：喂一条方向写反的规则（#158 原文），门必须判它死  19033ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 确定性 R6：同 SEED_DEMO 重跑规则字节一致（固定 id/系数）  1280ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 幂等：重复播种不增项（固定 id 覆盖）  641ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > live-fire：种子规则 + 真 Order→Model 链路 → tick 真跨对象传导  12515ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 🔴 效果层 SEAM：供应侧扰动（Supplier.deliveryDelay）跨 3 跳真的传导到 Order.shortageRisk  15233ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 🔴 逐条真触发：54 条规则在真 tick 的 trace 里一条不缺（REQ143 + 档 1/2/3 + 采购根源 3 + 三根源 4 + 设备侧出口 4 + 订单真实字段 3 + 库存环 2 + 物料环 3）  15682ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🐤 金丝雀：端点/链路全合法的边**必须建得出来**（证明这组门不是一律拒绝）  12091ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 端点不存在的边必须 400（link-types 那次 81/133 全放行的复发闸）  20449ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 链路类型不存在的边必须 400  19250ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 方向写反的边必须 400 —— 引擎只沿 from→to 单向走，反向边语法全对但恒贡献 0  12782ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 coefficientRef 解析不到必须 400 —— 否则静默回落内联系数，用户以为改规则生效其实无效  15183ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 PATCH 也走同一道体检：塞非法 coefficientRef 必须 400，而合法系数照常放行  9813ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 体检在 upsert **之前**跑：非法边不许先把同 key 的合法边覆盖掉再报错  9104ms
+   ✓ §5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子） > 🔴 对照实验：同一型号上，BOM 占比不同的两种物料各涨 15 ⇒ 读数必须按占比拉开（修前同为 9.75）  27663ms
+   ✓ §5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子） > 🔴 对照实验：缺料→供应风险 —— BOM 占比不同的物料各涨 15 ⇒ 读数按占比拉开，且 Σ权重≡1 总量不跳  48912ms
+   ✓ §6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算 > 🔴 超预算格子集合 + `Model.demandLoad` 读数必须与在册一致（加边/抬系数即红）  20717ms
+   ✓ M0-A11 解释切片（≤20 节点只读投影 + 覆盖账本） > 真推演 trace ⇒ 截断账本与手算一致；maxNodes 放大 ⇒ 完整（T1+T3）  20375ms
+
+ Test Files  1 passed (1)
+      Tests  22 passed (22)
+   Start at  11:47:42
+   Duration  342.62s (transform 7.75s, setup 0ms, collect 12.93s, tests 328.51s, environment 0ms, prepare 212ms)
+
+RC1=0 RC2=0 END=09-27 11:53:26

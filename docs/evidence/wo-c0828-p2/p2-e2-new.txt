@@ -1,0 +1,472 @@
+{
+ "w1Before": {
+  "curTick": 3,
+  "status": "RUNNING",
+  "perts": [
+   [
+    "sims_demo_seed_world_p0",
+    "obj_material_elyte",
+    "shortageRisk",
+    1,
+    null,
+    212.42020000000002,
+    "delta"
+   ]
+  ]
+ },
+ "w1Impediments": 18,
+ "w1Candidates": 12,
+ "w1Priced": [
+  {
+   "kind": "priced",
+   "candidateId": "PEER_BEST_10",
+   "specKey": "material_shortage_risk",
+   "ctlP90": 0.09273904103199992,
+   "aftP90": 0.5898104503240003,
+   "ctlTouched": 150,
+   "aftTouched": 150,
+   "ctlYuan": 15663001584,
+   "missingBinding": null,
+   "disclosure": {
+    "specKey": "material_shortage_risk",
+    "targetObjectId": "pos_lfp",
+    "targetStateVar": "shortageRisk",
+    "tickCount": 3,
+    "elapsedMs": {
+     "total": 12170.724587000004,
+     "binding": 0.5115729999961331,
+     "perturb": 1.74257599998964,
+     "tick": 12040.182782999997,
+     "diff": 54.132456999999704
+    },
+    "agentInvolved": false
+   }
+  },
+  {
+   "kind": "priced",
+   "candidateId": "PEER_NEXT_25",
+   "specKey": "material_shortage_risk",
+   "ctlP90": 0.09273904103199992,
+   "aftP90": 0.5240231994620004,
+   "ctlTouched": 150,
+   "aftTouched": 150,
+   "ctlYuan": 15663001584,
+   "missingBinding": null,
+   "disclosure": {
+    "specKey": "material_shortage_risk",
+    "targetObjectId": "pos_lfp",
+    "targetStateVar": "shortageRisk",
+    "tickCount": 3,
+    "elapsedMs": {
+     "total": 9986.227439999988,
+     "binding": 0.05327000000397675,
+     "perturb": 6.137254000001121,
+     "tick": 9825.860696000018,
+     "diff": 23.827885999984574
+    },
+    "agentInvolved": false
+   }
+  },
+  {
+   "kind": "priced",
+   "candidateId": "PEER_BEST_89.9153",
+   "specKey": "line_util_pressure",
+   "ctlP90": 0.09273904103199992,
+   "aftP90": 0.09273904103199992,
+   "ctlTouched": 150,
+   "aftTouched": 150,
+   "ctlYuan": 15663001584,
+   "missingBinding": null,
+   "disclosure": {
+    "specKey": "line_util_pressure",
+    "targetObjectId": "LINE-WS-jinhua-slitting",
+    "targetStateVar": "utilPressure",
+    "tickCount": 3,
+    "elapsedMs": {
+     "total": 9292.024198,
+     "binding": 0.04566000000340864,
+     "perturb": 0.1483509999816306,
+     "tick": 9144.564370000007,
+     "diff": 47.312246999994386
+    },
+    "agentInvolved": false
+   }
+  }
+ ],
+ "w1After": {
+  "curTick": 3,
+  "status": "RUNNING",
+  "perts": [
+   [
+    "sims_demo_seed_world_p0",
+    "obj_material_elyte",
+    "shortageRisk",
+    1,
+    null,
+    212.42020000000002,
+    "delta"
+   ]
+  ]
+ },
+ "w1Gaps": [
+  {
+   "kind": "gap",
+   "candidateId": "PEER_BEST_1",
+   "specKey": null,
+   "ctlP90": null,
+   "aftP90": null,
+   "ctlTouched": null,
+   "aftTouched": null,
+   "ctlYuan": null,
+   "missingBinding": {
+    "objectType": "Process",
+    "prop": "attendance"
+   },
+   "disclosure": {
+    "specKey": null,
+    "targetObjectId": "LINE-WS-jinhua-slitting-coating",
+    "targetStateVar": null,
+    "tickCount": 3,
+    "elapsedMs": {
+     "total": 0.13529199999175034,
+     "binding": 0.02011700000730343,
+     "perturb": 0,
+     "tick": 0,
+     "diff": 0
+    },
+    "agentInvolved": false
+   }
+  },
+  {
+   "kind": "gap",
+   "candidateId": "PEER_BEST_0.9722",
+   "specKey": null,
+   "ctlP90": null,
+   "aftP90": null,
+   "ctlTouched": null,
+   "aftTouched": null,
+   "ctlYuan": null,
+   "missingBinding": {
+    "objectType": "Process",
+    "prop": "yield_baseline"
+   },
+   "disclosure": {
+    "specKey": null,
+    "targetObjectId": "LINE-WS-jinhua-slitting-assembly",
+    "targetStateVar": null,
+    "tickCount": 3,
+    "elapsedMs": {
+     "total": 0.06226299999980256,
+     "binding": 0.0283800000033807,
+     "perturb": 0,
+     "tick": 0,
+     "diff": 0
+    },
+    "agentInvolved": false
+   }
+  },
+  {
+   "kind": "gap",
+   "candidateId": "PEER_BEST_1",
+   "specKey": null,
+   "ctlP90": null,
+   "aftP90": null,
+   "ctlTouched": null,
+   "aftTouched": null,
+   "ctlYuan": null,
+   "missingBinding": {
+    "objectType": "Process",
+    "prop": "attendance"
+   },
+   "disclosure": {
+    "specKey": null,
+    "targetObjectId": "LINE-WS-zigong-grading-assembly",
+    "targetStateVar": null,
+    "tickCount": 3,
+    "elapsedMs": {
+     "total": 0.04514299999573268,
+     "binding": 0.019977000018116087,
+     "perturb": 0,
+     "tick": 0,
+     "diff": 0
+    },
+    "agentInvolved": false
+   }
+  },
+  {
+   "kind": "gap",
+   "candidateId": "PEER_BEST_0.9658",
+   "specKey": null,
+   "ctlP90": null,
+   "aftP90": null,
+   "ctlTouched": null,
+   "aftTouched": null,
+   "ctlYuan": null,
+   "missingBinding": {
+    "objectType": "Process",
+    "prop": "yield_baseline"
+   },
+   "disclosure": {
+    "specKey": null,
+    "targetObjectId": "LINE-WS-zigong-grading-assembly",
+    "targetStateVar": null,
+    "tickCount": 3,
+    "elapsedMs": {
+     "total": 0.06906299997353926,
+     "binding": 0.033273000008193776,
+     "perturb": 0,
+     "tick": 0,
+     "diff": 0
+    },
+    "agentInvolved": false
+   }
+  }
+ ],
+ "scenarioId": "simpert_ejfqcw2jqfanfkfh",
+ "w2Before": {
+  "curTick": 6,
+  "status": "RUNNING",
+  "perts": [
+   [
+    "sims_demo_seed_world_p0",
+    "obj_material_elyte",
+    "shortageRisk",
+    1,
+    null,
+    212.42020000000002,
+    "delta"
+   ],
+   [
+    "simpert_ejfqcw2jqfanfkfh",
+    "obj_equipment_LINE-WS-changzhou-pack-assembly-E2",
+    "equipmentFailure",
+    3,
+    null,
+    2,
+    "delta"
+   ]
+  ]
+ },
+ "w2Impediments": 18,
+ "w2Candidates": 12,
+ "w2DosePair": [
+  {
+   "kind": "priced",
+   "candidateId": "PEER_BEST_10",
+   "specKey": "material_shortage_risk",
+   "ctlP90": 0.06798572660600044,
+   "aftP90": 0.5835048219210002,
+   "ctlTouched": 150,
+   "aftTouched": 150,
+   "ctlYuan": 15663001584,
+   "missingBinding": null,
+   "disclosure": {
+    "specKey": "material_shortage_risk",
+    "targetObjectId": "pos_lfp",
+    "targetStateVar": "shortageRisk",
+    "tickCount": 3,
+    "elapsedMs": {
+     "total": 10544.385748,
+     "binding": 0.054502999992109835,
+     "perturb": 0.1385160000063479,
+     "tick": 10249.018461,
+     "diff": 228.6268229999696
+    },
+    "agentInvolved": false
+   }
+  },
+  {
+   "kind": "priced",
+   "candidateId": "PEER_NEXT_25",
+   "specKey": "material_shortage_risk",
+   "ctlP90": 0.06798572660600044,
+   "aftP90": 0.5524699271200006,
+   "ctlTouched": 150,
+   "aftTouched": 150,
+   "ctlYuan": 15663001584,
+   "missingBinding": null,
+   "disclosure": {
+    "specKey": "material_shortage_risk",
+    "targetObjectId": "pos_lfp",
+    "targetStateVar": "shortageRisk",
+    "tickCount": 3,
+    "elapsedMs": {
+     "total": 11318.265465999953,
+     "binding": 0.047750000027008355,
+     "perturb": 0.14433800004189834,
+     "tick": 11222.94910899998,
+     "diff": 26.138907000015024
+    },
+    "agentInvolved": false
+   }
+  }
+ ],
+ "w2Util": [
+  {
+   "kind": "priced",
+   "candidateId": "PEER_BEST_89.9153",
+   "specKey": "line_util_pressure",
+   "ctlP90": 0.06798572660600044,
+   "aftP90": 0.06798572660600044,
+   "ctlTouched": 150,
+   "aftTouched": 150,
+   "ctlYuan": 15663001584,
+   "missingBinding": null,
+   "disclosure": {
+    "specKey": "line_util_pressure",
+    "targetObjectId": "LINE-WS-jinhua-slitting",
+    "targetStateVar": "utilPressure",
+    "tickCount": 3,
+    "elapsedMs": {
+     "total": 12238.352457,
+     "binding": 0.04407000000355765,
+     "perturb": 0.13793100003385916,
+     "tick": 12142.137808000029,
+     "diff": 30.407720000017434
+    },
+    "agentInvolved": false
+   }
+  }
+ ],
+ "w2Gaps": [
+  {
+   "kind": "gap",
+   "candidateId": "PEER_BEST_1",
+   "specKey": null,
+   "ctlP90": null,
+   "aftP90": null,
+   "ctlTouched": null,
+   "aftTouched": null,
+   "ctlYuan": null,
+   "missingBinding": {
+    "objectType": "Process",
+    "prop": "attendance"
+   },
+   "disclosure": {
+    "specKey": null,
+    "targetObjectId": "LINE-WS-jinhua-slitting-coating",
+    "targetStateVar": null,
+    "tickCount": 3,
+    "elapsedMs": {
+     "total": 0.05280599999241531,
+     "binding": 0.019391999987419695,
+     "perturb": 0,
+     "tick": 0,
+     "diff": 0
+    },
+    "agentInvolved": false
+   }
+  },
+  {
+   "kind": "gap",
+   "candidateId": "PEER_BEST_0.9722",
+   "specKey": null,
+   "ctlP90": null,
+   "aftP90": null,
+   "ctlTouched": null,
+   "aftTouched": null,
+   "ctlYuan": null,
+   "missingBinding": {
+    "objectType": "Process",
+    "prop": "yield_baseline"
+   },
+   "disclosure": {
+    "specKey": null,
+    "targetObjectId": "LINE-WS-jinhua-slitting-assembly",
+    "targetStateVar": null,
+    "tickCount": 3,
+    "elapsedMs": {
+     "total": 0.04593700001714751,
+     "binding": 0.01798499998403713,
+     "perturb": 0,
+     "tick": 0,
+     "diff": 0
+    },
+    "agentInvolved": false
+   }
+  },
+  {
+   "kind": "gap",
+   "candidateId": "PEER_BEST_1",
+   "specKey": null,
+   "ctlP90": null,
+   "aftP90": null,
+   "ctlTouched": null,
+   "aftTouched": null,
+   "ctlYuan": null,
+   "missingBinding": {
+    "objectType": "Process",
+    "prop": "attendance"
+   },
+   "disclosure": {
+    "specKey": null,
+    "targetObjectId": "LINE-WS-zigong-grading-assembly",
+    "targetStateVar": null,
+    "tickCount": 3,
+    "elapsedMs": {
+     "total": 0.019685000006575137,
+     "binding": 0.008423999999649823,
+     "perturb": 0,
+     "tick": 0,
+     "diff": 0
+    },
+    "agentInvolved": false
+   }
+  },
+  {
+   "kind": "gap",
+   "candidateId": "PEER_BEST_0.9658",
+   "specKey": null,
+   "ctlP90": null,
+   "aftP90": null,
+   "ctlTouched": null,
+   "aftTouched": null,
+   "ctlYuan": null,
+   "missingBinding": {
+    "objectType": "Process",
+    "prop": "yield_baseline"
+   },
+   "disclosure": {
+    "specKey": null,
+    "targetObjectId": "LINE-WS-zigong-grading-assembly",
+    "targetStateVar": null,
+    "tickCount": 3,
+    "elapsedMs": {
+     "total": 0.012250999978277832,
+     "binding": 0.004895000020042062,
+     "perturb": 0,
+     "tick": 0,
+     "diff": 0
+    },
+    "agentInvolved": false
+   }
+  }
+ ],
+ "w2After": {
+  "curTick": 6,
+  "status": "RUNNING",
+  "perts": [
+   [
+    "sims_demo_seed_world_p0",
+    "obj_material_elyte",
+    "shortageRisk",
+    1,
+    null,
+    212.42020000000002,
+    "delta"
+   ],
+   [
+    "simpert_ejfqcw2jqfanfkfh",
+    "obj_equipment_LINE-WS-changzhou-pack-assembly-E2",
+    "equipmentFailure",
+    3,
+    null,
+    2,
+    "delta"
+   ]
+  ]
+ },
+ "e2g_w1": true,
+ "e2g_w2": true
+}
+E2G w1 equal=true w2 equal=true

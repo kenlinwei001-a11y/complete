@@ -1,0 +1,310 @@
+<title>本体三屏重设计</title>
+<style>
+:root{
+  /* ⚠ 全部取自系统实测色值，未引入任何新色 */
+  --bg:#1c2942; --bg2:#223251; --bg3:#2c3d5e; --line:#33456b; --line2:#283a5c;
+  --txt:#e9eef5; --dim:#bbc5ce; --dim2:#8595ab;
+  --acc:#4c90f0; --acc2:#3b5bdb; --acc3:#115dc9;
+  --amber:#e8b54a; --amber2:#d89b28; --orange:#e8590c; --red:#e0626c; --green:#62be77; --cyan:#43b7d7;
+}
+*{box-sizing:border-box}
+body{background:#141d2e;color:var(--txt);font:13px/1.55 -apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;margin:0;padding:16px}
+.lbl{width:1620px;margin:0 auto 6px;color:var(--dim2);font-size:12px;letter-spacing:.05em}
+.scr{width:1620px;margin:0 auto 40px;background:var(--bg);border:1px solid var(--line);border-radius:10px;overflow:hidden;display:grid;grid-template-columns:210px 1fr}
+
+/* 左导航 */
+.nav{background:#162034;border-right:1px solid var(--line);padding:13px 0}
+.brand{display:flex;gap:9px;align-items:center;padding:0 14px 14px}
+.logo{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--acc),var(--acc3));flex:none}
+.brand b{font-size:12px;display:block;font-weight:600}.brand span{font-size:9px;color:var(--dim2)}
+.ng{color:var(--dim2);font-size:9.5px;letter-spacing:.12em;padding:11px 14px 5px}
+.ni{display:flex;gap:8px;align-items:center;padding:6px 14px;color:var(--dim);font-size:11.5px}
+.ni i{width:12px;text-align:center;font-style:normal;opacity:.6;font-size:10px}
+.ni.on{color:#fff;background:linear-gradient(90deg,rgba(76,144,240,.20),transparent);box-shadow:inset 2px 0 0 var(--acc)}
+.ni.sub{padding-left:30px;font-size:11px}
+
+/* 主区 */
+.main{padding:15px 20px;min-width:0}
+.hd{display:flex;align-items:flex-start;gap:11px}
+.hd h1{font-size:18px;margin:0;font-weight:600}
+.bg1{font-size:10px;padding:2.5px 9px;border-radius:11px;background:rgba(76,144,240,.16);color:var(--acc);border:1px solid rgba(76,144,240,.3);margin-top:3px}
+.bg1.a{background:rgba(232,181,74,.14);color:var(--amber);border-color:rgba(232,181,74,.3)}
+.sp{flex:1}
+.btn{font-size:11.5px;padding:5.5px 11px;border:1px solid var(--line);border-radius:6px;color:var(--dim);background:var(--bg2)}
+.btn.p{background:var(--acc2);color:#fff;border-color:var(--acc2);font-weight:600}
+.sub{color:var(--dim2);font-size:11px;margin:4px 0 12px}
+
+/* 概览条：每张一个真数 + 一句口径 —— 口径是本仓最值钱的东西，不许删 */
+.ov{display:grid;gap:9px;margin-bottom:12px}
+.ov .c{background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.ov .k{color:var(--dim2);font-size:10.5px;display:flex;align-items:center;gap:5px}
+.ov .k .i{width:12px;height:12px;border-radius:50%;border:1px solid var(--dim2);font-size:8px;display:inline-grid;place-items:center;color:var(--dim2)}
+.ov .v{font-size:22px;font-weight:600;margin:3px 0 2px;letter-spacing:-.01em}
+.ov .v small{font-size:11px;font-weight:400;color:var(--dim);margin-left:3px}
+.ov .d{font-size:9.5px;color:var(--dim2);line-height:1.45;border-top:1px dashed var(--line2);padding-top:5px;margin-top:5px}
+.ov .c.r .v{color:var(--red)} .ov .c.g .v{color:var(--green)} .ov .c.a .v{color:var(--amber)}
+
+.grid{display:grid;gap:11px;margin-bottom:11px}
+.p{background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:11px 13px;min-width:0}
+.p>h3{margin:0 0 4px;font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:7px}
+.p>h3 em{font-style:normal;font-size:10px;color:var(--dim2);font-weight:400}
+.cap{font-size:9.5px;color:var(--dim2);margin:0 0 9px;line-height:1.5}
+.more{color:var(--acc);font-size:10.5px;text-align:right;margin-top:8px}
+.new{margin-top:9px;padding-top:8px;border-top:1px dashed var(--line2);font-size:9.5px;color:var(--green)}
+
+table{width:100%;border-collapse:collapse;font-size:11px}
+th{color:var(--dim2);font-weight:500;text-align:left;padding:4px 6px;border-bottom:1px solid var(--line);font-size:10px}
+td{padding:4.5px 6px;border-bottom:1px solid var(--line2)}
+td.n{text-align:right;font-variant-numeric:tabular-nums}
+tr:last-child td{border-bottom:0}
+code{font:11px/1 ui-monospace,Menlo,monospace;color:var(--cyan)}
+.pill{font-size:9.5px;padding:1.5px 6px;border-radius:9px;border:1px solid}
+.pill.g{color:var(--green);border-color:rgba(98,190,119,.35);background:rgba(98,190,119,.1)}
+.pill.d{color:var(--dim2);border-color:var(--line)}
+.pill.r{color:var(--red);border-color:rgba(224,98,108,.35);background:rgba(224,98,108,.1)}
+.pill.a{color:var(--amber);border-color:rgba(232,181,74,.35);background:rgba(232,181,74,.1)}
+.act{display:flex;gap:4px}
+.act s{text-decoration:none;font-size:9.5px;padding:1.5px 7px;border:1px solid var(--line);border-radius:5px;color:var(--dim)}
+.act s.p{border-color:var(--acc2);color:var(--acc)}
+.src{display:flex;gap:7px;align-items:center;font-size:10px;color:var(--dim2);padding:3px 0}
+.bar{height:6px;border-radius:3px;background:var(--line2);overflow:hidden;flex:1}
+.bar i{display:block;height:100%;background:var(--acc)}
+.foot{color:var(--dim2);font-size:9.5px;padding-top:9px;border-top:1px solid var(--line2);display:flex;gap:16px;flex-wrap:wrap}
+.note{font-size:10px;border-radius:6px;padding:6px 9px;margin-bottom:10px}
+.note.g{color:var(--green);background:rgba(98,190,119,.08);border:1px solid rgba(98,190,119,.2)}
+.note.a{color:var(--amber);background:rgba(232,181,74,.08);border:1px solid rgba(232,181,74,.2)}
+.dag{display:flex;align-items:center;gap:6px;font-size:10px;flex-wrap:wrap;padding:6px 0}
+.node{padding:3px 8px;border-radius:5px;border:1px solid var(--line);background:var(--bg3);color:var(--txt)}
+.node.hit{border-color:var(--amber);color:var(--amber);background:rgba(232,181,74,.1)}
+.arrow{color:var(--dim2)}
+</style>
+
+<!-- ══════════ 屏 1 ══════════ -->
+<div class="lbl">重设计 1 / 3 —— 本体建模工作台（对照：现状截图 onto-before-modeling.png）</div>
+<div class="scr">
+  <div class="nav">
+    <div class="brand"><div class="logo"></div><div><b>全域数字化智能决策支撑系统</b><span>DECISION PLATFORM</span></div></div>
+    <div class="ng">数据接入</div>
+    <div class="ni"><i>⚯</i>连接器与上传</div><div class="ni"><i>▤</i>规则文档审核</div><div class="ni"><i>◱</i>合成数据</div><div class="ni"><i>((·))</i>外部信号</div><div class="ni"><i>⛉</i>隔离区</div>
+    <div class="ng">建模与图谱 <span style="color:var(--acc);font-size:9px">· 按流程重排</span></div>
+    <div class="ni on sub"><i>①</i>本体建模</div>
+    <div class="ni sub"><i>②</i>本体关系</div>
+    <div class="ni sub"><i>③</i>规则库</div>
+    <div class="ni sub"><i>④</i>本体切片</div>
+    <div class="ni sub"><i>⑤</i>边界册治理</div>
+    <div class="ni sub" style="opacity:.75"><i>·</i>对象/类型浏览</div>
+    <div class="ni sub" style="opacity:.75"><i>·</i>域管理</div>
+    <div class="ni sub" style="opacity:.75"><i>·</i>对象接口</div>
+    <div class="ni sub" style="opacity:.75"><i>·</i>切片库 · 实体合并 · 原型 intake</div>
+    <div class="ni"><i>◈</i>本体图谱</div>
+    <div class="ng">图谱体系（8 视角）</div>
+    <div class="ni" style="opacity:.7"><i>▸</i>展开</div>
+  </div>
+
+  <div class="main">
+    <div class="hd"><h1>本体建模工作台</h1><span class="bg1">100 个对象类型已发布</span><span class="sp"></span>
+      <span class="btn p">+ 新建对象类型</span><span class="btn">AI 建议草案</span><span class="btn">导出</span></div>
+    <div class="sub">数据源 → 对象类型 → 关系 → 规则 → 切片 → 发布。本屏是第 ① 步：把数据源里的表登记成对象类型。</div>
+
+    <div class="note g">✨ <b>新增</b>：「+ 新建对象类型」入口 —— 后端 `POST object-types` <b>本来就是 upsert</b>（`unit`/`displayName` 改得动），今天只是屏上没有入口。<b>不是新能力，是补一个按钮。</b></div>
+
+    <div class="ov" style="grid-template-columns:repeat(5,1fr)">
+      <div class="c"><div class="k">已发布对象类型 <span class="i">i</span></div><div class="v">100</div>
+        <div class="d">经建模链发布 · 可溯数据源。口径：已发布态，草稿与隔离区不计入</div></div>
+      <div class="c"><div class="k">接入数据源 <span class="i">i</span></div><div class="v">3<small>类 / 14 数据集</small></div>
+        <div class="d">ERP 主数据 2 · IoT 时序通道 5 · MES 制造执行 7。最近同步 3 分钟前</div></div>
+      <div class="c"><div class="k">带派生属性的类型 <span class="i">i</span></div><div class="v">9</div>
+        <div class="d">派生 = 由公式从其它属性算出，非直接采集。其余 91 个类型派生数为 0</div></div>
+      <div class="c r"><div class="k">无来源数据集的类型 <span class="i">i</span></div><div class="v">1</div>
+        <div class="d"><b>已采纳处置方案 AdoptedMitigation</b> —— 由系统内部行动产生，非外部采集。<b>不是缺陷，但屏上要标出来</b></div></div>
+      <div class="c"><div class="k">最大类型（属性数） <span class="i">i</span></div><div class="v">19<small>个属性</small></div>
+        <div class="d">生产基地 Base，且是唯一带 3 个派生属性的类型</div></div>
+    </div>
+
+    <div class="grid" style="grid-template-columns:330px 1fr">
+      <div class="p"><h3>数据源 → 对象类型<em>点任一数据集看它产出哪些类型</em></h3>
+        <p class="cap">口径：行数为最近一次同步的落库条数；「N 个对象类型」= 由该数据集建模出的类型数。</p>
+        <table>
+          <tr><td colspan="3" style="color:var(--acc);font-size:10px;padding-top:6px">ERP 主数据 · <code>mock_erp</code> · 2 个数据集</td></tr>
+          <tr><td><code>erp_sales_orders</code></td><td class="n">500 行</td><td><span class="pill d">1 个类型</span></td></tr>
+          <tr><td><code>erp_segments</code></td><td class="n">3 行</td><td><span class="pill d">1 个类型</span></td></tr>
+          <tr><td colspan="3" style="color:var(--acc);font-size:10px;padding-top:8px">IoT 时序通道 · <code>rest_api</code> · 5 个数据集</td></tr>
+          <tr><td><code>iot_oee_daily</code></td><td class="n">5,460 行</td><td><span class="pill d">1 个类型</span></td></tr>
+          <tr><td><code>iot_equipment</code></td><td class="n">780 行</td><td><span class="pill d">1 个类型</span></td></tr>
+          <tr><td><code>iot_downtime</code></td><td class="n">166 行</td><td><span class="pill d">1 个类型</span></td></tr>
+          <tr><td><code>iot_alarms</code></td><td class="n">111 行</td><td><span class="pill d">1 个类型</span></td></tr>
+          <tr><td><code>iot_source_health</code></td><td class="n">9 行</td><td><span class="pill d">1 个类型</span></td></tr>
+          <tr><td colspan="3" style="color:var(--acc);font-size:10px;padding-top:8px">MES 制造执行 · <code>rest_api</code> · 7 个数据集</td></tr>
+          <tr><td><code>mes_processes</code></td><td class="n">650 行</td><td><span class="pill d">1 个类型</span></td></tr>
+          <tr><td><code>mes_wip_lots</code></td><td class="n">260 行</td><td><span class="pill d">1 个类型</span></td></tr>
+          <tr><td><code>mes_work_orders</code></td><td class="n">260 行</td><td><span class="pill d">1 个类型</span></td></tr>
+          <tr><td><code>mes_lines</code></td><td class="n">130 行</td><td><span class="pill a">2 个类型</span></td></tr>
+          <tr><td><code>mes_base_master</code></td><td class="n">13 行</td><td><span class="pill d">1 个类型</span></td></tr>
+          <tr><td><code>mes_maint_plans</code></td><td class="n">13 行</td><td><span class="pill d">1 个类型</span></td></tr>
+        </table>
+        <div class="more">查看全部 14 个数据集 →</div>
+      </div>
+
+      <div class="p"><h3>已发布本体<em>100 个对象类型 · 经建模链发布 · 可溯数据源</em></h3>
+        <p class="cap">按域分组；「派生数」为 0 表示该类型全部属性直接来自数据源，无公式推导。</p>
+        <table>
+          <tr><th>类型</th><th>域</th><th class="n">属性数</th><th class="n">派生数</th><th>来源数据集</th><th></th></tr>
+          <tr><td>生产基地 <code>Base</code></td><td><span class="pill d">factory</span></td><td class="n">19</td><td class="n" style="color:var(--green)">3</td><td><code>mes_base_master</code></td><td class="act"><s>改</s><s>查引用</s></td></tr>
+          <tr><td>需求细分 <code>DemandSegment</code></td><td><span class="pill d">forecast</span></td><td class="n">11</td><td class="n" style="color:var(--green)">2</td><td><code>DemandSegment</code></td><td class="act"><s>改</s><s>查引用</s></td></tr>
+          <tr><td>年度情景 <code>AnnualScenario</code></td><td><span class="pill d">plan</span></td><td class="n">14</td><td class="n">0</td><td><code>AnnualScenario</code></td><td class="act"><s>改</s><s>查引用</s></td></tr>
+          <tr><td>因果因素 <code>CausalFactor</code></td><td><span class="pill d">decision</span></td><td class="n">14</td><td class="n">0</td><td><code>CausalFactor</code></td><td class="act"><s>改</s><s>查引用</s></td></tr>
+          <tr><td>BOM明细 <code>BOMDetail</code></td><td><span class="pill d">product</span></td><td class="n">12</td><td class="n">0</td><td><code>BOMDetail</code></td><td class="act"><s>改</s><s>查引用</s></td></tr>
+          <tr><td>工程变更 <code>EngineeringChange</code></td><td><span class="pill d">product</span></td><td class="n">12</td><td class="n">0</td><td><code>EngineeringChange</code></td><td class="act"><s>改</s><s>查引用</s></td></tr>
+          <tr><td>节拍 <code>Cadence</code></td><td><span class="pill d">capacity</span></td><td class="n">11</td><td class="n">0</td><td><code>Cadence</code></td><td class="act"><s>改</s><s>查引用</s></td></tr>
+          <tr style="background:rgba(224,98,108,.06)"><td>已采纳处置方案 <code>AdoptedMitigation</code></td><td><span class="pill d">decision</span></td><td class="n">10</td><td class="n">0</td><td style="color:var(--red)">无来源</td><td class="act"><s>改</s><s>查引用</s></td></tr>
+          <tr><td>设备 <code>Equipment</code></td><td><span class="pill d">equip</span></td><td class="n">18</td><td class="n">0</td><td><code>iot_equipment</code></td><td class="act"><s>改</s><s>查引用</s></td></tr>
+          <tr><td>清关记录 <code>CustomsClearance</code></td><td><span class="pill d">supply</span></td><td class="n">9</td><td class="n">0</td><td><code>CustomsClearance</code></td><td class="act"><s>改</s><s>查引用</s></td></tr>
+          <tr><td>缺陷记录 <code>DefectRecord</code></td><td><span class="pill d">quality</span></td><td class="n">9</td><td class="n">0</td><td><code>qms_defects</code></td><td class="act"><s>改</s><s>查引用</s></td></tr>
+          <tr><td>客户 <code>Customer</code></td><td><span class="pill d">commercial</span></td><td class="n">8</td><td class="n">0</td><td><code>Customer</code></td><td class="act"><s>改</s><s>查引用</s></td></tr>
+        </table>
+        <div class="more">查看全部 100 个类型 →　｜　下一步：② 本体关系 →</div>
+      </div>
+    </div>
+    <div class="foot"><span>100 个对象类型</span><span>14 个数据集</span><span>最近同步 3 分钟前</span><span>数据源：合成（未接实测）</span></div>
+  </div>
+</div>
+
+<!-- ══════════ 屏 2 ══════════ -->
+<div class="lbl">重设计 2 / 3 —— 本体关系（对照：现状截图 onto-before-relations.png）</div>
+<div class="scr">
+  <div class="nav">
+    <div class="brand"><div class="logo"></div><div><b>全域数字化智能决策支撑系统</b><span>DECISION PLATFORM</span></div></div>
+    <div class="ng">数据接入</div>
+    <div class="ni"><i>⚯</i>连接器与上传</div><div class="ni"><i>▤</i>规则文档审核</div><div class="ni"><i>◱</i>合成数据</div><div class="ni"><i>((·))</i>外部信号</div><div class="ni"><i>⛉</i>隔离区</div>
+    <div class="ng">建模与图谱 <span style="color:var(--acc);font-size:9px">· 按流程重排</span></div>
+    <div class="ni sub"><i>①</i>本体建模</div>
+    <div class="ni on sub"><i>②</i>本体关系</div>
+    <div class="ni sub"><i>③</i>规则库</div>
+    <div class="ni sub"><i>④</i>本体切片</div>
+    <div class="ni sub"><i>⑤</i>边界册治理</div>
+    <div class="ni sub" style="opacity:.75"><i>·</i>对象/类型浏览 · 域管理 · 对象接口</div>
+    <div class="ni sub" style="opacity:.75"><i>·</i>切片库 · 实体合并 · 原型 intake</div>
+    <div class="ni"><i>◈</i>本体图谱</div>
+  </div>
+
+  <div class="main">
+    <div class="hd"><h1>本体关系</h1><span class="bg1">两种边分开管</span><span class="sp"></span>
+      <span class="btn p">+ 建结构边</span><span class="btn">建因果边</span><span class="btn">导出</span></div>
+    <div class="sub">第 ② 步：把对象类型之间接上线。<b>结构边</b>描述「谁属于谁」，<b>因果边</b>描述「谁会影响谁」—— 只有后者进推演。</div>
+
+    <div class="ov" style="grid-template-columns:repeat(4,1fr)">
+      <div class="c"><div class="k">结构边 <span class="i">i</span></div><div class="v">127</div>
+        <div class="d">描述归属与引用（如 产线 → 车间）。<b>不进推演</b>，只用于下钻与切片</div></div>
+      <div class="c"><div class="k">状态变量 <span class="i">i</span></div><div class="v">41</div>
+        <div class="d">可被扰动打进去的量（如 供应商交期）。因果边的起点与终点都必须是状态变量</div></div>
+      <div class="c g"><div class="k">生效因果边 <span class="i">i</span></div><div class="v">47</div>
+        <div class="d"><b>生效 = 已启用；停用的边在册但不进推演。</b>推演沙盘当前用的就是这 47 条</div></div>
+      <div class="c a"><div class="k">已停用 / 已下线 <span class="i">i</span></div><div class="v">0<small> / 0</small></div>
+        <div class="d"><b>停用可逆</b>（改回启用即恢复）；<b>下线单向</b>，但同 key 重建即覆盖</div></div>
+    </div>
+
+    <div class="grid" style="grid-template-columns:1fr 330px">
+      <div class="p"><h3>结构边 · 按域分组<em>127 条</em></h3>
+        <p class="cap">「查引用」= 这条边被哪些切片 / 求解器 / 规则引用；改动前先看波及面。</p>
+        <table>
+          <tr><th>关系</th><th>来源 → 去向</th><th class="n">基数</th><th>状态</th><th>操作</th></tr>
+          <tr><td colspan="5" style="color:var(--acc);font-size:10px;padding-top:7px">域：产能（3）</td></tr>
+          <tr><td><code>transfer_from_base</code></td><td>InterBaseTransfer → Base</td><td class="n">N:1</td><td><span class="pill g">启用</span></td><td class="act"><s>改</s><s class="p">查引用</s><s>停用</s><s>下线</s></td></tr>
+          <tr><td><code>transfer_to_base</code></td><td>InterBaseTransfer → Base</td><td class="n">N:1</td><td><span class="pill g">启用</span></td><td class="act"><s>改</s><s class="p">查引用</s><s>停用</s><s>下线</s></td></tr>
+          <tr><td><code>transfer_of_model</code></td><td>InterBaseTransfer → Model</td><td class="n">N:1</td><td><span class="pill g">启用</span></td><td class="act"><s>改</s><s class="p">查引用</s><s>停用</s><s>下线</s></td></tr>
+          <tr><td colspan="5" style="color:var(--acc);font-size:10px;padding-top:9px">域：商务（7）</td></tr>
+          <tr><td><code>customer_places_order</code></td><td>Customer → Order</td><td class="n">1:N</td><td><span class="pill g">启用</span></td><td class="act"><s>改</s><s class="p">查引用</s><s>停用</s><s>下线</s></td></tr>
+          <tr><td><code>customer_has_invoice</code></td><td>Customer → ARInvoice</td><td class="n">N:N</td><td><span class="pill g">启用</span></td><td class="act"><s>改</s><s class="p">查引用</s><s>停用</s><s>下线</s></td></tr>
+          <tr><td><code>customer_has_location</code></td><td>Customer → CustomerLocation</td><td class="n">1:N</td><td><span class="pill g">启用</span></td><td class="act"><s>改</s><s class="p">查引用</s><s>停用</s><s>下线</s></td></tr>
+          <tr><td><code>promise_for_order</code></td><td>OrderPromise → Order</td><td class="n">N:1</td><td><span class="pill g">启用</span></td><td class="act"><s>改</s><s class="p">查引用</s><s>停用</s><s>下线</s></td></tr>
+          <tr><td colspan="5" style="color:var(--acc);font-size:10px;padding-top:9px">域：决策应用（3）</td></tr>
+          <tr><td><code>caused_by</code></td><td>CausalFactor → CausalFactor</td><td class="n">N:N</td><td><span class="pill g">启用</span></td><td class="act"><s>改</s><s class="p">查引用</s><s>停用</s><s>下线</s></td></tr>
+          <tr><td><code>metric_affects_ksf</code></td><td>Metric → KSF</td><td class="n">N:N</td><td><span class="pill g">启用</span></td><td class="act"><s>改</s><s class="p">查引用</s><s>停用</s><s>下线</s></td></tr>
+        </table>
+        <div class="more">查看全部 127 条 →　｜　切到「因果边 47 条」→</div>
+      </div>
+
+      <div class="p" style="align-self:start"><h3>波及面<em>改动前先看</em></h3>
+        <div class="note g" style="margin-bottom:9px">✨ <b>新增</b>：这块今天挂在弹窗里，只有本页有；<b>边界册治理页今天 0 个控件</b>。现在把它做成常驻面板，并搬到边界册页。<br><b>后端 <code>GET /boundary/impact</code> 数据本来就有，不是新能力。</b></div>
+        <p class="cap">选中 <code>customer_places_order</code> 后：</p>
+        <div class="dag">
+          <span class="node hit">customer_places_order</span><span class="arrow">→</span>
+        </div>
+        <table>
+          <tr><td>被切片引用</td><td class="n"><b>6</b> 条</td><td class="act"><s>看</s></td></tr>
+          <tr><td>被求解器读取</td><td class="n"><b>4</b> 个</td><td class="act"><s>看</s></td></tr>
+          <tr><td>被规则引用</td><td class="n"><b>2</b> 条</td><td class="act"><s>看</s></td></tr>
+          <tr><td>被视图消费</td><td class="n"><b>3</b> 张</td><td class="act"><s>看</s></td></tr>
+        </table>
+        <div class="note a" style="margin-top:9px">⚠ 停用这条边会让 <b>订单台账</b> 的客户下钻失效。<b>停用可逆</b> —— 读数变化当场可见，确认无碍后再下线。</div>
+        <div class="more">在边界册里查看完整波及面 →</div>
+      </div>
+    </div>
+    <div class="foot"><span>结构边 127 · 状态变量 41 · 生效因果边 47</span><span>生效 = 已启用；停用的边在册但不进推演</span><span>同 key 重写为覆盖，不并存不双算</span></div>
+  </div>
+</div>
+
+<!-- ══════════ 屏 3 ══════════ -->
+<div class="lbl">重设计 3 / 3 —— 边界册治理（现状：控件数 0，这一屏今天点不动）</div>
+<div class="scr">
+  <div class="nav">
+    <div class="brand"><div class="logo"></div><div><b>全域数字化智能决策支撑系统</b><span>DECISION PLATFORM</span></div></div>
+    <div class="ng">数据接入</div>
+    <div class="ni"><i>⚯</i>连接器与上传</div><div class="ni"><i>▤</i>规则文档审核</div><div class="ni"><i>◱</i>合成数据</div><div class="ni"><i>((·))</i>外部信号</div><div class="ni"><i>⛉</i>隔离区</div>
+    <div class="ng">建模与图谱 <span style="color:var(--acc);font-size:9px">· 按流程重排</span></div>
+    <div class="ni sub"><i>①</i>本体建模</div><div class="ni sub"><i>②</i>本体关系</div><div class="ni sub"><i>③</i>规则库</div><div class="ni sub"><i>④</i>本体切片</div>
+    <div class="ni on sub"><i>⑤</i>边界册治理</div>
+    <div class="ni sub" style="opacity:.75"><i>·</i>对象/类型浏览 · 域管理 · 对象接口</div>
+    <div class="ni sub" style="opacity:.75"><i>·</i>切片库 · 实体合并 · 原型 intake</div>
+    <div class="ni"><i>◈</i>本体图谱</div>
+  </div>
+
+  <div class="main">
+    <div class="hd"><h1>边界册治理</h1><span class="bg1 a">改动前的最后一道门</span><span class="sp"></span>
+      <span class="btn">按域筛选 ▾</span><span class="btn p">发起变更评估</span></div>
+    <div class="sub">第 ⑤ 步：任何本体改动落地前，在这里看清它会波及谁。<b>这一屏今天一个控件都没有。</b></div>
+
+    <div class="note g">✨ <b>本屏的全部内容都来自今天已有的接口</b> <code>GET /a/v1/boundary/impact</code> —— 它返回的富数据今天只被本体关系页的一个弹窗用掉一小部分。<b>不是新能力，是把已有数据接到该看它的那一屏上。</b></div>
+
+    <div class="ov" style="grid-template-columns:repeat(4,1fr)">
+      <div class="c"><div class="k">在册对象类型 <span class="i">i</span></div><div class="v">100</div>
+        <div class="d">口径：已发布态。草稿与隔离区不计入</div></div>
+      <div class="c"><div class="k">在册边 <span class="i">i</span></div><div class="v">174</div>
+        <div class="d">结构边 127 + 因果边 47。停用的边计入在册但不进推演</div></div>
+      <div class="c"><div class="k">已注册切片 <span class="i">i</span></div><div class="v">107</div>
+        <div class="d"><b>多跳业务切片 10 条 · 单类型覆盖切片 97 条</b>（后者是每个类型一条的自动占位，非缺陷）</div></div>
+      <div class="c"><div class="k">已发布规则 <span class="i">i</span></div><div class="v">30</div>
+        <div class="d">口径：`status=PUBLISHED`。草稿态规则不参与评估，也不在此计数</div></div>
+    </div>
+
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <div class="p"><h3>变更影响预览<em>改之前先看这里</em></h3>
+        <p class="cap">选一个要改的对象或边，看它往下波及到哪里。逐层展开，终点是具体的切片 / 求解器 / 视图。</p>
+        <div class="dag">
+          <span class="node hit">Customer.creditLimit</span><span class="arrow">→</span><span class="node">3 条边</span><span class="arrow">→</span><span class="node">6 条切片</span><span class="arrow">→</span><span class="node">4 个求解器</span><span class="arrow">→</span><span class="node">3 张屏</span>
+        </div>
+        <table>
+          <tr><th>层</th><th>命中</th><th>其中会变红的</th><th></th></tr>
+          <tr><td>关系边</td><td class="n">3</td><td class="n" style="color:var(--dim2)">0</td><td class="act"><s>展开</s></td></tr>
+          <tr><td>切片</td><td class="n">6</td><td class="n" style="color:var(--amber)">1</td><td class="act"><s>展开</s></td></tr>
+          <tr><td>求解器</td><td class="n">4</td><td class="n" style="color:var(--dim2)">0</td><td class="act"><s>展开</s></td></tr>
+          <tr><td>视图</td><td class="n">3</td><td class="n" style="color:var(--dim2)">0</td><td class="act"><s>展开</s></td></tr>
+          <tr><td>已发布规则</td><td class="n">2</td><td class="n" style="color:var(--red)">1</td><td class="act"><s>展开</s></td></tr>
+        </table>
+        <div class="note a" style="margin-top:9px">⚠ 规则 <code>C27</code> 引用了该属性；改动后它的阈值表达式需重新校验。<b>系统不会替你改它 —— 这是要你决定的事。</b></div>
+        <div class="more">发起变更评估 →</div>
+      </div>
+
+      <div class="p"><h3>孤儿与悬空<em>在册但没人用的</em></h3>
+        <p class="cap">口径：「零引用」= 不被任何切片 / 求解器 / 视图 / 规则引用。<b>零引用不等于该删</b> —— 可能是还没接上。</p>
+        <table>
+          <tr><th>对象</th><th>类型</th><th>零引用原因</th><th></th></tr>
+          <tr><td><code>AdoptedMitigation</code></td><td><span class="pill d">类型</span></td><td style="color:var(--dim2)">无来源数据集（系统内部产生）</td><td class="act"><s>看</s></td></tr>
+          <tr><td colspan="4" style="color:var(--dim2);font-size:10px;padding-top:8px">—— 以下为示意，真实清单由 <code>/boundary/impact</code> 返回 ——</td></tr>
+        </table>
+        <div class="note a" style="margin-top:9px">⚠ <b>这一块今天没有数据接口能直接回答「谁零引用」</b>。要它，得先把 <code>/boundary/impact</code> 反向索引一遍。<b>本屏如实缺着，不画假清单。</b></div>
+      </div>
+    </div>
+    <div class="foot"><span>100 类型 · 174 边 · 107 切片 · 30 条已发布规则</span><span>本屏数据源：/a/v1/boundary/impact</span><span>本次未调用 agent</span></div>
+  </div>
+</div>

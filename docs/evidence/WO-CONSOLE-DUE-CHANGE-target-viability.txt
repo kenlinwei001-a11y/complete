@@ -1,0 +1,45 @@
+# 候选靶格可行性（会话 sims_7tme9m36j7t1y8a8）
+# 格                              出边   入边  实测值域(非零个数/取值样例)  饱和?
+  Model.demandLoad                4    5  n=   6 非零=   0 [0]  饱和格=0
+  Model.forecastBias              1    0  n=   6 非零=   6 [1,88,50,8]  饱和格=0
+  Model.costPressure              1    2  n=   6 非零=   6 [2.151936995599,1.394337590945,2.14582982453,1.391969694832]  饱和格=0
+  Model.supplyRisk                1    2  n=   6 非零=   6 [6.307467374111,6.85423426514,6.301614647257,6.851964700365]  饱和格=0
+  Model.backlogHorizonDays        0    0  n=   0 非零=   0 []  饱和格=0
+  Order.costPressure              1    1  n= 150 非零= 150 [1.657903017134,1.657894655211,1.6578865322,1.657885098727]  饱和格=0
+  Order.shortageRisk              1    1  n= 150 非零= 150 [4.773259089261,4.773253825658,4.773254549931,4.78547870232]  饱和格=0
+
+# 全表：出边 > 0 的 (类型.状态量) —— 只有这些才可能把扰动传下去
+  Material.shortageRisk                    出边=  5  世界实测格 n=   0 非零=0
+  Base.loadIndex                           出边=  4  世界实测格 n=   0 非零=0
+  Customer.receivablePressure              出边=  4  世界实测格 n=   0 非零=0
+  Model.demandLoad                         出边=  4  世界实测格 n=   6 非零=0
+  WorkOrder.releasePressure                出边=  4  世界实测格 n=   0 非零=0
+  PurchaseOrder.expeditePressure           出边=  3  世界实测格 n=   0 非零=0
+  Equipment.loadPressure                   出边=  2  世界实测格 n=   0 非零=0
+  Line.utilPressure                        出边=  2  世界实测格 n=   0 非零=0
+  Order.orderChurn                         出边=  2  世界实测格 n= 150 非零=149
+  Order.demandPressure                     出边=  2  世界实测格 n= 150 非零=0
+  MaterialAlternative.switchPressure       出边=  1  世界实测格 n=   0 非零=0
+  MaterialBalance.gapPressure              出边=  1  世界实测格 n=   0 非零=0
+  MaterialBatch.procurementDelay           出边=  1  世界实测格 n=   0 非零=0
+  DefectRecord.defectPressure              出边=  1  世界实测格 n=   0 非零=0
+  Equipment.equipmentFailure               出边=  1  世界实测格 n=   0 非零=0
+  FinishedGoodsInventory.coverDays         出边=  1  世界实测格 n=   0 非零=0
+  FinishedGoodsInventory.drawdownPressure  出边=  1  世界实测格 n=   0 非零=0
+  Model.forecastBias                       出边=  1  世界实测格 n=   6 非零=6
+  IncomingInspection.queueDays             出边=  1  世界实测格 n=   0 非零=0
+  Line.blockedPressure                     出边=  1  世界实测格 n=   0 非零=0
+  Material.priceShock                      出边=  1  世界实测格 n=   0 非零=0
+  Model.costPressure                       出边=  1  世界实测格 n=   6 非零=6
+  Model.supplyRisk                         出边=  1  世界实测格 n=   6 非零=6
+  Order.costPressure                       出边=  1  世界实测格 n= 150 非零=150
+  Order.leadDays                           出边=  1  世界实测格 n= 150 非零=150
+  Order.unitPrice                          出边=  1  世界实测格 n= 150 非零=150
+  Order.qty                                出边=  1  世界实测格 n= 150 非零=150
+  Order.shortageRisk                       出边=  1  世界实测格 n= 150 非零=150
+  PurchaseOrder.procurementDelay           出边=  1  世界实测格 n=   0 非零=0
+  Process.queuePressure                    出边=  1  世界实测格 n=   0 非零=0
+  （共 33 个有出边的格）
+
+# Order.leadDays 的出边
+  demo_order_leaddays_to_model_horizon: Order.leadDays → Model.demandLoad combine=sum

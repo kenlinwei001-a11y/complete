@@ -1,0 +1,868 @@
+HEAD=6e47c0efb START=09-27 13:50:21
+cmd: solo-only A/B (5 文件逐个 maxWorkers=1)
+== solo test/references-family.seam.test.tsx ==
+
+ RUN  v3.2.6 /Users/apple/deploy/wo-edge-wire/apps/frontend-shell
+
+stderr | test/references-family.seam.test.tsx > WO-REFERENCES-FAMILY ① 逐挂载点：真导航 → 真发请求 → 真上屏 > ①-A 技能库：选中技能 → `GET /b/v1/skills/:id/references` → 挂了它的 Agent 真上屏
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+
+ ✓ test/references-family.seam.test.tsx (12 tests) 10853ms
+   ✓ WO-REFERENCES-FAMILY ① 逐挂载点：真导航 → 真发请求 → 真上屏 > ①-A 技能库：选中技能 → `GET /b/v1/skills/:id/references` → 挂了它的 Agent 真上屏  1767ms
+   ✓ WO-REFERENCES-FAMILY ① 逐挂载点：真导航 → 真发请求 → 真上屏 > ①-B 流程库：`GET /b/v1/workflows/:id/references` —— 走默认桩（谁把它当工具挂着，与 db 对账）  886ms
+   ✓ WO-REFERENCES-FAMILY ① 逐挂载点：真导航 → 真发请求 → 真上屏 > ①-C MCP：`GET /b/v1/mcp-configs/:id/references`（新建态无 id ⇒ 整块不渲染，不画空面板）  750ms
+   ✓ WO-REFERENCES-FAMILY ① 逐挂载点：真导航 → 真发请求 → 真上屏 > ①-D Agent 库：`GET /b/v1/agents/:id/references` —— 退役前看得到会打断谁（场景入口 + 场景）  1652ms
+   ✓ WO-REFERENCES-FAMILY ① 逐挂载点：真导航 → 真发请求 → 真上屏 > ①-E 切片：`GET /a/v1/ontology/slices/:key/references` —— A 侧 `{refs,total}` 形状归一后照样上屏  622ms
+   ✓ WO-REFERENCES-FAMILY ① 逐挂载点：真导航 → 真发请求 → 真上屏 > ①-F 外部信号：`GET /a/v1/external-signals/:key/references` —— 第三种形状（因果因子）+ pending 诚实位不许抹平  594ms
+   ✓ WO-REFERENCES-FAMILY ① 逐挂载点：真导航 → 真发请求 → 真上屏 > ①-G 规则：A/B 两条端点各打各的，**不许合成一个数**（两套事实源）  596ms
+   ✓ WO-REFERENCES-FAMILY ② 「同一份实现」的可证伪判据 > ②-A1 挂载点甲（技能库）逐字用共享文案  504ms
+   ✓ WO-REFERENCES-FAMILY ② 「同一份实现」的可证伪判据 > ②-A2 挂载点乙（MCP）逐字用**同一句**共享文案  443ms
+   ✓ WO-REFERENCES-FAMILY ② 「同一份实现」的可证伪判据 > ②-B 结构证据：面板只有一份实现，各页只 import 不自持客户端  1230ms
+   ✓ WO-REFERENCES-FAMILY ③ 诚实位：「查不出来」不许塌成「没人引用」 > ③-A 500 → 说明这次没查到，且**不渲染任何计数**  577ms
+   ✓ WO-REFERENCES-FAMILY ④ 不许为消红而接：scene-entry 故意留在基线 > ④-A 后端实现写死恒空 ⇒ 前端接上去也只是一块永远 0 的面板，故不接（判据在后端源码，不是我说的）  1225ms
+
+ Test Files  1 passed (1)
+      Tests  12 passed (12)
+   Start at  13:50:23
+   Duration  20.05s (transform 4.13s, setup 5.47s, collect 1.79s, tests 10.85s, environment 1.14s, prepare 235ms)
+
+SOLO_RC[test/references-family.seam.test.tsx]=0
+== solo test/sandbox-config-collapse.test.tsx ==
+
+ RUN  v3.2.6 /Users/apple/deploy/wo-edge-wire/apps/frontend-shell
+
+ ❯ test/sandbox-config-collapse.test.tsx (10 tests | 1 failed) 17586ms
+   ✓ §1 · 默认收起成一条：折的是**位置**，不是内容 > 默认态 = 横幅在、面板行内 `display:none`（且判据真的读得到东西）  489ms
+   ✓ §1 · 默认收起成一条：折的是**位置**，不是内容 > 折叠≠删除：收起态下上一张单的内容**一件不少地留在 DOM 里**（D4 守恒） 215ms
+   ✓ §1 · 默认收起成一条：折的是**位置**，不是内容 > 横幅**不套 `<details>`**（那条路实测折不掉版面门的账，见文件头） 160ms
+   ✓ §2 · 横幅上的三个数是**现算**的（写死的数在这一节必红） > 落地即与 fixture 对账：已施加 0 条 · 传导边 4 条 · 启用 4 条  318ms
+   × §2 · 横幅上的三个数是**现算**的（写死的数在这一节必红） > 🔴 造一条新扰动 ⇒ 「已施加」当场 0 → 1（**走生产那条路**：点施加按钮，不是改变量） 15280ms
+     → 施加了一条扰动而横幅上的计数没动 ⇒ 这个数不是现算的: expected '0' to be '1' // Object.is equality
+
+Ignored nodes: comments, script, style
+[36m<html>[39m
+  [36m<head />[39m
+  [36m<body>[39m
+    [36m<div>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"_viewStack_cc7813"[39m
+        [33mdata-testid[39m=[32m"sandbox-view"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"panel"[39m
+          [33mdata-mode[39m=[32m"now"[39m
+          [33mdata-testid[39m=[32m"sandbox-mode-switch"[39m
+          [33mstyle[39m=[32m"padding: 10px;"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33maria-label[39m=[32m"推演模式"[39m
+            [33mrole[39m=[32m"group"[39m
+            [33mstyle[39m=[32m"display: flex; gap: 6px; flex-wrap: wrap; align-items: center;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+            [36m>[39m
+              [36m<button[39m
+                [33maria-label[39m=[32m"现状：现在到底怎么样？（全链线路图 / 物理拓扑 / 阻滞点 / 节点检视）"[39m
+                [33maria-pressed[39m=[32m"true"[39m
+                [33mclass[39m=[32m"btn sm primary"[39m
+                [33mdata-testid[39m=[32m"sandbox-mode-now"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [0m现状[0m
+              [36m</button>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+              [36m>[39m
+                [0m→[0m
+              [36m</span>[39m
+              [36m<button[39m
+                [33maria-label[39m=[32m"归因：为什么会这样？（共享瓶颈 / 隐性集中度 / 毛利倒挂）"[39m
+                [33maria-pressed[39m=[32m"false"[39m
+                [33mclass[39m=[32m"btn sm"[39m
+                [33mdata-testid[39m=[32m"sandbox-mode-attribute"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [0m归因[0m
+              [36m</button>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+              [36m>[39m
+                [0m→[0m
+              [36m</span>[39m
+              [36m<button[39m
+                [33maria-label[39m=[32m"试一手：改一个假设会怎样？（通用假设推演）"[39m
+                [33maria-pressed[39m=[32m"false"[39m
+                [33mclass[39m=[32m"btn sm"[39m
+                [33mdata-testid[39m=[32m"sandbox-mode-tryone"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [0m试一手[0m
+              [36m</button>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+              [36m>[39m
+                [0m→[0m
+              [36m</span>[39m
+              [36m<button[39m
+                [33maria-label[39m=[32m"求最优：最优解是什么？（参数扰动看目标 Δ）"[39m
+                [33maria-pressed[39m=[32m"false"[39m
+                [33mclass[39m=[32m"btn sm"[39m
+                [33mdata-testid[39m=[32m"sandbox-mode-optimize"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [0m求最优[0m
+              [36m</button>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+              [36m>[39m
+                [0m→[0m
+              [36m</span>[39m
+              [36m<button[39m
+                [33maria-label[39m=[32m"影响半径：万一断了，波及多大？（反向多跳逐层扇出）"[39m
+                [33maria-pressed[39m=[32m"false"[39m
+                [33mclass[39m=[32m"btn sm"[39m
+                [33mdata-testid[39m=[32m"sandbox-mode-radius"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [0m影响半径[0m
+              [36m</button>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mdata-testid[39m=[32m"sandbox-steps-panel"[39m
+              [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 8px; min-width: 0;"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mstyle[39m=[32m"width: 1px; align-self: stretch; background: var(--line2); margin: 0px 2px;"[39m
+              [36m/>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"_dense_4d41ae"[39m
+                [33mdata-testid[39m=[32m"sb-steps"[39m
+              [36m>[39m
+                [36m<span[39m
+                  [33maria-label[39m=[32m"推演步骤"[39m
+                  [33mclass[39m=[32m"_track_4d41ae"[39m
+                  [33mrole[39m=[32m"group"[39m
+                [36m>[39m
+                  [36m<button[39m
+                    [33mclass[39m=[32m"_step_4d41ae _done_4d41ae"[39m
+                    [33mdata-state[39m=[32m"done"[39m
+                    [33mdata-step-key[39m=[32m"session"[39m
+                    [33mdata-testid[39m=[32m"sb-steps-step-1"[39m
+                    [33mtype[39m=[32m"button"[39m
+                  [36m>[39m
+                    [36m<span[39m
+                      [33mclass[39m=[32m"_no_4d41ae"[39m
+                    [36m>[39m
+                      [0m1[0m
+                    [36m</span>[39m
+                    [0m会话与配置[0m
+                  [36m</button>[39m
+                  [36m<button[39m
+                    [33mclass[39m=[32m"_step_4d41ae _done_4d41ae"[39m
+                    [33mdata-state[39m=[32m"done"[39m
+                    [33mdata-step-key[39m=[32m"perturb"[39m
+                    [33mdata-testid[39m=[32m"sb-steps-step-2"[39m
+                    [33mtype[39m=[32m"button"[39m
+                  [36m>[39m
+                    [36m<span[39m
+                      [33mclass[39m=[32m"_no_4d41ae"[39m
+                    [36m>[39m
+                      [0m2[0m
+                    [36m</span>[39m
+                    [0m施加扰动[0m
+                  [36m</button>[39m
+                  [36m<button[39m
+                    [33mclass[39m=[32m"...
+   ✓ §2 · 横幅上的三个数是**现算**的（写死的数在这一节必红） > 🔴 关掉一条传导边 ⇒ 「启用」4 → 3，而「传导边」总数**不动**（两个数分得开） 279ms
+   ✓ §2 · 横幅上的三个数是**现算**的（写死的数在这一节必红） > 🔴 取不到数时显示「—」而**不是「0」**（把「我不知道」说成「一条都没有」是静默错答） 156ms
+   ✓ §3 · 点得开、点得回，且分栏方式跟着一起变 > 点横幅 ⇒ 展开成两列（`display:grid`，不是 `block`）；再点 ⇒ 收回  310ms
+   ✓ §3 · 点得开、点得回，且分栏方式跟着一起变 > 🔴 分栏跟着折叠态走：收起 = 两栏（画布回第一行）· 展开 = 上下两行 215ms
+   ✓ §3 · 点得开、点得回，且分栏方式跟着一起变 > 展开后画布区**仍在 DOM 且仍是同一个**（展开不是把画布换掉，只是换了排法） 156ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/sandbox-config-collapse.test.tsx > §2 · 横幅上的三个数是**现算**的（写死的数在这一节必红） > 🔴 造一条新扰动 ⇒ 「已施加」当场 0 → 1（**走生产那条路**：点施加按钮，不是改变量）
+AssertionError: 施加了一条扰动而横幅上的计数没动 ⇒ 这个数不是现算的: expected '0' to be '1' // Object.is equality
+
+Ignored nodes: comments, script, style
+[36m<html>[39m
+  [36m<head />[39m
+  [36m<body>[39m
+    [36m<div>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"_viewStack_cc7813"[39m
+        [33mdata-testid[39m=[32m"sandbox-view"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"panel"[39m
+          [33mdata-mode[39m=[32m"now"[39m
+          [33mdata-testid[39m=[32m"sandbox-mode-switch"[39m
+          [33mstyle[39m=[32m"padding: 10px;"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33maria-label[39m=[32m"推演模式"[39m
+            [33mrole[39m=[32m"group"[39m
+            [33mstyle[39m=[32m"display: flex; gap: 6px; flex-wrap: wrap; align-items: center;"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+            [36m>[39m
+              [36m<button[39m
+                [33maria-label[39m=[32m"现状：现在到底怎么样？（全链线路图 / 物理拓扑 / 阻滞点 / 节点检视）"[39m
+                [33maria-pressed[39m=[32m"true"[39m
+                [33mclass[39m=[32m"btn sm primary"[39m
+                [33mdata-testid[39m=[32m"sandbox-mode-now"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [0m现状[0m
+              [36m</button>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+              [36m>[39m
+                [0m→[0m
+              [36m</span>[39m
+              [36m<button[39m
+                [33maria-label[39m=[32m"归因：为什么会这样？（共享瓶颈 / 隐性集中度 / 毛利倒挂）"[39m
+                [33maria-pressed[39m=[32m"false"[39m
+                [33mclass[39m=[32m"btn sm"[39m
+                [33mdata-testid[39m=[32m"sandbox-mode-attribute"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [0m归因[0m
+              [36m</button>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+              [36m>[39m
+                [0m→[0m
+              [36m</span>[39m
+              [36m<button[39m
+                [33maria-label[39m=[32m"试一手：改一个假设会怎样？（通用假设推演）"[39m
+                [33maria-pressed[39m=[32m"false"[39m
+                [33mclass[39m=[32m"btn sm"[39m
+                [33mdata-testid[39m=[32m"sandbox-mode-tryone"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [0m试一手[0m
+              [36m</button>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+              [36m>[39m
+                [0m→[0m
+              [36m</span>[39m
+              [36m<button[39m
+                [33maria-label[39m=[32m"求最优：最优解是什么？（参数扰动看目标 Δ）"[39m
+                [33maria-pressed[39m=[32m"false"[39m
+                [33mclass[39m=[32m"btn sm"[39m
+                [33mdata-testid[39m=[32m"sandbox-mode-optimize"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [0m求最优[0m
+              [36m</button>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 6px;"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mstyle[39m=[32m"color: var(--muted2); font-size: 12px;"[39m
+              [36m>[39m
+                [0m→[0m
+              [36m</span>[39m
+              [36m<button[39m
+                [33maria-label[39m=[32m"影响半径：万一断了，波及多大？（反向多跳逐层扇出）"[39m
+                [33maria-pressed[39m=[32m"false"[39m
+                [33mclass[39m=[32m"btn sm"[39m
+                [33mdata-testid[39m=[32m"sandbox-mode-radius"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [0m影响半径[0m
+              [36m</button>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mdata-testid[39m=[32m"sandbox-steps-panel"[39m
+              [33mstyle[39m=[32m"display: inline-flex; align-items: center; gap: 8px; min-width: 0;"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mstyle[39m=[32m"width: 1px; align-self: stretch; background: var(--line2); margin: 0px 2px;"[39m
+              [36m/>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"_dense_4d41ae"[39m
+                [33mdata-testid[39m=[32m"sb-steps"[39m
+              [36m>[39m
+                [36m<span[39m
+                  [33maria-label[39m=[32m"推演步骤"[39m
+                  [33mclass[39m=[32m"_track_4d41ae"[39m
+                  [33mrole[39m=[32m"group"[39m
+                [36m>[39m
+                  [36m<button[39m
+                    [33mclass[39m=[32m"_step_4d41ae _done_4d41ae"[39m
+                    [33mdata-state[39m=[32m"done"[39m
+                    [33mdata-step-key[39m=[32m"session"[39m
+                    [33mdata-testid[39m=[32m"sb-steps-step-1"[39m
+                    [33mtype[39m=[32m"button"[39m
+                  [36m>[39m
+                    [36m<span[39m
+                      [33mclass[39m=[32m"_no_4d41ae"[39m
+                    [36m>[39m
+                      [0m1[0m
+                    [36m</span>[39m
+                    [0m会话与配置[0m
+                  [36m</button>[39m
+                  [36m<button[39m
+                    [33mclass[39m=[32m"_step_4d41ae _done_4d41ae"[39m
+                    [33mdata-state[39m=[32m"done"[39m
+                    [33mdata-step-key[39m=[32m"perturb"[39m
+                    [33mdata-testid[39m=[32m"sb-steps-step-2"[39m
+                    [33mtype[39m=[32m"button"[39m
+                  [36m>[39m
+                    [36m<span[39m
+                      [33mclass[39m=[32m"_no_4d41ae"[39m
+                    [36m>[39m
+                      [0m2[0m
+                    [36m</span>[39m
+                    [0m施加扰动[0m
+                  [36m</button>[39m
+                  [36m<button[39m
+                    [33mclass[39m=[32m"...
+
+Expected: [32m"1"[39m
+Received: [31m"0"[39m
+
+ ❯ test/sandbox-config-collapse.test.tsx:328:9
+    326|         screen.getByTestId("sandbox-config-bar-applied").textContent,
+    327|         "施加了一条扰动而横幅上的计数没动 ⇒ 这个数不是现算的",
+    328|       ).toBe("1"),
+       |         ^
+    329|     );
+    330|     // 面板**仍然是收起的** —— 施加扰动不该顺手把它弹开（那等于默认态没意义）
+ ❯ runWithExpensiveErrorDiagnosticsDisabled ../../node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/config.js:47:12
+ ❯ checkCallback ../../node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/wait-for.js:124:77
+ ❯ Timeout.checkRealTimersCallback ../../node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/wait-for.js:118:16
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 9 passed (10)
+   Start at  13:50:46
+   Duration  27.37s (transform 4.21s, setup 5.57s, collect 2.29s, tests 17.59s, environment 1.27s, prepare 215ms)
+
+undefined
+/Users/apple/deploy/wo-edge-wire/apps/frontend-shell:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run test/sandbox-config-collapse.test.tsx --maxWorkers=1 --testTimeout=1500000
+SOLO_RC[test/sandbox-config-collapse.test.tsx]=1
+== solo test/disruption-cards.seam.test.tsx ==
+
+ RUN  v3.2.6 /Users/apple/deploy/wo-edge-wire/apps/frontend-shell
+
+stderr | test/disruption-cards.seam.test.tsx > WO-DISRUPTION-CARDS · 扰动因素按域分片的卡片 > 🔴 分组：每个 chip 的条数 == 数据里该域的边数；chip 集合 == 数据里的域集合（零写死）
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+
+ ❯ test/disruption-cards.seam.test.tsx (7 tests | 1 failed) 4336ms
+   ✓ WO-DISRUPTION-CARDS · 扰动因素按域分片的卡片 > 金丝雀：fixture 真的横跨 ≥2 个域且含未归域（否则下面的切片判据恒绿） 246ms
+   ✓ WO-DISRUPTION-CARDS · 扰动因素按域分片的卡片 > 🔴 分组：每个 chip 的条数 == 数据里该域的边数；chip 集合 == 数据里的域集合（零写死）  1459ms
+   ✓ WO-DISRUPTION-CARDS · 扰动因素按域分片的卡片 > 🔴 切片：点某个域的 chip ⇒ 只出该域的行；别的域的行既不可见、也不在 DOM 里  852ms
+   ✓ WO-DISRUPTION-CARDS · 扰动因素按域分片的卡片 > 🔴 拨动：切片之后关掉一条边 ⇒ 差值表出现带方向与量级的数（断的是数，不是勾选框）  1036ms
+   ✓ WO-DISRUPTION-CARDS · 扰动因素按域分片的卡片 > 变异反证：抹掉 domainKey ⇒ 分片塌成一片「未归域」，与真数据的分片对不上（不是组件不见了） 90ms
+   ✓ WO-DISRUPTION-CARDS · 扰动因素按域分片的卡片 > 纯模型：buildDomainSlices 按域 key 全序、未归域垫底、count 恒等于 rows.length；resolveActiveSlice 受控回落 3ms
+   × WO-DISRUPTION-CARDS · 扰动因素按域分片的卡片 > 🔴 两级标签：行主标题是对象类型的业务名，第二行是系统键；类型名取自本体 displayName（查不到显裸键） 643ms
+     → Unable to find an element by: [data-testid="info-edge-active-project-sim-keys-seed_line_to_base"]
+
+Ignored nodes: comments, script, style
+[36m<li[39m
+  [33mclass[39m=[32m"_row_b1d134"[39m
+  [33mdata-active[39m=[32m"true"[39m
+  [33mdata-domain[39m=[32m"D10"[39m
+  [33mdata-testid[39m=[32m"edge-active-project-sim-edge-seed_line_to_base"[39m
+[36m>[39m
+  [36m<input[39m
+    [33maria-label[39m=[32m"传导边 Line.s1 → Base.s2 是否参与本次推演"[39m
+    [33mchecked[39m=[32m""[39m
+    [33mdata-testid[39m=[32m"edge-active-project-sim-toggle-seed_line_to_base"[39m
+    [33mid[39m=[32m"edge-active-project-sim-toggle-seed_line_to_base"[39m
+    [33mtype[39m=[32m"checkbox"[39m
+  [36m/>[39m
+  [36m<label[39m
+    [33mclass[39m=[32m"_rowMain_b1d134"[39m
+    [33mfor[39m=[32m"edge-active-project-sim-toggle-seed_line_to_base"[39m
+  [36m>[39m
+    [0m产线 · s1[0m
+    [36m<span[39m
+      [33mclass[39m=[32m"_rowArrow_b1d134"[39m
+    [36m>[39m
+      [0m→[0m
+    [36m</span>[39m
+    [0m生产基地 · s2[0m
+    [36m<small[39m
+      [33mclass[39m=[32m"_rowKeys_b1d134"[39m
+      [33mdata-testid[39m=[32m"edge-active-project-sim-keys-seed_line_to_base"[39m
+    [36m>[39m
+      [0mLine.s1[0m
+      [0m —[0m
+      [0mline_belongs_to_base[0m
+      [0m→ [0m
+      [0mBase.s2[0m
+    [36m</small>[39m
+  [36m</label>[39m
+  [36m<span[39m
+    [33mclass[39m=[32m"_rowMeta_b1d134"[39m
+  [36m>[39m
+    [0m系数 [0m
+    [0m0.85[0m
+    [0m · 延迟 [0m
+    [0m1[0m
+    [36m<span[39m
+      [33mclass[39m=[32m"_derivedTag_b1d134"[39m
+    [36m>[39m
+      [0m声明值[0m
+    [36m</span>[39m
+  [36m</span>[39m
+[36m</li>[39m
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/disruption-cards.seam.test.tsx > WO-DISRUPTION-CARDS · 扰动因素按域分片的卡片 > 🔴 两级标签：行主标题是对象类型的业务名，第二行是系统键；类型名取自本体 displayName（查不到显裸键）
+TestingLibraryElementError: Unable to find an element by: [data-testid="info-edge-active-project-sim-keys-seed_line_to_base"]
+
+Ignored nodes: comments, script, style
+[36m<li[39m
+  [33mclass[39m=[32m"_row_b1d134"[39m
+  [33mdata-active[39m=[32m"true"[39m
+  [33mdata-domain[39m=[32m"D10"[39m
+  [33mdata-testid[39m=[32m"edge-active-project-sim-edge-seed_line_to_base"[39m
+[36m>[39m
+  [36m<input[39m
+    [33maria-label[39m=[32m"传导边 Line.s1 → Base.s2 是否参与本次推演"[39m
+    [33mchecked[39m=[32m""[39m
+    [33mdata-testid[39m=[32m"edge-active-project-sim-toggle-seed_line_to_base"[39m
+    [33mid[39m=[32m"edge-active-project-sim-toggle-seed_line_to_base"[39m
+    [33mtype[39m=[32m"checkbox"[39m
+  [36m/>[39m
+  [36m<label[39m
+    [33mclass[39m=[32m"_rowMain_b1d134"[39m
+    [33mfor[39m=[32m"edge-active-project-sim-toggle-seed_line_to_base"[39m
+  [36m>[39m
+    [0m产线 · s1[0m
+    [36m<span[39m
+      [33mclass[39m=[32m"_rowArrow_b1d134"[39m
+    [36m>[39m
+      [0m→[0m
+    [36m</span>[39m
+    [0m生产基地 · s2[0m
+    [36m<small[39m
+      [33mclass[39m=[32m"_rowKeys_b1d134"[39m
+      [33mdata-testid[39m=[32m"edge-active-project-sim-keys-seed_line_to_base"[39m
+    [36m>[39m
+      [0mLine.s1[0m
+      [0m —[0m
+      [0mline_belongs_to_base[0m
+      [0m→ [0m
+      [0mBase.s2[0m
+    [36m</small>[39m
+  [36m</label>[39m
+  [36m<span[39m
+    [33mclass[39m=[32m"_rowMeta_b1d134"[39m
+  [36m>[39m
+    [0m系数 [0m
+    [0m0.85[0m
+    [0m · 延迟 [0m
+    [0m1[0m
+    [36m<span[39m
+      [33mclass[39m=[32m"_derivedTag_b1d134"[39m
+    [36m>[39m
+      [0m声明值[0m
+    [36m</span>[39m
+  [36m</span>[39m
+[36m</li>[39m
+ ❯ Object.getElementError ../../node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ ../../node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+ ❯ ../../node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+ ❯ ../../node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ test/disruption-cards.seam.test.tsx:251:47
+    249|     // 第一层不许再有接线名
+    250|     expect(within(row).queryByTestId(tid(`keys-text-${named!.key}`))).…
+    251|     await userEvent.setup().hover(within(row).getByTestId(`info-${keyT…
+       |                                               ^
+    252|     const body = await within(row).findByTestId(`info-body-${keyTid}`);
+    253|     expect(body.textContent).toContain(`${named!.sourceTypeKey}.${name…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 6 passed (7)
+   Start at  13:51:15
+   Duration  11.49s (transform 3.30s, setup 4.46s, collect 1.39s, tests 4.34s, environment 766ms, prepare 153ms)
+
+undefined
+/Users/apple/deploy/wo-edge-wire/apps/frontend-shell:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run test/disruption-cards.seam.test.tsx --maxWorkers=1 --testTimeout=1500000
+SOLO_RC[test/disruption-cards.seam.test.tsx]=1
+== solo test/stale-claims.seam.test.ts ==
+
+ RUN  v3.2.6 /Users/apple/deploy/wo-edge-wire/apps/frontend-shell
+
+
+❌ 新增「自称实测」声明违规 22 条：
+   apps/frontend-shell/src/views/sim/SandboxImpactBand.tsx:748-754  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* ⚠ 此前这里直接渲 `{d.v}` —— 实测后端 `stateVarNames` **48/48 全有中文名**，
+   apps/frontend-shell/src/views/sim/SandboxImpactBand.tsx:748-754  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* ⚠ 此前这里直接渲 `{d.v}` —— 实测后端 `stateVarNames` **48/48 全有中文名**，
+   apps/frontend-shell/src/views/sim/unified/MetricWall.tsx:56-67  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：*   而键在当时的 `title` 里已经有一份。实测这一屏纯英文片段 47 个，卡墙独占 6 个。
+   apps/frontend-shell/src/views/sim/unified/MetricWall.tsx:56-67  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：*   而键在当时的 `title` 里已经有一份。实测这一屏纯英文片段 47 个，卡墙独占 6 个。
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:301-305  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* 落点下拉最多列几条。有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:301-305  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* 落点下拉最多列几条。有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:432-455  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* ── 为什么只有这一条路（真浏览器实测的账，不是版面偏好）───────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:432-455  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* ── 为什么只有这一条路（真浏览器实测的账，不是版面偏好）───────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:599-620  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* ── 今天的行为是 X，应该是 Y（真数据实测，不是读码推断）─────────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:634-641  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* **号只在需要消歧时才上屏**（实测两种类型给出相反的答案，故不能一刀切）：
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:634-641  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* **号只在需要消歧时才上屏**（实测两种类型给出相反的答案，故不能一刀切）：
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:650-656  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* `slice` 本身有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:650-656  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* `slice` 本身有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:708-718  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* 唯一差别 = 没有本批扰动 ⇒ 它与实跑终态之差才是这批扰动的**边际贡献**。
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:708-718  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* 唯一差别 = 没有本批扰动 ⇒ 它与实跑终态之差才是这批扰动的**边际贡献**。
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:945-961  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* ⛔ 但**不许删**：上面头注那条顾虑是真的（同名标签实测 5 组 × 2 行），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:945-961  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* ⛔ 但**不许删**：上面头注那条顾虑是真的（同名标签实测 5 组 × 2 行），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:1639-1669  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：── 今天的行为是 X（真浏览器实测，视口 1680×927）──────────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:1639-1669  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：── 今天的行为是 X（真浏览器实测，视口 1680×927）──────────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:2568-2575  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* 「放大」—— 这四栏卡片摆在中栏页签里，**可视只有 ~364px**，实测卡片下半截
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:2568-2575  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* 「放大」—— 这四栏卡片摆在中栏页签里，**可视只有 ~364px**，实测卡片下半截
+   apps/frontend-shell/src/views/sim/unified/console0828/console0828Model.ts:104-128  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：*   每一拍都在继续传导，背景漂移实测 p50 ≈ 8.64 压力点 ≫ `NOISE_FLOOR`(0.01)
+
+   修法：① 补上实测日期（YYYY-MM-DD）；② 补上复验方式（端点 / 命令 / file:line）；
+         ③ 若是 STALE-3/4：上游已经补齐了，**把话改对**，不要加豁免。
+
+❌ 新增「屏上过时事实」违规 1 条：
+   apps/frontend-shell/src/views/sim/CellExplainPanel.tsx:115  [STALE-5]
+      屏上字面量里有**否定断言**（「一条都没有」/「全仓 0 条」），却没有任何 `@stale-fact` 溯源记号 —— 这句话上游一变就变成屏上说谎，而没有任何人会被通知。修法：在本单元或紧贴其上的注释块里挂 `@stale-fact <路径> /<正则>/ <op><n>`，把这句话赌的那个计数写下来。
+      原文：第 {tick} 拍，<b>没有任何一条传导边写这一格</b>（入边 0 条）。
+
+   修法：· STALE-5 ⇒ 挂 `@stale-fact <路径> /<正则>/ <op><n>`，把这句话赌的计数写下来；
+         · STALE-6 ⇒ **上游已经变了，把屏上那句话改对**（这一条永不豁免）；
+         · STALE-7/8 ⇒ 把旧名/分叉的那一份真相源改到位（一个概念只许有一份真相源）。
+
+❌ stale-claims:check 未通过 —— 注释层(STALE-1..4)：红（新增 22 · 回弹 0） · 屏上层(STALE-5..8)：红（新增 1 · 松弛 0） · 门自述层(STALE-9/10)：绿
+ ❯ test/stale-claims.seam.test.ts (17 tests | 1 failed) 13722ms
+   ✓ §1 · 门在跑，且门自己没瞎 > `--selftest` 金丝雀通过（必咬样例全部咬中 · 必不咬样例全部放过 · 扫描规模达标）  572ms
+   × §1 · 门在跑，且门自己没瞎 > 门本体通过（存量豁免棘轮内，无新增声明违规） 6200ms
+     → Command failed: node /Users/apple/deploy/wo-edge-wire/scripts/check-stale-claims.mjs
+
+❌ 新增「自称实测」声明违规 22 条：
+   apps/frontend-shell/src/views/sim/SandboxImpactBand.tsx:748-754  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* ⚠ 此前这里直接渲 `{d.v}` —— 实测后端 `stateVarNames` **48/48 全有中文名**，
+   apps/frontend-shell/src/views/sim/SandboxImpactBand.tsx:748-754  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* ⚠ 此前这里直接渲 `{d.v}` —— 实测后端 `stateVarNames` **48/48 全有中文名**，
+   apps/frontend-shell/src/views/sim/unified/MetricWall.tsx:56-67  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：*   而键在当时的 `title` 里已经有一份。实测这一屏纯英文片段 47 个，卡墙独占 6 个。
+   apps/frontend-shell/src/views/sim/unified/MetricWall.tsx:56-67  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：*   而键在当时的 `title` 里已经有一份。实测这一屏纯英文片段 47 个，卡墙独占 6 个。
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:301-305  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* 落点下拉最多列几条。有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:301-305  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* 落点下拉最多列几条。有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:432-455  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* ── 为什么只有这一条路（真浏览器实测的账，不是版面偏好）───────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:432-455  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* ── 为什么只有这一条路（真浏览器实测的账，不是版面偏好）───────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:599-620  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* ── 今天的行为是 X，应该是 Y（真数据实测，不是读码推断）─────────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:634-641  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* **号只在需要消歧时才上屏**（实测两种类型给出相反的答案，故不能一刀切）：
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:634-641  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* **号只在需要消歧时才上屏**（实测两种类型给出相反的答案，故不能一刀切）：
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:650-656  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* `slice` 本身有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:650-656  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* `slice` 本身有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:708-718  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* 唯一差别 = 没有本批扰动 ⇒ 它与实跑终态之差才是这批扰动的**边际贡献**。
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:708-718  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* 唯一差别 = 没有本批扰动 ⇒ 它与实跑终态之差才是这批扰动的**边际贡献**。
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:945-961  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* ⛔ 但**不许删**：上面头注那条顾虑是真的（同名标签实测 5 组 × 2 行），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:945-961  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* ⛔ 但**不许删**：上面头注那条顾虑是真的（同名标签实测 5 组 × 2 行），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:1639-1669  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：── 今天的行为是 X（真浏览器实测，视口 1680×927）──────────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:1639-1669  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：── 今天的行为是 X（真浏览器实测，视口 1680×927）──────────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:2568-2575  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* 「放大」—— 这四栏卡片摆在中栏页签里，**可视只有 ~364px**，实测卡片下半截
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:2568-2575  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* 「放大」—— 这四栏卡片摆在中栏页签里，**可视只有 ~364px**，实测卡片下半截
+   apps/frontend-shell/src/views/sim/unified/console0828/console0828Model.ts:104-128  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：*   每一拍都在继续传导，背景漂移实测 p50 ≈ 8.64 压力点 ≫ `NOISE_FLOOR`(0.01)
+
+   修法：① 补上实测日期（YYYY-MM-DD）；② 补上复验方式（端点 / 命令 / file:line）；
+         ③ 若是 STALE-3/4：上游已经补齐了，**把话改对**，不要加豁免。
+
+❌ 新增「屏上过时事实」违规 1 条：
+   apps/frontend-shell/src/views/sim/CellExplainPanel.tsx:115  [STALE-5]
+      屏上字面量里有**否定断言**（「一条都没有」/「全仓 0 条」），却没有任何 `@stale-fact` 溯源记号 —— 这句话上游一变就变成屏上说谎，而没有任何人会被通知。修法：在本单元或紧贴其上的注释块里挂 `@stale-fact <路径> /<正则>/ <op><n>`，把这句话赌的那个计数写下来。
+      原文：第 {tick} 拍，<b>没有任何一条传导边写这一格</b>（入边 0 条）。
+
+   修法：· STALE-5 ⇒ 挂 `@stale-fact <路径> /<正则>/ <op><n>`，把这句话赌的计数写下来；
+         · STALE-6 ⇒ **上游已经变了，把屏上那句话改对**（这一条永不豁免）；
+         · STALE-7/8 ⇒ 把旧名/分叉的那一份真相源改到位（一个概念只许有一份真相源）。
+
+❌ stale-claims:check 未通过 —— 注释层(STALE-1..4)：红（新增 22 · 回弹 0） · 屏上层(STALE-5..8)：红（新增 1 · 松弛 0） · 门自述层(STALE-9/10)：绿
+
+   ✓ §1 · 门在跑，且门自己没瞎 > 门**真的被挂进交付链**（gate.sh 里有它）—— 门存在 ≠ 门在跑 3ms
+   ✓ §1 · 门在跑，且门自己没瞎 > 豁免棘轮：每条都有理由，maxExemptions 恒等于条数，且不超历史最高水位 4ms
+   ✓ §2 · 判据真的会咬（喂已知坏样例） > 自称实测但**没日期** ⇒ STALE-1 85ms
+   ✓ §2 · 判据真的会咬（喂已知坏样例） > 自称实测但**没复验方式** ⇒ STALE-2 10ms
+   ✓ §2 · 判据真的会咬（喂已知坏样例） > 声称某对象类型 0 条，**而它其实在 putAll 册上** ⇒ STALE-3（上游一补齐，声明当场红） 8ms
+   ✓ §2 · 判据真的会咬（喂已知坏样例） > **不含任何触发词**、但事实已被上游推翻 ⇒ 照样 STALE-3（事实层与关键词解耦） 7ms
+   ✓ §2 · 判据真的会咬（喂已知坏样例） > 把「实测」当**词**用的（三态徽章 / 字段名 / 诚实灰标）一律放过 —— 噪声门等于没门 6ms
+   ✓ §2 · 判据真的会咬（喂已知坏样例） > 对象类型**不在** putAll 册上时不乱咬（宁可漏，不可诬） 7ms
+   ✓ §3 · 事实锁：本单改写的文案，其依据必须还在（上游一删就红） > 上游承载还在：仍 `putAll("Cadence")`、推演仍读回 —— 删了则 K1/K2 新文案又变假话  626ms
+   ✓ §3 · 事实锁：本单改写的文案，其依据必须还在（上游一删就红） > offsetDays 的运行时消费方还在（K2 那句「零消费方为假」的依据）  1814ms
+   ✓ §3 · 事实锁：本单改写的文案，其依据必须还在（上游一删就红） > K1 / K2 的 evidence：旧的那两句假话没了，且新话带**实测日期 + 复验方式**  908ms
+   ✓ §3 · 事实锁：本单改写的文案，其依据必须还在（上游一删就红） > REWORK 那条**没被顺手改坏**（它与后端口径一致、今天仍成立）  971ms
+   ✓ §4 · 控制台图例不许再复述「零输入基线」 > 图例只读 `.label`（四个分支恒等、不带保质期），**不读** `.reason` / `.status` / `.unblockedBy`  1235ms
+   ✓ §4 · 控制台图例不许再复述「零输入基线」 > `.label` 确实是**输入无关**的（四个分支同一个值）—— 否则读它一样是在读一张会过期的快照 33ms
+   ✓ §4 · 控制台图例不许再复述「零输入基线」 > 图例紧挨着渲染的就是会真取数的 `<TransitFlowView>` —— 状态由它自陈  1225ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/stale-claims.seam.test.ts > §1 · 门在跑，且门自己没瞎 > 门本体通过（存量豁免棘轮内，无新增声明违规）
+Error: Command failed: node /Users/apple/deploy/wo-edge-wire/scripts/check-stale-claims.mjs
+
+❌ 新增「自称实测」声明违规 22 条：
+   apps/frontend-shell/src/views/sim/SandboxImpactBand.tsx:748-754  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* ⚠ 此前这里直接渲 `{d.v}` —— 实测后端 `stateVarNames` **48/48 全有中文名**，
+   apps/frontend-shell/src/views/sim/SandboxImpactBand.tsx:748-754  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* ⚠ 此前这里直接渲 `{d.v}` —— 实测后端 `stateVarNames` **48/48 全有中文名**，
+   apps/frontend-shell/src/views/sim/unified/MetricWall.tsx:56-67  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：*   而键在当时的 `title` 里已经有一份。实测这一屏纯英文片段 47 个，卡墙独占 6 个。
+   apps/frontend-shell/src/views/sim/unified/MetricWall.tsx:56-67  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：*   而键在当时的 `title` 里已经有一份。实测这一屏纯英文片段 47 个，卡墙独占 6 个。
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:301-305  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* 落点下拉最多列几条。有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:301-305  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* 落点下拉最多列几条。有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:432-455  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* ── 为什么只有这一条路（真浏览器实测的账，不是版面偏好）───────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:432-455  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* ── 为什么只有这一条路（真浏览器实测的账，不是版面偏好）───────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:599-620  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* ── 今天的行为是 X，应该是 Y（真数据实测，不是读码推断）─────────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:634-641  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* **号只在需要消歧时才上屏**（实测两种类型给出相反的答案，故不能一刀切）：
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:634-641  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* **号只在需要消歧时才上屏**（实测两种类型给出相反的答案，故不能一刀切）：
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:650-656  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* `slice` 本身有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:650-656  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* `slice` 本身有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:708-718  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* 唯一差别 = 没有本批扰动 ⇒ 它与实跑终态之差才是这批扰动的**边际贡献**。
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:708-718  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* 唯一差别 = 没有本批扰动 ⇒ 它与实跑终态之差才是这批扰动的**边际贡献**。
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:945-961  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* ⛔ 但**不许删**：上面头注那条顾虑是真的（同名标签实测 5 组 × 2 行），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:945-961  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* ⛔ 但**不许删**：上面头注那条顾虑是真的（同名标签实测 5 组 × 2 行），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:1639-1669  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：── 今天的行为是 X（真浏览器实测，视口 1680×927）──────────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:1639-1669  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：── 今天的行为是 X（真浏览器实测，视口 1680×927）──────────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:2568-2575  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* 「放大」—— 这四栏卡片摆在中栏页签里，**可视只有 ~364px**，实测卡片下半截
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:2568-2575  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* 「放大」—— 这四栏卡片摆在中栏页签里，**可视只有 ~364px**，实测卡片下半截
+   apps/frontend-shell/src/views/sim/unified/console0828/console0828Model.ts:104-128  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：*   每一拍都在继续传导，背景漂移实测 p50 ≈ 8.64 压力点 ≫ `NOISE_FLOOR`(0.01)
+
+   修法：① 补上实测日期（YYYY-MM-DD）；② 补上复验方式（端点 / 命令 / file:line）；
+         ③ 若是 STALE-3/4：上游已经补齐了，**把话改对**，不要加豁免。
+
+❌ 新增「屏上过时事实」违规 1 条：
+   apps/frontend-shell/src/views/sim/CellExplainPanel.tsx:115  [STALE-5]
+      屏上字面量里有**否定断言**（「一条都没有」/「全仓 0 条」），却没有任何 `@stale-fact` 溯源记号 —— 这句话上游一变就变成屏上说谎，而没有任何人会被通知。修法：在本单元或紧贴其上的注释块里挂 `@stale-fact <路径> /<正则>/ <op><n>`，把这句话赌的那个计数写下来。
+      原文：第 {tick} 拍，<b>没有任何一条传导边写这一格</b>（入边 0 条）。
+
+   修法：· STALE-5 ⇒ 挂 `@stale-fact <路径> /<正则>/ <op><n>`，把这句话赌的计数写下来；
+         · STALE-6 ⇒ **上游已经变了，把屏上那句话改对**（这一条永不豁免）；
+         · STALE-7/8 ⇒ 把旧名/分叉的那一份真相源改到位（一个概念只许有一份真相源）。
+
+❌ stale-claims:check 未通过 —— 注释层(STALE-1..4)：红（新增 22 · 回弹 0） · 屏上层(STALE-5..8)：红（新增 1 · 松弛 0） · 门自述层(STALE-9/10)：绿
+
+ ❯ test/stale-claims.seam.test.ts:53:17
+     51| 
+     52|   it("门本体通过（存量豁免棘轮内，无新增声明违规）", () => {
+     53|     const out = execFileSync("node", [GATE], { cwd: REPO_ROOT, encodin…
+       |                 ^
+     54|     expect(out).toContain("stale-claims:check 通过");
+     55|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 16 passed (17)
+   Start at  13:51:28
+   Duration  19.64s (transform 2.28s, setup 4.43s, collect 50ms, tests 13.72s, environment 793ms, prepare 135ms)
+
+undefined
+/Users/apple/deploy/wo-edge-wire/apps/frontend-shell:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run test/stale-claims.seam.test.ts --maxWorkers=1 --testTimeout=1500000
+SOLO_RC[test/stale-claims.seam.test.ts]=1
+== solo test/sandbox-kpi-layer.seam.test.tsx ==
+
+ RUN  v3.2.6 /Users/apple/deploy/wo-edge-wire/apps/frontend-shell
+
+ ❯ test/sandbox-kpi-layer.seam.test.tsx (2 tests | 1 failed) 514ms
+   × WO-SANDBOX-KPI-LAYER · 顶栏读数按偏离度分层 > ① 真降层：偏离最大的 3 个在第一层，其余进 <details>；② D4 守恒：8 个 testid 一个不少 364ms
+     → 屏上读数全同 ⇒ 排序判据无法失败，本条会空跑通过: expected 1 to be greater than 3
+   ✓ WO-SANDBOX-KPI-LAYER · 顶栏读数按偏离度分层 > ④ 第一层容量守恒：无论多少个 stateVar，第一层读数个数不随之膨胀（这才是「不密密麻麻」的机器判据） 144ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/sandbox-kpi-layer.seam.test.tsx > WO-SANDBOX-KPI-LAYER · 顶栏读数按偏离度分层 > ① 真降层：偏离最大的 3 个在第一层，其余进 <details>；② D4 守恒：8 个 testid 一个不少
+AssertionError: 屏上读数全同 ⇒ 排序判据无法失败，本条会空跑通过: expected 1 to be greater than 3
+ ❯ test/sandbox-kpi-layer.seam.test.tsx:122:71
+    120|     // 前置守护（本条最要紧）：读数必须**真的分散**，否则排序恒平手、③ 无法失败 ——
+    121|     // 那正是「断言存在、语义正确、且是绿的，只是取样点落在裁与不裁同解的值上」那个形态。
+    122|     expect(new Set(shown.values()).size, "屏上读数全同 ⇒ 排序判据无法失败，本条会空跑通过").…
+       |                                                                       ^
+    123| 
+    124|     const vals = [...shown.values()].sort((a, b) => a - b);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed (2)
+   Start at  13:51:50
+   Duration  10.27s (transform 4.11s, setup 5.22s, collect 2.67s, tests 514ms, environment 1.27s, prepare 175ms)
+
+undefined
+/Users/apple/deploy/wo-edge-wire/apps/frontend-shell:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run test/sandbox-kpi-layer.seam.test.tsx --maxWorkers=1 --testTimeout=1500000
+SOLO_RC[test/sandbox-kpi-layer.seam.test.tsx]=1
+SOLO_RC=1 END=09-27 13:52:01

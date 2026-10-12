@@ -1,0 +1,205 @@
+{
+  "tag": "final",
+  "steps": [
+    "登录后落点 URL = http://127.0.0.1:5191/",
+    "禁 mock 自证：真后端(4091/4092) 200 回包 5 条 ⇒ 确为真后端",
+    "  样本: 200 POST http://127.0.0.1:4091/a/v1/auth/login | 200 GET http://127.0.0.1:4091/a/v1/me/workspace | 200 GET http://127.0.0.1:4091/a/v1/history/watermark | 200 GET http://127.0.0.1:4091/a/v1/data-health",
+    "扫屏金丝雀 admin 命中: true （不中 ⇒ 量法坏了，下面所有『屏上没有』都不算数）",
+    "落点: /v/sim-unified",
+    "点『损失归因』页签: 成功",
+    "归因明细 md5 = a0ade395808001098ee8770f7f0d6476 | 根因树 md5 = 2e02719180751b48c33a34577d406d02",
+    "推演上下文披露块（第一层）: \"这一次推演\\n第 3 拍\\n叠加 171.4 天 · 3 段\\n另有 5 项未计入\\n?\"",
+    "推演上下文明细（浮层·真 hover）: \"这一次推演往链上叠了什么\\n\\n采购到货延迟 +36.0 天\\n\\n排队天数 +96.4 天\\n\\n交付延迟 +39.0 天\\n\\n4 项有读数但不按天计，没有叠进来。\\n\\n1 项是按天的，但这一段已在别处计过，不重复计。\"",
+    "点『传导识别』页签（反向对照）: true",
+    "反向对照 · 不带 sessionId 的请求: [\"/a/v1/sim/chain-loss-matrix {}\"]",
+    "浏览器发出的 chain-loss 请求 3 条，带 sessionId 的 2 条",
+    "  请求体: /a/v1/sim/chain-loss-matrix {\"sessionId\":\"sims_demo_seed_world\"} | /a/v1/sim/chain-loss-drill {\"nodeId\":\"demand.consensus\",\"sessionId\":\"sims_demo_seed_world\"} | /a/v1/sim/chain-loss-matrix {}",
+    "触发判定观测落点 URL = /v/order-chain",
+    "订单链屏上触发句命中: [\"阈值来自规则参数\",\"阈值来自内置默认\"]",
+    "触发判定条: [{\"id\":\"oc-play-trigstrip\",\"text\":\"触发判定 3 条 · 已触发 1 条 规则：licarb_pct_cum 需 > 30 当前：18.45 ⇒ 未越阈，未触发 阈值来自规则参数 规则：usd_cny 需 > 8 当前：7.18 ⇒ 未越阈，未触发 阈值来自内置默认 规则：li_carbonate_price 需 > 90000 当前：96000 ⇒ 已越阈，触发 阈值来自内置默认\"},{\"id\":\"oc-play-trigstrip-trig-backup-cert\",\"text\":\"规则：licarb_pct_cum 需 > 30 当前：18.45 ⇒ 未越阈，未触发 阈值来自规则参数\"},{\"id\":\"oc-play-trigstrip-tpl-trig-backup-cert\",\"text\":\"规则：licarb_pct_cum 需 > 30\"},{\"id\":\"oc-play-trigstrip-cur-trig-backup-cert\",\"text\":\"当前：18.45\"},{\"id\":\"oc-play-trigstrip-verdict-trig-backup-cert\",\"text\":\"⇒ 未越阈，未触发\"},{\"id\":\"oc-play-trigstrip-src-trig-backup-cert\",\"text\":\"阈值来自规则参数\"},{\"id\":\"oc-play-trigstrip-trig-fx-hedge\",\"text\":\"规则：usd_cny 需 > 8 当前：7.18 ⇒ 未越阈，未触发 阈值来自内置默认\"},{\"id\":\"oc-play-trigstrip-tpl-trig-fx-hedge\",\"text\":\"规则：usd_cny 需 > 8\"},{\"id\":\"oc-play-trigstrip-cur-trig-fx-hedge\",\"text\":\"当前：7.18\"},{\"id\":\"oc-play-trigstrip-verdict-trig-fx-hedge\",\"text\":\"⇒ 未越阈，未触发\"},{\"id\":\"oc-play-trigstrip-src-trig-fx-hedge\",\"text\":\"阈值来自内置默认\"},{\"id\":\"oc-play-trigstrip-trig-lta-reprice\",\"text\":\"规则：li_carbonate_price 需 > 90000 当前：96000 ⇒ 已越阈，触发 阈值来自内置默认\"},{\"id\":\"oc-play-trigstrip-tpl-trig-lta-reprice\",\"text\":\"规则：li_carbonate_price 需 > 90000\"},{\"id\":\"oc-play-trigstrip-cur-trig-lta-reprice\",\"text\":\"当前：96000\"},{\"id\":\"oc-play-trigstrip-verdict-trig-lta-reprice\",\"text\":\"⇒ 已越阈，触发\"},{\"id\":\"oc-play-trigstrip-src-trig-lta-reprice\",\"text\":\"阈值来自内置默认\"}]",
+    "后端同一时刻 triggers: [\"trig-backup-cert 值=18.45 > 阈=30 fired=false 出处=rule.params\",\"trig-fx-hedge 值=7.18 > 阈=8 fired=false 出处=trigger.default\",\"trig-lta-reprice 值=96000 > 阈=90000 fired=true 出处=trigger.default\"]",
+    "台账观测落点 URL = /v/risk",
+    "屏上「已采纳」行: 1 条 ⇒ [{\"id\":\"risk-adopted-line-常州\",\"text\":\"已采纳 debottleneck 消解 13 · T+6 起效\"}]",
+    "屏上台账相关命中: {\"已采纳\":[\"已采纳 debottleneck\"],\"采纳\":[\"已采纳 debottleneck\"],\"工艺路线调整\":[\"5\\t工艺路线调整（枣庄·备份方案）\",\"6\\t工艺路线调整（常州·备份方案）\",\"7\\t工艺路线调整（合肥·备份方案）\",\"8\\t工艺路线调整（金华·备份方案）\"],\"reroute\":[],\"处置方案\":[],\"起效\":[\"消解 13 · T+6 起效\",\"峰值≥90 双保险 · 触发缺口 2781套 · 3 步收窄 2781套 · 残留 0套\\t基地负责人 · 王经理\\tT+-2·06-08\\tT+8·06-18\\t消解≈9·5天起效\\tC05\",\"峰值≥90 双保险 · 触发缺口 6292套 · 3 步收窄 6292套 · 残留 0套\\t基地负责人 · 杨经理\\tT+-2·06-08\\tT+8·06-18\\t消解≈9·5天起效\\tC05\",\"峰值≥90 双保险 · 窗内无产能缺口（可用产能覆盖在产+未来订单）\\t基地负责人 · 李经理\\tT+-2·06-08\\tT+8·06-18\\t消解≈8·3天起效\\tC05\",\"峰值≥90 双保险 · 触发缺口 26220套 · 3 步收窄 26220套 · 残留 0套\\t基地负责人 · 王经理\\tT+-2·06-08\\tT+8·06-18\\t消解≈8·2天起效\\tC05\"]}",
+    "后端风险卡 adoptedMitigation: [\"jiangmen/物料齐套: adopted=null\",\"handan/物料齐套: adopted=null\",\"zigong/人力工时: adopted=null\",\"xinyang/物流时长: adopted=null\",\"zaozhuang/瓶颈工序: adopted=null\",\"changzhou/瓶颈工序: adopted={\\\"planKey\\\":\\\"debottleneck\\\",\\\"eff\\\":13,\\\"tn\\\":6}\",\"hefei/瓶颈工序: adopted=null\",\"jinhua/瓶颈工序: adopted=null\"]",
+    "控制台错误数: 2"
+  ],
+  "attribution": {
+    "detail": {
+      "present": true,
+      "text": "环节\n求解器\n贡献\n耗时\n级\n趋势\n到货检验\nchain_loss_attribution\n44%\n1830.56D\n4\n订单回款\nchain_loss_attribution\n20%\n780.00D\n4\n入厂在途与清关\nchain_loss_attribution\n17%\n692.00D\n3\n关键物料补货\nchain_loss_attribution\n15%\n572.00D\n3\nS&OP 共识会\nchain_loss_attribution\n2%\n91.00D\n1\n老化静置\nchain_loss_attribution\n2%\n65.00D\n1\n过程质检攒批\nchain_loss_attribution\n0%\n6.50D\n1\n主计划排产\nchain_loss_attribution\n0%\n6.50D\n1\n工序 化成\nchain_loss_attribution\n0%\n0.54D\n1\n工序 PACK\nchain_loss_attribution\n0%\n0.41D\n1\n工序 涂布\nchain_loss_attribution\n0%\n0.27D\n1\n工序 注液\nchain_loss_attribution\n0%\n0.27D\n1\n工序 分容\nchain_loss_attribution\n0%\n0.27D\n1\n工序 卷绕\nchain_loss_attribution\n0%\n0.23D\n1\n工序 辊压\nchain_loss_attribution\n0%\n0.18D\n1\n工序 装配\nchain_loss_attribution\n0%\n0.18D\n1\n工序 分切\nchain_loss_attribution\n0%\n0.14D\n1\n工序 混料\nchain_loss_attribution\n0%\n0.05D\n1",
+      "md5": "a0ade395808001098ee8770f7f0d6476"
+    },
+    "tree": {
+      "present": true,
+      "text": "▤\n全链非增值\n100%\n▸\n到货检验\n44%\n▸\n订单回款\n20%\n▸\n入厂在途与清关\n17%\n▸\n关键物料补货\n15%\n▸\nS&OP 共识会\n2%\n·\n等S&OP 共识会节拍·everyDays\n3%\n▸\n老化静置\n2%\n▸\n过程质检攒批\n0%\n▸\n主计划排产\n0%\n▸\n工序 化成\n0%\n▸\n工序 PACK\n0%\n▸\n工序 涂布\n0%\n▸\n工序 注液\n0%\n▸\n工序 分容\n0%\n▸\n工序 卷绕\n0%\n▸\n工序 辊压\n0%\n▸\n工序 装配\n0%\n▸\n工序 分切\n0%\n▸\n工序 混料\n0%",
+      "md5": "2e02719180751b48c33a34577d406d02"
+    },
+    "simctx": {
+      "present": true,
+      "text": "这一次推演\n第 3 拍\n叠加 171.4 天 · 3 段\n另有 5 项未计入\n?",
+      "md5": "911d9ece245cd59381ddfb859d92c283"
+    },
+    "simctxDetail": {
+      "present": true,
+      "text": "这一次推演往链上叠了什么\n\n采购到货延迟 +36.0 天\n\n排队天数 +96.4 天\n\n交付延迟 +39.0 天\n\n4 项有读数但不按天计，没有叠进来。\n\n1 项是按天的，但这一段已在别处计过，不重复计。",
+      "md5": "7726a1e15fd5fbab4b2f604fe4c58ad8"
+    },
+    "requests": [
+      {
+        "url": "/a/v1/sim/chain-loss-matrix",
+        "body": "{\"sessionId\":\"sims_demo_seed_world\"}",
+        "hasSessionId": true
+      },
+      {
+        "url": "/a/v1/sim/chain-loss-drill",
+        "body": "{\"nodeId\":\"demand.consensus\",\"sessionId\":\"sims_demo_seed_world\"}",
+        "hasSessionId": true
+      },
+      {
+        "url": "/a/v1/sim/chain-loss-matrix",
+        "body": "{}",
+        "hasSessionId": false
+      }
+    ],
+    "reverseControl": [
+      "/a/v1/sim/chain-loss-matrix {}"
+    ]
+  },
+  "trigger": {
+    "screenHits": [
+      "阈值来自规则参数",
+      "阈值来自内置默认"
+    ],
+    "strip": [
+      {
+        "id": "oc-play-trigstrip",
+        "text": "触发判定 3 条 · 已触发 1 条 规则：licarb_pct_cum 需 > 30 当前：18.45 ⇒ 未越阈，未触发 阈值来自规则参数 规则：usd_cny 需 > 8 当前：7.18 ⇒ 未越阈，未触发 阈值来自内置默认 规则：li_carbonate_price 需 > 90000 当前：96000 ⇒ 已越阈，触发 阈值来自内置默认"
+      },
+      {
+        "id": "oc-play-trigstrip-trig-backup-cert",
+        "text": "规则：licarb_pct_cum 需 > 30 当前：18.45 ⇒ 未越阈，未触发 阈值来自规则参数"
+      },
+      {
+        "id": "oc-play-trigstrip-tpl-trig-backup-cert",
+        "text": "规则：licarb_pct_cum 需 > 30"
+      },
+      {
+        "id": "oc-play-trigstrip-cur-trig-backup-cert",
+        "text": "当前：18.45"
+      },
+      {
+        "id": "oc-play-trigstrip-verdict-trig-backup-cert",
+        "text": "⇒ 未越阈，未触发"
+      },
+      {
+        "id": "oc-play-trigstrip-src-trig-backup-cert",
+        "text": "阈值来自规则参数"
+      },
+      {
+        "id": "oc-play-trigstrip-trig-fx-hedge",
+        "text": "规则：usd_cny 需 > 8 当前：7.18 ⇒ 未越阈，未触发 阈值来自内置默认"
+      },
+      {
+        "id": "oc-play-trigstrip-tpl-trig-fx-hedge",
+        "text": "规则：usd_cny 需 > 8"
+      },
+      {
+        "id": "oc-play-trigstrip-cur-trig-fx-hedge",
+        "text": "当前：7.18"
+      },
+      {
+        "id": "oc-play-trigstrip-verdict-trig-fx-hedge",
+        "text": "⇒ 未越阈，未触发"
+      },
+      {
+        "id": "oc-play-trigstrip-src-trig-fx-hedge",
+        "text": "阈值来自内置默认"
+      },
+      {
+        "id": "oc-play-trigstrip-trig-lta-reprice",
+        "text": "规则：li_carbonate_price 需 > 90000 当前：96000 ⇒ 已越阈，触发 阈值来自内置默认"
+      },
+      {
+        "id": "oc-play-trigstrip-tpl-trig-lta-reprice",
+        "text": "规则：li_carbonate_price 需 > 90000"
+      },
+      {
+        "id": "oc-play-trigstrip-cur-trig-lta-reprice",
+        "text": "当前：96000"
+      },
+      {
+        "id": "oc-play-trigstrip-verdict-trig-lta-reprice",
+        "text": "⇒ 已越阈，触发"
+      },
+      {
+        "id": "oc-play-trigstrip-src-trig-lta-reprice",
+        "text": "阈值来自内置默认"
+      }
+    ],
+    "backend": [
+      "trig-backup-cert 值=18.45 > 阈=30 fired=false 出处=rule.params",
+      "trig-fx-hedge 值=7.18 > 阈=8 fired=false 出处=trigger.default",
+      "trig-lta-reprice 值=96000 > 阈=90000 fired=true 出处=trigger.default"
+    ]
+  },
+  "ledger": {
+    "hits": {
+      "已采纳": [
+        "已采纳 debottleneck"
+      ],
+      "采纳": [
+        "已采纳 debottleneck"
+      ],
+      "工艺路线调整": [
+        "5\t工艺路线调整（枣庄·备份方案）",
+        "6\t工艺路线调整（常州·备份方案）",
+        "7\t工艺路线调整（合肥·备份方案）",
+        "8\t工艺路线调整（金华·备份方案）"
+      ],
+      "reroute": [],
+      "处置方案": [],
+      "起效": [
+        "消解 13 · T+6 起效",
+        "峰值≥90 双保险 · 触发缺口 2781套 · 3 步收窄 2781套 · 残留 0套\t基地负责人 · 王经理\tT+-2·06-08\tT+8·06-18\t消解≈9·5天起效\tC05",
+        "峰值≥90 双保险 · 触发缺口 6292套 · 3 步收窄 6292套 · 残留 0套\t基地负责人 · 杨经理\tT+-2·06-08\tT+8·06-18\t消解≈9·5天起效\tC05",
+        "峰值≥90 双保险 · 窗内无产能缺口（可用产能覆盖在产+未来订单）\t基地负责人 · 李经理\tT+-2·06-08\tT+8·06-18\t消解≈8·3天起效\tC05",
+        "峰值≥90 双保险 · 触发缺口 26220套 · 3 步收窄 26220套 · 残留 0套\t基地负责人 · 王经理\tT+-2·06-08\tT+8·06-18\t消解≈8·2天起效\tC05"
+      ]
+    },
+    "adoptedLines": [
+      {
+        "id": "risk-adopted-line-常州",
+        "text": "已采纳 debottleneck 消解 13 · T+6 起效"
+      }
+    ],
+    "backendCards": [
+      "jiangmen/物料齐套: adopted=null",
+      "handan/物料齐套: adopted=null",
+      "zigong/人力工时: adopted=null",
+      "xinyang/物流时长: adopted=null",
+      "zaozhuang/瓶颈工序: adopted=null",
+      "changzhou/瓶颈工序: adopted={\"planKey\":\"debottleneck\",\"eff\":13,\"tn\":6}",
+      "hefei/瓶颈工序: adopted=null",
+      "jinhua/瓶颈工序: adopted=null"
+    ]
+  },
+  "noMock": {
+    "ok": true,
+    "realHits": 5,
+    "sample": [
+      "200 POST http://127.0.0.1:4091/a/v1/auth/login",
+      "200 GET http://127.0.0.1:4091/a/v1/me/workspace",
+      "200 GET http://127.0.0.1:4091/a/v1/history/watermark",
+      "200 GET http://127.0.0.1:4091/a/v1/data-health"
+    ]
+  },
+  "canary": {
+    "hit": true,
+    "textLen": 951
+  },
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ]
+}

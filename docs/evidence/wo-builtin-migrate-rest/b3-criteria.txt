@@ -1,0 +1,32 @@
+WO-BUILTIN-MIGRATE-REST · 批次 3 · 判据①②③⑤ 原始读数（硬骨头：invoke_solver）
+
+── 判据② DSH 真 tools/list ──
+  ── A1 DSH 侧真 tools/list（25 件 · 真 spawn 子进程）──
+  本批（模型面名）：query_objects=mcp__builtin__query_objects · get_object=mcp__builtin__get_object · aggregate_objects=mcp__builtin__aggregate_objects · search_knowledge=mcp__builtin__search_knowledge · query_timeseries_agg=mcp__builtin__query_timeseries_agg · search_experience=mcp__builtin__search_experience · discover=mcp__builtin__discover · retrieve_knowledge=mcp__builtin__retrieve_knowledge · query_ontology=mcp__builtin__query_ontology · query_system_ontology=mcp__builtin__query_system_ontology · get_breakpoint=mcp__builtin__get_breakpoint · impact_of=mcp__builtin__impact_of · read_skill_resource=mcp__builtin__read_skill_resource · create_action_draft=mcp__builtin__create_action_draft · invoke_solver=mcp__builtin__invoke_solver
+  仍未迁（同 server 也广告，但出厂 agent 未授予 ⇒ 反向通道）：fill_data · run_synthetic · build_domain · sim_init · sim_tick · sim_world · sim_certify · discover_growth_tickets · claim_growth_ticket · submit_growth_ticket
+
+
+── 判据① 迁前/迁后 run 记录对照（invoke_solver · 同一个 agent）──
+  ── 判据① 迁前/迁后 run 记录对照（同一条 query · 同一个 agent agt_general · 只有载体变）──
+  载体（模型面名）  迁前=invoke_solver  迁后=mcp__builtin__invoke_solver   ← 唯一变的一格
+  审计行名          迁前=invoke_solver  迁后=invoke_solver
+  outcome           迁前=OK  迁后=OK
+  实参              {"solverKey":"gap_attribution","args":{"probe":"wo-builtin-rest-probe"}}
+                    byteEqual=true
+  审计回执(前 200)  {"data":{"solverKey":"gap_attribution","ok":true,"args":{"probe":"wo-builtin-rest-probe"}},"snapshotVersion":"ont-snap-001"}
+                    迁前迁后 byteEqual=true（len=124）
+  模型面回执(内层)  迁前迁后 byteEqual=true
+
+
+
+── 判据⑤ 三处「按裸名认 invoke_solver」判据改按身份后的反证（B7/B8）──
+
+── 判据③ 反向对照 ──
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E3 反向对照（判据③·e2e）：授予面拿掉 ⇒ DSH 侧读不到它 ∧ 宿主零数据面调用（那条读数是活的）
+
+  ── E3 反向对照 · 模型面里的内置工具面 ──
+  mcp__builtin__aggregate_objects, mcp__builtin__create_action_draft, mcp__builtin__discover, mcp__builtin__fill_data, mcp__builtin__get_breakpoint, mcp__builtin__get_object, mcp__builtin__impact_of, mcp__builtin__query_objects, mcp__builtin__query_ontology, mcp__builtin__query_system_ontology, mcp__builtin__query_timeseries_agg, mcp__builtin__read_skill_resource, mcp__builtin__retrieve_knowledge, mcp__builtin__search_experience, mcp__builtin__search_knowledge
+  ── 审计行 ──
+  []
+
+--

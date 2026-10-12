@@ -1,0 +1,36 @@
+WO-BUILTIN-MIGRATE-REST · 批次 2 · 判据①②③ 原始读数
+
+── 判据② DSH 真 tools/list（含本批四件）──
+  ── A1 DSH 侧真 tools/list（25 件 · 真 spawn 子进程）──
+  本批（模型面名）：query_objects=mcp__builtin__query_objects · get_object=mcp__builtin__get_object · aggregate_objects=mcp__builtin__aggregate_objects · search_knowledge=mcp__builtin__search_knowledge · query_timeseries_agg=mcp__builtin__query_timeseries_agg · search_experience=mcp__builtin__search_experience · discover=mcp__builtin__discover · retrieve_knowledge=mcp__builtin__retrieve_knowledge · query_ontology=mcp__builtin__query_ontology · query_system_ontology=mcp__builtin__query_system_ontology
+  仍未迁（同 server 也广告，但出厂 agent 未授予 ⇒ 反向通道）：get_breakpoint · impact_of · invoke_solver · read_skill_resource · fill_data · run_synthetic · build_domain · sim_init · sim_tick · sim_world · sim_certify · create_action_draft · discover_growth_tickets · claim_growth_ticket · submit_growth_ticket
+
+
+── 判据① 迁前/迁后 run 记录对照（同一条 query · 同一个 agent）──
+  ── 判据① 迁前/迁后 run 记录对照（同一条 query · 同一个 agent agt_general · 只有载体变）──
+  载体（模型面名）  迁前=query_ontology  迁后=mcp__builtin__query_ontology   ← 唯一变的一格
+  审计行名          迁前=query_ontology  迁后=query_ontology
+  outcome           迁前=OK  迁后=OK
+  实参              {"rootType":"Base","select":[{"type":"Order","fields":["so","qty"]}],"probe":"wo-builtin-rest-probe"}
+                    byteEqual=true
+  审计回执(前 200)  {"data":{"rows":[{"Order.so":"SO-0001","Order.qty":1200},{"Order.so":"SO-0002","Order.qty":800}],"columns":["Order.so","Order.qty"],"provenance":[{"typeKey":"Order","objId":"obj_order_SO-0001","linkPa
+                    迁前迁后 byteEqual=true（len=682）
+  模型面回执(内层)  迁前迁后 byteEqual=true
+
+
+
+── 判据③ 反向对照（e2e）──
+stdout | test/dsh-builtin-rest-mcp.seam.test.ts > WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E3 反向对照（判据③·e2e）：授予面拿掉 ⇒ DSH 侧读不到它 ∧ 宿主零数据面调用（那条读数是活的）
+
+  ── E3 反向对照 · 模型面里的内置工具面 ──
+  mcp__builtin__aggregate_objects, mcp__builtin__discover, mcp__builtin__get_breakpoint, mcp__builtin__get_object, mcp__builtin__query_objects, mcp__builtin__query_system_ontology, mcp__builtin__query_timeseries_agg, mcp__builtin__retrieve_knowledge, mcp__builtin__search_experience, mcp__builtin__search_knowledge
+  ── 审计行 ──
+  []
+
+--
+
+── 判据⑤ 探索配额按身份咬（B5）──
+   ✓ WO-BUILTIN-MIGRATE-REST · B 组：MCP 全名归一回同一具执行体（门一道不松） > B5 探索配额（`DISCOVER_TOOLS`）按**身份**咬：全名形态照样消耗同一份配额 ∧ 超额即 BUDGET_EXCEEDED  485ms
+   ✓ WO-BUILTIN-MIGRATE-REST · C 组：三面同改 + 只剩一条授予路 > C4 engine 真装配（通用 agent）：裸名面 = 未迁件 ∧ Phase6C 不砍内置工具面（原生臂真跑）  473ms
+   ✓ WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E1 迁后（DSH 原生 MCP）：模型面有全名 ∧ 真调 ∧ 数据面真查 ∧ 审计行（裸名）  13654ms
+   ✓ WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁后同一条 query） > E2 迁前（对照臂·同一 query · 同一 agent · 单变量）：能力在反向工具面（裸名）∧ 同一执行体同一行审计名  17411ms

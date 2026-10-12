@@ -16,7 +16,7 @@
   color: var(--txt);
 }
 .stepDone {
-  color: var(--ok);
+  color: var(--ok-txt);
   border-color: rgba(98, 190, 119, 0.4);
 }
 
@@ -38,18 +38,18 @@
   align-items: center;
   justify-content: center;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
 }
 .phaseRow[data-status="DONE"] .phaseIcon {
-  color: var(--ok);
+  color: var(--ok-txt);
   border-color: rgba(98, 190, 119, 0.5);
 }
 .phaseRow[data-status="RUNNING"] .phaseIcon {
-  color: var(--accent);
+  color: var(--accent-txt);
   border-color: var(--accent);
 }
 .phaseRow[data-status="FAILED"] .phaseIcon {
-  color: var(--danger);
+  color: var(--danger-txt);
   border-color: var(--danger);
 }
 
@@ -60,7 +60,7 @@
 }
 
 .scriptEvent {
-  font-size: 11.5px;
+  font-size: 12px;
   font-family: var(--font-mono);
   color: var(--muted2);
   border: 1px solid var(--line);
@@ -68,7 +68,7 @@
   padding: 4px 8px;
 }
 .fired {
-  color: var(--ok);
+  color: var(--ok-txt);
   border-color: rgba(98, 190, 119, 0.45);
 }
 

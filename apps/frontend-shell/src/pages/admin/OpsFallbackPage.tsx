@@ -50,12 +50,12 @@ export default function OpsFallbackPage() {
                 <td>
                   <Trend values={c.trend} />
                 </td>
-                <td className="zh" style={{ fontSize: 11 }}>
+                <td className="zh" style={{ fontSize: 12 }}>
                   {Object.entries(c.outcomeBreakdown)
                     .map(([k, v]) => `${k}:${v}`)
                     .join(" ")}
                 </td>
-                <td style={{ fontSize: 10.5, color: "var(--muted2)" }}>{c.topToolSketch.join(" → ")}</td>
+                <td style={{ fontSize: 12, color: "var(--muted2)" }}>{c.topToolSketch.join(" → ")}</td>
                 <td>
                   <button className="btn sm primary" disabled={promoteMut.isPending} onClick={() => promoteMut.mutate(c.traceId)}>
                     {t.promote}

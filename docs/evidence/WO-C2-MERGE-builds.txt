@@ -1,0 +1,16 @@
+=== BUILD @platform/contracts ===
+  rc=0  错误行数=0
+0
+=== BUILD @platform/llm-adapters ===
+  rc=0  错误行数=0
+0
+=== BUILD datacore ===
+  rc=0  错误行数=0
+0
+=== BUILD agentcore ===
+  rc=0  错误行数=0
+0
+=== BUILD frontend-shell ===
+  rc=0  错误行数=0
+0
+=== 全部结束 ===

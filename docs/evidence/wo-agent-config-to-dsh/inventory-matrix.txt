@@ -1,0 +1,14 @@
+agent | tenantId | model | systemPrompt | tools | ruleBindings | skills | mcpServers | scopeDeclaration | budget | kernel | role | status | id/key/version/name/description
+------|----------|-------|--------------|-------|--------------|--------|------------|------------------|--------|--------|------|--------|--------------------------------
+analyst | N(MCP池键) | P(env→plugin) | N(plugin) | M+B×5 | N(plugin ALL_APPLICABLE/POST_CHECK) | N(skill n=1) | N(MCP ontology+solvers+workflow+rules) | N(plugin obj=8 tool=27) | P(宿主计数) | P(跟env) | -(ceo) | -(PUBLISHED) | -
+explore_agent | N(MCP池键) | P(env→plugin) | N(plugin) | M+B×1 | N(plugin ALL_APPLICABLE/POST_CHECK) | N(skill n=1) | N(MCP solvers+workflow) | N(plugin obj=4 tool=5) | P(宿主计数) | P(跟env) | - | -(PUBLISHED) | -
+risk_advisor | N(MCP池键) | P(env→plugin) | N(plugin) | M+B×2 | N(plugin ALL_APPLICABLE/POST_CHECK) | N(skill n=1) | N(MCP solvers+workflow) | N(plugin obj=5 tool=7) | P(宿主计数) | P(跟env) | - | -(DRAFT) | -
+capacity_planner | N(MCP池键) | P(env→plugin) | N(plugin) | M+B×1 | N(plugin ALL_APPLICABLE/POST_CHECK) | N(skill n=1) | N(MCP ontology+solvers+workflow) | N(plugin obj=4 tool=9) | P(宿主计数) | P(跟env) | -(production) | -(DRAFT) | -
+quality_inspector | N(MCP池键) | P(env→plugin) | N(plugin) | M+B×1 | N(plugin ALL_APPLICABLE/POST_CHECK) | N(skill n=0) | N(MCP solvers) | N(plugin obj=3 tool=2) | P(宿主计数) | P(跟env) | -(quality) | -(DRAFT) | -
+supply_chain | N(MCP池键) | P(env→plugin) | N(plugin) | M+B×1 | N(plugin ALL_APPLICABLE/POST_CHECK) | N(skill n=0) | N(MCP solvers) | N(plugin obj=4 tool=3) | P(宿主计数) | P(跟env) | -(supply-chain) | -(DRAFT) | -
+finance_analyst | N(MCP池键) | P(env→plugin) | N(plugin) | M+B×1 | N(plugin ALL_APPLICABLE/POST_CHECK) | N(skill n=0) | N(MCP solvers) | N(plugin obj=3 tool=5) | P(宿主计数) | P(跟env) | - | -(DRAFT) | -
+carbon_auditor | N(MCP池键) | P(env→plugin) | N(plugin) | M+B×1 | N(plugin ALL_APPLICABLE/POST_CHECK) | N(skill n=0) | N(MCP solvers) | N(plugin obj=3 tool=2) | P(宿主计数) | P(跟env) | - | -(DRAFT) | -
+external_market | N(MCP池键) | P(env→plugin) | N(plugin) | M+B×1 | N(plugin ALL_APPLICABLE/POST_CHECK) | N(skill n=1) | N(MCP market_data+solvers+workflow) | N(plugin obj=4 tool=8) | P(宿主计数) | P(跟env) | - | -(PUBLISHED) | -
+code_assistant | N(MCP池键) | P(env→plugin) | N(plugin) | M+B×1 | N(plugin 0/POST_CHECK) | N(skill n=1) | N(MCP code_tools) | N(plugin obj=0 tool=3) | P(宿主计数) | P(跟env) | - | -(DRAFT) | -
+coordinator | N(MCP池键) | P(env→plugin) | N(plugin) | M+B×1 | N(plugin ALL_APPLICABLE/POST_CHECK) | N(skill n=0) | N(MCP solvers) | N(plugin obj=8 tool=4) | P(宿主计数) | P(跟env) | -(coordinator) | -(PUBLISHED) | -
+general | N(MCP池键) | P(env→plugin) | N(plugin) | M+B×26 | N(plugin ALL_APPLICABLE/POST_CHECK) | N(skill n=4) | N(MCP ontology+solvers+workflow) | N(plugin obj=0ALL tool=28ALL) | P(宿主计数) | P(EXTERNAL) | -(ceo) | -(PUBLISHED) | -

@@ -1,0 +1,2 @@
+SUBSET_RC=0（test/dsh-* 32/32 全绿）
+FULL_SUITE_RC=1（同一份全量套件 230 文件里唯一红 = test/runtime-workflow.test.ts 的墙钟断言，不在本子集内；归因见本文件尾）

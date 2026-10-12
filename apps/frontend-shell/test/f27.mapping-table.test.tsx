@@ -60,7 +60,9 @@ describe("F27 · 业务建模映射表（§7.20 图谱内功能）", () => {
     expect(within(table).getByTestId("mapping-row-Base")).toHaveTextContent("ERP 主数据 · plants · 12 字段");
     // 规则徽章可点开 expression
     await user.click(within(table).getByTestId("mapping-rule-Base-C05"));
-    expect(await screen.findByTestId("mapping-rule-expression")).toHaveTextContent("SUSTAIN(产线.utilization > 95, 3)");
+    // WO-RULE-EXPR-PARAMS（#78）：映射表读的是**活规则库**（rules API），故显真后端口径的 `Line.utilization`。
+    // 原断言咬的是中译过的 `产线.utilization` —— `产线` 不是任何已注册对象类型 key，喂引擎永远解析不到。
+    expect(await screen.findByTestId("mapping-rule-expression")).toHaveTextContent("SUSTAIN(Line.utilization > 95, 3)");
 
     // 行点击 → 关闭弹层 + 图谱定位高亮该节点（检查器 + selectedObjects）
     await user.click(within(table).getByTestId("mapping-row-Base"));
@@ -69,6 +71,32 @@ describe("F27 · 业务建模映射表（§7.20 图谱内功能）", () => {
     expect(useSessionStore.getState().selectedObjects).toEqual([
       expect.objectContaining({ objectId: "n-base", label: "基地" }),
     ]);
+  });
+
+  it("四注册表段（PRD-IND-map §4.5-③）：关系类型/规则/Action/事件分段表渲染", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/v/graph");
+    await user.click(await screen.findByTestId("graph-mapping-btn"));
+    await screen.findByTestId("mapping-table");
+
+    const regs = await screen.findByTestId("mapping-registries");
+    // 4 段都在
+    expect(within(regs).getByTestId("mapping-reg-link-table")).toBeInTheDocument();
+    expect(within(regs).getByTestId("mapping-reg-rule-table")).toBeInTheDocument();
+    expect(within(regs).getByTestId("mapping-reg-action-table")).toBeInTheDocument();
+    expect(within(regs).getByTestId("mapping-reg-event-table")).toBeInTheDocument();
+    // Action 注册表逐字（采纳产能保障方案 + C10 审批人）
+    expect(within(regs).getByTestId("mapping-reg-action-row-采纳产能保障方案")).toHaveTextContent("生产工单MO");
+    // 事件对象表（到货间隙 ← WMS/ERP）
+    expect(within(regs).getByTestId("mapping-reg-event-row-到货间隙")).toHaveTextContent("WMS/ERP");
+    // 关系类型（model_producible_at N:N）
+    expect(within(regs).getByTestId("mapping-reg-link-row-model_producible_at")).toHaveTextContent("N:N");
+    // WO-UNIT-MEANING：段标题括号内此前是裸数「（12）」，看不出数的是什么 → 现为「（N 条）」（= 本段表格行数）
+    expect(within(regs).getByTestId("mapping-reg-link").textContent).toMatch(/（\d+ 条）/);
+    expect(within(regs).getByTestId("mapping-reg-rule").textContent).toMatch(/（\d+ 条）/);
+    expect(within(regs).getByTestId("mapping-reg-action").textContent).toMatch(/（\d+ 条）/);
+    expect(within(regs).getByTestId("mapping-reg-event").textContent).toMatch(/（\d+ 条）/);
   });
 
   it("导出 CSV 与自包含 HTML（标题/导出时间/同源脚注）内容抽查", async () => {

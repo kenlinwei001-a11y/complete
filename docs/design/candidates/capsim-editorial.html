@@ -1,0 +1,802 @@
+<title>产能推演 · 编辑排版稿</title>
+
+<!--
+  设计方向：编辑排版派（经济学人图表 / FT Graphics / 上市公司年报）
+  层级只由四级字号阶梯 34 / 20 / 14 / 12、字重、留白节奏建立。
+  无色块分区，无表格竖线；横线只出现在语义分组处。
+  调色板改动理由见文件末尾注释。
+-->
+
+<style>
+  :root{
+    /* ── 纸与墨（改自原深色令牌，理由见文末） ── */
+    --paper:#f4f1ea;          /* 纸 */
+    --paper2:#efebe2;         /* 次级纸（仅用于表头带，无边框） */
+    --ink:#14181f;            /* 正文墨 */
+    --ink2:#3d4653;           /* 次级墨 */
+    --ink3:#6b7480;           /* 元信息墨 */
+    --rule:rgba(20,24,31,.16);      /* 细线 */
+    --rule2:rgba(20,24,31,.34);     /* 分组线 */
+    --rule3:#14181f;                /* 栏目重线 */
+    --accent:#115dc9;         /* 唯一强调墨：可交互处 */
+    --danger:#9d201c;         /* 越线 */
+    --ok:#2f6b45;
+
+    --s1:34px; --s2:20px; --s3:14px; --s4:12px;
+
+    --serif: Georgia,"Times New Roman","Songti SC","Noto Serif CJK SC","Source Han Serif SC",STSong,serif;
+    --sans: -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",sans-serif;
+  }
+
+  body{ background:var(--paper); color:var(--ink); font-family:var(--sans); font-size:var(--s3); line-height:1.6; margin:0; -webkit-font-smoothing:antialiased; }
+
+  .sheet{ max-width:1160px; margin:0 auto; padding:0 32px 96px; }
+  @media (max-width:820px){ .sheet{ padding:0 16px 64px; } }
+
+  /* ── 四级字号阶梯：每一级只做一件事 ── */
+  .lede{ font-family:var(--serif); font-size:var(--s1); line-height:1.3; font-weight:400; letter-spacing:-.01em; margin:0 0 8px; max-width:24em; }
+  .star{ font-family:var(--serif); font-size:var(--s2); line-height:1.45; font-weight:400; margin:0; }  /* 区块主角 */
+  .body{ font-size:var(--s3); }
+  .meta{ font-size:var(--s4); line-height:1.5; color:var(--ink3); letter-spacing:.02em; }
+
+  /* ── 栏目名（元信息层，靠字距与重线，不靠色块） ── */
+  .kicker{ font-size:var(--s4); letter-spacing:.22em; text-transform:uppercase; color:var(--ink); font-weight:600; }
+  .kicker .sub{ letter-spacing:.02em; text-transform:none; font-weight:400; color:var(--ink3); margin-left:14px; }
+
+  section.block{ margin-top:72px; }
+  section.block > .kicker{ display:block; padding-bottom:10px; border-bottom:2px solid var(--rule3); margin-bottom:32px; }
+
+  /* ── 报头 ── */
+  .masthead{ padding-top:44px; border-bottom:1px solid var(--rule2); padding-bottom:14px; }
+  .mast-row{ display:flex; align-items:baseline; justify-content:space-between; gap:24px; flex-wrap:wrap; }
+  .wordmark{ font-family:var(--serif); font-size:var(--s2); font-weight:700; letter-spacing:.16em; margin:0; }
+  .scope{ margin-top:16px; display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; }
+  .scope-label{ font-size:var(--s4); letter-spacing:.22em; color:var(--ink3); text-transform:uppercase; flex:none; }
+  .scope-list{ display:flex; align-items:baseline; gap:16px; flex-wrap:wrap; }
+  .scope-on{ font-size:var(--s3); font-weight:700; color:var(--ink); border-bottom:2px solid var(--ink); padding-bottom:2px; }
+  .scope-off{ font-size:var(--s4); color:var(--ink3); text-decoration:none; border-bottom:1px solid transparent; }
+  a.scope-off{ color:var(--accent); border-bottom-color:rgba(17,93,201,.35); }
+  a.scope-off:hover{ border-bottom-color:var(--accent); }
+  .scope-lock{ font-size:var(--s4); color:var(--ink3); opacity:.62; }
+  .scope-note{ font-size:var(--s4); color:var(--ink3); }
+
+  /* ── 导语区 ── */
+  .lede-wrap{ margin-top:40px; }
+  .lede-by{ font-size:var(--s4); color:var(--ink3); letter-spacing:.02em; margin-top:14px; }
+
+  /* ── 摘要数字条 ── */
+  .deck{ margin-top:40px; border-top:2px solid var(--rule3); border-bottom:1px solid var(--rule); display:flex; flex-wrap:wrap; }
+  .deck-item{ padding:18px 34px 16px 0; margin-right:34px; flex:0 0 auto; }
+  .deck-item + .deck-item{ border-left:1px solid var(--rule); padding-left:34px; }
+  .deck-n{ font-family:var(--serif); font-size:var(--s2); font-weight:400; font-variant-numeric:tabular-nums; letter-spacing:-.01em; display:block; }
+  .deck-l{ font-size:var(--s4); color:var(--ink3); letter-spacing:.06em; display:block; margin-top:4px; }
+
+  /* ── 表格：无竖线，横线只在语义分组处 ── */
+  .tbl-scroll{ overflow-x:auto; }
+  table{ border-collapse:collapse; width:100%; font-size:var(--s3); font-variant-numeric:tabular-nums; }
+  thead th{ font-size:var(--s4); font-weight:600; color:var(--ink3); letter-spacing:.08em; text-align:right; padding:0 0 8px 18px; border-bottom:1px solid var(--rule2); white-space:nowrap; vertical-align:bottom; }
+  thead th.l{ text-align:left; padding-left:0; }
+  tbody td{ padding:9px 0 9px 18px; text-align:right; border-bottom:1px solid var(--rule); white-space:nowrap; }
+  tbody td.l{ text-align:left; padding-left:0; }
+  tbody tr.group-end td{ border-bottom:1px solid var(--rule2); }
+  tbody tr.total td{ border-bottom:none; border-top:2px solid var(--rule3); font-weight:700; padding-top:11px; }
+  td.name{ font-weight:700; }
+  td.dim{ color:var(--ink3); }
+  .u{ font-size:var(--s4); color:var(--ink3); font-weight:400; }
+  .bar{ display:inline-block; height:5px; background:var(--ink); opacity:.55; vertical-align:middle; margin-left:10px; min-width:2px; }
+  .lead-hi{ color:var(--danger); font-weight:700; }
+
+  /* ── 三槽卡：三栏，靠重线与留白，不靠边框色块 ── */
+  .slots{ display:grid; grid-template-columns:repeat(3,1fr); gap:0 40px; }
+  @media (max-width:900px){ .slots{ grid-template-columns:1fr; gap:0; } .slot-card{ margin-bottom:40px; } }
+  .slot-card{ border-top:2px solid var(--rule3); padding-top:14px; }
+  .slot-head{ font-size:var(--s4); letter-spacing:.14em; color:var(--ink3); margin-bottom:14px; }
+  .slot-head b{ color:var(--ink); letter-spacing:.06em; font-size:var(--s3); }
+  .slot-row{ padding:14px 0; border-bottom:1px solid var(--rule); }
+  .slot-row:last-child{ border-bottom:none; }
+  .slot-label{ font-size:var(--s4); letter-spacing:.2em; color:var(--ink3); display:block; margin-bottom:7px; }
+  .facts{ font-size:var(--s3); line-height:1.75; }
+  .facts .k{ color:var(--ink3); }
+  .facts .sep{ color:var(--ink3); padding:0 6px; }
+  .none{ font-family:var(--serif); font-size:var(--s2); color:var(--danger); }
+  details{ margin-top:10px; }
+  summary{ font-size:var(--s4); color:var(--accent); cursor:pointer; letter-spacing:.04em; list-style:none; }
+  summary::-webkit-details-marker{ display:none; }
+  summary::before{ content:"▸ "; }
+  details[open] summary::before{ content:"▾ "; }
+  .overlay{ font-size:var(--s3); line-height:1.7; color:var(--ink2); border-left:2px solid var(--rule2); padding:8px 0 8px 14px; margin-top:10px; }
+
+  /* ── 时序推演 ── */
+  .charts{ display:grid; grid-template-columns:1fr 1fr; gap:44px 48px; }
+  @media (max-width:900px){ .charts{ grid-template-columns:1fr; } }
+  .chart-head{ display:flex; align-items:baseline; justify-content:space-between; gap:16px; border-bottom:1px solid var(--rule2); padding-bottom:7px; }
+  .chart-name{ font-size:var(--s3); font-weight:700; letter-spacing:.04em; }
+  .chart-now{ font-family:var(--serif); font-size:var(--s2); font-variant-numeric:tabular-nums; }
+  .chart svg{ display:block; width:100%; height:auto; margin-top:12px; }
+  .chart-foot{ display:flex; justify-content:space-between; font-size:var(--s4); color:var(--ink3); margin-top:6px; }
+  .ser{ fill:none; stroke:var(--ink); stroke-width:1.6; }
+  .base{ stroke:var(--rule2); stroke-width:1; }
+  .red{ stroke:var(--danger); stroke-width:1; stroke-dasharray:2 3; }
+  .cross{ fill:var(--danger); }
+  .cvert{ stroke:var(--danger); stroke-width:1; stroke-dasharray:1 2; }
+  .cal{ margin-top:52px; border-top:1px solid var(--rule2); padding-top:22px; }
+  .cal svg{ display:block; width:100%; height:auto; }
+  .cal-lab{ display:flex; justify-content:space-between; font-size:var(--s4); color:var(--ink3); margin-top:4px; }
+  .missing{ margin-top:30px; font-size:var(--s4); color:var(--ink3); border-top:1px solid var(--rule); padding-top:12px; line-height:1.9; }
+
+  /* ── 方案比对：四栏，第四栏无按钮 ── */
+  .plans{ display:grid; grid-template-columns:repeat(4,1fr); gap:0 32px; }
+  @media (max-width:1000px){ .plans{ grid-template-columns:1fr 1fr; gap:0 28px; } }
+  @media (max-width:640px){ .plans{ grid-template-columns:1fr; } }
+  .plan{ border-top:2px solid var(--rule3); padding-top:14px; }
+  .plan.nul{ border-top:2px solid var(--danger); }
+  .plan-tag{ font-size:var(--s4); letter-spacing:.2em; color:var(--ink3); }
+  .plan-name{ font-family:var(--serif); font-size:var(--s2); line-height:1.35; margin:6px 0 0; font-weight:400; }
+  .plan.nul .plan-name{ color:var(--danger); }
+  .prow{ border-top:1px solid var(--rule); padding:11px 0 10px; }
+  .prow:first-of-type{ margin-top:16px; }
+  .plabel{ font-size:var(--s4); letter-spacing:.14em; color:var(--ink3); display:block; margin-bottom:5px; }
+  .pval{ font-size:var(--s3); line-height:1.65; }
+  .act{ margin-top:18px; }
+  .act a{ font-size:var(--s3); color:var(--accent); text-decoration:none; border-bottom:1px solid var(--accent); padding-bottom:1px; font-weight:600; }
+  .act-none{ margin-top:18px; font-size:var(--s4); color:var(--ink3); letter-spacing:.04em; }
+
+  /* ── 诚实位记号 ── */
+  s, .strike{ text-decoration:line-through; text-decoration-thickness:1px; color:var(--ink3); }
+  .est{ font-size:var(--s4); color:var(--ink3); letter-spacing:.02em; }
+  .syn{ font-size:var(--s4); color:var(--ink3); letter-spacing:.02em; }
+
+  /* ── 页脚 ── */
+  .colophon{ margin-top:76px; border-top:1px solid var(--rule2); padding-top:18px; display:grid; grid-template-columns:1fr 1fr; gap:10px 48px; }
+  @media (max-width:820px){ .colophon{ grid-template-columns:1fr; } }
+  .colophon dl{ margin:0; font-size:var(--s4); line-height:1.9; color:var(--ink3); }
+  .colophon dt{ display:inline; letter-spacing:.14em; color:var(--ink); }
+  .colophon dd{ display:inline; margin:0 0 0 10px; }
+  .colophon dd::after{ content:""; display:block; }
+
+  /* ── 演示外壳（不属于屏内容） ── */
+  .demo-bar{ max-width:1160px; margin:0 auto; padding:0 32px; }
+  @media (max-width:820px){ .demo-bar{ padding:0 16px; } }
+  .demo-rule{ margin:110px 0 0; border-top:4px double var(--rule3); padding-top:12px; }
+  .demo-txt{ font-size:var(--s4); letter-spacing:.14em; color:var(--ink3); }
+  .demo-txt b{ color:var(--ink); }
+  .demo-txt a{ color:var(--accent); text-decoration:none; border-bottom:1px solid rgba(17,93,201,.4); }
+</style>
+
+<!-- ══════════════════════ 屏 1 · 口径＝全部基地 ══════════════════════ -->
+<div class="sheet" id="screen-1">
+
+  <header class="masthead">
+    <div class="mast-row">
+      <h1 class="wordmark">产能推演</h1>
+      <div class="meta">后端实测 · SEED_DEMO=1 · 种子 42 · 未来 30 天 · 红线 85</div>
+    </div>
+    <div class="scope">
+      <span class="scope-label">口径</span>
+      <span class="scope-list">
+        <span class="scope-on">全部基地 · 13</span>
+        <a class="scope-off" href="#screen-2">常州</a>
+        <span class="scope-off">厦门</span><span class="scope-off">江门</span><span class="scope-off">成都</span>
+        <span class="scope-off">合肥</span><span class="scope-off">眉山</span><span class="scope-off">武汉</span>
+        <span class="scope-off">自贡</span><span class="scope-off">枣庄</span><span class="scope-off">金华</span>
+        <span class="scope-off">信阳</span><span class="scope-off">扬州</span><span class="scope-off">邯郸</span>
+      </span>
+    </div>
+  </header>
+
+  <div class="lede-wrap">
+    <p class="lede">全网 13 个基地日产能 1,158,399 套，已排 1,155,503 —— 余量 2,896 套/天，0.25%；其中 8 个基地余量不足 200 套/天。</p>
+    <div class="lede-by">口径 全部基地 · 余量＝瓶颈工序硬产能 − 已排产 · 七种主约束</div>
+  </div>
+
+  <div class="deck">
+    <div class="deck-item"><span class="deck-n">1,158,399</span><span class="deck-l">日产能 · 套/天</span></div>
+    <div class="deck-item"><span class="deck-n">1,155,503</span><span class="deck-l">已排 · 套/天</span></div>
+    <div class="deck-item"><span class="deck-n">2,896</span><span class="deck-l">余量 · 套/天 · 0.25%</span></div>
+    <div class="deck-item"><span class="deck-n">8 / 13</span><span class="deck-l">余量 &lt; 200 的基地</span></div>
+    <div class="deck-item"><span class="deck-n">454.64 亿</span><span class="deck-l">在手订单 · 500 单 / 20 客户</span></div>
+    <div class="deck-item"><span class="deck-n">1 / 13</span><span class="deck-l">已取到 30 天轨迹的基地</span></div>
+  </div>
+
+  <!-- ── 风险清单 ── -->
+  <section class="block">
+    <span class="kicker">风险清单<span class="sub">13 个基地各一行 · 按余量升序 · 横线只在语义分组处</span></span>
+    <div class="tbl-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th class="l">基地</th><th class="l">类型</th><th class="l">主约束</th>
+            <th>柜位</th><th>节拍</th><th>产能 套/天</th><th>已排 套/天</th><th>余量 套/天</th><th>余%</th><th>负荷率</th><th>在手单</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="l name">邯郸</td><td class="l dim">储能</td><td class="l">物料齐套</td><td>552</td><td>85</td><td>45,512</td><td>45,509</td><td class="lead-hi">3</td><td>0.01%<span class="bar" style="width:2px"></span></td><td>70</td><td>36</td></tr>
+          <tr><td class="l name">扬州</td><td class="l dim">储能</td><td class="l">良率波动</td><td>574</td><td>91</td><td>50,667</td><td>50,653</td><td class="lead-hi">14</td><td>0.03%<span class="bar" style="width:4px"></span></td><td>72</td><td>50</td></tr>
+          <tr><td class="l name">眉山</td><td class="l dim">储能</td><td class="l">人力工时</td><td>1,055</td><td>92</td><td>94,245</td><td>94,135</td><td>110</td><td>0.12%<span class="bar" style="width:16px"></span></td><td>79</td><td>22</td></tr>
+          <tr><td class="l name">武汉</td><td class="l dim">动力</td><td class="l">良率波动</td><td>982</td><td>91</td><td>86,770</td><td>86,633</td><td>137</td><td>0.16%<span class="bar" style="width:21px"></span></td><td>80</td><td>39</td></tr>
+          <tr><td class="l name">自贡</td><td class="l dim">动力</td><td class="l">人力工时</td><td>747</td><td>92</td><td>66,800</td><td>66,648</td><td>152</td><td>0.23%<span class="bar" style="width:30px"></span></td><td>77</td><td>33</td></tr>
+          <tr><td class="l name">枣庄</td><td class="l dim">动力+储能</td><td class="l">换型损失</td><td>695</td><td>88</td><td>59,448</td><td>59,290</td><td>158</td><td>0.27%<span class="bar" style="width:35px"></span></td><td>73</td><td>110</td></tr>
+          <tr><td class="l name">金华</td><td class="l dim">动力</td><td class="l">设备OEE</td><td>684</td><td>87</td><td>57,842</td><td>57,668</td><td>174</td><td>0.30%<span class="bar" style="width:39px"></span></td><td>76</td><td>82</td></tr>
+          <tr class="group-end"><td class="l name">成都</td><td class="l dim">动力+储能</td><td class="l">设备OEE</td><td>1,616</td><td>85</td><td>133,377</td><td>133,198</td><td>179</td><td>0.13%<span class="bar" style="width:17px"></span></td><td>82</td><td>68</td></tr>
+          <tr><td class="l name">合肥</td><td class="l dim">动力</td><td class="l">设备OEE</td><td>947</td><td>92</td><td>84,685</td><td>84,467</td><td>218</td><td>0.26%<span class="bar" style="width:34px"></span></td><td>78</td><td>33</td></tr>
+          <tr><td class="l name">厦门</td><td class="l dim">动力</td><td class="l">设备OEE</td><td>1,527</td><td>87</td><td>129,129</td><td>128,833</td><td>296</td><td>0.23%<span class="bar" style="width:30px"></span></td><td>85</td><td>37</td></tr>
+          <tr><td class="l name">信阳</td><td class="l dim">储能</td><td class="l">物流时长</td><td>720</td><td>93</td><td>65,219</td><td>64,918</td><td>301</td><td>0.46%<span class="bar" style="width:60px"></span></td><td>75</td><td>56</td></tr>
+          <tr><td class="l name">江门</td><td class="l dim">储能</td><td class="l">物料齐套</td><td>1,369</td><td>88</td><td>117,219</td><td>116,783</td><td>436</td><td>0.37%<span class="bar" style="width:48px"></span></td><td>83</td><td>38</td></tr>
+          <tr><td class="l name">常州</td><td class="l dim">动力+储能</td><td class="l">瓶颈工序</td><td>1,849</td><td>93</td><td>167,486</td><td>166,768</td><td>718</td><td>0.43%<span class="bar" style="width:56px"></span></td><td>88</td><td>170</td></tr>
+          <tr class="total"><td class="l">合计 13</td><td class="l dim">—</td><td class="l">7 种约束</td><td>12,817</td><td class="dim">—</td><td>1,158,399</td><td>1,155,503</td><td>2,896</td><td>0.25%</td><td class="dim">—</td><td>500</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="missing">
+      分组线在余量 200 套/天处 —— 线上 8 个基地，线下 5 个。<br>
+      口径不符两处，如实列出：柜位合计取后端下发值 12,817，与逐行相加差 500，<s>差额归属本次未核</s>；在手单逐基地相加为 774 张次，订单簿为 500 张，两数口径不同，<s>拆分规则本次未取到</s>。<br>
+      主约束分布：设备OEE 4 · 物料齐套 2 · 良率波动 2 · 人力工时 2 · 瓶颈工序 1 · 物流时长 1 · 换型损失 1。
+    </div>
+  </section>
+
+  <!-- ── 三槽 ── -->
+  <section class="block">
+    <span class="kicker">问题 · 根因 · 建议方案<span class="sub">每张卡第一层只放数值、状态、名字；成段原文收在浮层</span></span>
+    <div class="slots">
+
+      <div class="slot-card">
+        <div class="slot-head">01 &nbsp;<b>常州</b> &nbsp;动力+储能</div>
+        <div class="slot-row">
+          <span class="slot-label">问题是什么</span>
+          <p class="star">负荷率 88，13 基地最高；在手单 170 张，占订单簿 500 张的 34.0%<span class="est">〔估〕</span>。</p>
+          <div class="facts" style="margin-top:10px">
+            <span class="k">余量</span> 718 套/天<span class="sep">·</span><span class="k">占全网余量</span> 24.8%<span class="est">〔估〕</span><span class="sep">·</span><span class="k">已排占全网</span> 14.43%<span class="est">〔估〕</span>
+          </div>
+        </div>
+        <div class="slot-row">
+          <span class="slot-label">根因</span>
+          <div class="facts">
+            <span class="k">主约束</span> 瓶颈工序<span class="sep">·</span><span class="k">正极安全库存</span> 5 天 / 阈值 5 天<span class="sep">·</span><span class="k">物料齐套率</span> 79% / 阈值 80%<span class="sep">·</span><span class="k">来源系统</span> WMS/ERP 采购与在途
+          </div>
+          <details><summary>根因原文</summary>
+            <div class="overlay">关键正极安全库存覆盖降至 5 天（阈值 5 天），物料齐套率 79%（阈值 80%）。<br><span class="meta">来源系统 WMS/ERP 采购与在途 · 七因子读数<span class="syn">〔合成〕</span>由本体结构派生，非产线实测；柜位、节拍、排产量为真值。</span></div>
+          </details>
+        </div>
+        <div class="slot-row">
+          <span class="slot-label">建议方案</span>
+          <div class="facts">方案 B <b>补物料齐套</b><span class="sep">·</span>缺口 1.0 个百分点<span class="sep">·</span>见下栏比对</div>
+        </div>
+      </div>
+
+      <div class="slot-card">
+        <div class="slot-head">02 &nbsp;<b>邯郸</b> &nbsp;储能</div>
+        <div class="slot-row">
+          <span class="slot-label">问题是什么</span>
+          <p class="star">余量 3 套/天，0.01%，13 基地最低 —— 而负荷率 70 同时是 13 基地最低。</p>
+          <div class="facts" style="margin-top:10px">
+            <span class="k">产能</span> 45,512<span class="sep">·</span><span class="k">已排</span> 45,509<span class="sep">·</span><span class="k">柜位</span> 552<span class="sep">·</span><span class="k">节拍</span> 85<span class="sep">·</span><span class="k">在手单</span> 36
+          </div>
+        </div>
+        <div class="slot-row">
+          <span class="slot-label">根因</span>
+          <div class="facts">
+            <span class="k">主约束</span> 物料齐套<span class="sep">·</span><span class="k">因子读数</span> <s>本次未取到</s><span class="sep">·</span><span class="k">30 天轨迹</span> <s>本次未取到</s>
+          </div>
+        </div>
+        <div class="slot-row">
+          <span class="slot-label">建议方案</span>
+          <p class="none">今天没有对策</p>
+          <div class="meta" style="margin-top:6px">越线日不可知 —— 该基地七因子轨迹未取到，任何越线日推迟量都是编的。</div>
+        </div>
+      </div>
+
+      <div class="slot-card">
+        <div class="slot-head">03 &nbsp;<b>广汽埃安</b> &nbsp;客户单点依赖</div>
+        <div class="slot-row">
+          <span class="slot-label">问题是什么</span>
+          <p class="star">223 单 · 131.76 亿，占订单簿 30.8% —— 20 家客户中第 1。</p>
+          <div class="facts" style="margin-top:10px">
+            <span class="k">订单簿</span> 500 单 / 454.64 亿<span class="sep">·</span><span class="k">小鹏</span> 90 单<span class="sep">·</span><span class="k">国家电网</span> 22 单
+          </div>
+        </div>
+        <div class="slot-row">
+          <span class="slot-label">根因</span>
+          <div class="facts">
+            <span class="k">客户 – 基地分布</span> <s>本次未取到</s><span class="sep">·</span><span class="k">分散度目标</span> <s>未设定</s>
+          </div>
+        </div>
+        <div class="slot-row">
+          <span class="slot-label">建议方案</span>
+          <p class="none">今天没有对策</p>
+          <div class="meta" style="margin-top:6px">方案 C 只减总量，不降集中度；对应方案需分散度目标，目前未设定。</div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── 时序推演 ── -->
+  <section class="block">
+    <span class="kicker">时序推演 · 未来 30 天<span class="sub">预判，非实测 · 红线 85 · 13 个基地中 1 个已取到轨迹</span></span>
+    <div class="charts">
+
+      <div class="chart">
+        <div class="chart-head"><span class="chart-name">常州 · 物料齐套</span><span class="chart-now">96 <span class="meta">今日</span></span></div>
+        <svg viewBox="-8 -10 616 112" preserveAspectRatio="xMidYMid meet" aria-label="常州物料齐套 30 天紧度轨迹">
+          <line class="base" x1="0" y1="90" x2="600" y2="90" vector-effect="non-scaling-stroke"/>
+          <line class="red" x1="0" y1="33.75" x2="600" y2="33.75" vector-effect="non-scaling-stroke"/>
+          <line class="cvert" x1="0" y1="9" x2="0" y2="90" vector-effect="non-scaling-stroke"/>
+          <polyline class="ser" vector-effect="non-scaling-stroke" points="0.00,9.00 20.69,9.00 41.38,9.00 62.07,9.00 82.76,9.00 103.45,9.00 124.14,9.00 144.83,9.00 165.52,9.00 186.21,9.00 206.90,6.75 227.59,5.40 248.28,5.17 268.97,4.95 289.66,5.17 310.34,5.40 331.03,6.75 351.72,9.00 372.41,9.00 393.10,9.00 413.79,9.00 434.48,9.00 455.17,9.00 475.86,9.00 496.55,6.75 517.24,5.40 537.93,5.17 558.62,4.95 579.31,5.17 600.00,5.40"/>
+          <rect class="cross" x="-2.5" y="6.5" width="5" height="5"/>
+        </svg>
+        <div class="chart-foot"><span>第 1 天越线 · 读数 96</span><span>30 天峰值 97.8 · 第 30 天 97.6</span></div>
+      </div>
+
+      <div class="chart">
+        <div class="chart-head"><span class="chart-name">常州 · 瓶颈工序<span class="meta"> 主约束</span></span><span class="chart-now">91 <span class="meta">今日</span></span></div>
+        <svg viewBox="-8 -10 616 112" preserveAspectRatio="xMidYMid meet" aria-label="常州瓶颈工序 30 天紧度轨迹">
+          <line class="base" x1="0" y1="90" x2="600" y2="90" vector-effect="non-scaling-stroke"/>
+          <line class="red" x1="0" y1="33.75" x2="600" y2="33.75" vector-effect="non-scaling-stroke"/>
+          <line class="cvert" x1="0" y1="20.25" x2="0" y2="90" vector-effect="non-scaling-stroke"/>
+          <polyline class="ser" vector-effect="non-scaling-stroke" points="0.00,20.25 20.69,20.25 41.38,18.00 62.07,18.00 82.76,18.00 103.45,18.00 124.14,15.75 144.83,15.75 165.52,15.75 186.21,15.75 206.90,13.50 227.59,13.50 248.28,13.50 268.97,13.50 289.66,13.50 310.34,11.25 331.03,9.00 351.72,6.75 372.41,5.40 393.10,4.95 413.79,5.17 434.48,5.63 455.17,6.75 475.86,6.75 496.55,5.63 517.24,5.17 537.93,4.95 558.62,5.17 579.31,5.63 600.00,6.75"/>
+          <rect class="cross" x="-2.5" y="17.75" width="5" height="5"/>
+        </svg>
+        <div class="chart-foot"><span>第 1 天越线 · 读数 91</span><span>30 天峰值 97.8 · 第 30 天 97</span></div>
+      </div>
+
+      <div class="chart">
+        <div class="chart-head"><span class="chart-name">常州 · 设备OEE</span><span class="chart-now">69 <span class="meta">今日</span></span></div>
+        <svg viewBox="-8 -10 616 112" preserveAspectRatio="xMidYMid meet" aria-label="常州设备OEE 30 天紧度轨迹">
+          <line class="base" x1="0" y1="90" x2="600" y2="90" vector-effect="non-scaling-stroke"/>
+          <line class="red" x1="0" y1="33.75" x2="600" y2="33.75" vector-effect="non-scaling-stroke"/>
+          <line class="cvert" x1="351.72" y1="33.75" x2="351.72" y2="90" vector-effect="non-scaling-stroke"/>
+          <polyline class="ser" vector-effect="non-scaling-stroke" points="0.00,69.75 20.69,67.50 41.38,65.25 62.07,63.00 82.76,60.75 103.45,58.50 124.14,58.50 144.83,56.25 165.52,54.00 186.21,51.75 206.90,49.50 227.59,47.25 248.28,45.00 268.97,42.75 289.66,40.50 310.34,38.25 331.03,36.00 351.72,33.75 372.41,31.50 393.10,29.25 413.79,29.25 434.48,27.00 455.17,27.00 475.86,27.00 496.55,27.00 517.24,27.00 537.93,27.00 558.62,27.00 579.31,27.00 600.00,27.00"/>
+          <rect class="cross" x="349.22" y="31.25" width="5" height="5"/>
+        </svg>
+        <div class="chart-foot"><span>第 18 天越线 · 读数 85</span><span>四条已取到轨迹中唯一单调不降 · 第 30 天 88</span></div>
+      </div>
+
+      <div class="chart">
+        <div class="chart-head"><span class="chart-name">常州 · 人力工时</span><span class="chart-now">70 <span class="meta">今日</span></span></div>
+        <svg viewBox="-8 -10 616 112" preserveAspectRatio="xMidYMid meet" aria-label="常州人力工时 30 天紧度轨迹">
+          <line class="base" x1="0" y1="90" x2="600" y2="90" vector-effect="non-scaling-stroke"/>
+          <line class="red" x1="0" y1="33.75" x2="600" y2="33.75" vector-effect="non-scaling-stroke"/>
+          <line class="cvert" x1="372.41" y1="33.75" x2="372.41" y2="90" vector-effect="non-scaling-stroke"/>
+          <polyline class="ser" vector-effect="non-scaling-stroke" points="0.00,67.50 20.69,67.50 41.38,65.25 62.07,65.25 82.76,63.00 103.45,60.75 124.14,60.75 144.83,58.50 165.52,58.50 186.21,56.25 206.90,54.00 227.59,54.00 248.28,51.75 268.97,51.75 289.66,49.50 310.34,47.25 331.03,42.75 351.72,38.25 372.41,33.75 393.10,29.25 413.79,31.50 434.48,33.75 455.17,36.00 475.86,36.00 496.55,33.75 517.24,29.25 537.93,27.00 558.62,29.25 579.31,33.75 600.00,36.00"/>
+          <rect class="cross" x="369.91" y="31.25" width="5" height="5"/>
+        </svg>
+        <div class="chart-foot"><span>第 19 天越线 · 读数 85</span><span>30 天峰值 88 · 第 30 天 84</span></div>
+      </div>
+
+    </div>
+
+    <div class="cal">
+      <div class="kicker" style="border:none;padding:0;margin-bottom:16px">越线日历<span class="sub">已取到轨迹的 4 个因子 · 全部属常州</span></div>
+      <svg viewBox="-8 -34 616 62" preserveAspectRatio="xMidYMid meet" aria-label="越线日历">
+        <line class="base" x1="0" y1="0" x2="600" y2="0" vector-effect="non-scaling-stroke"/>
+        <line class="base" x1="0" y1="0" x2="0" y2="5" vector-effect="non-scaling-stroke"/>
+        <line class="base" x1="186.21" y1="0" x2="186.21" y2="5" vector-effect="non-scaling-stroke"/>
+        <line class="base" x1="393.10" y1="0" x2="393.10" y2="5" vector-effect="non-scaling-stroke"/>
+        <line class="base" x1="600" y1="0" x2="600" y2="5" vector-effect="non-scaling-stroke"/>
+        <line class="cvert" x1="0" y1="-30" x2="0" y2="0" vector-effect="non-scaling-stroke"/>
+        <rect class="cross" x="-3" y="-33" width="6" height="6"/>
+        <rect class="cross" x="-3" y="-20" width="6" height="6"/>
+        <line class="cvert" x1="351.72" y1="-16" x2="351.72" y2="0" vector-effect="non-scaling-stroke"/>
+        <rect class="cross" x="348.72" y="-19" width="6" height="6"/>
+        <line class="cvert" x1="372.41" y1="-16" x2="372.41" y2="0" vector-effect="non-scaling-stroke"/>
+        <rect class="cross" x="369.41" y="-19" width="6" height="6"/>
+      </svg>
+      <div class="cal-lab"><span>第 1 天 &nbsp;物料齐套 96 · 瓶颈工序 91</span><span>第 10 天</span><span>第 20 天 &nbsp;OEE 第 18 · 工时 第 19</span><span>第 30 天</span></div>
+    </div>
+
+    <div class="missing">
+      未取到的轨迹，如实列出，<b>不以 0 或「无变化」代替</b>：<br>
+      常州 · 物流时长 今日紧度 64<span class="syn">〔合成〕</span> · 30 天轨迹 <s>本次未取到</s> · 越线日 <s>不可知</s><br>
+      常州 · 换型损失 今日紧度 63<span class="syn">〔合成〕</span> · 30 天轨迹 <s>本次未取到</s> · 越线日 <s>不可知</s><br>
+      常州 · 良率波动 今日紧度 68<span class="syn">〔合成〕</span> · 30 天轨迹 <s>本次未取到</s> · 越线日 <s>不可知</s><br>
+      其余 12 个基地 · 30 天轨迹 <s>本次未取到</s> —— 邯郸 扬州 眉山 武汉 自贡 枣庄 金华 成都 合肥 厦门 信阳 江门
+    </div>
+  </section>
+
+  <!-- ── 方案比对 ── -->
+  <section class="block">
+    <span class="kicker">方案比对<span class="sub">三个方案 · 第四栏「什么都不做」是默认发生的那一个，因此没有按钮</span></span>
+    <div class="plans">
+
+      <div class="plan">
+        <div class="plan-tag">方案 A</div>
+        <p class="plan-name">跨基地调剂</p>
+        <div class="prow"><span class="plabel">依据 · 真数</span><div class="pval">余量最大 3 基地：常州 718 + 江门 436 + 信阳 301 ＝ 1,455 套/天<span class="est">〔估〕</span>，占全网余量 50.2%<span class="est">〔估〕</span></div></div>
+        <div class="prow"><span class="plabel">对全网余量</span><div class="pval">总量不变，仅改分布 · 增量 <s>不产生</s></div></div>
+        <div class="prow"><span class="plabel">越线日推迟</span><div class="pval"><s>本次未取到</s></div></div>
+        <div class="prow"><span class="plabel">代价</span><div class="pval"><s>本次未取到</s></div></div>
+        <div class="prow"><span class="plabel">前置</span><div class="pval">产品 – 基地兼容矩阵 <s>未取到</s></div></div>
+        <div class="prow"><span class="plabel">执行方</span><div class="pval">集团计划</div></div>
+        <div class="act"><a href="#screen-1">派发工单 →</a></div>
+      </div>
+
+      <div class="plan">
+        <div class="plan-tag">方案 B</div>
+        <p class="plan-name">补物料齐套</p>
+        <div class="prow"><span class="plabel">依据 · 真数</span><div class="pval">物料齐套为 2 个基地主约束（邯郸、江门）；常州齐套率 79% / 阈值 80%，正极安全库存 5 天 ＝ 阈值下限</div></div>
+        <div class="prow"><span class="plabel">对全网余量</span><div class="pval"><s>本次未取到</s></div></div>
+        <div class="prow"><span class="plabel">越线日推迟</span><div class="pval"><s>本次未取到</s></div></div>
+        <div class="prow"><span class="plabel">代价</span><div class="pval"><s>本次未取到</s></div></div>
+        <div class="prow"><span class="plabel">前置</span><div class="pval">采购在途明细 <s>未取到</s> · 来源 WMS/ERP</div></div>
+        <div class="prow"><span class="plabel">执行方</span><div class="pval">供应链</div></div>
+        <div class="act"><a href="#screen-1">派发工单 →</a></div>
+      </div>
+
+      <div class="plan">
+        <div class="plan-tag">方案 C</div>
+        <p class="plan-name">限接新单</p>
+        <div class="prow"><span class="plabel">依据 · 真数</span><div class="pval">在手 500 单 / 454.64 亿；广汽埃安 223 单 · 131.76 亿 · 占 30.8%</div></div>
+        <div class="prow"><span class="plabel">对全网余量</span><div class="pval">不增产能，减已排 · 量 <s>未取到</s></div></div>
+        <div class="prow"><span class="plabel">越线日推迟</span><div class="pval"><s>本次未取到</s></div></div>
+        <div class="prow"><span class="plabel">代价</span><div class="pval">客户敞口 131.76 亿（第一大客户）</div></div>
+        <div class="prow"><span class="plabel">前置</span><div class="pval">分散度目标 <s>未设定</s></div></div>
+        <div class="prow"><span class="plabel">执行方</span><div class="pval">商务</div></div>
+        <div class="act"><a href="#screen-1">派发工单 →</a></div>
+      </div>
+
+      <div class="plan nul">
+        <div class="plan-tag">第四栏 · 默认</div>
+        <p class="plan-name">什么都不做</p>
+        <div class="prow"><span class="plabel">依据 · 真数</span><div class="pval">全网余量 2,896 套/天 ＝ 0.25%；8 个基地余量 &lt; 200 套/天</div></div>
+        <div class="prow"><span class="plabel">对全网余量</span><div class="pval">维持 0.25%</div></div>
+        <div class="prow"><span class="plabel">越线日</span><div class="pval">常州 4 个因子 30 天内越 85：第 1 · 第 1 · 第 18 · 第 19 天</div></div>
+        <div class="prow"><span class="plabel">代价</span><div class="pval">在手 500 单 / 454.64 亿全部暴露于上述越线</div></div>
+        <div class="prow"><span class="plabel">前置</span><div class="pval">无 —— 不采取任何行动即发生</div></div>
+        <div class="prow"><span class="plabel">执行方</span><div class="pval">无</div></div>
+        <div class="act-none">默认发生 · 无按钮 · 本栏所有数均为实测，无一项<span class="est">〔估〕</span></div>
+      </div>
+
+    </div>
+  </section>
+
+  <div class="colophon">
+    <dl>
+      <dt>记号</dt><dd><s>删除线</s> ＝ 本次算不出，不是 0，也不是「无变化」</dd>
+      <dd><span class="est">〔估〕</span> ＝ 推演投影，非实测</dd>
+      <dd><span class="syn">〔合成〕</span> ＝ 七因子读数由本体结构派生，非产线实测</dd>
+    </dl>
+    <dl>
+      <dt>数据</dt><dd>后端实测 SEED_DEMO=1 · 种子 42 · 13 基地 · 订单簿 500 单 / 20 客户 / 454.64 亿</dd>
+      <dd>真值：柜位 · 节拍 · 排产量 · 订单额 &nbsp;|&nbsp; <span class="syn">〔合成〕</span>：七因子紧度读数</dd>
+      <dd>30 天轨迹 4 / 7 因子已取到 · 1 / 13 基地已取到 · 规则 key 与切片 key <s>本次未取到</s> · 求解耗时 <s>本次未取到</s></dd>
+    </dl>
+  </div>
+
+</div>
+
+<!-- ══════════════════════ 演示外壳 · 屏幕分隔 ══════════════════════ -->
+<div class="demo-bar">
+  <div class="demo-rule">
+    <div class="demo-txt"><b>屏 2</b> &nbsp; 同一套版面 · 同一套算法 · 只换口径 &nbsp;—&nbsp; 口径＝常州（基地负责人 base_manager:常州） &nbsp;&nbsp;<a href="#screen-1">↑ 回屏 1</a></div>
+  </div>
+</div>
+
+<!-- ══════════════════════ 屏 2 · 口径＝常州 ══════════════════════ -->
+<div class="sheet" id="screen-2">
+
+  <header class="masthead">
+    <div class="mast-row">
+      <h1 class="wordmark">产能推演</h1>
+      <div class="meta">后端实测 · SEED_DEMO=1 · 种子 42 · 未来 30 天 · 红线 85</div>
+    </div>
+    <div class="scope">
+      <span class="scope-label">口径</span>
+      <span class="scope-list">
+        <span class="scope-lock">全部基地 · 13</span>
+        <span class="scope-on">常州 · 动力+储能</span>
+        <span class="scope-lock">厦门</span><span class="scope-lock">江门</span><span class="scope-lock">成都</span>
+        <span class="scope-lock">合肥</span><span class="scope-lock">眉山</span><span class="scope-lock">武汉</span>
+        <span class="scope-lock">自贡</span><span class="scope-lock">枣庄</span><span class="scope-lock">金华</span>
+        <span class="scope-lock">信阳</span><span class="scope-lock">扬州</span><span class="scope-lock">邯郸</span>
+      </span>
+      <span class="scope-note">权限锁定 base_manager:常州 · 其余 12 个基地与全网口径不可选</span>
+    </div>
+  </header>
+
+  <div class="lede-wrap">
+    <p class="lede">常州余量 718 套/天，0.43%，13 基地最多 —— 但负荷率 88 是全网最高，七个因子里 4 个在 30 天内越 85 红线，其中 2 个第 1 天即越。</p>
+    <div class="lede-by">口径 常州 · 余量＝瓶颈工序硬产能 − 已排产 · 主约束 瓶颈工序</div>
+  </div>
+
+  <div class="deck">
+    <div class="deck-item"><span class="deck-n">167,486</span><span class="deck-l">日产能 · 套/天</span></div>
+    <div class="deck-item"><span class="deck-n">166,768</span><span class="deck-l">已排 · 套/天</span></div>
+    <div class="deck-item"><span class="deck-n">718</span><span class="deck-l">余量 · 套/天 · 0.43%</span></div>
+    <div class="deck-item"><span class="deck-n">88</span><span class="deck-l">负荷率 · 13 基地最高</span></div>
+    <div class="deck-item"><span class="deck-n">4 / 7</span><span class="deck-l">30 天内越线的因子</span></div>
+    <div class="deck-item"><span class="deck-n">170</span><span class="deck-l">在手单 · 占订单簿 34.0%<span class="est">〔估〕</span></span></div>
+  </div>
+
+  <!-- ── 风险清单 ── -->
+  <section class="block">
+    <span class="kicker">风险清单<span class="sub">常州 7 个因子各一行 · 按越线日升序 · 轨迹未取到者排在分组线下</span></span>
+    <div class="tbl-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th class="l">因子</th><th class="l">角色</th><th>今日紧度</th><th>红线</th><th>越线日</th><th>越线读数</th><th>30 天峰值</th><th>第 30 天</th><th class="l" style="padding-left:26px">30 天轨迹</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="l name">物料齐套</td><td class="l dim">根因所在</td><td>96</td><td>85</td><td class="lead-hi">第 1 天</td><td>96</td><td>97.8</td><td>97.6</td>
+            <td class="l" style="padding-left:26px"><svg viewBox="-3 -3 126 32" width="126" height="32" preserveAspectRatio="xMidYMid meet" aria-label="物料齐套迷你轨迹"><line class="red" x1="0" y1="9.75" x2="120" y2="9.75" vector-effect="non-scaling-stroke"/><polyline class="ser" style="stroke-width:1.3" vector-effect="non-scaling-stroke" points="0.00,2.60 4.14,2.60 8.28,2.60 12.41,2.60 16.55,2.60 20.69,2.60 24.83,2.60 28.97,2.60 33.10,2.60 37.24,2.60 41.38,1.95 45.52,1.56 49.66,1.49 53.79,1.43 57.93,1.49 62.07,1.56 66.21,1.95 70.34,2.60 74.48,2.60 78.62,2.60 82.76,2.60 86.90,2.60 91.03,2.60 95.17,2.60 99.31,1.95 103.45,1.56 107.59,1.49 111.72,1.43 115.86,1.49 120.00,1.56"/><rect class="cross" x="-2" y="0.6" width="4" height="4"/></svg></td>
+          </tr>
+          <tr>
+            <td class="l name">瓶颈工序</td><td class="l dim">主约束</td><td>91</td><td>85</td><td class="lead-hi">第 1 天</td><td>91</td><td>97.8</td><td>97</td>
+            <td class="l" style="padding-left:26px"><svg viewBox="-3 -3 126 32" width="126" height="32" preserveAspectRatio="xMidYMid meet" aria-label="瓶颈工序迷你轨迹"><line class="red" x1="0" y1="9.75" x2="120" y2="9.75" vector-effect="non-scaling-stroke"/><polyline class="ser" style="stroke-width:1.3" vector-effect="non-scaling-stroke" points="0.00,5.85 4.14,5.85 8.28,5.20 12.41,5.20 16.55,5.20 20.69,5.20 24.83,4.55 28.97,4.55 33.10,4.55 37.24,4.55 41.38,3.90 45.52,3.90 49.66,3.90 53.79,3.90 57.93,3.90 62.07,3.25 66.21,2.60 70.34,1.95 74.48,1.56 78.62,1.43 82.76,1.49 86.90,1.63 91.03,1.95 95.17,1.95 99.31,1.63 103.45,1.49 107.59,1.43 111.72,1.49 115.86,1.63 120.00,1.95"/><rect class="cross" x="-2" y="3.85" width="4" height="4"/></svg></td>
+          </tr>
+          <tr>
+            <td class="l name">设备OEE</td><td class="l dim">—</td><td>69</td><td>85</td><td>第 18 天</td><td>85</td><td>88</td><td>88</td>
+            <td class="l" style="padding-left:26px"><svg viewBox="-3 -3 126 32" width="126" height="32" preserveAspectRatio="xMidYMid meet" aria-label="设备OEE迷你轨迹"><line class="red" x1="0" y1="9.75" x2="120" y2="9.75" vector-effect="non-scaling-stroke"/><polyline class="ser" style="stroke-width:1.3" vector-effect="non-scaling-stroke" points="0.00,20.15 4.14,19.50 8.28,18.85 12.41,18.20 16.55,17.55 20.69,16.90 24.83,16.90 28.97,16.25 33.10,15.60 37.24,14.95 41.38,14.30 45.52,13.65 49.66,13.00 53.79,12.35 57.93,11.70 62.07,11.05 66.21,10.40 70.34,9.75 74.48,9.10 78.62,8.45 82.76,8.45 86.90,7.80 91.03,7.80 95.17,7.80 99.31,7.80 103.45,7.80 107.59,7.80 111.72,7.80 115.86,7.80 120.00,7.80"/><rect class="cross" x="68.34" y="7.75" width="4" height="4"/></svg></td>
+          </tr>
+          <tr class="group-end">
+            <td class="l name">人力工时</td><td class="l dim">—</td><td>70</td><td>85</td><td>第 19 天</td><td>85</td><td>88</td><td>84</td>
+            <td class="l" style="padding-left:26px"><svg viewBox="-3 -3 126 32" width="126" height="32" preserveAspectRatio="xMidYMid meet" aria-label="人力工时迷你轨迹"><line class="red" x1="0" y1="9.75" x2="120" y2="9.75" vector-effect="non-scaling-stroke"/><polyline class="ser" style="stroke-width:1.3" vector-effect="non-scaling-stroke" points="0.00,19.50 4.14,19.50 8.28,18.85 12.41,18.85 16.55,18.20 20.69,17.55 24.83,17.55 28.97,16.90 33.10,16.90 37.24,16.25 41.38,15.60 45.52,15.60 49.66,14.95 53.79,14.95 57.93,14.30 62.07,13.65 66.21,12.35 70.34,11.05 74.48,9.75 78.62,8.45 82.76,9.10 86.90,9.75 91.03,10.40 95.17,10.40 99.31,9.75 103.45,8.45 107.59,7.80 111.72,8.45 115.86,9.75 120.00,10.40"/><rect class="cross" x="72.48" y="7.75" width="4" height="4"/></svg></td>
+          </tr>
+          <tr>
+            <td class="l name">良率波动</td><td class="l dim">—</td><td>68</td><td>85</td><td><s>不可知</s></td><td><s>—</s></td><td><s>—</s></td><td><s>—</s></td>
+            <td class="l dim" style="padding-left:26px"><s>轨迹本次未取到</s></td>
+          </tr>
+          <tr>
+            <td class="l name">物流时长</td><td class="l dim">—</td><td>64</td><td>85</td><td><s>不可知</s></td><td><s>—</s></td><td><s>—</s></td><td><s>—</s></td>
+            <td class="l dim" style="padding-left:26px"><s>轨迹本次未取到</s></td>
+          </tr>
+          <tr>
+            <td class="l name">换型损失</td><td class="l dim">—</td><td>63</td><td>85</td><td><s>不可知</s></td><td><s>—</s></td><td><s>—</s></td><td><s>—</s></td>
+            <td class="l dim" style="padding-left:26px"><s>轨迹本次未取到</s></td>
+          </tr>
+          <tr class="total"><td class="l">7 个因子</td><td class="l dim">—</td><td class="dim">—</td><td>85</td><td>4 个越线</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="l" style="padding-left:26px">4 / 7 已取到</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="missing">
+      分组线在「轨迹已取到 / 未取到」处 —— 线上 4 个因子有越线日，线下 3 个只有今日读数。<br>
+      七因子紧度读数<span class="syn">〔合成〕</span>由本体结构派生，非产线实测；本基地的真值为柜位 1,849、节拍 93、产能 167,486、已排 166,768、在手单 170。
+    </div>
+  </section>
+
+  <!-- ── 三槽 ── -->
+  <section class="block">
+    <span class="kicker">问题 · 根因 · 建议方案<span class="sub">按越线日排序 · 每张卡第一层只放数值、状态、名字</span></span>
+    <div class="slots">
+
+      <div class="slot-card">
+        <div class="slot-head">01 &nbsp;<b>物料齐套</b> &nbsp;第 1 天越线</div>
+        <div class="slot-row">
+          <span class="slot-label">问题是什么</span>
+          <p class="star">今日紧度 96，红线 85 —— 第 1 天即越线，30 天里没有一天回到线下。</p>
+          <div class="facts" style="margin-top:10px">
+            <span class="k">30 天峰值</span> 97.8<span class="sep">·</span><span class="k">第 30 天</span> 97.6<span class="sep">·</span><span class="k">线下天数</span> 0 / 30
+          </div>
+        </div>
+        <div class="slot-row">
+          <span class="slot-label">根因</span>
+          <div class="facts">
+            <span class="k">正极安全库存</span> 5 天 / 阈值 5 天<span class="sep">·</span><span class="k">物料齐套率</span> 79% / 阈值 80%<span class="sep">·</span><span class="k">来源系统</span> WMS/ERP 采购与在途
+          </div>
+          <details><summary>根因原文</summary>
+            <div class="overlay">关键正极安全库存覆盖降至 5 天（阈值 5 天），物料齐套率 79%（阈值 80%）。<br><span class="meta">来源系统 WMS/ERP 采购与在途。库存覆盖已触阈值下限，齐套率低于阈值 1.0 个百分点。</span></div>
+          </details>
+        </div>
+        <div class="slot-row">
+          <span class="slot-label">建议方案</span>
+          <div class="facts">方案 B <b>补正极库存至阈值以上</b><span class="sep">·</span>齐套率缺口 1.0 个百分点<span class="sep">·</span>见下栏比对</div>
+        </div>
+      </div>
+
+      <div class="slot-card">
+        <div class="slot-head">02 &nbsp;<b>瓶颈工序</b> &nbsp;第 1 天越线 · 主约束</div>
+        <div class="slot-row">
+          <span class="slot-label">问题是什么</span>
+          <p class="star">今日紧度 91，30 天升至峰值 97.8 —— 本基地主约束，第 1 天即越线。</p>
+          <div class="facts" style="margin-top:10px">
+            <span class="k">节拍</span> 93（与信阳并列全网最高）<span class="sep">·</span><span class="k">柜位</span> 1,849（全网最多）<span class="sep">·</span><span class="k">第 30 天</span> 97
+          </div>
+        </div>
+        <div class="slot-row">
+          <span class="slot-label">根因</span>
+          <div class="facts">
+            <span class="k">根因文本</span> <s>本次未取到</s><span class="sep">·</span><span class="k">工序级明细</span> <s>本次未取到</s>
+          </div>
+        </div>
+        <div class="slot-row">
+          <span class="slot-label">建议方案</span>
+          <p class="none">今天没有对策</p>
+          <div class="meta" style="margin-top:6px">方案 C「提节拍」在下栏可比，但其提升空间未取到 —— 无根因即无法给出可执行方案。</div>
+        </div>
+      </div>
+
+      <div class="slot-card">
+        <div class="slot-head">03 &nbsp;<b>设备OEE</b> &nbsp;第 18 天越线</div>
+        <div class="slot-row">
+          <span class="slot-label">问题是什么</span>
+          <p class="star">今日紧度 69，七因子里最低 —— 但 30 天单调不降至 88，第 18 天越线。</p>
+          <div class="facts" style="margin-top:10px">
+            <span class="k">越线前可用窗口</span> 17 天<span class="sep">·</span><span class="k">越线读数</span> 85<span class="sep">·</span><span class="k">四条已取到轨迹中</span> 唯一单调不降
+          </div>
+        </div>
+        <div class="slot-row">
+          <span class="slot-label">根因</span>
+          <div class="facts">
+            <span class="k">根因文本</span> <s>本次未取到</s><span class="sep">·</span><span class="k">设备级明细</span> <s>本次未取到</s>
+          </div>
+        </div>
+        <div class="slot-row">
+          <span class="slot-label">建议方案</span>
+          <p class="none">今天没有对策</p>
+          <div class="meta" style="margin-top:6px">可用窗口 17 天是本卡唯一可交付的量；越线日推迟量需根因，编不得。</div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── 时序推演 ── -->
+  <section class="block">
+    <span class="kicker">时序推演 · 未来 30 天<span class="sub">预判，非实测 · 红线 85 · 7 个因子中 4 个已取到轨迹</span></span>
+    <div class="charts">
+
+      <div class="chart">
+        <div class="chart-head"><span class="chart-name">物料齐套</span><span class="chart-now">96 <span class="meta">今日</span></span></div>
+        <svg viewBox="-8 -10 616 112" preserveAspectRatio="xMidYMid meet" aria-label="物料齐套 30 天紧度轨迹">
+          <line class="base" x1="0" y1="90" x2="600" y2="90" vector-effect="non-scaling-stroke"/>
+          <line class="red" x1="0" y1="33.75" x2="600" y2="33.75" vector-effect="non-scaling-stroke"/>
+          <line class="cvert" x1="0" y1="9" x2="0" y2="90" vector-effect="non-scaling-stroke"/>
+          <polyline class="ser" vector-effect="non-scaling-stroke" points="0.00,9.00 20.69,9.00 41.38,9.00 62.07,9.00 82.76,9.00 103.45,9.00 124.14,9.00 144.83,9.00 165.52,9.00 186.21,9.00 206.90,6.75 227.59,5.40 248.28,5.17 268.97,4.95 289.66,5.17 310.34,5.40 331.03,6.75 351.72,9.00 372.41,9.00 393.10,9.00 413.79,9.00 434.48,9.00 455.17,9.00 475.86,9.00 496.55,6.75 517.24,5.40 537.93,5.17 558.62,4.95 579.31,5.17 600.00,5.40"/>
+          <rect class="cross" x="-2.5" y="6.5" width="5" height="5"/>
+        </svg>
+        <div class="chart-foot"><span>第 1 天越线 · 读数 96</span><span>30 天峰值 97.8 · 第 30 天 97.6</span></div>
+      </div>
+
+      <div class="chart">
+        <div class="chart-head"><span class="chart-name">瓶颈工序<span class="meta"> 主约束</span></span><span class="chart-now">91 <span class="meta">今日</span></span></div>
+        <svg viewBox="-8 -10 616 112" preserveAspectRatio="xMidYMid meet" aria-label="瓶颈工序 30 天紧度轨迹">
+          <line class="base" x1="0" y1="90" x2="600" y2="90" vector-effect="non-scaling-stroke"/>
+          <line class="red" x1="0" y1="33.75" x2="600" y2="33.75" vector-effect="non-scaling-stroke"/>
+          <line class="cvert" x1="0" y1="20.25" x2="0" y2="90" vector-effect="non-scaling-stroke"/>
+          <polyline class="ser" vector-effect="non-scaling-stroke" points="0.00,20.25 20.69,20.25 41.38,18.00 62.07,18.00 82.76,18.00 103.45,18.00 124.14,15.75 144.83,15.75 165.52,15.75 186.21,15.75 206.90,13.50 227.59,13.50 248.28,13.50 268.97,13.50 289.66,13.50 310.34,11.25 331.03,9.00 351.72,6.75 372.41,5.40 393.10,4.95 413.79,5.17 434.48,5.63 455.17,6.75 475.86,6.75 496.55,5.63 517.24,5.17 537.93,4.95 558.62,5.17 579.31,5.63 600.00,6.75"/>
+          <rect class="cross" x="-2.5" y="17.75" width="5" height="5"/>
+        </svg>
+        <div class="chart-foot"><span>第 1 天越线 · 读数 91</span><span>30 天峰值 97.8 · 第 30 天 97</span></div>
+      </div>
+
+      <div class="chart">
+        <div class="chart-head"><span class="chart-name">设备OEE</span><span class="chart-now">69 <span class="meta">今日</span></span></div>
+        <svg viewBox="-8 -10 616 112" preserveAspectRatio="xMidYMid meet" aria-label="设备OEE 30 天紧度轨迹">
+          <line class="base" x1="0" y1="90" x2="600" y2="90" vector-effect="non-scaling-stroke"/>
+          <line class="red" x1="0" y1="33.75" x2="600" y2="33.75" vector-effect="non-scaling-stroke"/>
+          <line class="cvert" x1="351.72" y1="33.75" x2="351.72" y2="90" vector-effect="non-scaling-stroke"/>
+          <polyline class="ser" vector-effect="non-scaling-stroke" points="0.00,69.75 20.69,67.50 41.38,65.25 62.07,63.00 82.76,60.75 103.45,58.50 124.14,58.50 144.83,56.25 165.52,54.00 186.21,51.75 206.90,49.50 227.59,47.25 248.28,45.00 268.97,42.75 289.66,40.50 310.34,38.25 331.03,36.00 351.72,33.75 372.41,31.50 393.10,29.25 413.79,29.25 434.48,27.00 455.17,27.00 475.86,27.00 496.55,27.00 517.24,27.00 537.93,27.00 558.62,27.00 579.31,27.00 600.00,27.00"/>
+          <rect class="cross" x="349.22" y="31.25" width="5" height="5"/>
+        </svg>
+        <div class="chart-foot"><span>第 18 天越线 · 读数 85</span><span>唯一单调不降 · 第 30 天 88</span></div>
+      </div>
+
+      <div class="chart">
+        <div class="chart-head"><span class="chart-name">人力工时</span><span class="chart-now">70 <span class="meta">今日</span></span></div>
+        <svg viewBox="-8 -10 616 112" preserveAspectRatio="xMidYMid meet" aria-label="人力工时 30 天紧度轨迹">
+          <line class="base" x1="0" y1="90" x2="600" y2="90" vector-effect="non-scaling-stroke"/>
+          <line class="red" x1="0" y1="33.75" x2="600" y2="33.75" vector-effect="non-scaling-stroke"/>
+          <line class="cvert" x1="372.41" y1="33.75" x2="372.41" y2="90" vector-effect="non-scaling-stroke"/>
+          <polyline class="ser" vector-effect="non-scaling-stroke" points="0.00,67.50 20.69,67.50 41.38,65.25 62.07,65.25 82.76,63.00 103.45,60.75 124.14,60.75 144.83,58.50 165.52,58.50 186.21,56.25 206.90,54.00 227.59,54.00 248.28,51.75 268.97,51.75 289.66,49.50 310.34,47.25 331.03,42.75 351.72,38.25 372.41,33.75 393.10,29.25 413.79,31.50 434.48,33.75 455.17,36.00 475.86,36.00 496.55,33.75 517.24,29.25 537.93,27.00 558.62,29.25 579.31,33.75 600.00,36.00"/>
+          <rect class="cross" x="369.91" y="31.25" width="5" height="5"/>
+        </svg>
+        <div class="chart-foot"><span>第 19 天越线 · 读数 85</span><span>30 天峰值 88 · 第 30 天 84</span></div>
+      </div>
+
+    </div>
+
+    <div class="cal">
+      <div class="kicker" style="border:none;padding:0;margin-bottom:16px">越线日历<span class="sub">4 个因子 · 越线日 第 1 · 第 1 · 第 18 · 第 19 天</span></div>
+      <svg viewBox="-8 -34 616 62" preserveAspectRatio="xMidYMid meet" aria-label="越线日历">
+        <line class="base" x1="0" y1="0" x2="600" y2="0" vector-effect="non-scaling-stroke"/>
+        <line class="base" x1="0" y1="0" x2="0" y2="5" vector-effect="non-scaling-stroke"/>
+        <line class="base" x1="186.21" y1="0" x2="186.21" y2="5" vector-effect="non-scaling-stroke"/>
+        <line class="base" x1="393.10" y1="0" x2="393.10" y2="5" vector-effect="non-scaling-stroke"/>
+        <line class="base" x1="600" y1="0" x2="600" y2="5" vector-effect="non-scaling-stroke"/>
+        <line class="cvert" x1="0" y1="-30" x2="0" y2="0" vector-effect="non-scaling-stroke"/>
+        <rect class="cross" x="-3" y="-33" width="6" height="6"/>
+        <rect class="cross" x="-3" y="-20" width="6" height="6"/>
+        <line class="cvert" x1="351.72" y1="-16" x2="351.72" y2="0" vector-effect="non-scaling-stroke"/>
+        <rect class="cross" x="348.72" y="-19" width="6" height="6"/>
+        <line class="cvert" x1="372.41" y1="-16" x2="372.41" y2="0" vector-effect="non-scaling-stroke"/>
+        <rect class="cross" x="369.41" y="-19" width="6" height="6"/>
+      </svg>
+      <div class="cal-lab"><span>第 1 天 &nbsp;物料齐套 96 · 瓶颈工序 91</span><span>第 10 天</span><span>第 20 天 &nbsp;OEE 第 18 · 工时 第 19</span><span>第 30 天</span></div>
+    </div>
+
+    <div class="missing">
+      未取到的轨迹，如实列出，<b>不以 0 或「无变化」代替</b>：<br>
+      良率波动 今日紧度 68<span class="syn">〔合成〕</span> · 30 天轨迹 <s>本次未取到</s> · 越线日 <s>不可知</s><br>
+      物流时长 今日紧度 64<span class="syn">〔合成〕</span> · 30 天轨迹 <s>本次未取到</s> · 越线日 <s>不可知</s><br>
+      换型损失 今日紧度 63<span class="syn">〔合成〕</span> · 30 天轨迹 <s>本次未取到</s> · 越线日 <s>不可知</s>
+    </div>
+  </section>
+
+  <!-- ── 方案比对 ── -->
+  <section class="block">
+    <span class="kicker">方案比对<span class="sub">三个方案 · 第四栏「什么都不做」是默认发生的那一个，因此没有按钮</span></span>
+    <div class="plans">
+
+      <div class="plan">
+        <div class="plan-tag">方案 A</div>
+        <p class="plan-name">向江门、信阳外溢</p>
+        <div class="prow"><span class="plabel">依据 · 真数</span><div class="pval">江门余量 436 + 信阳余量 301 ＝ 737 套/天<span class="est">〔估〕</span>，为常州余量 718 的 1.03 倍<span class="est">〔估〕</span></div></div>
+        <div class="prow"><span class="plabel">对常州余量</span><div class="pval">本地产能不变 · 已排下降量 <s>未取到</s></div></div>
+        <div class="prow"><span class="plabel">越线日推迟</span><div class="pval"><s>本次未取到</s></div></div>
+        <div class="prow"><span class="plabel">代价</span><div class="pval"><s>本次未取到</s></div></div>
+        <div class="prow"><span class="plabel">前置</span><div class="pval">产品 – 基地兼容矩阵 <s>未取到</s> · 两地均为储能型</div></div>
+        <div class="prow"><span class="plabel">执行方</span><div class="pval">集团计划 · 超出本基地权限</div></div>
+        <div class="act"><a href="#screen-2">提交集团 →</a></div>
+      </div>
+
+      <div class="plan">
+        <div class="plan-tag">方案 B</div>
+        <p class="plan-name">补正极库存至阈值以上</p>
+        <div class="prow"><span class="plabel">依据 · 真数</span><div class="pval">正极安全库存 5 天 ＝ 阈值下限；物料齐套率 79%，低于阈值 80% 共 1.0 个百分点</div></div>
+        <div class="prow"><span class="plabel">对常州余量</span><div class="pval"><s>本次未取到</s></div></div>
+        <div class="prow"><span class="plabel">越线日推迟</span><div class="pval"><s>本次未取到</s> —— 物料齐套第 1 天即越线，无提前量可争</div></div>
+        <div class="prow"><span class="plabel">代价</span><div class="pval"><s>本次未取到</s></div></div>
+        <div class="prow"><span class="plabel">前置</span><div class="pval">采购在途明细 <s>未取到</s> · 来源 WMS/ERP</div></div>
+        <div class="prow"><span class="plabel">执行方</span><div class="pval">常州供应链</div></div>
+        <div class="act"><a href="#screen-2">派发工单 →</a></div>
+      </div>
+
+      <div class="plan">
+        <div class="plan-tag">方案 C</div>
+        <p class="plan-name">瓶颈工序提节拍</p>
+        <div class="prow"><span class="plabel">依据 · 真数</span><div class="pval">节拍 93，与信阳并列全网最高；柜位 1,849 全网最多；瓶颈工序为本基地主约束</div></div>
+        <div class="prow"><span class="plabel">对常州余量</span><div class="pval">节拍提升空间 <s>未取到</s> ⇒ 增量 <s>算不出</s></div></div>
+        <div class="prow"><span class="plabel">越线日推迟</span><div class="pval"><s>本次未取到</s></div></div>
+        <div class="prow"><span class="plabel">代价</span><div class="pval"><s>本次未取到</s></div></div>
+        <div class="prow"><span class="plabel">前置</span><div class="pval">工序级明细 <s>未取到</s> · 换型损失轨迹 <s>未取到</s></div></div>
+        <div class="prow"><span class="plabel">执行方</span><div class="pval">常州制造</div></div>
+        <div class="act"><a href="#screen-2">派发工单 →</a></div>
+      </div>
+
+      <div class="plan nul">
+        <div class="plan-tag">第四栏 · 默认</div>
+        <p class="plan-name">什么都不做</p>
+        <div class="prow"><span class="plabel">依据 · 真数</span><div class="pval">余量 718 套/天 ＝ 0.43%；负荷率 88，13 基地最高</div></div>
+        <div class="prow"><span class="plabel">对常州余量</span><div class="pval">维持 0.43%</div></div>
+        <div class="prow"><span class="plabel">越线日</span><div class="pval">物料齐套 第 1 天 · 瓶颈工序 第 1 天 · 设备OEE 第 18 天 · 人力工时 第 19 天</div></div>
+        <div class="prow"><span class="plabel">代价</span><div class="pval">在手 170 张单（订单簿的 34.0%<span class="est">〔估〕</span>）暴露于上述越线；另 3 个因子越线日 <s>不可知</s></div></div>
+        <div class="prow"><span class="plabel">前置</span><div class="pval">无 —— 不采取任何行动即发生</div></div>
+        <div class="prow"><span class="plabel">执行方</span><div class="pval">无</div></div>
+        <div class="act-none">默认发生 · 无按钮 · 本栏越线日全部为实测轨迹读出，无一项<span class="est">〔估〕</span></div>
+      </div>
+
+    </div>
+  </section>
+
+  <div class="colophon">
+    <dl>
+      <dt>记号</dt><dd><s>删除线</s> ＝ 本次算不出，不是 0，也不是「无变化」</dd>
+      <dd><span class="est">〔估〕</span> ＝ 推演投影，非实测</dd>
+      <dd><span class="syn">〔合成〕</span> ＝ 七因子读数由本体结构派生，非产线实测</dd>
+    </dl>
+    <dl>
+      <dt>数据</dt><dd>后端实测 SEED_DEMO=1 · 种子 42 · 口径 常州 · 权限 base_manager:常州</dd>
+      <dd>真值：柜位 1,849 · 节拍 93 · 产能 167,486 · 已排 166,768 · 在手单 170 &nbsp;|&nbsp; <span class="syn">〔合成〕</span>：七因子紧度读数</dd>
+      <dd>30 天轨迹 4 / 7 因子已取到 · 规则 key 与切片 key <s>本次未取到</s> · 求解耗时 <s>本次未取到</s></dd>
+    </dl>
+  </div>
+
+</div>
+
+<!--
+  ── 调色板改动说明（不上屏，写在此处备查）──
+  原令牌为深色玻璃：--bg:#223251 / --panel-glass:rgba(255,255,255,.06) / --line:rgba(226,235,245,.08)。
+  本稿改为纸墨：--paper:#f4f1ea / --ink:#14181f / --rule:rgba(20,24,31,.16)。
+  理由三条，都与本方向的判据「打印成黑白，层级依然清晰」直接相关：
+  1) 本方向的层级唯一来源是字号阶梯、字重与留白。深色玻璃面板本身就是色块分区，
+     用它就等于违反本方向的禁令；去掉面板后，深底上 8% alpha 的细线几乎不可见，
+     语义分组线失效，表格会散成一片。
+  2) 12px 是硬下限。浅底深字在 12px 上的笔画保留优于深底浅字（后者细笔画被光晕吃掉），
+     这正是「10px 中文在原调色板内无解」的同一条约束在起作用。
+  3) 强调墨保留原 --accent-solid:#115dc9，只用于可交互处（口径链接、派发工单），
+     全页仅此一处彩色，其余信息层级不依赖颜色 —— 转灰度后不丢任何一级。
+  越线红 #9d201c 与达标绿 #2f6b45 为冗余编码：删掉颜色后，越线仍由「第 1 天」这类文字
+  与图上的方点标出，不靠颜色承载唯一信息。
+-->

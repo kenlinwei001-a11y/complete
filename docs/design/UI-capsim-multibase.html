@@ -1,0 +1,299 @@
+<title>产能推演 · 多基地版</title>
+<style>
+:root{
+  --bg:#223251; --bg2:#283a5c; --panel-glass:rgba(255,255,255,.06); --panel2:#1c2942;
+  --line:rgba(226,235,245,.08); --line2:rgba(226,235,245,.14);
+  --txt:#e9eef5; --muted:#ced7e1; --muted2:#bbc5ce;
+  --accent:#4c90f0; --accent-solid:#115dc9; --on-accent:#fff; --accent-txt:#a2c6f7;
+  --ok-txt:#91d2a0; --warn-txt:#eabd5d; --danger-txt:#f0b4b8; --c-capacity:#43b7d7;
+  --font-sans:"Inter","Segoe UI",system-ui,"PingFang SC","Microsoft YaHei",sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font-family:var(--font-sans);font-size:13px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.top{background:var(--panel2);border-bottom:1px solid var(--line);padding:0 20px;height:52px;display:flex;align-items:center;gap:13px;position:sticky;top:0;z-index:5}
+.top .ttl{font-size:14px;font-weight:600}
+.who{font-size:12.5px;font-weight:700;color:var(--warn-txt);background:rgba(210,176,76,.14);border:1px solid rgba(210,176,76,.55);border-radius:7px;padding:3px 11px}
+.crumb{font-size:12px;color:var(--muted)}
+.right{margin-left:auto;display:flex;gap:7px;align-items:center}
+.tag{border:1px solid var(--line2);border-radius:7px;padding:3px 9px;font-size:12px;color:var(--muted);background:rgba(226,235,245,.04)}
+.tag.syn{border-color:rgba(210,176,76,.5);background:rgba(210,176,76,.13);color:var(--warn-txt)}
+.wrap{padding:18px 22px 60px;display:flex;flex-direction:column;gap:15px;max-width:1600px;margin:0 auto}
+.panel{background:var(--panel-glass);border:1px solid var(--line2);border-radius:12px;padding:14px 16px}
+.hd{display:flex;align-items:baseline;gap:11px;flex-wrap:wrap;margin-bottom:11px}
+.hd h3{margin:0;font-size:13.5px;font-weight:600}
+.hd .r{margin-left:auto;font-size:12px;color:var(--muted2)}
+.zn{width:17px;height:17px;border-radius:50%;background:var(--accent-solid);color:var(--on-accent);display:grid;place-items:center;font-size:11px;font-weight:700;font-family:var(--font-mono);flex:none}
+.ztag{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);font-weight:500}
+
+/* 区① 全网一句话 */
+.net{display:flex;align-items:baseline;gap:15px;flex-wrap:wrap;padding:4px 0 12px}
+.net .big{font-size:36px;font-weight:700;font-family:var(--font-mono);color:var(--danger-txt);line-height:1.1}
+.net .say{font-size:15px;font-weight:600}
+.net .sub{font-size:12.5px;color:var(--muted2)}
+.gauge{height:22px;border-radius:6px;background:rgba(226,235,245,.09);position:relative;overflow:hidden;max-width:900px}
+.gauge i{position:absolute;left:0;top:0;bottom:0;width:99.75%;background:linear-gradient(90deg,var(--c-capacity) 0%,var(--warn-txt) 70%,var(--danger-txt) 100%)}
+.gauge b{position:absolute;right:7px;top:50%;transform:translateY(-50%);font-size:12px;font-family:var(--font-mono);color:#fff}
+.gcap{font-size:12px;color:var(--muted2);margin-top:6px;display:flex;gap:18px;flex-wrap:wrap}
+.gcap b{color:var(--muted);font-family:var(--font-mono)}
+
+/* 13 基地全表 */
+.mwrap{overflow-x:auto}
+table.bt{width:100%;border-collapse:collapse;font-size:12.5px;min-width:980px}
+table.bt th{text-align:right;font-weight:500;color:var(--muted2);font-size:12px;padding:0 9px 7px;border-bottom:1px solid var(--line2);white-space:nowrap}
+table.bt th:first-child,table.bt th.l{text-align:left}
+table.bt td{padding:6px 9px;border-bottom:1px solid var(--line);color:var(--muted);white-space:nowrap}
+table.bt td:first-child{color:var(--txt);font-weight:600}
+table.bt tbody tr:last-child td{border-bottom:none}
+table.bt tbody tr:hover td{background:rgba(226,235,245,.04)}
+table.bt tr.r1 td{background:rgba(240,180,184,.10)}
+table.bt tr.r2 td{background:rgba(240,180,184,.06)}
+table.bt tr.tot td{border-top:2px solid var(--line2);color:var(--txt);font-weight:600;background:rgba(226,235,245,.05)}
+table.bt .n{text-align:right;font-family:var(--font-mono)}
+table.bt .m0{color:var(--danger-txt);font-weight:700}
+table.bt .m1{color:var(--warn-txt)}
+.mbar{display:inline-block;width:52px;height:5px;border-radius:3px;background:rgba(226,235,245,.13);position:relative;vertical-align:middle;margin-left:6px}
+.mbar i{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--danger-txt)}
+.pf{display:inline-block;font-size:11.5px;padding:1px 7px;border-radius:5px;background:rgba(226,235,245,.07);color:var(--muted2)}
+.pf.a{background:rgba(67,183,215,.15);color:var(--c-capacity)}
+.pf.b{background:rgba(210,176,76,.15);color:var(--warn-txt)}
+.pf.c{background:rgba(240,180,184,.14);color:var(--danger-txt)}
+.pf.d{background:rgba(157,139,240,.16);color:#b6a6f5}
+.kd{font-size:11.5px;color:var(--muted2)}
+.rk{font-size:11px;font-family:var(--font-mono);padding:0 4px;border-radius:4px;margin-left:5px}
+.rk.bad{background:rgba(240,180,184,.16);color:var(--danger-txt)}
+.rk.ok{background:rgba(145,210,160,.13);color:var(--ok-txt)}
+
+.callout{margin:13px 0 0;border:1px solid rgba(240,180,184,.42);background:rgba(240,180,184,.07);border-radius:10px;padding:12px 14px;font-size:12.5px;color:var(--muted);line-height:1.8}
+.callout b{color:var(--danger-txt)} .callout .k{color:var(--txt);font-weight:600}
+.callout.warn{border-color:rgba(210,176,76,.42);background:rgba(210,176,76,.07)} .callout.warn b{color:var(--warn-txt)}
+
+/* 主约束分布 */
+.dist{display:grid;grid-template-columns:repeat(7,1fr);gap:9px}
+@media(max-width:1000px){.dist{grid-template-columns:repeat(4,1fr)}}
+.dd{border:1px solid var(--line2);border-radius:9px;padding:9px 10px;background:rgba(226,235,245,.035);display:flex;flex-direction:column;gap:2px}
+.dd .dn{font-size:12px;color:var(--muted2)}
+.dd .dv{font-size:21px;font-weight:700;font-family:var(--font-mono);line-height:1.1}
+.dd .dl{font-size:11.5px;color:var(--muted2)}
+
+/* 三槽卡 */
+.cards{display:flex;flex-direction:column;gap:9px}
+.card{border:1px solid var(--line2);border-radius:10px;background:rgba(226,235,245,.04);overflow:hidden}
+.card.hot{border-color:rgba(240,180,184,.55);background:rgba(240,180,184,.06)}
+.slot{display:grid;grid-template-columns:58px 1fr auto;gap:11px;padding:8px 12px;align-items:baseline;border-bottom:1px solid var(--line)}
+.slot:last-of-type{border-bottom:none}
+.slot .k{font-size:12px;color:var(--muted2);font-weight:500;white-space:nowrap}
+.slot .v{font-size:12.5px;color:var(--txt)}
+.slot .v em{font-style:normal;font-family:var(--font-mono);color:var(--warn-txt);font-weight:600}
+.slot .v s{color:var(--muted2)}
+.slot .n{font-family:var(--font-mono);font-size:12px;color:var(--muted);white-space:nowrap}
+.slot.q .v{font-weight:600} .slot.q .k{color:var(--danger-txt)}
+.slot.c .k{color:var(--warn-txt)} .slot.a .k{color:var(--ok-txt)}
+details.trace{border-top:1px solid var(--line2);background:rgba(0,0,0,.16)}
+details.trace summary{cursor:pointer;list-style:none;font-size:12px;color:var(--accent-txt);padding:6px 12px}
+details.trace summary::before{content:"▸ "} details.trace[open] summary::before{content:"▾ "}
+.tbody{padding:2px 12px 11px;display:flex;flex-direction:column;gap:7px}
+.trow{display:grid;grid-template-columns:80px 1fr;gap:10px;font-size:11.5px;align-items:baseline}
+.trow .tk{color:var(--muted2);font-family:var(--font-mono)}
+.trow .tv{color:var(--muted);font-family:var(--font-mono);word-break:break-all}
+.chip{display:inline-block;font-size:11px;padding:1px 6px;border-radius:5px;margin-right:4px;font-family:var(--font-mono)}
+.chip.real{background:rgba(145,210,160,.15);color:var(--ok-txt)}
+.chip.syn{background:rgba(210,176,76,.16);color:var(--warn-txt)}
+.chip.gap{background:rgba(240,180,184,.14);color:var(--danger-txt)}
+.chip.other{background:rgba(226,235,245,.07);color:var(--muted2)}
+.note{font-size:12px;color:var(--muted2);margin:10px 0 0;line-height:1.75}
+.note b{color:var(--warn-txt)}
+.foot{font-size:12px;color:var(--muted2);line-height:1.85;border-top:1px solid var(--line2);padding-top:13px}
+.foot b{color:var(--muted)}
+.fix{border:1px solid rgba(240,180,184,.4);background:rgba(240,180,184,.06);border-radius:9px;padding:11px 13px;font-size:12.5px;line-height:1.8;color:var(--muted);margin-bottom:12px}
+.fix b{color:var(--danger-txt)}
+</style>
+
+<div class="top">
+  <span class="ttl">产能推演</span>
+  <span class="who">全网 13 基地</span>
+  <span class="crumb">往后 30 天 · 红线 85</span>
+  <span class="right">
+    <span class="tag mono">在手 500 单</span>
+    <span class="tag mono">订单簿 454.64 亿</span>
+    <span class="tag syn">七因子读数 = 合成</span>
+  </span>
+</div>
+
+<div class="wrap">
+
+  <!-- 区① 全网一句话 -->
+  <section class="panel">
+    <div class="hd">
+      <span class="ztag"><span class="zn">1</span>全网现在怎么样</span>
+      <h3>13 个基地加起来，一天只剩 2,896 套的余量</h3>
+      <span class="r">不是某一个基地紧，是全网都紧</span>
+    </div>
+    <div class="net">
+      <span class="big">0.25%</span>
+      <span class="say">全网化成余量 —— 合计 2,896 套 / 天</span>
+      <span class="sub">相当于最小的那个基地（邯郸 45,512 套/天）的 6%</span>
+    </div>
+    <div class="gauge"><i></i><b>已占 99.75%</b></div>
+    <div class="gcap">
+      <span>产能合计 <b>1,158,399</b> 套/天</span>
+      <span>已排合计 <b>1,155,503</b> 套/天</span>
+      <span>13 个基地里 <b>没有一个</b> 余量超过 0.5%</span>
+    </div>
+    <div class="callout">
+      <span class="k">这一个数决定了所有对策的形状。</span>
+      <b>全网余量 0.25%，意味着「把订单挪到别的基地」这条路整体上走不通</b> ——
+      不是某一处挤爆，是十三处同时贴着上限。
+      单基地屏上看到的「挪到眉山」，在全网视角下是<b>把 A 的问题变成 B 的问题</b>。
+      <br>⇒ 全网层能做的只有三种：<span class="k">扩产能</span>（改节拍/加柜位）·
+      <span class="k">砍需求</span>（改期/让单）· <span class="k">补投入</span>（料/人/设备），
+      <b><s>挪单</s>不在其中</b>。
+    </div>
+  </section>
+
+  <!-- 区② 13 基地全表 -->
+  <section class="panel">
+    <div class="hd">
+      <span class="ztag"><span class="zn">2</span>十三个基地，谁最危险</span>
+      <h3>按<b style="color:var(--danger-txt)">余量</b>排 —— 括号里是它在<b>负荷率</b>榜上的名次</h3>
+      <span class="r">两把尺子几乎反着，见下面那段</span>
+    </div>
+    <div class="mwrap">
+      <table class="bt">
+        <thead><tr>
+          <th class="l">基地</th><th class="l">类型</th><th class="l">主约束</th>
+          <th>柜位</th><th>节拍</th><th>产能/天</th><th>已排/天</th><th>余量/天</th><th>余%</th>
+          <th>负荷率</th><th>在手单</th><th>已承诺</th>
+        </tr></thead>
+        <tbody>
+          <tr class="r1"><td>邯郸 <span class="rk bad">负荷第13</span></td><td class="kd">储能</td><td><span class="pf c">物料齐套</span></td>
+            <td class="n">552</td><td class="n">85</td><td class="n">45,512</td><td class="n">45,509</td>
+            <td class="n m0">3<span class="mbar"><i style="width:1%"></i></span></td><td class="n m0">0.01%</td><td class="n">70</td><td class="n">36</td><td class="n">210,557</td></tr>
+          <tr class="r1"><td>扬州 <span class="rk bad">负荷第12</span></td><td class="kd">储能</td><td><span class="pf b">良率波动</span></td>
+            <td class="n">574</td><td class="n">91</td><td class="n">50,667</td><td class="n">50,653</td>
+            <td class="n m0">14<span class="mbar"><i style="width:2%"></i></span></td><td class="n m0">0.03%</td><td class="n">72</td><td class="n">50</td><td class="n">219,773</td></tr>
+          <tr class="r2"><td>眉山 <span class="rk bad">负荷第6</span></td><td class="kd">储能</td><td><span class="pf d">人力工时</span></td>
+            <td class="n">1,055</td><td class="n">92</td><td class="n">94,245</td><td class="n">94,135</td>
+            <td class="n m1">110<span class="mbar"><i style="width:15%"></i></span></td><td class="n m1">0.12%</td><td class="n">79</td><td class="n">22</td><td class="n">116,377</td></tr>
+          <tr class="r2"><td>武汉 <span class="rk bad">负荷第5</span></td><td class="kd">动力</td><td><span class="pf b">良率波动</span></td>
+            <td class="n">982</td><td class="n">91</td><td class="n">86,770</td><td class="n">86,633</td>
+            <td class="n m1">137<span class="mbar"><i style="width:19%"></i></span></td><td class="n m1">0.16%</td><td class="n">80</td><td class="n">39</td><td class="n">187,680</td></tr>
+          <tr><td>自贡</td><td class="kd">动力</td><td><span class="pf d">人力工时</span></td>
+            <td class="n">747</td><td class="n">92</td><td class="n">66,800</td><td class="n">66,648</td>
+            <td class="n m1">152<span class="mbar"><i style="width:21%"></i></span></td><td class="n m1">0.23%</td><td class="n">77</td><td class="n">33</td><td class="n">145,722</td></tr>
+          <tr><td>枣庄</td><td class="kd">动力+储能</td><td><span class="pf">换型损失</span></td>
+            <td class="n">695</td><td class="n">88</td><td class="n">59,448</td><td class="n">59,290</td>
+            <td class="n m1">158<span class="mbar"><i style="width:22%"></i></span></td><td class="n m1">0.27%</td><td class="n">73</td><td class="n">110</td><td class="n">545,485</td></tr>
+          <tr><td>金华</td><td class="kd">动力</td><td><span class="pf a">设备OEE</span></td>
+            <td class="n">684</td><td class="n">87</td><td class="n">57,842</td><td class="n">57,668</td>
+            <td class="n">174<span class="mbar"><i style="width:24%"></i></span></td><td class="n">0.30%</td><td class="n">76</td><td class="n">82</td><td class="n">420,997</td></tr>
+          <tr><td>成都 <span class="rk ok">负荷第4</span></td><td class="kd">动力+储能</td><td><span class="pf a">设备OEE</span></td>
+            <td class="n">1,616</td><td class="n">85</td><td class="n">133,377</td><td class="n">133,198</td>
+            <td class="n">179<span class="mbar"><i style="width:25%"></i></span></td><td class="n">0.13%</td><td class="n">82</td><td class="n">68</td><td class="n">336,621</td></tr>
+          <tr><td>合肥</td><td class="kd">动力</td><td><span class="pf a">设备OEE</span></td>
+            <td class="n">947</td><td class="n">92</td><td class="n">84,685</td><td class="n">84,467</td>
+            <td class="n">218<span class="mbar"><i style="width:30%"></i></span></td><td class="n">0.26%</td><td class="n">78</td><td class="n">33</td><td class="n">209,770</td></tr>
+          <tr><td>厦门 <span class="rk ok">负荷第2</span></td><td class="kd">动力</td><td><span class="pf a">设备OEE</span></td>
+            <td class="n">1,527</td><td class="n">87</td><td class="n">129,129</td><td class="n">128,833</td>
+            <td class="n">296<span class="mbar"><i style="width:41%"></i></span></td><td class="n">0.23%</td><td class="n">85</td><td class="n">37</td><td class="n">168,787</td></tr>
+          <tr><td>信阳</td><td class="kd">储能</td><td><span class="pf">物流时长</span></td>
+            <td class="n">720</td><td class="n">93</td><td class="n">65,219</td><td class="n">64,918</td>
+            <td class="n">301<span class="mbar"><i style="width:42%"></i></span></td><td class="n">0.46%</td><td class="n">75</td><td class="n">56</td><td class="n">243,101</td></tr>
+          <tr><td>江门 <span class="rk ok">负荷第3</span></td><td class="kd">储能</td><td><span class="pf c">物料齐套</span></td>
+            <td class="n">1,369</td><td class="n">88</td><td class="n">117,219</td><td class="n">116,783</td>
+            <td class="n">436<span class="mbar"><i style="width:61%"></i></span></td><td class="n">0.37%</td><td class="n">83</td><td class="n">38</td><td class="n">191,663</td></tr>
+          <tr><td>常州 <span class="rk ok">负荷第1</span></td><td class="kd">动力+储能</td><td><span class="pf">瓶颈工序</span></td>
+            <td class="n">1,849</td><td class="n">93</td><td class="n">167,486</td><td class="n">166,768</td>
+            <td class="n">718<span class="mbar"><i style="width:100%"></i></span></td><td class="n">0.43%</td><td class="n">88</td><td class="n">170</td><td class="n">838,896</td></tr>
+          <tr class="tot"><td>合计</td><td class="kd">13 个</td><td><span class="pf">7 种约束</span></td>
+            <td class="n">12,817</td><td class="n">—</td><td class="n">1,158,399</td><td class="n">1,155,503</td>
+            <td class="n m0">2,896</td><td class="n m0">0.25%</td><td class="n">—</td><td class="n">500</td><td class="n">3,835,429</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout">
+      <span class="k">负荷率把最危险的基地排在了末尾。</span>
+      <b>邯郸负荷 70 全网最低，余量 3 套/天全网最紧；扬州负荷 72 倒数第二，余量 14 套/天。</b>
+      而负荷榜前三的常州 / 厦门 / 江门，余量反而是 718 / 296 / 436 —— <b>相对最宽松的三个</b>。
+      <br>⇒ 屏上今天按负荷率（和封顶的严重度）排，<span class="k">名次与真实风险几乎反着</span>。
+      第一层的尺子必须是<span class="k">余量绝对值</span>与<span class="k">越线日</span>，负荷率降为参照列。
+    </div>
+  </section>
+
+  <!-- 区③ 主约束分布 -->
+  <section class="panel">
+    <div class="hd">
+      <span class="ztag"><span class="zn">3</span>十三个基地，七种病</span>
+      <h3>主约束分布 —— 不能一刀切</h3>
+      <span class="r">每一种病对应的动作完全不同</span>
+    </div>
+    <div class="dist">
+      <div class="dd"><span class="dn">设备 OEE</span><span class="dv" style="color:var(--c-capacity)">4</span><span class="dl">成都·合肥·金华·厦门</span></div>
+      <div class="dd"><span class="dn">物料齐套</span><span class="dv" style="color:var(--danger-txt)">2</span><span class="dl">邯郸·江门</span></div>
+      <div class="dd"><span class="dn">良率波动</span><span class="dv" style="color:var(--warn-txt)">2</span><span class="dl">武汉·扬州</span></div>
+      <div class="dd"><span class="dn">人力工时</span><span class="dv" style="color:#b6a6f5">2</span><span class="dl">眉山·自贡</span></div>
+      <div class="dd"><span class="dn">瓶颈工序</span><span class="dv">1</span><span class="dl">常州</span></div>
+      <div class="dd"><span class="dn">物流时长</span><span class="dv">1</span><span class="dl">信阳</span></div>
+      <div class="dd"><span class="dn">换型损失</span><span class="dv">1</span><span class="dl">枣庄</span></div>
+    </div>
+    <div class="callout warn">
+      <span class="k">「有产能」不等于「可交付」。</span>
+      <b>邯郸的柜位空着 —— 它顶的是物料齐套，不是产能。</b>给它派更多订单、或者给它加柜位，一套都多产不出来。
+      要动的是<b>料</b>。同理武汉/扬州要动的是<b>良率</b>，眉山/自贡要动的是<b>人</b>。
+      <br>⇒ 全网只有 <b>常州一个</b>是真正的产能瓶颈；其余 12 个的瓶颈都在产能之外。
+      <b>按「加产能」去解全网问题，会有 12 个基地一点效果都没有。</b>
+    </div>
+  </section>
+
+  <!-- 区④ 三槽 -->
+  <section class="panel">
+    <div class="hd">
+      <span class="ztag"><span class="zn">4</span>要你拿主意的事</span>
+      <h3>问题 · 根因 · 怎么办</h3>
+      <span class="r">每张卡就三行；口径与出处收在「怎么知道的」</span>
+    </div>
+    <div class="cards">
+      <div class="card hot">
+        <div class="slot q"><span class="k">问题</span><span class="v">全网只剩 <em>2,896</em> 套/天余量（<em>0.25%</em>），13 个基地无一超过 0.5%</span><span class="n">今天</span></div>
+        <div class="slot c"><span class="k">根因</span><span class="v"><b style="color:var(--danger-txt)">不是一种病</b> —— 7 种主约束：设备OEE 4 处 · 物料齐套 2 · 良率波动 2 · 人力工时 2 · 瓶颈工序/物流/换型各 1。<em>只有常州</em>是真产能瓶颈</span><span class="n">7 类</span></div>
+        <div class="slot a"><span class="k">怎么办</span><span class="v">按病分三路：① <b>料</b>（邯郸·江门）② <b>人</b>（眉山·自贡）③ <b>设备</b>（成都·合肥·金华·厦门）。<s>挪单</s>全网无空间，不列为选项</span><span class="n">3 路</span></div>
+        <details class="trace"><summary>怎么知道的 · 4 项</summary><div class="tbody">
+          <div class="trow"><span class="tk">口径</span><span class="tv"><span class="chip other">全网</span>13 基地逐个取 hardCapacity · horizon=30 · threshold=85</span></div>
+          <div class="trow"><span class="tk">产能</span><span class="tv"><span class="chip real">真值</span>Σ units×unitDailyThroughput = 12,817 柜位 → 1,158,399 套/天</span></div>
+          <div class="trow"><span class="tk">需求</span><span class="tv"><span class="chip real">真值</span>Σ requiredPerDay = 1,155,503 套/天 ⇒ 余 2,896（0.25%）</span></div>
+          <div class="trow"><span class="tk">主约束</span><span class="tv"><span class="chip syn">合成</span>七因子紧度由本体结构派生，<b>非产线实测</b>；柜位/节拍/排产量是真值</span></div>
+        </div></details>
+      </div>
+
+      <div class="card">
+        <div class="slot q"><span class="k">问题</span><span class="v">邯郸余量 <em>3</em> 套/天，全网最紧，而它负荷率 <em>70</em> 全网最低</span><span class="n">第 1 天越线</span></div>
+        <div class="slot c"><span class="k">根因</span><span class="v">顶的是 <em>物料齐套 95→98</em>，不是产能。柜位空着但料不齐，开不了工</span><span class="n">料</span></div>
+        <div class="slot a"><span class="k">怎么办</span><span class="v">调料不调单。<s>给它派单</s>、<s>给它加柜位</s> 都一套多产不出来</span><span class="n">1 条</span></div>
+        <details class="trace"><summary>怎么知道的 · 3 项</summary><div class="tbody">
+          <div class="trow"><span class="tk">产能</span><span class="tv"><span class="chip real">真值</span>552 柜位 × 85 套 = 45,512 vs 已排 45,509 ⇒ 余 <b>3</b></span></div>
+          <div class="trow"><span class="tk">轨迹</span><span class="tv"><span class="chip syn">合成</span>物料齐套 95→98（T+1 越线）· 瓶颈工序 91→96（T+1）· 物流时长 68→86（T+28）</span></div>
+          <div class="trow"><span class="tk">对比</span><span class="tv">常州余 718（0.43%）负荷 88 · 邯郸余 3（0.01%）负荷 70 ⇒ <b>负荷率不度量风险</b></span></div>
+        </div></details>
+      </div>
+    </div>
+  </section>
+
+  <div class="fix">
+    <b>⚠ 本稿订正了我上一版（双角色版）里的一个错数。</b>
+    上一版「余量互补」那一格写「眉山余 21%、邯郸余 30%」——<b>那是我拿负荷率反推的，不是实测</b>。
+    真值：眉山 <b>110 套/天（0.12%）</b>、邯郸 <b>3 套/天（0.01%）</b>。
+    ⇒ 「挪到眉山」这条对策<b>在全网口径下不成立</b>，双角色版那一格需按本稿重做。
+    <br>形态：<b>「我用『负荷率 79%』当作『还剩 21% 产能』的证据，而前者并不度量后者」</b> ——
+    负荷率的分母是标称产能，余量的分母是<b>瓶颈工序的硬产能</b>，两者不是一回事。
+  </div>
+
+  <p class="foot">
+    <b>这一屏和单基地屏的分工：</b>单基地屏答「我要不要动手」，本屏答「<b>先动哪一个、动什么</b>」。
+    两屏共用同一份数据与同一套记号，只有<span class="mono">口径</span>与<b>排序尺</b>不同 —— ⛔ 不做两套算法。<br>
+    <b>三条规矩沿用：</b>① 每个数自带口径 ② 第一层只放问题/根因/怎么办，口径公式规则码收进「怎么知道的」——
+    <b>第二层是证据库不是垃圾桶</b> ③ 诚实位：<s>删除线</s>＝这次算不出来不是 0，〔合成〕＝本体派生非实测。<br>
+    数据取自真后端 <span class="mono">SEED_DEMO=1</span> 实测：13 基地 hardCapacity 逐个取，
+    合计 12,817 柜位 / 1,158,399 套·天 / 已排 1,155,503 套·天 / 在手 500 单 / 已承诺 3,835,429 套。
+  </p>
+</div>

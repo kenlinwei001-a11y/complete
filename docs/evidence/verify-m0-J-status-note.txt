@@ -1,0 +1,6 @@
+J 全量门状态笔记（防断流接管用）
+- 全量门 wrapper（b8w6ey28k）于 13:06 环境性死亡（机器高负载，无 RC 产出）；
+  死前日志 verify-m0-J-full-test.txt 三包绿：contracts 104/104(9f) · llm-adapters 35/35(2f) · agentcore 1461+7skip/1468(208f)，全篇零真红。
+- 铁律1.6 续跑剩余：datacore 全量重跑中（后台 buqccxzvz → verify-m0-J-datacore-full.txt/.rc），
+  frontend-shell 全量待跑（npx vitest run @ apps/frontend-shell → verify-m0-J-frontend-full.txt/.rc）。
+- 17:10 实测进度 ~18/360 files，外因=用户会议应用高负载（load 90+），速度 ~2 files/min。

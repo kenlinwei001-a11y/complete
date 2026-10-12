@@ -69,7 +69,7 @@ export class HistoryService {
     const points = await this.outputPoints(tid);
     const baseMonthCells = new Map<string, number>();
     for (const p of points) {
-      const baseId = p.entityId.replace(/^LINE-/, "");
+      const baseId = p.entityId.replace(/^LINE-WS-/, "").replace(/-\w+$/, "");
       if (!visible.has(baseId)) continue;
       const month = p.ts.slice(0, 7);
       const key = `${baseId}|${month}`;
@@ -219,6 +219,12 @@ export class HistoryService {
       },
       crisisWindow: state.crisisWindow,
       trend,
+      // 三线偏差（驾驶舱 #5）：供给=月产出；需求=供给×需求系数（危机窗口拉高 → 缺口可见）。
+      deviation: trend.map((t) => {
+        const crisis = t.month >= state.crisisWindow.from.slice(0, 7) && t.month <= state.crisisWindow.to.slice(0, 7);
+        const demand = round(t.output * (crisis ? 1.22 : 1.06), 2);
+        return { month: t.month, demand, supply: t.output, gap: round(demand - t.output, 2) };
+      }),
       monthly,
       delivered,
       deliveredCount: delivered.length,
@@ -272,7 +278,7 @@ export class HistoryService {
       replayFrom: s.generatedFrom.replayFrom,
       replayTo: s.generatedFrom.replayTo,
       liveMonths: s.liveMonths,
-      liveRatio: round(s.liveMonths.length / 12, 4),
+      liveRatio: round(s.liveMonths.length / 13, 4),
     };
   }
 
@@ -340,6 +346,6 @@ export class HistoryService {
       state.liveMonths = [...state.liveMonths, month].sort();
       await this.repos.livedInStates.put(state);
     }
-    return { month, written, liveMonths: state.liveMonths, liveRatio: round(state.liveMonths.length / 12, 4) };
+    return { month, written, liveMonths: state.liveMonths, liveRatio: round(state.liveMonths.length / 13, 4) };
   }
 }

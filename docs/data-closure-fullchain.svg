@@ -1,0 +1,213 @@
+<svg viewBox="0 0 1480 1020" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+  <defs>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 Z" fill="#7C8896"/></marker>
+    <marker id="arG" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 Z" fill="#62BE77"/></marker>
+    <marker id="arO" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 Z" fill="#E0A23C"/></marker>
+    <marker id="arP" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 Z" fill="#DF747E"/></marker>
+  </defs>
+  <style>
+    .bg{fill:#0e1320}
+    .band{fill:#161d2c;stroke:#27324a;stroke-width:1;rx:12}
+    .tag{fill:#8aa0bf;font-size:12px;font-weight:700}
+    .node{rx:9}
+    .nt{fill:#eef3fb;font-size:12.5px;font-weight:600}
+    .ns{fill:#aebcce;font-size:10.5px}
+    .pill{rx:8}
+    .pt{fill:#0e1320;font-size:11.5px;font-weight:700}
+    .note{fill:#0e1320;font-size:10.5px;font-weight:600}
+    .edge{stroke:#7C8896;stroke-width:1.8;fill:none}
+    .title{fill:#eef3fb;font-size:19px;font-weight:800}
+    .sub{fill:#9fb0c6;font-size:12px}
+    .fbk{fill:#E0A23C;font-size:11px;font-weight:700}
+    .ok{fill:#62BE77;font-size:11px;font-weight:700}
+  </style>
+
+  <rect class="bg" x="0" y="0" width="1480" height="1020"/>
+  <text class="title" x="40" y="40">数据闭环全链 · 端到端</text>
+  <text class="sub" x="40" y="62">模版单一源 → 接入单一上传口（同字段唯一来源·避免互斥）→ 物化 → 派生 → 切片 → 求解（推演）→ 声明式渲染／溯源 · 横切治理门贯穿全程</text>
+
+  <!-- ============ 数据管线主脊（左中） ============ -->
+
+  <!-- Band 1 模版层 -->
+  <rect class="band" x="40" y="84" width="1080" height="86" rx="12"/>
+  <text class="tag" x="54" y="104">① 模版层 · 单一源（R14/T1-T3）</text>
+  <rect class="node" x="70" y="112" width="248" height="48" fill="#D2B04C"/>
+  <text class="nt" x="194" y="132" text-anchor="middle" fill="#0e1320" font-weight="800">IndustryTemplate</text>
+  <text class="ns" x="194" y="149" text-anchor="middle" fill="#3a2f12">库化 · 可上传/编辑/fork</text>
+  <rect class="node" x="372" y="112" width="200" height="48" fill="#E7C766"/>
+  <text class="nt" x="472" y="132" text-anchor="middle" fill="#0e1320" font-weight="800">ObjectType schema</text>
+  <text class="ns" x="472" y="149" text-anchor="middle" fill="#3a2f12">形 / 字段定义（PropertyDef）</text>
+  <rect class="node" x="600" y="112" width="180" height="48" fill="#E7C766"/>
+  <text class="nt" x="690" y="132" text-anchor="middle" fill="#0e1320" font-weight="800">种子配置</text>
+  <text class="ns" x="690" y="149" text-anchor="middle" fill="#3a2f12">值（可编辑，非写死）</text>
+  <rect class="pill" x="812" y="114" width="290" height="44" fill="#3a4258"/>
+  <text class="note" x="957" y="131" text-anchor="middle" fill="#dfe7f2">改模版/种子 → R4 审批 → 确定性重生成</text>
+  <text class="note" x="957" y="148" text-anchor="middle" fill="#9fb0c6">同 (industry,seed) 字节一致 · R6</text>
+  <path class="edge" d="M318 136 L368 136" marker-end="url(#ar)"/>
+  <path class="edge" d="M520 160 C 560 180, 640 180, 660 160" marker-end="url(#ar)"/>
+
+  <!-- Band 2 接入层 · 单一上传口 -->
+  <rect class="band" x="40" y="190" width="1080" height="170" rx="12"/>
+  <text class="tag" x="54" y="210">② 接入层 · 单一上传口（避免互斥 · R-一致 · data-categories.ts）</text>
+  <rect x="70" y="220" width="1032" height="30" rx="7" fill="#10212a" stroke="#2a5560" stroke-width="1"/>
+  <text x="586" y="240" text-anchor="middle" fill="#7fd0dd" font-size="12" font-weight="700">同一字段 → 唯一 DataCategory → 合成 ｜ 上传 ｜ 对接 三选一　杜绝两处写同字段（单一上传口）</text>
+  <rect class="pill" x="120" y="266" width="240" height="48" fill="#54B5C4"/>
+  <text class="pt" x="240" y="285" text-anchor="middle">合成 Synthetic</text>
+  <text class="ns" x="240" y="302" text-anchor="middle" fill="#0c2d33">按模版/种子确定性生成</text>
+  <rect class="pill" x="430" y="266" width="240" height="48" fill="#54B5C4"/>
+  <text class="pt" x="550" y="285" text-anchor="middle">上传 File</text>
+  <text class="ns" x="550" y="302" text-anchor="middle" fill="#0c2d33">CSV / XLSX / JSON（列=模版）</text>
+  <rect class="pill" x="740" y="266" width="262" height="48" fill="#54B5C4"/>
+  <text class="pt" x="871" y="285" text-anchor="middle">对接 Connector</text>
+  <text class="ns" x="871" y="302" text-anchor="middle" fill="#0c2d33">ERP / CRM / JDBC / REST / 外部源</text>
+  <rect class="node" x="446" y="324" width="228" height="30" rx="8" fill="#3a8f9e"/>
+  <text class="nt" x="560" y="344" text-anchor="middle" fill="#06222a" font-weight="800">RawDataset</text>
+  <path class="edge" d="M240 314 C 300 322, 480 322, 540 326" marker-end="url(#ar)"/>
+  <path class="edge" d="M550 314 L560 324" marker-end="url(#ar)"/>
+  <path class="edge" d="M871 314 C 800 322, 640 322, 580 326" marker-end="url(#ar)"/>
+  <!-- template feeds ingest -->
+  <path class="edge" d="M472 160 C 472 178, 300 200, 240 264" stroke="#D2B04C" marker-end="url(#ar)"/>
+  <text class="ns" x="300" y="200" fill="#D2B04C">模版驱动合成/上传列模版</text>
+
+  <!-- Band 3 物化 -->
+  <rect class="band" x="40" y="380" width="1080" height="62" rx="12"/>
+  <text class="tag" x="54" y="400">③ 物化 Materialize（R4 审批门）</text>
+  <rect class="node" x="446" y="394" width="228" height="40" fill="#7E8BEE"/>
+  <text class="nt" x="560" y="419" text-anchor="middle" fill="#0e1320" font-weight="800">ObjectInstance（真值）</text>
+  <path class="edge" d="M560 354 L560 392" marker-end="url(#ar)"/>
+
+  <!-- Band 4 派生 -->
+  <rect class="band" x="40" y="452" width="1080" height="62" rx="12"/>
+  <text class="tag" x="54" y="472">④ 派生 + 时序 TsAgg（R7）</text>
+  <rect class="node" x="446" y="466" width="228" height="40" fill="#8E9AF2"/>
+  <text class="nt" x="560" y="491" text-anchor="middle" fill="#0e1320" font-weight="800">DerivedProperty / TS</text>
+  <path class="edge" d="M560 434 L560 464" marker-end="url(#ar)"/>
+
+  <!-- Band 5 切片 -->
+  <rect class="band" x="40" y="524" width="1080" height="62" rx="12"/>
+  <text class="tag" x="54" y="544">⑤ 切片 Slice（mustIncludeTypes · 自动 coverage · R12）</text>
+  <rect class="node" x="430" y="538" width="260" height="40" fill="#BC9A63"/>
+  <text class="nt" x="560" y="563" text-anchor="middle" fill="#0e1320" font-weight="800">对象库 / 切片子图</text>
+  <path class="edge" d="M560 506 L560 536" marker-end="url(#ar)"/>
+
+  <!-- Band 6 求解器 -->
+  <rect class="band" x="40" y="596" width="1080" height="118" rx="12"/>
+  <text class="tag" x="54" y="616">⑥ 求解器 · 推演引擎（注册 + chain:check · R11）</text>
+  <g fill="#2F8F6B">
+    <rect class="pill" x="70"  y="628" width="150" height="32"/>
+    <rect class="pill" x="232" y="628" width="150" height="32"/>
+    <rect class="pill" x="394" y="628" width="150" height="32"/>
+    <rect class="pill" x="556" y="628" width="150" height="32"/>
+    <rect class="pill" x="718" y="628" width="150" height="32"/>
+    <rect class="pill" x="880" y="628" width="160" height="32"/>
+    <rect class="pill" x="70"  y="670" width="150" height="32"/>
+    <rect class="pill" x="232" y="670" width="150" height="32"/>
+    <rect class="pill" x="394" y="670" width="150" height="32"/>
+    <rect class="pill" x="556" y="670" width="150" height="32"/>
+    <rect class="pill" x="718" y="670" width="150" height="32"/>
+    <rect class="pill" x="880" y="670" width="160" height="32"/>
+  </g>
+  <g class="pt" fill="#06241a" text-anchor="middle">
+    <text x="145" y="648">capacity_forecast</text>
+    <text x="307" y="648">risk_timeline</text>
+    <text x="469" y="648">affected_orders</text>
+    <text x="631" y="648">order_fullchain</text>
+    <text x="793" y="648">capacity_rollup</text>
+    <text x="960" y="648">mrp_netting</text>
+    <text x="145" y="690">finance_pnl</text>
+    <text x="307" y="690">plan_audit</text>
+    <text x="469" y="690">plan_generate</text>
+    <text x="631" y="690">capex_scenario</text>
+    <text x="793" y="690">metric_rollup</text>
+    <text x="960" y="690">… 28 求解器</text>
+  </g>
+  <path class="edge" d="M560 578 L560 624" marker-end="url(#ar)"/>
+
+  <!-- Band 7 渲染/溯源 -->
+  <rect class="band" x="40" y="724" width="1080" height="62" rx="12"/>
+  <text class="tag" x="54" y="744">⑦ 声明式渲染 ViewDef + 溯源 R13（前端零写死 R14）</text>
+  <rect class="node" x="400" y="738" width="320" height="40" fill="#62BE77"/>
+  <text class="nt" x="560" y="763" text-anchor="middle" fill="#06241a" font-weight="800">前端视图（值=求解器输出，悬浮溯源）</text>
+  <path class="edge" d="M560 714 L560 736" marker-end="url(#ar)"/>
+
+  <!-- ============ 推演触发模块（右列） ============ -->
+  <rect x="1140" y="190" width="300" height="524" rx="12" fill="#1d1620" stroke="#4a2a33" stroke-width="1"/>
+  <text class="tag" x="1156" y="210" fill="#e2a0aa">推演触发模块（GUI=CLI=QOS 同源 · R15）</text>
+  <g>
+    <rect class="pill" x="1156" y="222" width="268" height="40" fill="#DF747E"/>
+    <text class="pt" x="1166" y="240">经营驾驶舱</text><text class="ns" x="1166" y="255" fill="#33121a">margin_attribution / capacity_rollup</text>
+    <rect class="pill" x="1156" y="268" width="268" height="40" fill="#DF747E"/>
+    <text class="pt" x="1166" y="286">产能推演</text><text class="ns" x="1166" y="301" fill="#33121a">risk_timeline / affected_orders</text>
+    <rect class="pill" x="1156" y="314" width="268" height="40" fill="#DF747E"/>
+    <text class="pt" x="1166" y="332">项目 / 订单推演</text><text class="ns" x="1166" y="347" fill="#33121a">order_fullchain / capacity_forecast</text>
+    <rect class="pill" x="1156" y="360" width="268" height="40" fill="#DF747E"/>
+    <text class="pt" x="1166" y="378">月度 S&amp;OP</text><text class="ns" x="1166" y="393" fill="#33121a">mrp_netting / finance_pnl</text>
+    <rect class="pill" x="1156" y="406" width="268" height="40" fill="#DF747E"/>
+    <text class="pt" x="1166" y="424">季度滚动 / 年度 AOP</text><text class="ns" x="1166" y="439" fill="#33121a">quarterly / capex_scenario</text>
+    <rect class="pill" x="1156" y="452" width="268" height="40" fill="#DF747E"/>
+    <text class="pt" x="1166" y="470">规划体检 / 方案生成</text><text class="ns" x="1166" y="485" fill="#33121a">plan_audit / audit_timeline / plan_generate</text>
+    <rect class="pill" x="1156" y="498" width="268" height="40" fill="#DF747E"/>
+    <text class="pt" x="1166" y="516">指标库</text><text class="ns" x="1166" y="531" fill="#33121a">metric_rollup（目标 vs 实际·越线）</text>
+    <rect class="pill" x="1156" y="544" width="268" height="40" fill="#C75F6A"/>
+    <text class="pt" x="1166" y="562">QOS 对话 / CLI</text><text class="ns" x="1166" y="577" fill="#33121a">classify → 任意求解器（R15 同源）</text>
+    <rect class="pill" x="1156" y="590" width="268" height="40" fill="#C75F6A"/>
+    <text class="pt" x="1166" y="608">数据构建发动机</text><text class="ns" x="1166" y="623" fill="#33121a">runStory 建链 / backfill 回填 / 验证</text>
+  </g>
+  <text class="ns" x="1290" y="652" text-anchor="middle" fill="#e2a0aa">经同一 REST + R3 entitlement</text>
+  <text class="ns" x="1290" y="668" text-anchor="middle" fill="#e2a0aa">+ R4 审批 + 事件总线 触发</text>
+  <!-- invoke bracket into solver band -->
+  <path d="M1150 452 C 1110 452, 1090 655, 1044 655" stroke="#DF747E" stroke-width="2.2" fill="none" stroke-dasharray="2 0" marker-end="url(#arP)"/>
+  <text class="fbk" x="1070" y="600" fill="#DF747E">invoke</text>
+
+  <!-- ============ 治理横切 rail（底部） ============ -->
+  <rect x="40" y="824" width="1400" height="118" rx="12" fill="#171528" stroke="#33305a" stroke-width="1"/>
+  <text class="tag" x="54" y="844" fill="#b3a8e6">⑧ 治理横切（贯穿全程 · 门禁强制，非自觉）</text>
+  <g fill="#9D8BF0">
+    <rect class="pill" x="60"  y="856" width="200" height="32"/>
+    <rect class="pill" x="272" y="856" width="200" height="32"/>
+    <rect class="pill" x="484" y="856" width="220" height="32"/>
+    <rect class="pill" x="716" y="856" width="160" height="32"/>
+    <rect class="pill" x="888" y="856" width="200" height="32"/>
+    <rect class="pill" x="1100" y="856" width="150" height="32"/>
+    <rect class="pill" x="1262" y="856" width="160" height="32"/>
+    <rect class="pill" x="60"  y="898" width="240" height="32"/>
+    <rect class="pill" x="312" y="898" width="240" height="32"/>
+    <rect class="pill" x="564" y="898" width="240" height="32"/>
+    <rect class="pill" x="816" y="898" width="270" height="32"/>
+    <rect class="pill" x="1098" y="898" width="324" height="32"/>
+  </g>
+  <g class="pt" fill="#15102a" text-anchor="middle">
+    <text x="160" y="876">闭包 R12（HARD 默认）</text>
+    <text x="372" y="876">真值审批 R4</text>
+    <text x="594" y="876">缺口诚实 GapReport/VLE</text>
+    <text x="796" y="876">租户 R2</text>
+    <text x="988" y="876">确定性 R6（字节一致）</text>
+    <text x="1175" y="876">溯源 R13</text>
+    <text x="1342" y="876">CLI 对等 R15</text>
+    <text x="180" y="918">chain:check / shape:check</text>
+    <text x="432" y="918">cli-parity:check</text>
+    <text x="684" y="918">template-lifecycle:check</text>
+    <text x="951" y="918">auto-onboard:check</text>
+    <text x="1260" y="918">prd:check（§6 checklist 必声明）</text>
+  </g>
+  <!-- governance up-ticks -->
+  <path class="edge" d="M372 856 L372 770 L420 758" stroke="#9D8BF0" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+  <path class="edge" d="M160 856 C 160 600, 300 560, 428 558" stroke="#9D8BF0" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+
+  <!-- ============ 反馈环（虚线） ============ -->
+  <!-- L1 上传 → 建模 → 发布 → 重生成 -->
+  <path d="M446 339 C 30 320, 18 150, 68 136" stroke="#E0A23C" stroke-width="2" fill="none" stroke-dasharray="6 4" marker-end="url(#arO)"/>
+  <text class="fbk" x="30" y="250" transform="rotate(-90 30 250)">上传→建模suggest→发布(Action)→按新模版重生成</text>
+
+  <!-- L2 Action 真值回采 -->
+  <path d="M372 888 C 372 470, 360 430, 444 414" stroke="#62BE77" stroke-width="2" fill="none" stroke-dasharray="6 4" marker-end="url(#arG)"/>
+  <text class="ok" x="356" y="470" transform="rotate(-90 356 470)">采纳→Action→真值回写/回采</text>
+
+  <!-- L3 Metric.miss → 推演 -->
+  <path d="M1156 518 C 1130 540, 1110 700, 1044 700" stroke="#E0A23C" stroke-width="1.8" fill="none" stroke-dasharray="5 3" marker-end="url(#arO)"/>
+  <text class="fbk" x="1085" y="540" fill="#E0A23C">越线触发</text>
+
+  <!-- footer -->
+  <text class="sub" x="40" y="982">核心约束：① 模版=单一源（合成/数据构建发动机/上传列模版 三方同读 ObjectType）　② 单一上传口（同字段唯一 DataCategory，杜绝互斥）　③ 全链每环有门禁　④ 推演经同一 REST+R3+R4+事件（GUI=CLI=QOS 同源 R15）</text>
+  <text class="sub" x="40" y="1002" fill="#7C8896">详见 docs/PRD-data-closure-spec.md（数据闭环规范 · 全模块强制基线 · 含 21 维清单 + 系统/PRD 双向遗漏 + 逐模块 checklist）</text>
+</svg>

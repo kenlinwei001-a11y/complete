@@ -1,0 +1,9 @@
+金丝雀：读 21 个 prop 键 · 源字段 demandDelta=0.6 creditUsedRatio=1.15 outsourceRatio=0.35
+✅ 金丝雀通过
+
+推进 10 拍后 · 21 个 prop 键里变化的 = 0
+
+规格值核对（props 恒定则规格值恒定）：Order.demandPressure = demandDelta×100 = 60
+  tick10 世界态里该对象 demandPressure 实测 = 0
+
+⇒ props 恒定 ⇒ 规格值逐拍恒定 ⇒ 观测值偏离 tick0 即偏离规格值。

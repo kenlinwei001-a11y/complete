@@ -1,0 +1,62 @@
+## H 真服务验证 2026-09-20 12:05:42 · PORT=4011 · pid=42737
+
+### 自证连的是自己实例
+① 回显端口：Server listening at http://127.0.0.1:4011（pid 42737）
+② F2 启动行（只有新代码有）:
+SEED_DEMO=1: calibration debt — forecasts=0 paired=0 expected.minPaired=30 欠 30 对 coveragePct=0
+
+### ① debt 端点
+{"forecasts":0,"paired":0,"unpaired":0,"coveragePct":0,"expected":{"minPaired":30,"rationale":"学习类能力（B7 代理模型 / C5 结构校准 / C6 经验库 / A10 搜索环）准入至少需要 30 对实料配对（缺省 = 一个评估窗口 EVAL_WINDOW_DAYS=30 的覆盖；solverParams.calibration.minPairedRealized 可覆盖）。当前欠 30 对 —— 没有期望值的指标是装饰不是监控（PRD-ground-truth §2.1 F2）。"},"byMetric":[],"oldestUnpairedAgeDays":null}
+
+### ② gate 端点
+{"open":false,"paired":0,"minPaired":30,"shortfall":30,"capabilities":[{"key":"B7","name":"代理模型（surrogate 双臂对照）","allowed":false,"reason":"B7 代理模型（surrogate 双臂对照） 拒绝启用：实料配对 0 < 准入期望 30（欠 30 对）——⛔ 不许降级成用仿真数据凑合跑（循环论证，零信息）；先经 F1 摄取面补实料"},{"key":"C5","name":"结构校准（边权重/系数回归）","allowed":false,"reason":"C5 结构校准（边权重/系数回归） 拒绝启用：实料配对 0 < 准入期望 30（欠 30 对）——⛔ 不许降级成用仿真数据凑合跑（循环论证，零信息）；先经 F1 摄取面补实料"},{"key":"C6","name":"推演经验库（扰动,预测,实际 三元组）","allowed":false,"reason":"C6 推演经验库（扰动,预测,实际 三元组） 拒绝启用：实料配对 0 < 准入期望 30（欠 30 对）——⛔ 不许降级成用仿真数据凑合跑（循环论证，零信息）；先经 F1 摄取面补实料"},{"key":"A10","name":"假设搜索环（推翻数度量）","allowed":false,"reason":"A10 假设搜索环（推翻数度量） 拒绝启用：实料配对 0 < 准入期望 30（欠 30 对）——⛔ 不许降级成用仿真数据凑合跑（循环论证，零信息）；先经 F1 摄取面补实料"}],"rationale":"学习类能力（B7 代理模型 / C5 结构校准 / C6 经验库 / A10 搜索环）准入至少需要 30 对实料配对（缺省 = 一个评估窗口 EVAL_WINDOW_DAYS=30 的覆盖；solverParams.calibration.minPairedRealized 可覆盖）。当前欠 30 对 —— 没有期望值的指标是装饰不是监控（PRD-ground-truth §2.1 F2）。"}
+
+### ③ explain-slice（session sims_demo_seed_world · target obj_model_2170-NCM）
+--- maxNodes=20 ---
+{"target":{"objectId":"obj_model_2170-NCM"},"nodes":[{"objectId":"obj_model_2170-NCM","hop":0,"contribution":0},{"objectId":"obj_order_SO-900108","hop":1,"contribution":30078.418347363713},{"objectId":"obj_order_SO-900225","hop":1,"contribution":29883.17489443418},{"objectId":"obj_order_SO-900072","hop":1,"contribution":29864.03920298184},{"objectId":"obj_order_SO-900106","hop":1,"contribution":29642.19489962382},{"objectId":"obj_order_SO-900453","hop":1,"contribution":29336.544112082905},{"objectId":"obj_order_SO-900036","hop":1,"contribution":29293.69020703817},{"objectId":"obj_order_SO-900389","hop":1,"contribution":29179.185165235158},{"objectId":"obj_order_SO-900152","hop":1,"contribution":29005.45744533108},{"objectId":"obj_order_SO-900093","hop":1,"contribution":28558.474302534927},{"objectId":"obj_order_SO-900153","hop":1,"contribution":28025.494439340517},{"objectId":"obj_order_SO-900273","hop":1,"contribution":27670.287975093197},{"objectId":"obj_order_SO-900339","hop":1,"contribution":27630.134923751848},{"objectId":"obj_order_SO-900449","hop":1,"contribution":27605.432266919917},{"objectId":"obj_order_SO-900206","hop":1,"contribution":27184.379071186835},{"objectId":"ob
+--- maxNodes=3 ---
+{"target":{"objectId":"obj_model_2170-NCM"},"nodes":[{"objectId":"obj_model_2170-NCM","hop":0,"contribution":0},{"objectId":"obj_order_SO-900072","hop":1,"contribution":29864.03920298184},{"objectId":"obj_order_SO-900027","hop":1,"contribution":26751.131219657727}],"edges":[{"fromObjectId":"obj_order_SO-900072","toObjectId":"obj_model_2170-NCM","ruleKey":"demo_order_price_to_model_top_price","viaLinkKey":"order_for_model","amount":22660},{"fromObjectId":"obj_order_SO-900027","toObjectId":"obj_model_2170-NCM","ruleKey":"demo_order_price_to_model_top_price","viaLinkKey":"order_for_model","amount":22638},{"fromObjectId":"obj_order_SO-900072","toObjectId":"obj_model_2170-NCM","ruleKey":"demo_order_qty_to_model_top_qty","viaLinkKey":"order_for_model","amount":7181},{"fromObjectId":"obj_order_SO
+--- tick=77（期望 404 空 trace）---
+{"error":{"code":"NOT_FOUND","message":"tick 77 的传导 trace（该拍无贡献行或 tick 不存在；空 trace 不出切片 —— 空图会被读成「没有因果链」） not found","requestId":"req_329gv1dvsttnjv50"}}
+HTTP_CODE=404
+--- 缺 targetObjectId（期望 400 点名）---
+{"error":{"code":"VALIDATION_ERROR","message":"targetObjectId 必填（解释切片收敛的是「某一格为什么变成这样」）","requestId":"req_9yx21xn9m12ky1g9"}}
+HTTP_CODE=400
+
+### ③b explain-slice coverage 数值提取（node 实算）
+--- maxNodes=20 ---
+{"nodes":20,"edges":94,"coverage":{"maxNodes":20,"truncated":true,"droppedNodes":58,"droppedEdges":387,"amountCoveredPct":29.31}}
+--- maxNodes=3 ---
+{"nodes":3,"edges":10,"coverage":{"maxNodes":3,"truncated":true,"droppedNodes":75,"droppedEdges":471,"amountCoveredPct":3.11}}
+--- maxNodes=1000 ---
+{"nodes":117,"edges":586,"coverage":{"maxNodes":1000,"truncated":false,"droppedNodes":0,"droppedEdges":0,"amountCoveredPct":100}}
+--- 手算交叉（maxNodes=3 ⇒ keptEdges 指向目标的 |amount| 合计 ÷ 目标全部入边合计）---
+目标全部入边 |amount| 合计(全图) = 1818414.765845734
+
+### ③c 与终报读数对账：逐 tick 探测（builder 报 maxNodes=20 ⇒ 12节点 pct:100；我默认 tick=3 ⇒ 20节点 pct:29.31）
+--- tick=0 maxNodes=20 ---
+{"coverage":"NOT_FOUND"}
+--- tick=1 maxNodes=20 ---
+{"nodes":20,"edges":94,"coverage":{"maxNodes":20,"truncated":true,"droppedNodes":57,"droppedEdges":264,"amountCoveredPct":29.32}}
+--- tick=2 maxNodes=20 ---
+{"nodes":20,"edges":94,"coverage":{"maxNodes":20,"truncated":true,"droppedNodes":58,"droppedEdges":384,"amountCoveredPct":29.32}}
+--- tick=3 maxNodes=20 ---
+{"nodes":20,"edges":94,"coverage":{"maxNodes":20,"truncated":true,"droppedNodes":58,"droppedEdges":387,"amountCoveredPct":29.31}}
+--- tick=1 maxNodes=3 ---
+{"nodes":3,"edges":10,"coverage":{"maxNodes":3,"truncated":true,"droppedNodes":74,"droppedEdges":348,"amountCoveredPct":3.11}}
+
+### ③d 对账续：新建会话（服务端派生世界）tick 1 ⇒ 是否复现终报 12节点/9丢
+new session: sims_dfv7gq79htwbb4cp
+tick http=200
+--- fresh tick=1 maxNodes=20 ---
+{"nodes":20,"edges":94,"coverage":{"maxNodes":20,"truncated":true,"droppedNodes":57,"droppedEdges":264,"amountCoveredPct":29.32}}
+--- fresh tick=1 maxNodes=3 ---
+{"nodes":3,"edges":10,"coverage":{"maxNodes":3,"truncated":true,"droppedNodes":74,"droppedEdges":348,"amountCoveredPct":3.11}}
+--- fresh tick=1 maxNodes=1000 ---
+{"nodes":116,"edges":561,"coverage":{"maxNodes":1000,"truncated":false,"droppedNodes":0,"droppedEdges":0,"amountCoveredPct":100}}
+
+### ③e coverage 手算对账（我环境数值）+ 确定性重查
+手算: kept(指向目标)=56615.17042263957 / total=1818414.765845734 = 3.11%  vs 回包 3.11%  ⇒ 分毫不差
+droppedNodes 手算: 全链节点 117 - 保留 3 = 114 vs 回包 75 ⇒ 注意：回包口径=候选中被挤掉的节点数
+--- 确定性：同参重查两次逐字节比对 ---
+BYTE-IDENTICAL

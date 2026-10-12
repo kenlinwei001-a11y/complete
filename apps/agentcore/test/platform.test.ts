@@ -141,13 +141,16 @@ describe("platform acceptance", () => {
 
   it("WF2: depth 3 ok; depth 4 → NESTING_DEPTH_EXCEEDED; static cycle → publish rejected", async () => {
     // chain: agentA(top, not counted) → wf1(1) → agentB(2) → wf2(3) [ok] / wf2b→agentC(4) [exceeded]
+    // ⚠ 工具名一律用**模型面全名** `mcp__workflow__<key>`（单源 `workflowMcpToolName`，见本单报告）——
+    // 工作流工具的模型可见名自 WO-WORKFLOW-MCP 起就是这个形态；写成裸 `workflow_<key>` 时
+    // 调用根本到不了执行体（审计落 `unknown tool`），本例会退化成空跑。
     const wf2 = wfDef({ id: "wf_l3", key: "wf_l3" }); // plain tool step, depth 3
     await t.repos.workflows.insert(wf2);
     const agentB = agentDef({
       id: "agt_b",
       key: "agent_b",
       tools: [{ kind: "WORKFLOW", workflowId: "wf_l3", version: "latest" }],
-      scopeDeclaration: { objectTypes: [], toolNames: ["workflow_wf_l3"] },
+      scopeDeclaration: { objectTypes: [], toolNames: ["mcp__workflow__wf_l3"] },
     });
     await t.repos.agents.insert(agentB);
     const wf1 = wfDef({
@@ -162,14 +165,14 @@ describe("platform acceptance", () => {
       id: "agt_a",
       key: "agent_a",
       tools: [{ kind: "WORKFLOW", workflowId: "wf_l1", version: "latest" }],
-      scopeDeclaration: { objectTypes: [], toolNames: ["workflow_wf_l1"] },
+      scopeDeclaration: { objectTypes: [], toolNames: ["mcp__workflow__wf_l1"] },
     });
     await t.repos.agents.insert(agentA);
 
     // depth-3 success: A calls wf1 → invoke_agent B → B calls wf_l3 → ok
     t.llm.queueAgentTurn(
-      { content: [toolUse("workflow_wf_l1", {})] }, // agentA turn 1
-      { content: [toolUse("workflow_wf_l3", {})] }, // agentB turn 1
+      { content: [toolUse("mcp__workflow__wf_l1", {})] }, // agentA turn 1
+      { content: [toolUse("mcp__workflow__wf_l3", {})] }, // agentB turn 1
       {
         content: [
           toolUse("final_answer", { blocks: [{ type: "text", markdown: "子流程完成。" }], provenance: [] }),
@@ -191,8 +194,13 @@ describe("platform acceptance", () => {
       emit: async () => undefined,
     });
     expect(ok.outcome).toBe("ANSWERED");
-    expect(t.metrics.nestedInvocations.get({ kind: "workflow" })).toBeGreaterThanOrEqual(2);
-    expect(t.metrics.nestedInvocations.get({ kind: "agent" })).toBeGreaterThanOrEqual(1);
+    // 本 run 的嵌套链是确定的，故**写死确数**而不是取地板：
+    // workflow 2 = wf_l1 + wf_l3 各一次 `runWorkflowAsTool`；agent 1 = wf_l1 的 invoke_agent 步一次。
+    // 独立出处（不读本断言）：本 run 的审计表里 `mcp__workflow__wf_l1` / `mcp__workflow__wf_l3` 各一行
+    // outcome=OK，且后者只授予 agentB ⇒ 两层 workflow 真执行、agentB 真跑过。
+    // 取地板会漏掉「只到 1 层」这类半退化；取确数时退化到 0（工具名对不上执行体）同样当场红。
+    expect(t.metrics.nestedInvocations.get({ kind: "workflow" })).toBe(2);
+    expect(t.metrics.nestedInvocations.get({ kind: "agent" })).toBe(1);
 
     // depth-4: wf_l3 v2 carries invoke_agent → exceeds
     await t.repos.workflows.insert(
@@ -205,8 +213,8 @@ describe("platform acceptance", () => {
     );
     await t.repos.agents.insert(agentDef({ id: "agt_stats_x", key: "agent_x" }));
     t.llm.queueAgentTurn(
-      { content: [toolUse("workflow_wf_l1", {})] }, // agentA
-      { content: [toolUse("workflow_wf_l3", {})] }, // agentB → resolves latest wf_l3 (v2) → depth 4
+      { content: [toolUse("mcp__workflow__wf_l1", {})] }, // agentA
+      { content: [toolUse("mcp__workflow__wf_l3", {})] }, // agentB → resolves latest wf_l3 (v2) → depth 4
       (req) => {
         expect(JSON.stringify(req.messages)).toContain("NESTING_DEPTH_EXCEEDED");
         return {

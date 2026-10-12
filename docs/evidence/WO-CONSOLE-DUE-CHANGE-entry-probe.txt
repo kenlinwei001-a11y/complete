@@ -1,0 +1,34 @@
+# rules=55  types=32
+# 全表可落点∧可达Order 的格：
+#   Equipment: equipmentFailure, loadPressure
+#   FinishedGoodsInventory: coverDays
+#   Material: priceShock
+#   MaterialBatch: procurementDelay
+#   Model: forecastBias
+#   PurchaseOrder: procurementDelay
+#   Supplier: deliveryDelay, procurementDelay
+# 合计 9 格
+
+# ── 逐件事 ─────────────────────────────────────────────
+material-price-up  ok  Material.priceShock          可达 22 型 | 钱相关(4) [ARInvoice,Customer,Order,OrderPromise]
+batch-defect       no-statevar  types=[inspectBacklog,defectPressure,turnoverPressure]
+rush-order         no-statevar  types=[qty,demandPressure]
+due-change         no-statevar  types=[leadDays,promiseRisk,shortageRisk]
+order-cancel       no-statevar  types=[orderChurn]
+inbound-delay      ok  Supplier.deliveryDelay       可达 11 型 | 钱相关(2) [Order,OrderPromise]
+material-short     no-statevar  types=[shortageRisk]
+equipment-down     ok  Equipment.equipmentFailure   可达 22 型 | 钱相关(4) [ARInvoice,Customer,Order,OrderPromise]
+capacity-loss      no-statevar  types=[loadIndex,utilPressure]
+ship-to-change     no-statevar  types=[deliveryHoldRisk,transferPressure]
+order-reprice      no-statevar  types=[unitPrice,costPressure]
+forecast-bias      ok  Model.forecastBias           可达 22 型 | 钱相关(4) [ARInvoice,Customer,Order,OrderPromise]
+
+# ── 汇流检验：落点各自的可达集是否相同 ──────────────────
+# 能落点 4 件，形成 2 个互异可达集
+#   [3 件] material-price-up(Material.priceShock) equipment-down(Equipment.equipmentFailure) forecast-bias(Model.forecastBias)
+#      -> ARInvoice|Base|Certification|ChangeoverMatrix|Customer|CustomerLocation|DefectRecord|ExceptionEvent|FinishedGoodsInventory|InterBaseTransfer|Line|MaintPlan|Model|Order|OrderLine|OrderPromise|OverdueRecord|Process|QualityLot|Shipment|WIPLot|WorkOrder
+#   [1 件] inbound-delay(Supplier.deliveryDelay)
+#      -> CustomsClearance|IncomingInspection|Material|MaterialAlternative|MaterialBalance|MaterialBatch|Model|Order|OrderPromise|PurchaseOrder|Supplier
+
+# ── Order 型可落点格（结论格的候选面）──────────────────
+#   Order.leadDays, Order.qty, Order.unitPrice

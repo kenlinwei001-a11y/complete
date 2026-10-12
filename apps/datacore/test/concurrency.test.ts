@@ -10,6 +10,8 @@ async function seedEquipment(t: TestApp): Promise<void> {
     propKey,
     dataType: "number",
     isPrimaryKey: false,
+    unit: "dimensionless",
+    scale: "absolute",
     ...opts,
   });
   const ty: Omit<ObjectTypeDef, "id" | "tenantId" | "version" | "status"> = {

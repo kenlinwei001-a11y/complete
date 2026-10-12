@@ -1,0 +1,329 @@
+═══ 全部 c0828-* testid ═══
+c0828-shell
+c0828-topbar
+c0828-scope-select
+c0828-scope-echo
+c0828-restored
+c0828-restored-sims_demo_seed_world_p0
+c0828-kpis
+c0828-kpi-book
+c0828-kpi-staged
+c0828-kpi-entity
+c0828-root
+c0828-rail
+c0828-staged-empty
+c0828-ev-material-price-up
+c0828-ev-batch-defect
+c0828-ev-rush-order
+c0828-ev-due-change
+c0828-ev-order-cancel
+c0828-ev-inbound-delay
+c0828-ev-material-short
+c0828-ev-equipment-down
+c0828-ev-capacity-loss
+c0828-ev-ship-to-change
+c0828-ev-order-reprice
+c0828-ev-forecast-bias
+c0828-horizon
+c0828-horizon-echo
+c0828-go
+c0828-entity-counts
+c0828-pagehead
+c0828-run-badge
+c0828-lens
+c0828-base-status
+c0828-tab-board
+c0828-tab-options
+c0828-tab-scan
+c0828-expert
+c0828-tabbody
+c0828-idle
+c0828-pane-board
+c0828-board
+c0828-board-baseline-note
+c0828-row-imp_CONGESTION.MATERIAL.batch-idle_elyte_b2
+c0828-row-imp_CONGESTION.MATERIAL.batch-idle_cu_foil_b2
+c0828-row-imp_BOTTLENECK.CAPACITY.cross-segment-contention_changzhou
+c0828-row-imp_CONGESTION.MATERIAL.batch-idle_neg_graphite_b2
+c0828-row-imp_BOTTLENECK.CAPACITY.cross-segment-contention_zaozhuang
+c0828-row-imp_CONGESTION.MATERIAL.batch-idle_pos_ncm_b2
+c0828-row-imp_CONGESTION.MATERIAL.batch-idle_pos_lfp_b2
+c0828-row-imp_BREAK.MATERIAL.material-gap_mbal-6
+c0828-row-imp_CONGESTION.MATERIAL.batch-idle_sep_film_b2
+c0828-row-imp_BREAK.MATERIAL.material-gap_mbal-3
+c0828-row-imp_BREAK.MATERIAL.material-gap_mbal-7
+c0828-row-imp_BREAK.MATERIAL.material-gap_mbal-1
+c0828-board-missing-cols
+c0828-missing-why
+c0828-drill-board
+c0828-pane-options
+c0828-options
+c0828-options-title
+c0828-options-tag
+c0828-options-zoom
+c0828-opt-grid
+c0828-opt-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Line.utilization_LINE-WS-jinhua-slitting_PEER_BEST_89.9153
+c0828-price-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Line.utilization_LINE-WS-jinhua-slitting_PEER_BEST_89.9153
+c0828-opt-why-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Line.utilization_LINE-WS-jinhua-slitting_PEER_BEST_89.9153
+c0828-opt-gain-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Line.utilization_LINE-WS-jinhua-slitting_PEER_BEST_89.9153
+c0828-price-detail-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Line.utilization_LINE-WS-jinhua-slitting_PEER_BEST_89.9153
+c0828-price-claim-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Line.utilization_LINE-WS-jinhua-slitting_PEER_BEST_89.9153
+c0828-adopt-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Line.utilization_LINE-WS-jinhua-slitting_PEER_BEST_89.9153
+c0828-opt-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Process.utilization_LINE-WS-jinhua-slitting-assembly_PEER_BEST_1
+c0828-price-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Process.utilization_LINE-WS-jinhua-slitting-assembly_PEER_BEST_1
+c0828-opt-why-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Process.utilization_LINE-WS-jinhua-slitting-assembly_PEER_BEST_1
+c0828-opt-gain-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Process.utilization_LINE-WS-jinhua-slitting-assembly_PEER_BEST_1
+c0828-price-detail-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Process.utilization_LINE-WS-jinhua-slitting-assembly_PEER_BEST_1
+c0828-price-claim-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Process.utilization_LINE-WS-jinhua-slitting-assembly_PEER_BEST_1
+c0828-adopt-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Process.utilization_LINE-WS-jinhua-slitting-assembly_PEER_BEST_1
+c0828-opt-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Process.attendance_LINE-WS-jinhua-slitting-coating_PEER_BEST_1
+c0828-price-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Process.attendance_LINE-WS-jinhua-slitting-coating_PEER_BEST_1
+c0828-opt-why-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Process.attendance_LINE-WS-jinhua-slitting-coating_PEER_BEST_1
+c0828-opt-gain-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Process.attendance_LINE-WS-jinhua-slitting-coating_PEER_BEST_1
+c0828-adopt-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Process.attendance_LINE-WS-jinhua-slitting-coating_PEER_BEST_1
+c0828-opt-donothing
+c0828-donothing-note
+c0828-pane-scan
+c0828-impediment
+c0828-kinds
+c0828-kind-BOTTLENECK
+c0828-kind-CONGESTION
+c0828-kind-BREAK
+c0828-fix-imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting
+c0828-fixbtn-imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting
+c0828-fix-imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-zigong-grading
+c0828-fixbtn-imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-zigong-grading
+c0828-fix-imp_CONGESTION.MATERIAL.batch-idle_pos_lfp_b2
+c0828-fixbtn-imp_CONGESTION.MATERIAL.batch-idle_pos_lfp_b2
+c0828-fix-imp_BREAK.MATERIAL.material-gap_mbal-2
+c0828-fixbtn-imp_BREAK.MATERIAL.material-gap_mbal-2
+c0828-watchonly
+c0828-ask-agent
+c0828-ai
+c0828-ai-stream
+c0828-ai-points
+c0828-ai-actions
+c0828-ai-goto-options
+c0828-ai-ask-agent
+c0828-ai-ask
+c0828-ai-noinput
+
+═══ rail（左侧事件区）内的元素清单 ═══
+  span "1 扰动事件"
+    span "1"
+  h2 "选择扰动事件，推演其叠加影响"
+  p[c0828-staged-empty] "尚未添加扰动事件"
+  div "可继续添加 原材料涨价 选择物料 · 涨幅 ＋ 批次不良 / 召回 该类对象有实例，但它今天没有任何**可承载外部冲击的"
+    span "可继续添加"
+    div "原材料涨价 选择物料 · 涨幅 ＋"
+      button[c0828-ev-material-price-up] "原材料涨价 选择物料 · 涨幅 ＋"
+        span "原材料涨价"
+        span "选择物料 · 涨幅"
+        span "＋"
+    div "批次不良 / 召回 该类对象有实例，但它今天没有任何**可承载外部冲击的量**（外生输入且能向下传导）—— 这件事在本世"
+      button[c0828-ev-batch-defect] "批次不良 / 召回 该类对象有实例，但它今天没有任何**可承载外部冲击的量**（外生输入且能向下传导）—— 这件事在本世"
+        span "批次不良 / 召回"
+        span "该类对象有实例，但它今天没有任何**可承载外部冲击的量**（外生输入且能向下传导）—— 这件事在本世界的传导图里没有落点"
+        span "＋"
+    div "临时插单 该类对象有实例，但它今天没有任何**可承载外部冲击的量**（外生输入且能向下传导）—— 这件事在本世界的传导图"
+      button[c0828-ev-rush-order] "临时插单 该类对象有实例，但它今天没有任何**可承载外部冲击的量**（外生输入且能向下传导）—— 这件事在本世界的传导图"
+        span "临时插单"
+        span "该类对象有实例，但它今天没有任何**可承载外部冲击的量**（外生输入且能向下传导）—— 这件事在本世界的传导图里没有落点"
+        span "＋"
+    div "订单改交期 选择订单 · 提前天数 ＋"
+      button[c0828-ev-due-change] "订单改交期 选择订单 · 提前天数 ＋"
+        span "订单改交期"
+        span "选择订单 · 提前天数"
+        span "＋"
+    div "订单取消 该类对象有实例，但它今天没有任何**可承载外部冲击的量**（外生输入且能向下传导）—— 这件事在本世界的传导图"
+      button[c0828-ev-order-cancel] "订单取消 该类对象有实例，但它今天没有任何**可承载外部冲击的量**（外生输入且能向下传导）—— 这件事在本世界的传导图"
+        span "订单取消"
+        span "该类对象有实例，但它今天没有任何**可承载外部冲击的量**（外生输入且能向下传导）—— 这件事在本世界的传导图里没有落点"
+        span "＋"
+    div "物料到货延迟 选择供应商 · 延迟天数 ＋"
+      button[c0828-ev-inbound-delay] "物料到货延迟 选择供应商 · 延迟天数 ＋"
+        span "物料到货延迟"
+        span "选择供应商 · 延迟天数"
+        span "＋"
+    div "物料短缺 该类对象有实例，但它今天没有任何**可承载外部冲击的量**（外生输入且能向下传导）—— 这件事在本世界的传导图"
+      button[c0828-ev-material-short] "物料短缺 该类对象有实例，但它今天没有任何**可承载外部冲击的量**（外生输入且能向下传导）—— 这件事在本世界的传导图"
+        span "物料短缺"
+        span "该类对象有实例，但它今天没有任何**可承载外部冲击的量**（外生输入且能向下传导）—— 这件事在本世界的传导图里没有落点"
+        span "＋"
+    div "设备故障 选择设备 · 停机天数 ＋"
+      button[c0828-ev-equipment-down] "设备故障 选择设备 · 停机天数 ＋"
+        span "设备故障"
+        span "选择设备 · 停机天数"
+        span "＋"
+    div "产能损失 该类对象有实例，但它今天没有任何**可承载外部冲击的量**（外生输入且能向下传导）—— 这件事在本世界的传导图"
+      button[c0828-ev-capacity-loss] "产能损失 该类对象有实例，但它今天没有任何**可承载外部冲击的量**（外生输入且能向下传导）—— 这件事在本世界的传导图"
+        span "产能损失"
+        span "该类对象有实例，但它今天没有任何**可承载外部冲击的量**（外生输入且能向下传导）—— 这件事在本世界的传导图里没有落点"
+        span "＋"
+    div "改交付地点 该类对象有实例，但它今天没有任何**可承载外部冲击的量**（外生输入且能向下传导）—— 这件事在本世界的传导"
+      button[c0828-ev-ship-to-change] "改交付地点 该类对象有实例，但它今天没有任何**可承载外部冲击的量**（外生输入且能向下传导）—— 这件事在本世界的传导"
+        span "改交付地点"
+        span "该类对象有实例，但它今天没有任何**可承载外部冲击的量**（外生输入且能向下传导）—— 这件事在本世界的传导图里没有落点"
+        span "＋"
+    div "订单改价 该类对象有实例，但它今天没有任何**可承载外部冲击的量**（外生输入且能向下传导）—— 这件事在本世界的传导图"
+      button[c0828-ev-order-reprice] "订单改价 该类对象有实例，但它今天没有任何**可承载外部冲击的量**（外生输入且能向下传导）—— 这件事在本世界的传导图"
+        span "订单改价"
+        span "该类对象有实例，但它今天没有任何**可承载外部冲击的量**（外生输入且能向下传导）—— 这件事在本世界的传导图里没有落点"
+        span "＋"
+    div "预测偏差 选择型号 · 偏差幅度 ＋"
+      button[c0828-ev-forecast-bias] "预测偏差 选择型号 · 偏差幅度 ＋"
+        span "预测偏差"
+        span "选择型号 · 偏差幅度"
+        span "＋"
+  div "推演时长 天"
+    span "推演时长"
+    span "天"
+      input[c0828-horizon]
+      span "天"
+  p[c0828-horizon-echo] "= 30 天（30 拍），推演至 2026-02-03（第 33 拍）"
+  button[c0828-go] "开始推演"
+  div "本次推演执行记录 落点实体 65 个： 基地13 · 客户20 · 供应商15 · 物料8 · 型号6 · 需求段3"
+    details "本次推演执行记录"
+      summary "本次推演执行记录"
+    div[c0828-entity-counts] "落点实体 65 个： 基地13 · 客户20 · 供应商15 · 物料8 · 型号6 · 需求段3"
+      b "65"
+…(rail 内共 83 个元素)
+
+═══ 点 c0828-ev-due-change 之前：staged KPI ═══
+待施加扰动
+?
+0
+尚未添加
+
+═══ 点击结果：✅ 已点击 BUTTON ═══
+
+═══ 点击之后 ═══
+staged KPI = 待施加扰动
+?
+0
+尚未添加
+
+本段网络请求：
+   （无）
+
+点后新出现的 c0828 testid：
+c0828-shell
+c0828-topbar
+c0828-scope-select
+c0828-scope-echo
+c0828-restored
+c0828-restored-sims_demo_seed_world_p0
+c0828-kpis
+c0828-kpi-book
+c0828-kpi-staged
+c0828-kpi-entity
+c0828-root
+c0828-rail
+c0828-staged-empty
+c0828-ev-material-price-up
+c0828-ev-batch-defect
+c0828-ev-rush-order
+c0828-ev-due-change
+c0828-form-due-change
+c0828-seg1-due-change
+c0828-pick-due-change
+c0828-seg2-due-change
+c0828-start-echo
+c0828-once-due-change
+c0828-seg3-due-change
+c0828-mag-due-change
+c0828-forecast-due-change
+c0828-add-due-change
+c0828-ev-order-cancel
+c0828-ev-inbound-delay
+c0828-ev-material-short
+c0828-ev-equipment-down
+c0828-ev-capacity-loss
+c0828-ev-ship-to-change
+c0828-ev-order-reprice
+c0828-ev-forecast-bias
+c0828-horizon
+c0828-horizon-echo
+c0828-go
+c0828-entity-counts
+c0828-pagehead
+c0828-run-badge
+c0828-lens
+c0828-base-status
+c0828-tab-board
+c0828-tab-options
+c0828-tab-scan
+c0828-expert
+c0828-tabbody
+c0828-idle
+c0828-pane-board
+c0828-board
+c0828-board-baseline-note
+c0828-row-imp_CONGESTION.MATERIAL.batch-idle_elyte_b2
+c0828-row-imp_CONGESTION.MATERIAL.batch-idle_cu_foil_b2
+c0828-row-imp_BOTTLENECK.CAPACITY.cross-segment-contention_changzhou
+c0828-row-imp_CONGESTION.MATERIAL.batch-idle_neg_graphite_b2
+c0828-row-imp_BOTTLENECK.CAPACITY.cross-segment-contention_zaozhuang
+c0828-row-imp_CONGESTION.MATERIAL.batch-idle_pos_ncm_b2
+c0828-row-imp_CONGESTION.MATERIAL.batch-idle_pos_lfp_b2
+c0828-row-imp_BREAK.MATERIAL.material-gap_mbal-6
+c0828-row-imp_CONGESTION.MATERIAL.batch-idle_sep_film_b2
+c0828-row-imp_BREAK.MATERIAL.material-gap_mbal-3
+c0828-row-imp_BREAK.MATERIAL.material-gap_mbal-7
+c0828-row-imp_BREAK.MATERIAL.material-gap_mbal-1
+c0828-board-missing-cols
+c0828-missing-why
+c0828-drill-board
+c0828-pane-options
+c0828-options
+c0828-options-title
+c0828-options-tag
+c0828-options-zoom
+c0828-opt-grid
+c0828-opt-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Line.utilization_LINE-WS-jinhua-slitting_PEER_BEST_89.9153
+c0828-price-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Line.utilization_LINE-WS-jinhua-slitting_PEER_BEST_89.9153
+c0828-opt-why-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Line.utilization_LINE-WS-jinhua-slitting_PEER_BEST_89.9153
+c0828-opt-gain-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Line.utilization_LINE-WS-jinhua-slitting_PEER_BEST_89.9153
+c0828-price-detail-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Line.utilization_LINE-WS-jinhua-slitting_PEER_BEST_89.9153
+c0828-price-claim-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Line.utilization_LINE-WS-jinhua-slitting_PEER_BEST_89.9153
+c0828-adopt-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Line.utilization_LINE-WS-jinhua-slitting_PEER_BEST_89.9153
+c0828-opt-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Process.utilization_LINE-WS-jinhua-slitting-assembly_PEER_BEST_1
+c0828-price-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Process.utilization_LINE-WS-jinhua-slitting-assembly_PEER_BEST_1
+c0828-opt-why-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Process.utilization_LINE-WS-jinhua-slitting-assembly_PEER_BEST_1
+c0828-opt-gain-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Process.utilization_LINE-WS-jinhua-slitting-assembly_PEER_BEST_1
+c0828-price-detail-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Process.utilization_LINE-WS-jinhua-slitting-assembly_PEER_BEST_1
+c0828-price-claim-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Process.utilization_LINE-WS-jinhua-slitting-assembly_PEER_BEST_1
+c0828-adopt-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Process.utilization_LINE-WS-jinhua-slitting-assembly_PEER_BEST_1
+c0828-opt-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Process.attendance_LINE-WS-jinhua-slitting-coating_PEER_BEST_1
+c0828-price-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Process.attendance_LINE-WS-jinhua-slitting-coating_PEER_BEST_1
+c0828-opt-why-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Process.attendance_LINE-WS-jinhua-slitting-coating_PEER_BEST_1
+c0828-opt-gain-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Process.attendance_LINE-WS-jinhua-slitting-coating_PEER_BEST_1
+c0828-adopt-cand_imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting_Process.attendance_LINE-WS-jinhua-slitting-coating_PEER_BEST_1
+c0828-opt-donothing
+c0828-donothing-note
+c0828-pane-scan
+c0828-impediment
+c0828-kinds
+c0828-kind-BOTTLENECK
+c0828-kind-CONGESTION
+c0828-kind-BREAK
+c0828-fix-imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting
+c0828-fixbtn-imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting
+c0828-fix-imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-zigong-grading
+c0828-fixbtn-imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-zigong-grading
+c0828-fix-imp_CONGESTION.MATERIAL.batch-idle_pos_lfp_b2
+c0828-fixbtn-imp_CONGESTION.MATERIAL.batch-idle_pos_lfp_b2
+c0828-fix-imp_BREAK.MATERIAL.material-gap_mbal-2
+c0828-fixbtn-imp_BREAK.MATERIAL.material-gap_mbal-2
+c0828-watchonly
+c0828-ask-agent
+c0828-ai
+c0828-ai-stream
+c0828-ai-points
+c0828-ai-actions
+c0828-ai-goto-options
+c0828-ai-ask-agent
+c0828-ai-ask
+c0828-ai-noinput
+
+落盘 evidence-1001/cdp-rail.txt

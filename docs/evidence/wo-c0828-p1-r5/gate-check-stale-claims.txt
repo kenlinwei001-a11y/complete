@@ -1,0 +1,85 @@
+扫描：304 个源文件 · 1285 处关键词命中 · 67 条声明违规 · 豁免 31 条（上限 31）
+屏上层：17 处字面量断言（注释里另有 144 处·不判） · 192 个视图 slug · 1 条改名声明 ⇒ 5 条屏上违规 · 豁免 4 条（上限 4）
+门自述层：scripts/check-stale-claims.mjs 里 13 条 @stale-self 赌注对账 19 个现算口径 ⇒ 0 条违规（**永不豁免**）
+
+❌ 新增「自称实测」声明违规 22 条：
+   apps/frontend-shell/src/views/sim/SandboxImpactBand.tsx:748-754  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* ⚠ 此前这里直接渲 `{d.v}` —— 实测后端 `stateVarNames` **48/48 全有中文名**，
+   apps/frontend-shell/src/views/sim/SandboxImpactBand.tsx:748-754  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* ⚠ 此前这里直接渲 `{d.v}` —— 实测后端 `stateVarNames` **48/48 全有中文名**，
+   apps/frontend-shell/src/views/sim/unified/MetricWall.tsx:56-67  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：*   而键在当时的 `title` 里已经有一份。实测这一屏纯英文片段 47 个，卡墙独占 6 个。
+   apps/frontend-shell/src/views/sim/unified/MetricWall.tsx:56-67  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：*   而键在当时的 `title` 里已经有一份。实测这一屏纯英文片段 47 个，卡墙独占 6 个。
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:301-305  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* 落点下拉最多列几条。有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:301-305  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* 落点下拉最多列几条。有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:432-455  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* ── 为什么只有这一条路（真浏览器实测的账，不是版面偏好）───────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:432-455  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* ── 为什么只有这一条路（真浏览器实测的账，不是版面偏好）───────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:599-620  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* ── 今天的行为是 X，应该是 Y（真数据实测，不是读码推断）─────────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:634-641  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* **号只在需要消歧时才上屏**（实测两种类型给出相反的答案，故不能一刀切）：
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:634-641  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* **号只在需要消歧时才上屏**（实测两种类型给出相反的答案，故不能一刀切）：
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:650-656  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* `slice` 本身有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:650-656  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* `slice` 本身有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:708-718  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* 唯一差别 = 没有本批扰动 ⇒ 它与实跑终态之差才是这批扰动的**边际贡献**。
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:708-718  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* 唯一差别 = 没有本批扰动 ⇒ 它与实跑终态之差才是这批扰动的**边际贡献**。
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:945-961  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* ⛔ 但**不许删**：上面头注那条顾虑是真的（同名标签实测 5 组 × 2 行），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:945-961  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* ⛔ 但**不许删**：上面头注那条顾虑是真的（同名标签实测 5 组 × 2 行），
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:1639-1669  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：── 今天的行为是 X（真浏览器实测，视口 1680×927）──────────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:1639-1669  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：── 今天的行为是 X（真浏览器实测，视口 1680×927）──────────────────────
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:2568-2575  [STALE-1]
+      自称实测/实跑/运行态却没写**哪天测的** —— 没有日期就没有保质期，上游一变没人知道该复验
+      原文：* 「放大」—— 这四栏卡片摆在中栏页签里，**可视只有 ~364px**，实测卡片下半截
+   apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx:2568-2575  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：* 「放大」—— 这四栏卡片摆在中栏页签里，**可视只有 ~364px**，实测卡片下半截
+   apps/frontend-shell/src/views/sim/unified/console0828/console0828Model.ts:104-128  [STALE-2]
+      没有可复验方式（端点 / 命令 / file:line 锚点）—— 复审无法亲手跑一遍，只能选择相信
+      原文：*   每一拍都在继续传导，背景漂移实测 p50 ≈ 8.64 压力点 ≫ `NOISE_FLOOR`(0.01)
+
+   修法：① 补上实测日期（YYYY-MM-DD）；② 补上复验方式（端点 / 命令 / file:line）；
+         ③ 若是 STALE-3/4：上游已经补齐了，**把话改对**，不要加豁免。
+
+❌ 新增「屏上过时事实」违规 1 条：
+   apps/frontend-shell/src/views/sim/CellExplainPanel.tsx:115  [STALE-5]
+      屏上字面量里有**否定断言**（「一条都没有」/「全仓 0 条」），却没有任何 `@stale-fact` 溯源记号 —— 这句话上游一变就变成屏上说谎，而没有任何人会被通知。修法：在本单元或紧贴其上的注释块里挂 `@stale-fact <路径> /<正则>/ <op><n>`，把这句话赌的那个计数写下来。
+      原文：第 {tick} 拍，<b>没有任何一条传导边写这一格</b>（入边 0 条）。
+
+   修法：· STALE-5 ⇒ 挂 `@stale-fact <路径> /<正则>/ <op><n>`，把这句话赌的计数写下来；
+         · STALE-6 ⇒ **上游已经变了，把屏上那句话改对**（这一条永不豁免）；
+         · STALE-7/8 ⇒ 把旧名/分叉的那一份真相源改到位（一个概念只许有一份真相源）。
+
+❌ stale-claims:check 未通过 —— 注释层(STALE-1..4)：红（新增 22 · 回弹 0） · 屏上层(STALE-5..8)：红（新增 1 · 松弛 0） · 门自述层(STALE-9/10)：绿

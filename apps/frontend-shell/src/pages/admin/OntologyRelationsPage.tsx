@@ -1,0 +1,1892 @@
+import { Fragment, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+// ⚠ 这一行不能写成 `import type`：`OBJECT_CONSTRAINT_KIND_LABELS` 是**值**不是类型。
+import {
+  OBJECT_CONSTRAINT_KIND_LABELS,
+  // WO-MAPPING-WHITELIST · 结构边物化声明的**字段清单**（值，不是类型）——
+  //   「改」表单靠它把自己管不到的那几个声明字段原样回填，见 `updateLink`。
+  //   用契约现算的清单而不是在这里手抄一份：手抄的那份迟早与后端漂移，
+  //   而漂移的表现是**一次保存悄悄清零一个字段**，不报错、不变红。
+  LINK_MATERIALIZATION_FIELDS,
+  type ChangeImpactPreview,
+  type LinkMaterializationDecl,
+  type ObjectConstraintKind,
+  type ObjectConstraintRef,
+  type OntologyInvariantOverride,
+  type PropagationRule,
+} from "@platform/contracts";
+import {
+  createLinkType,
+  createPropagationRule,
+  createPublishRequest,
+  deletePropagationRule,
+  deprecateOntologyElement,
+  reactivateOntologyElement,
+  evaluateOntologyInvariants,
+  fetchDomains,
+  fetchElementReferences,
+  fetchMappingRegistries,
+  fetchObjectTypes,
+  fetchOntologyInvariants,
+  fetchOntologyVersions,
+  fetchPropagationRules,
+  fetchPublishRequests,
+  fetchRules,
+  fetchSimViewConfig,
+  isPublishRequestActionable,
+  patchPropagationRule,
+  previewChangeImpact,
+  publishRequestDomains,
+  publishRequestUndecidedCount,
+  retireOntologyElement,
+  setPropagationRuleStatus,
+  signoffPublishRequest,
+  updatePropagationRule,
+  upsertObjectTypeConstraints,
+  type DeprecationMetaVM,
+  type ElementReferenceVM,
+} from "@/api/endpoints";
+import { InfoPopover } from "@/components/InfoPopover";
+import zh from "@/locales/zh";
+import { toast, toastError } from "@/store/toastStore";
+
+/**
+ * **本体关系编辑器**（`/admin/ontology-relations`）· WO-BEFE-A 主交付。
+ *
+ * ── 这一页在补什么洞 ────────────────────────────────────────────────────────
+ * 仓主的原话：**「为何目前系统里没有这个功能？没有这个功能，人工如何创建每个域的本体关系？」**
+ * 追下来的答案是：**后端有，前端没有。**
+ *   · `POST /a/v1/ontology/link-types`（`apps/datacore/src/app.ts:2918`）建结构边
+ *   · `POST /a/v1/ontology/links/:key/{deprecate,retire}`（`:2797` `:2802`）结构边启停/下线
+ *   · `POST /a/v1/sim/propagation-rules`（`:1865`）建因果边
+ * 三个写端一个前端调用方都没有 ⇒ 那 13 条传导规则只能写死在 `apps/datacore/src/seed.ts` 里，
+ * 不是谁配出来的。而 `GET /a/v1/sim/view-config` 的注释白纸黑字承诺
+ * 「换行业 = 换本体内容不改代码」—— **缺了编辑界面，这句承诺兑现不了**。
+ *
+ * ── 两种边，别混（这是本页的信息架构主轴）──────────────────────────────────
+ *  · **结构边 `LinkType`**：`A --key--> B`，回答「这两类东西之间有没有关系、几对几」。
+ *    它是本体图谱的骨架，`GET /a/v1/sim/view-config` 的 `linkTypes` 就是它。
+ *  · **因果边 `PropagationRule`**：`A.x --系数/延迟--> B.y`，回答「A 的这个量变了，B 的那个量跟着变多少」。
+ *    它是**推演**的边，`view-config` 的 `stateVars` / `propagationCount` 由它派生。
+ *  关掉一条因果边，沙盘推演结果**真的会变**；关掉一条结构边**不会**（`view-config` 的
+ *  `linkTypes` 取 `links.map(l => l.key)`，不看 `deprecation`）——两者的「启停」语义不是一回事，
+ *  屏上必须分开写，合成一个「active 开关」就是把两个不同事实盖成一个数字。
+ *
+ * ── R4（真值写入经审批）在本页怎么落 ────────────────────────────────────────
+ * 结构边的建/停/下线写的是**工作集**（`repos.ontologyLinks.put`），**不是**已发布真值 ——
+ * 真值是 `OntologyVersion` 快照，由 `publishVersion` 固化（`ontology.ts:331`）。
+ * 故本页**不给**「直接发布」按钮（那条 `POST /a/v1/ontology/publish` 会绕开会签），
+ * 只给**会签链**：发起 `publish-requests` → 各域 owner `signoff` → 全域 APPROVE 后后端自动发布
+ * （`app.ts:2891`）。这就是本页对 R4 的兑现方式。
+ *
+ * 🚦 诚实位（三条，全部 2026-08-14 实测得来，不许拿界面糊过去；复验命令见每条末尾，
+ *    并由 `apps/frontend-shell/test/ontology-relations.seam.test.tsx` §④ 钉成事实锁）：
+ *  ① ~~因果边**改不了**~~ **✅ 2026-09-03 已闭（WO-CAUSAL-EDGE-CRUD）**。原文：
+ *     「`POST …/propagation-rules` 把 `id` 写在 body 展开之后恒覆盖 ⇒ 只能新建。
+ *     停用一条**已存在**的规则需要后端补 PUT/PATCH，今天做不到。」
+ *     —— 保留原文是为了留住病史（诚实位撤掉要留痕，不许静默删）。
+ *     它当时是准的：真后端复现过同 key POST 两次得**两行**（系数 0.5 与 0.9 并存、都 PUBLISHED），
+ *     而 `propagateTick` 逐规则累加 ⇒ **两条都算**，用户以为的「改系数」实为两条相加。
+ *     现在 `POST` 按 key upsert（恒 1 行 · `version` 递增），并有 `PATCH /:id` 与 `DELETE /:id`，
+ *     因果边表行内三个控件（改系数 · 启停 · 删）都真接了线。
+ *  ② 结构边的**工作集弃用态**没有只读下发口，状态列的口径是「已发布快照 ⊕ 本次会话写回包」。
+ *  ③ 域归属取**对象类型的本体域**（`ObjectTypeDef.domain` ← `GET /a/v1/ontology/domains` 注册表），
+ *     **不是** `ProcessDomain`（D01…D13）。后者是业务流程层的域词表，契约
+ *     `packages/contracts/src/process.ts:139-158` 专门警告过「别造第二套域词表」。
+ */
+
+const CARDINALITIES = ["1:1", "1:N", "N:1", "N:N"] as const;
+type Cardinality = (typeof CARDINALITIES)[number];
+
+/** 未归域的对象类型落这个桶（与后端 `object-types/stats` 的 `unassigned` 同名，不另造词）。 */
+const UNASSIGNED = "unassigned";
+
+/**
+ * ⚠ WO-RELATION-EDIT-GAPS ④：`status` 与 `text` **一起返回**，按钮的显隐判据落在 `status` 上。
+ * 拿中文串（`s.status === "DEPRECATED"`）当判据 = 拿显示层当逻辑层，改一个字就静默失效 ——
+ * 与本仓「用 X 当作 Y 的证据，而 X 并不度量 Y」同一个形态。
+ * `ACTIVE` 必须单列一支：`reactivate` 的回包是 `{status:"ACTIVE"}`（不是 undefined），
+ * 少了这一支就会掉进末尾的兜底，拨回启用之后屏上仍显示「已停用」。
+ */
+function statusLabel(dep: DeprecationMetaVM | undefined): { status: "ACTIVE" | "DEPRECATED" | "RETIRED"; text: string; tone: string } {
+  if (!dep || dep.status === "ACTIVE") return { status: "ACTIVE", text: "启用", tone: "var(--ok)" };
+  if (dep.status === "RETIRED") return { status: "RETIRED", text: "已下线", tone: "var(--muted)" };
+  return { status: "DEPRECATED", text: "已停用", tone: "var(--warn)" };
+}
+
+export default function OntologyRelationsPage() {
+  const qc = useQueryClient();
+
+  // ── 取数（全部真 REST，无本地写死）────────────────────────────────────────
+  const registries = useQuery({ queryKey: ["a", "ontology-mapping-registries"], queryFn: fetchMappingRegistries });
+  const types = useQuery({ queryKey: ["a", "ontology-object-types"], queryFn: fetchObjectTypes });
+  const domains = useQuery({ queryKey: ["a", "ontology-domains"], queryFn: fetchDomains });
+  const versions = useQuery({ queryKey: ["a", "ontology-versions"], queryFn: fetchOntologyVersions });
+  const rules = useQuery({ queryKey: ["a", "sim-propagation-rules"], queryFn: () => fetchPropagationRules(false) });
+  const viewCfg = useQuery({ queryKey: ["a", "sim-view-config"], queryFn: fetchSimViewConfig });
+  const pubReqs = useQuery({ queryKey: ["a", "ontology-publish-requests"], queryFn: () => fetchPublishRequests() });
+
+  /** 本次会话的写回包（结构边工作集态的唯一可得来源，见文件头诚实位 ②）。 */
+  const [sessionDeprecation, setSessionDeprecation] = useState<Record<string, DeprecationMetaVM>>({});
+  const [refPanel, setRefPanel] = useState<{ key: string; refs: ElementReferenceVM[]; total: number } | null>(null);
+
+  const typeDomain = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const t of types.data ?? []) m.set(t.key, t.domain ?? UNASSIGNED);
+    return m;
+  }, [types.data]);
+
+  const domainName = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const d of domains.data ?? []) m.set(d.domainKey, d.displayName);
+    return m;
+  }, [domains.data]);
+
+  /** 最新已发布快照里的弃用态（`GET /a/v1/ontology/versions` 是唯一带 `deprecation` 的读）。 */
+  const snapshotDeprecation = useMemo(() => {
+    const list = versions.data ?? [];
+    const latest = list.length > 0 ? list.reduce((a, b) => (b.version > a.version ? b : a)) : null;
+    const m = new Map<string, DeprecationMetaVM>();
+    for (const l of latest?.snapshot?.linkTypes ?? []) if (l.deprecation) m.set(l.key, l.deprecation);
+    return m;
+  }, [versions.data]);
+
+  const linkRows = registries.data?.linkTypes ?? [];
+
+  /** 结构边按 **from 类型的本体域** 分组（诚实位 ③）。域名缺省即显裸 key，不编中文名。 */
+  const linksByDomain = useMemo(() => {
+    const g = new Map<string, typeof linkRows>();
+    for (const l of linkRows) {
+      const d = typeDomain.get(l.fromType) ?? UNASSIGNED;
+      g.set(d, [...(g.get(d) ?? []), l]);
+    }
+    return [...g.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
+  }, [linkRows, typeDomain]);
+
+  const ruleRows = rules.data?.items ?? [];
+  const rulesByDomain = useMemo(() => {
+    const g = new Map<string, typeof ruleRows>();
+    for (const r of ruleRows) {
+      const d = typeDomain.get(r.sourceTypeKey) ?? UNASSIGNED;
+      g.set(d, [...(g.get(d) ?? []), r]);
+    }
+    return [...g.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
+  }, [ruleRows, typeDomain]);
+
+  // ── 结构边：新建 ─────────────────────────────────────────────────────────
+  // `viaProperty`（由哪个属性实现）是本表单的第五个槽：没有它，边只是一句声明，多跳检索一条实例都遍历不到。
+  // 下拉的 value 用 `<侧>:<属性名>` 编码，因为「哪个属性」和「它长在哪一侧」是一件事的两半，
+  // 拆成两个控件会让用户先选侧、再选属性 —— 多一步，且选错侧时属性列表是空的，更难懂。
+  const [lk, setLk] = useState({ key: "", fromTypeKey: "", toTypeKey: "", cardinality: "1:N" as Cardinality, via: "" });
+  const viaParsed = useMemo(() => {
+    const i = lk.via.indexOf(":");
+    return i < 0 ? null : { viaSide: lk.via.slice(0, i) as "from" | "to", viaProperty: lk.via.slice(i + 1) };
+  }, [lk.via]);
+  const createLink = useMutation({
+    mutationFn: () =>
+      createLinkType({
+        key: lk.key.trim(),
+        fromTypeKey: lk.fromTypeKey,
+        toTypeKey: lk.toTypeKey,
+        cardinality: lk.cardinality,
+        // 没选 ⇒ 一个键都不传（传空串会被后端当成「属性名是空字符串」而 400）。
+        ...(viaParsed ? { viaProperty: viaParsed.viaProperty, viaSide: viaParsed.viaSide } : {}),
+      }),
+    onSuccess: (r) => {
+      // 建完当场说清「连出几条实例边」——0 条也要说，不让用户对着一条建成功却检索不到的边猜。
+      const m = r.materialized;
+      const tail = !viaParsed
+        ? "；未选实现属性 ⇒ 0 条实例边，多跳检索遍历不到"
+        : m
+          ? `；已连出 ${m.created} 条实例边（扫了 ${m.carrierObjects} 个对象${m.unresolved > 0 ? `，另有 ${m.unresolved} 个的属性值查无对应目标` : ""}）`
+          : "";
+      toast(`结构边 ${r.key} 已建（v${r.version}）${tail}`, m && m.created === 0 ? "info" : "success");
+      setLk({ key: "", fromTypeKey: "", toTypeKey: "", cardinality: "1:N", via: "" });
+      void qc.invalidateQueries({ queryKey: ["a", "ontology-mapping-registries"] });
+      void qc.invalidateQueries({ queryKey: ["a", "sim-view-config"] });
+    },
+    onError: toastError,
+  });
+
+  /**
+   * 「由哪个属性实现」的候选 = **两侧类型的属性列表**（不是自由文本框）。
+   *
+   * ⚠ 本仓有过「状态变量是自由文本，打错字 = 静默造一个死变量且删不掉」那个坑，这里不复制：
+   * 候选从当前选中的两个类型现取，选不出来就是没得选。
+   *
+   * **两侧都要列**：2026-08-30 实测 116 条结构边里 23 条（19.8%）的外键长在**去向**类型上
+   * （一对多边，如 `Base → Line` 的外键是 `Line.baseId`）。只列来源侧的话，用户选中这类边会看到
+   * 一个空下拉、无路可走 —— 那还是「建完的边用不了」。已声明外键指向对侧的属性排最前并标出指向。
+   *
+   * 复验：`pnpm --filter datacore test linktype-via-property.seam` ——
+   * `apps/datacore/test/linktype-via-property.seam.test.ts:108`
+   * 「一对多边：外键长在**去向**类型上（viaSide=to），边的方向必须是 from→to 不是反的」
+   * 把这个形态钉成了机器断言（同一组数字记在该文件 :111 的注释里）。
+   */
+  const viaCandidates = useMemo(() => {
+    const find = (k: string) => (types.data ?? []).find((x) => x.key === k);
+    const out: { value: string; label: string; rank: number }[] = [];
+    const push = (side: "from" | "to", ownerKey: string, otherKey: string) => {
+      const t = find(ownerKey);
+      if (!t) return;
+      for (const p of t.properties) {
+        const points = p.refToTypeKey === otherKey && otherKey;
+        out.push({
+          value: `${side}:${p.propKey}`,
+          label: `${ownerKey}.${p.propKey}${p.refToTypeKey ? ` → ${p.refToTypeKey}` : ""}`,
+          // ① 已声明指向对侧的外键最优先 ② 其它外键 ③ 普通属性
+          rank: points ? 0 : p.refToTypeKey ? 1 : 2,
+        });
+      }
+    };
+    push("from", lk.fromTypeKey, lk.toTypeKey);
+    // 自环（来源 == 去向）只列一次：两侧是同一个类型，列两遍会得到一串**标签完全相同、
+    // 值却不同**的候选，用户无从分辨该选哪个。
+    if (lk.toTypeKey && lk.toTypeKey !== lk.fromTypeKey) push("to", lk.toTypeKey, lk.fromTypeKey);
+    return out.sort((a, b) => a.rank - b.rank || (a.label < b.label ? -1 : a.label > b.label ? 1 : 0));
+  }, [types.data, lk.fromTypeKey, lk.toTypeKey]);
+
+  /**
+   * ══ WO-RELATION-EDIT-GAPS ① · **「改」入口**（本页此前一个都没有）══════════════
+   *
+   * **今天的行为是 X**（2026-09-04 真前端从登录走起实测）：结构边每行只有「查引用 / 停用 / 下线」
+   *   三个按钮 —— 建 ✅ 停 ✅ 下线 ✅、**改 ❌**。金丝雀：本文件里
+   *   `deprecateLink.mutate` / `retireLink.mutate` 各 1 处命中（证明这个查法找得到入口），
+   *   而全前端 `updateLinkType|patchLinkType|editLink` **0 命中**。
+   *   后端一直是有「改」的：`POST /a/v1/ontology/link-types` 按 `key` upsert（同 key → 复用 id、
+   *   version+1）。所以这是**前端没接**，不是后端没有。
+   * **应该是 Y**：每行一个「改」，就地改**基数**与**由哪个属性实现**，保存后回读即新值、版本 +1。
+   *
+   * ── 为什么两端类型在「改」表单里是**只读**的 ─────────────────────────────────
+   * 两端是这条关系的身份（后端同款闸门见 `app.ts` 建边路由 ② 段：同 key 改端点 400）。
+   * 就地掉头会让已发布的传导规则永远算不出结果且不报错 —— 表单里索性不给这个动作，
+   * 而不是给了再被后端拒。**能在界面上就不许做的事，别让用户先做完再挨骂。**
+   *
+   * ⚠ 保存时**必须回填 `via`**（预填自 registries 新下发的 `viaProperty`/`viaSide`）：
+   *   POST 是整条覆盖，漏传就等于把实现属性抹掉，边当场退回 0 实例。
+   */
+  const [edit, setEdit] = useState<{ key: string; cardinality: Cardinality; via: string } | null>(null);
+  const editViaCandidates = useMemo(() => {
+    if (!edit) return [];
+    const row = linkRows.find((l) => l.key === edit.key);
+    if (!row) return [];
+    const find = (k: string) => (types.data ?? []).find((x) => x.key === k);
+    const out: { value: string; label: string; rank: number }[] = [];
+    const push = (side: "from" | "to", ownerKey: string, otherKey: string) => {
+      const t = find(ownerKey);
+      if (!t) return;
+      for (const p of t.properties) {
+        out.push({
+          value: `${side}:${p.propKey}`,
+          label: `${ownerKey}.${p.propKey}${p.refToTypeKey ? ` → ${p.refToTypeKey}` : ""}`,
+          rank: p.refToTypeKey === otherKey ? 0 : p.refToTypeKey ? 1 : 2,
+        });
+      }
+    };
+    push("from", row.fromType, row.toType);
+    if (row.toType !== row.fromType) push("to", row.toType, row.fromType);
+    return out.sort((a, b) => a.rank - b.rank || (a.label < b.label ? -1 : a.label > b.label ? 1 : 0));
+  }, [edit, linkRows, types.data]);
+
+  const updateLink = useMutation({
+    mutationFn: (payload: { key: string; fromTypeKey: string; toTypeKey: string; cardinality: Cardinality; via: string }) => {
+      const i = payload.via.indexOf(":");
+      const v = i < 0 ? null : { viaSide: payload.via.slice(0, i) as "from" | "to", viaProperty: payload.via.slice(i + 1) };
+      /*
+       * WO-MAPPING-WHITELIST · **本表单管不到的物化声明字段必须原样回填。**
+       *
+       * 本页只给了 `via` 一个控件（= `viaProperty` + `viaSide` 这一对）。而结构边的物化声明
+       * 一共 9 个字段，另外 7 个（`anchorProperty` `viaMultiValue` `viaBridge` `viaWhere`
+       * `viaKeyExpr` `viaWhereTo` `viaCross`）今天只能从 API 声明、**在这个表单里没有控件**。
+       * 由于 POST 是**整条覆盖**（后端 `upsertLinkType`：`{...input}` → `put`），
+       * 不回填就等于「用户点了一次保存，把自己没看见也没碰过的声明清零了」——
+       * 边随即退回 0 实例、多跳检索遍历不到，**屏上不报错**。这是静默数据丢失。
+       *
+       * 回填源是 `linkRows`（`GET …/mapping/registries` 的下发行），它与本请求体
+       * **共用契约的 `LinkMaterializationDecl`** ⇒ 「读投影发得出来的」= 「这里送得回去的」。
+       * 遍历用契约现算的 `LINK_MATERIALIZATION_FIELDS`，将来加第 10 个字段这里自动跟上。
+       * 实测 2026-09-07（MERGE-BATCH-7 收编时复验）：该常量现算 **9 个键**，定义在
+       * `packages/contracts/src/planviews.ts:192`；后端读投影同源用法见 `apps/datacore/src/mapping.ts:125`。
+       * 复验命令：`node -e "console.log(require('./packages/contracts/dist/index.js').LINK_MATERIALIZATION_FIELDS)"`。
+       *
+       * ⚠ `viaProperty`/`viaSide` **不走回填**：它们是表单管的那一对，必须以用户的选择为准
+       *   （回填会让「清空实现属性」这个动作永远生效不了）。故下面显式跳过再由 `v` 覆盖。
+       */
+      const row = linkRows.find((l) => l.key === payload.key);
+      const carried: Record<string, unknown> = {};
+      for (const f of LINK_MATERIALIZATION_FIELDS) {
+        if (f === "viaProperty" || f === "viaSide") continue;
+        const cur = row?.[f];
+        if (cur !== undefined) carried[f] = cur;
+      }
+      return createLinkType({
+        key: payload.key,
+        fromTypeKey: payload.fromTypeKey,
+        toTypeKey: payload.toTypeKey,
+        cardinality: payload.cardinality,
+        ...(carried as LinkMaterializationDecl),
+        ...(v ? { viaProperty: v.viaProperty, viaSide: v.viaSide } : {}),
+      });
+    },
+    onSuccess: (r) => {
+      const m = r.materialized;
+      const tail = m ? `；已连出 ${m.created} 条实例边` : "";
+      toast(`关系 ${r.key} 已改（v${r.version}）${tail}`, "success");
+      setEdit(null);
+      void qc.invalidateQueries({ queryKey: ["a", "ontology-mapping-registries"] });
+      void qc.invalidateQueries({ queryKey: ["a", "sim-view-config"] });
+    },
+    onError: toastError,
+  });
+
+  const deprecateLink = useMutation({
+    mutationFn: (key: string) => deprecateOntologyElement("link", key),
+    onSuccess: (r) => {
+      setSessionDeprecation((s) => ({ ...s, [r.key]: r.deprecation }));
+      toast(`结构边 ${r.key} 已停用（宽限至 ${r.deprecation.graceUntil?.slice(0, 10) ?? "—"}）`, "success");
+      void qc.invalidateQueries({ queryKey: ["a", "sim-view-config"] });
+    },
+    onError: toastError,
+  });
+
+  const retireLink = useMutation({
+    mutationFn: (key: string) => retireOntologyElement("link", key),
+    onSuccess: (r) => {
+      setSessionDeprecation((s) => ({ ...s, [r.key]: { status: "RETIRED" } }));
+      toast(`结构边 ${r.key} 已下线`, "success");
+      void qc.invalidateQueries({ queryKey: ["a", "ontology-mapping-registries"] });
+      void qc.invalidateQueries({ queryKey: ["a", "sim-view-config"] });
+    },
+    // 409「仍被 N 处引用」是**设计**不是故障 —— 原文直接抛给用户看。
+    onError: toastError,
+  });
+
+  /**
+   * ══ WO-RELATION-EDIT-GAPS ④ · **停用之后拨得回来**═══════════════════════════
+   * **今天的行为是 X**：点「停用」之后这一行就是死胡同 —— 屏上只剩「下线」，
+   *   后端 `POST …/reactivate` 当时是 404。**应该是 Y**：停用态多一个「启用」，拨回 ACTIVE。
+   * ⚠ 「已下线」不给这个按钮：RETIRED 的前置是零引用，一键拨回会让两套引用并存
+   *   （后端同样 409 挡着，屏上就不摆这个按钮了 —— 不给按钮好过给了再挨骂）。
+   */
+  const reactivateLink = useMutation({
+    mutationFn: (key: string) => reactivateOntologyElement("link", key),
+    onSuccess: (r) => {
+      setSessionDeprecation((s) => ({ ...s, [r.key]: r.deprecation }));
+      toast(`关系 ${r.key} 已重新启用`, "success");
+      void qc.invalidateQueries({ queryKey: ["a", "ontology-mapping-registries"] });
+      void qc.invalidateQueries({ queryKey: ["a", "sim-view-config"] });
+    },
+    onError: toastError,
+  });
+
+  const showRefs = useMutation({
+    mutationFn: (key: string) => fetchElementReferences("link", key).then((r) => ({ key, ...r })),
+    onSuccess: (r) => setRefPanel(r),
+    onError: toastError,
+  });
+
+  // ── 关系两端的**对象类型**的弃用流程（同一个 `governance.deprecate/retire`，只是 kind 不同）──
+  //
+  // 为什么放在本页而不是对象类型浏览页：弃用一个类型会把**它两端的所有关系**一起作废，
+  // 用户是在看关系图谱时才会问「这个类型还要不要」。而且后端是同一个函数、同一道
+  // 「还有人引用就不许下线」的闸 —— 分到两页会变成两套 UI 讲同一件事。
+  //
+  // ⚠ 这一段不是为了消 `befe-seam` 的红而加的空壳：没有真正的调用方，
+  //   只在 `endpoints.ts` 里放两个函数就是「把死端点换成死客户端函数」，
+  //   基线注释里点名批过这种做法。故此处给它真界面、真按钮、真列表。
+  const [typeKeyToDeprecate, setTypeKeyToDeprecate] = useState("");
+  const [typeDeprecation, setTypeDeprecation] = useState<Record<string, DeprecationMetaVM>>({});
+  const deprecateType = useMutation({
+    mutationFn: (key: string) => deprecateOntologyElement("type", key),
+    onSuccess: (r) => {
+      setTypeDeprecation((s) => ({ ...s, [r.key]: r.deprecation }));
+      toast(`对象类型 ${r.key} 已停用`, "success");
+    },
+    onError: toastError,
+  });
+  const retireType = useMutation({
+    mutationFn: (key: string) => retireOntologyElement("type", key),
+    onSuccess: (r) => {
+      setTypeDeprecation((s) => ({ ...s, [r.key]: { status: "RETIRED" } }));
+      toast(`对象类型 ${r.key} 已下线`, "success");
+      void qc.invalidateQueries({ queryKey: ["a", "ontology-object-types"] });
+    },
+    onError: toastError,
+  });
+
+  // ══ 对象约束面板（WO-CONSTRAINT-REFS）══════════════════════════════════════
+  //
+  // 仓主原话：「可以通过引用模式在本体配置器里面配置对象本身的约束条件。比如一个设备，产能就是
+  // 一个约束条件，可以直接引用『规则』库里面的约束或规则来完成配置。」
+  //
+  // ── 三个下拉，**没有一个是自由文本输入框**（这是硬要求，不是审美）──────────────
+  //   ① 引用哪条规则 → 选项来自 `GET /a/v1/rules` 的**已发布**规则（引用模式：只存 ruleKey）
+  //   ② 绑到哪个属性 → 选项来自该对象类型自己的 `properties[]`
+  //   ③ 约束类型     → 选项来自契约 `OBJECT_CONSTRAINT_KIND_LABELS`（前端不内联第二份中文表）
+  // 本仓有过「状态变量是自由文本，打错字静默造一个死变量且删不掉」的账。三个值全部**枚举自真值源**
+  // ⇒ 结构上打不出错字。表达式与阈值一律留在规则库里，屏上不给编辑入口 —— 给了就会分叉出第二份。
+  //
+  // ⚠ 屏上仍显示后端 400（引用不存在/未发布的规则、属性不存在）：下拉只是让人**不容易**配错，
+  //   不代表校验可以省。规则可能在你打开页面之后被别人下线 —— 那时后端必须说话。
+  const libRules = useQuery({ queryKey: ["a", "rules-library"], queryFn: fetchRules });
+  /** 已发布规则才可被引用（DRAFT 规则求解器读不到，挂上去等于挂了个空 —— 后端也拒）。 */
+  const publishedRules = useMemo(
+    () => (libRules.data ?? []).filter((r) => r.status === "PUBLISHED").slice().sort((a, b) => (a.key < b.key ? -1 : 1)),
+    [libRules.data],
+  );
+  const [cf, setCf] = useState({ typeKey: "", ruleKey: "", propKey: "", kind: "must_not_exceed" as ObjectConstraintKind });
+  const cfType = useMemo(() => (types.data ?? []).find((t) => t.key === cf.typeKey), [types.data, cf.typeKey]);
+  /**
+   * 规则下拉按**与所选类型的相关性**排序：规则自己声明的 `scopeObjectTypes` 命中该类型的排前面。
+   * 2026-09-03 实测 29/29 条规则都填了 scopeObjectTypes（复验：`GET /a/v1/rules?status=PUBLISHED`
+   * 数一下有几条带非空 scopeObjectTypes）—— 这张既有的声明此前在 `solvers/` 零消费方，
+   * 此处把它用在它本来就该用的地方（帮人选对规则），**不拿它当过滤器**：
+   * 跨类型引用是合法的（一条财务规则可以管着多类对象），硬过滤会把合法配置挡在门外。
+   */
+  const ruleOptions = useMemo(() => {
+    if (!cf.typeKey) return publishedRules;
+    const hit = (r: { scopeObjectTypes?: string[] }) => (r.scopeObjectTypes ?? []).includes(cf.typeKey);
+    return [...publishedRules.filter(hit), ...publishedRules.filter((r) => !hit(r))];
+  }, [publishedRules, cf.typeKey]);
+
+  /** 整份 upsert（后端不是 PATCH）：原样带回既有属性，只改 constraintRefs。 */
+  const saveConstraints = useMutation({
+    mutationFn: (next: ObjectConstraintRef[]) => {
+      const t = cfType!;
+      return upsertObjectTypeConstraints({
+        key: t.key,
+        displayName: t.displayName,
+        ...(t.domain ? { domain: t.domain } : {}),
+        properties: t.properties,
+        derivedProperties: t.derivedProperties ?? [],
+        sourceBindings: t.sourceBindings ?? [],
+        constraintRefs: next,
+      });
+    },
+    onSuccess: (r) => {
+      toast(`对象类型 ${r.key} 的约束已保存（${(r.constraintRefs ?? []).length} 条 · v${r.version}）`, "success");
+      setCf((s) => ({ ...s, ruleKey: "", propKey: "" }));
+      void qc.invalidateQueries({ queryKey: ["a", "ontology-object-types"] });
+    },
+    onError: toastError, // 后端 400 原样弹出，不吞（引用不存在/未发布的规则时用户必须看见）
+  });
+
+  /** 全库已配的约束（面板下方总览：一眼看出「哪些类型真的配了约束」）。 */
+  const constrainedTypes = useMemo(
+    () => (types.data ?? []).filter((t) => (t.constraintRefs ?? []).length > 0).slice().sort((a, b) => (a.key < b.key ? -1 : 1)),
+    [types.data],
+  );
+
+  // ── 因果边：新建（含启停）────────────────────────────────────────────────
+  const [pr, setPr] = useState({
+    key: "",
+    sourceTypeKey: "",
+    sourceStateVar: "",
+    viaLinkKey: "",
+    targetTypeKey: "",
+    targetStateVar: "",
+    coefficient: "0.8",
+    delayTicks: "0",
+    status: "PUBLISHED" as "DRAFT" | "PUBLISHED",
+    description: "",
+  });
+  const createRule = useMutation({
+    mutationFn: () =>
+      createPropagationRule({
+        key: pr.key.trim(),
+        sourceTypeKey: pr.sourceTypeKey,
+        sourceStateVar: pr.sourceStateVar.trim(),
+        viaLinkKey: pr.viaLinkKey,
+        targetTypeKey: pr.targetTypeKey,
+        targetStateVar: pr.targetStateVar.trim(),
+        coefficient: Number(pr.coefficient),
+        delayTicks: Number(pr.delayTicks),
+        status: pr.status,
+        // 空串 → `null`：「没写说明」与「写了个空字符串」是两件事，落库要落成前者。
+        description: pr.description.trim() === "" ? null : pr.description.trim(),
+      }),
+    onSuccess: (r) => {
+      // `version > 1` ⇒ 后端按 key 认出了既有边并覆盖了它（不是又追加一条）。
+      // 这句话必须上屏：用户填了一个已存在的 key 却以为自己在新建，是本单要根治的那类误解。
+      toast(
+        (r.version ?? 1) > 1
+          ? `因果边 ${r.key} 已覆盖既有那条（第 ${r.version ?? 1} 版，仍是 1 条）`
+          : `因果边 ${r.key} 已建（${r.status === "PUBLISHED" ? "启用" : "停用"}）`,
+        "success",
+      );
+      setPr((p) => ({ ...p, key: "", sourceStateVar: "", targetStateVar: "" }));
+      void qc.invalidateQueries({ queryKey: ["a", "sim-propagation-rules"] });
+      // 这一跳就是接缝：因果边一变，沙盘视图配置（stateVars / propagationCount）必须重取。
+      void qc.invalidateQueries({ queryKey: ["a", "sim-view-config"] });
+    },
+    onError: toastError,
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // WO-ONTOLOGY-EDGE-EDIT · 因果边：改 / 启停 / 删（此前本页**只读**）
+  //
+  // **今天的行为是 X**（本单开工前实测 · 2026-08-28；复验：真后端 SEED_DEMO=1 起服务后
+  //   开 `/v/admin/ontology-relations`，或直接打 `/a/v1/propagation-rules` 看有无写回路由）：
+  //   这张表只有 5 个 `<td>` 纯文本，没有任何写回；
+  //   页面底下挂着一条诚实位「⚠ 因果边今天只能新建」，理由是 `POST` 恒 mint 新 id。
+  // **应该是 Y**：三列可改（来源 / 去向 / 关系）+ 影响说明可写 + 勾选框启停 + ✕ 删除，
+  //   写回走后端新补的 `PUT /:id`、`PATCH /:id/status`、`DELETE /:id`。
+  //
+  // ── 改法为什么是「草稿 + 显式保存」，不是逐键自动保存 ──────────────────────
+  // 这三列是**本体真值**（全租户可见、进推演）。逐键 PUT 意味着用户把 `Model` 改成 `Mode`
+  // 的中途就落一次库，屏上还看不出发生过 —— 本仓对"静默写真值"一贯是拒绝的。
+  // 故改动先进 `edits` 草稿，行尾出现「保存 / 放弃」，按下才写。
+  //
+  // ⛔ **下拉选项一律后端现取**，前端不自带任何枚举：
+  //   来源/去向类型 ← `fetchObjectTypes`；关系 ← `fetchMappingRegistries().linkTypes`；
+  //   状态变量 ← `fetchSimViewConfig().stateVars`（后端从传导规则 source/target 派生）。
+  //   前端手抄一份的后果本页文件头已写过：新增一个类型忘了加进去，它就从选项里消失，
+  //   而没有任何机器会报错 —— 永远绿、永远漏。
+  // ══════════════════════════════════════════════════════════════════════════
+  type RuleEdit = Partial<Pick<PropagationRule, "sourceTypeKey" | "sourceStateVar" | "viaLinkKey" | "targetTypeKey" | "targetStateVar" | "description">>;
+  const [edits, setEdits] = useState<Record<string, RuleEdit>>({});
+  /** 「按下去之前看波及面」的确认闸：`null` = 没有待确认的动作。 */
+  const [pending, setPending] = useState<
+    { rule: PropagationRule; act: "disable" | "delete"; preview: ChangeImpactPreview | null; loading: boolean } | null
+  >(null);
+
+  /** 状态变量选项 = 后端 view-config 派生的那一份（前端不另立清单）。 */
+  const stateVarOptions = viewCfg.data?.stateVars ?? [];
+  /** 裸键 → 人话名（后端单源表，查不到就显裸键，不编名字）。 */
+  const stateVarNames = rules.data?.stateVarNames ?? {};
+  const svLabel = (k: string) => (stateVarNames[k] ? `${stateVarNames[k]}（${k}）` : k);
+
+  /** 草稿叠加在真值上 —— 屏上显示的永远是「这一行按下保存后会变成什么」。 */
+  const merged = (r: PropagationRule): PropagationRule => ({ ...r, ...(edits[r.id] ?? {}) });
+  const isDirty = (id: string) => Object.keys(edits[id] ?? {}).length > 0;
+  const patchEdit = (id: string, p: RuleEdit) => setEdits((s) => ({ ...s, [id]: { ...(s[id] ?? {}), ...p } }));
+  const dropEdit = (id: string) => setEdits((s) => { const n = { ...s }; delete n[id]; return n; });
+
+  /** 因果边一变，沙盘视图配置（stateVars / propagationCount）必须重取 —— 这一跳就是接缝。 */
+  const invalidateRules = () => {
+    void qc.invalidateQueries({ queryKey: ["a", "sim-propagation-rules"] });
+    void qc.invalidateQueries({ queryKey: ["a", "sim-view-config"] });
+  };
+
+  /**
+   * 改系数（行内直接改那一格）。**收编批次4**：本块来自 WO-CAUSAL-EDGE-CRUD，
+   * 与同页 `saveRule`（WO-ONTOLOGY-EDGE-EDIT 的草稿+保存）**互补不重叠** ——
+   * `saveRule` 改的是身份格与说明，改不了系数；本块只改系数那一格。
+   * 走 `patchPropagationRule`（`PATCH /:id`）而不是 `updatePropagationRule`（`PUT /:id`）：
+   * PUT 是整条覆盖，行内改一格得把整行回传，会把别人刚改过的字段回退（本页列表是缓存来的）。
+   */
+  const patchCoef = useMutation({
+    mutationFn: (v: { id: string; coefficient: number }) => patchPropagationRule(v.id, { coefficient: v.coefficient }),
+    onSuccess: (r) => {
+      toast(`因果边 ${r.key} 系数已改为 ${r.coefficient}（第 ${r.version ?? 1} 版）`, "success");
+      invalidateRules();
+    },
+    onError: toastError,
+  });
+  const saveRule = useMutation({
+    mutationFn: (r: PropagationRule) => {
+      const m = merged(r);
+      return updatePropagationRule(r.id, {
+        key: m.key,
+        sourceTypeKey: m.sourceTypeKey,
+        sourceStateVar: m.sourceStateVar,
+        viaLinkKey: m.viaLinkKey,
+        targetTypeKey: m.targetTypeKey,
+        targetStateVar: m.targetStateVar,
+        coefficient: m.coefficient,
+        delayTicks: m.delayTicks,
+        status: m.status,
+        description: m.description,
+      });
+    },
+    onSuccess: (r) => { dropEdit(r.id); toast(`因果边 ${r.key} 已改`, "success"); invalidateRules(); },
+    onError: toastError,
+  });
+
+  const toggleRule = useMutation({
+    mutationFn: (v: { id: string; status: "DRAFT" | "PUBLISHED" }) => setPropagationRuleStatus(v.id, v.status),
+    onSuccess: (r) => {
+      setPending(null);
+      toast(`因果边 ${r.key} 已${r.status === "PUBLISHED" ? "启用（进推演）" : "停用（在册不生效）"}`, "success");
+      invalidateRules();
+    },
+    onError: toastError,
+  });
+
+  const removeRule = useMutation({
+    mutationFn: (r: PropagationRule) => deletePropagationRule(r.id),
+    onSuccess: () => { setPending(null); toast("因果边已删除", "success"); invalidateRules(); },
+    onError: toastError,
+  });
+
+  /**
+   * 关一条边 / 删一条边**按下去之前**先问后端要波及面。
+   * ⛔ **不重造**：走既有的 `POST /a/v1/sim/change-impact-preview`（四桶 + 逐跳 + unresolved 诚实位）。
+   * 只读、且**只在用户点了才发** —— 挂在悬停上每划过一行就发一次，是把只读语义做成副作用节奏。
+   */
+  const askImpact = async (rule: PropagationRule, act: "disable" | "delete") => {
+    setPending({ rule, act, preview: null, loading: true });
+    try {
+      const p = await previewChangeImpact({ kind: "propagationRule", ruleKey: rule.key });
+      setPending((s) => (s && s.rule.id === rule.id ? { ...s, preview: p, loading: false } : s));
+    } catch (e) {
+      // 预览失败**不等于「没有波及」**：把闸留着、把原因说出来，让用户自己决定要不要硬来。
+      setPending((s) => (s && s.rule.id === rule.id ? { ...s, preview: null, loading: false } : s));
+      toastError(e);
+    }
+  };
+
+  // ── 发布会签（R4）────────────────────────────────────────────────────────
+  const openPublish = useMutation({
+    mutationFn: () => createPublishRequest({}),
+    onSuccess: (r) => {
+      // 同上：`r.touchedDomains` 可能不存在 —— 这里原先也会在**点击当场**抛。
+      toast(`已发起 v${r.ontologyVersion} 发布会签（触及 ${publishRequestDomains(r).length} 个域）`, "success");
+      void qc.invalidateQueries({ queryKey: ["a", "ontology-publish-requests"] });
+    },
+    onError: toastError,
+  });
+  /**
+   * WO-SIGNOFF-CHAIN：`comment` 必须能带上去。
+   *
+   * 此前这里写死 `signoffPublishRequest(v.id, v.decision)` —— **第三个参数从来没传过**。
+   * 而后端 `signoff()` 第一句就是 `if (decision==="REJECT" && !comment) throw validationError("REJECT 必须填写 comment")`。
+   * ⇒ 就算把按钮点亮，「驳回」也是**必然 400**。真后端实测确认：
+   * `POST …/signoff {"decision":"REJECT"}` → `400 VALIDATION_ERROR: REJECT 必须填写 comment`。
+   * 这是会签链上与状态串**互相独立**的第二处断点：修好一处、另一处照样把链卡住。
+   */
+  const signoff = useMutation({
+    mutationFn: (v: { id: string; decision: "APPROVE" | "REJECT"; comment?: string }) =>
+      signoffPublishRequest(v.id, v.decision, v.comment),
+    onSuccess: (r) => {
+      toast(`会签已记录：${r.status}`, "success");
+      void qc.invalidateQueries({ queryKey: ["a", "ontology-publish-requests"] });
+      void qc.invalidateQueries({ queryKey: ["a", "ontology-versions"] });
+      void qc.invalidateQueries({ queryKey: ["a", "sim-view-config"] });
+    },
+    /*
+     * WO-PUBLISH-VERSION-PIN：**出错也要刷新列表**。
+     *
+     * 后端把「记会签」与「全票后自动发布」放在同一个请求里，且会签是**先落库**的。
+     * 于是有一种回包是「会签已记录，但自动发布被拒」——最后一签的人钉的是 v2，
+     * 而 v2 已被别人（破窗）发掉，后端拒绝静默改发 v3，回 409。
+     * 此时只弹一个红条而不刷列表，屏上那一行会**继续显示他没签** —— 而他其实签上了。
+     * 这就成了本单要修的那个病的前端版：**屏上的状态与库里的状态对不上**。
+     */
+    onError: (e) => {
+      toastError(e);
+      void qc.invalidateQueries({ queryKey: ["a", "ontology-publish-requests"] });
+      void qc.invalidateQueries({ queryKey: ["a", "ontology-versions"] });
+    },
+  });
+  /** 驳回理由（后端必填）。按请求 id 存，避免多行请求共用一个输入框。 */
+  const [rejectComment, setRejectComment] = useState<Record<string, string>>({});
+
+  // ── 不变式（第三类边）：试算覆盖 ────────────────────────────────────────────
+  //
+  // 覆盖只活在这个 state 里，**不落库**（这是推演开关不是治理动作，见下方那一段的注释）。
+  // 无覆盖走只读体检口、有覆盖走试算口：两条路各有各的用处，不合并成"永远 POST"——
+  // 那样只读口就成了没有生产调用方的死端点。
+  const [invOverrides, setInvOverrides] = useState<Record<string, OntologyInvariantOverride>>({});
+  const invDirty = Object.keys(invOverrides).length > 0;
+  const invariants = useQuery({
+    queryKey: ["a", "ontology-invariants", invOverrides],
+    queryFn: () => (invDirty ? evaluateOntologyInvariants(invOverrides) : fetchOntologyInvariants()),
+  });
+  const inv = invariants.data;
+  const setInvOverride = (key: string, patch: OntologyInvariantOverride) =>
+    setInvOverrides((s) => ({ ...s, [key]: { ...s[key], ...patch } }));
+  /** 守卫键 → 业务话名（翻转清单里显示名字而不是键；取不到就显裸键，不编一个）。 */
+  const invName = (key: string) => inv?.items.find((i) => i.key === key)?.name ?? key;
+
+  const typeOptions = (types.data ?? []).map((t) => t.key);
+  const cfg = viewCfg.data;
+
+  return (
+    <div data-testid="ontology-relations-page">
+      <h2 style={{ fontSize: 16, marginBottom: 4 }}>本体关系</h2>
+      {/* 分层规范 §1：第一层只放「数值 / 状态 / 名字」，成段口径说明降浮层。
+          ⚠ 降层不是删除 —— 两段原文一字未改，只是从常驻第一层挪进 `?` 浮层，
+          点开即见（诚实位允许降到浮层，绝不允许删除）。 */}
+      <div className="muted" style={{ fontSize: 12, marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
+        <span>两种边分开管：</span>
+        <b>结构边</b>
+        <span>·</span>
+        <b>因果边</b>
+        <InfoPopover topic="两种边有什么不同" testId="orel-edge-kinds">
+          <div style={{ lineHeight: 1.7 }}>
+            两种边分开管：<b>结构边</b>（A 与 B 有没有关系、几对几）是图谱骨架；<b>因果边</b>（A 的某个量变了 B 跟着变多少）是推演的边。
+            <br />
+            关掉一条<b>因果边</b>，沙盘推演结果真的会变；关掉一条<b>结构边</b>不会 —— 两者的「启停」不是一回事，不合成一个开关。
+          </div>
+        </InfoPopover>
+      </div>
+
+      {/* 接缝读数：这三个数由本页的写操作真实驱动，用户点完就能看见它变 */}
+      <div className="panel" data-testid="orel-viewcfg" style={{ marginBottom: 14, display: "flex", gap: 18, flexWrap: "wrap", fontSize: 12 }}>
+        {/* 出处（工程师层，不上屏）：这三个数读自 GET /a/v1/sim/view-config。 */}
+        <span>推演沙盘当前生效的配置：</span>
+        <span data-testid="orel-vc-linktypes">结构边 {cfg ? cfg.linkTypes.length : "—"}</span>
+        <span data-testid="orel-vc-statevars">状态变量 {cfg ? cfg.stateVars.length : "—"}</span>
+        <span data-testid="orel-vc-propcount">生效因果边 {cfg ? cfg.propagationCount : "—"}</span>
+        <span className="muted">（生效 = 已启用；停用的边在册但不进推演）</span>
+      </div>
+
+      {/* ═══════════ 结构边 ═══════════ */}
+      <h3 style={{ fontSize: 13.5, margin: "16px 0 6px" }}>结构边 · 关系类型</h3>
+      <div className="panel" style={{ marginBottom: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <input
+          data-testid="orel-link-key"
+          placeholder="关系 key（如 supplies_to）"
+          value={lk.key}
+          onChange={(e) => setLk({ ...lk, key: e.target.value })}
+          style={{ width: 190 }}
+        />
+        <select data-testid="orel-link-from" value={lk.fromTypeKey} onChange={(e) => setLk({ ...lk, fromTypeKey: e.target.value })}>
+          <option value="">来源类型…</option>
+          {typeOptions.map((k) => (
+            <option key={k} value={k}>
+              {k}
+            </option>
+          ))}
+        </select>
+        <span aria-hidden>→</span>
+        <select data-testid="orel-link-to" value={lk.toTypeKey} onChange={(e) => setLk({ ...lk, toTypeKey: e.target.value })}>
+          <option value="">去向类型…</option>
+          {typeOptions.map((k) => (
+            <option key={k} value={k}>
+              {k}
+            </option>
+          ))}
+        </select>
+        <select data-testid="orel-link-card" value={lk.cardinality} onChange={(e) => setLk({ ...lk, cardinality: e.target.value as Cardinality })}>
+          {CARDINALITIES.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+        {/* 由哪个属性实现 —— 候选来自来源类型的属性表，**不是**自由文本（打错字 = 静默造死边）。 */}
+        <select
+          data-testid="orel-link-via"
+          value={lk.via}
+          disabled={!lk.fromTypeKey || !lk.toTypeKey}
+          onChange={(e) => setLk({ ...lk, via: e.target.value })}
+          // ⛔ 不用原生 title= 承载口径（规范 §2 R-UI-3，且全仓有只减不增的棘轮守着）——
+          // 该说的话已经在占位项与下方那行告警里，是**可见 DOM 文字**，不是浏览器 tooltip。
+          aria-label="这条边由哪个属性实现"
+          style={{ maxWidth: 260 }}
+        >
+          <option value="">
+            {lk.fromTypeKey && lk.toTypeKey ? "由哪个属性实现…" : "先选来源与去向类型"}
+          </option>
+          {viaCandidates.map((p) => (
+            <option key={p.value} value={p.value}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+        <button
+          className="btn primary sm"
+          data-testid="orel-link-create"
+          disabled={createLink.isPending || !lk.key.trim() || !lk.fromTypeKey || !lk.toTypeKey}
+          onClick={() => createLink.mutate()}
+        >
+          建结构边
+        </button>
+        {/* 不选实现属性是**允许**的（N:N 那类边本来就不是一个外键属性能表达的，例如出厂的
+            `model_producible_at` 走的是数组、`model_certified_on` 走的是独立的认证清单），
+            但必须当场说清代价，不能让用户以为建完就能检索到。 */}
+        {lk.fromTypeKey && lk.toTypeKey && !lk.via && (
+          <span className="muted" data-testid="orel-link-via-warn" style={{ fontSize: 11.5, flexBasis: "100%" }}>
+            ⚠ 未选「由哪个属性实现」⇒ 这条边只是一句声明，<b>不会长出任何实例边</b>，多跳检索遍历不到它。
+            {viaCandidates.length === 0 && ` （${lk.fromTypeKey} 与 ${lk.toTypeKey} 都没有任何属性可选）`}
+          </span>
+        )}
+      </div>
+
+      {linksByDomain.length === 0 && <div className="empty-state">暂无结构边</div>}
+      {linksByDomain.map(([dk, rows]) => (
+        <div key={dk} data-testid={`orel-link-domain-${dk}`} style={{ marginBottom: 12 }}>
+          <div className="muted" style={{ fontSize: 12, margin: "6px 0 3px" }}>
+            域：{domainName.get(dk) ?? dk}（{rows.length}）
+          </div>
+          <table className="cmp" style={{ width: "100%" }}>
+            <thead>
+              <tr>
+                <th>关系</th>
+                <th>来源 → 去向</th>
+                <th>基数</th>
+                <th>状态</th>
+                <th style={{ width: 210 }}>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((l) => {
+                const dep = sessionDeprecation[l.key] ?? snapshotDeprecation.get(l.key);
+                const s = statusLabel(dep);
+                const editing = edit?.key === l.key;
+                return (
+                  <tr key={l.key} data-testid={`orel-link-${l.key}`}>
+                    <td className="mono">{l.key}</td>
+                    <td className="mono">
+                      {l.fromType} → {l.toType}
+                    </td>
+                    <td>
+                      {editing ? (
+                        <select
+                          data-testid={`orel-link-edit-card-${l.key}`}
+                          value={edit.cardinality}
+                          onChange={(e) => setEdit({ ...edit, cardinality: e.target.value as Cardinality })}
+                        >
+                          {CARDINALITIES.map((c) => (
+                            <option key={c} value={c}>
+                              {c}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        l.cardinality
+                      )}
+                    </td>
+                    <td data-testid={`orel-link-status-${l.key}`} style={{ color: s.tone }}>
+                      {s.text}
+                    </td>
+                    <td style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {editing ? (
+                        <Fragment>
+                          {/* 两端类型不在这里 —— 它们是身份，只读（后端同款闸门 400）。 */}
+                          <select
+                            data-testid={`orel-link-edit-via-${l.key}`}
+                            value={edit.via}
+                            aria-label="这条边由哪个属性实现"
+                            onChange={(e) => setEdit({ ...edit, via: e.target.value })}
+                            style={{ maxWidth: 240 }}
+                          >
+                            <option value="">由哪个属性实现…</option>
+                            {editViaCandidates.map((p) => (
+                              <option key={p.value} value={p.value}>
+                                {p.label}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            className="btn primary sm"
+                            data-testid={`orel-link-edit-save-${l.key}`}
+                            disabled={updateLink.isPending}
+                            onClick={() =>
+                              updateLink.mutate({
+                                key: l.key,
+                                fromTypeKey: l.fromType,
+                                toTypeKey: l.toType,
+                                cardinality: edit.cardinality,
+                                via: edit.via,
+                              })
+                            }
+                          >
+                            保存
+                          </button>
+                          <button className="btn sm" data-testid={`orel-link-edit-cancel-${l.key}`} onClick={() => setEdit(null)}>
+                            取消
+                          </button>
+                        </Fragment>
+                      ) : (
+                        <Fragment>
+                          <button
+                            className="btn sm"
+                            data-testid={`orel-link-edit-${l.key}`}
+                            onClick={() =>
+                              setEdit({
+                                key: l.key,
+                                cardinality: l.cardinality as Cardinality,
+                                // 预填既有实现属性 —— 留空提交会把它抹掉（POST 是整条覆盖）。
+                                via: l.viaProperty ? `${l.viaSide ?? "from"}:${l.viaProperty}` : "",
+                              })
+                            }
+                          >
+                            改
+                          </button>
+                          <button className="btn sm" data-testid={`orel-link-refs-${l.key}`} onClick={() => showRefs.mutate(l.key)}>
+                            查引用
+                          </button>
+                          {s.status === "DEPRECATED" ? (
+                            <button
+                              className="btn sm"
+                              data-testid={`orel-link-reactivate-${l.key}`}
+                              disabled={reactivateLink.isPending}
+                              onClick={() => reactivateLink.mutate(l.key)}
+                            >
+                              启用
+                            </button>
+                          ) : (
+                            <button
+                              className="btn sm"
+                              data-testid={`orel-link-deprecate-${l.key}`}
+                              disabled={deprecateLink.isPending || s.status === "RETIRED"}
+                              onClick={() => deprecateLink.mutate(l.key)}
+                            >
+                              停用
+                            </button>
+                          )}
+                          <button
+                            className="btn sm"
+                            data-testid={`orel-link-retire-${l.key}`}
+                            disabled={retireLink.isPending || s.status === "RETIRED"}
+                            onClick={() => retireLink.mutate(l.key)}
+                          >
+                            下线
+                          </button>
+                        </Fragment>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ))}
+
+      {refPanel && (
+        <div className="panel" data-testid="orel-refs-panel" style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 12, marginBottom: 4 }}>
+            <b className="mono">{refPanel.key}</b> 的引用方：{refPanel.total} 处
+            {refPanel.total > 0 && <span className="muted">（&gt;0 时后端拒绝下线，409 逐条列出）</span>}
+          </div>
+          {refPanel.total === 0 ? (
+            <div className="muted" style={{ fontSize: 12 }}>无引用 —— 可以下线</div>
+          ) : (
+            <ul style={{ fontSize: 12, margin: 0, paddingLeft: 18 }}>
+              {refPanel.refs.map((r, i) => (
+                <li key={`${r.refKind}-${r.key}-${i}`} className="mono">
+                  {r.refKind}:{r.key}@{r.where}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {/*
+        WO-BEFE-CLEANUP · 信息分层（规范 §2 R-UI-3「公式与口径不在第一层」）。
+        原文一整段是**口径推导式**（`最新已发布快照 ⊕ 本次会话写回包`）+ 机制解释，整段占着第一层。
+        现在拆成两半，**一个字都没删**：
+          · 第一层留**状态**一句（「刷新后会退回」这件事本身，用户要在不点击的前提下知道）；
+          · `?` 浮层放**凭什么**（口径推导式 · 后端 9 处投影掉 deprecation 的机制 · 「不是 bug」的判断依据）。
+        `?` 触发器常驻可见 = 规范 §1 要求的降层记号（静默降层等于删除）。
+      */}
+      {/* 分层规范 §1 + §3：诚实位**记号**留在第一层（降层不等于删除），成段口径进浮层。
+          ⚠ 同时修一个真缺陷：原先 `orel-link-honesty` 这个 testId 同时挂在外层 div 与
+          InfoPopover 上 —— 重复 testId 会让 getByTestId 抛「found multiple elements」，
+          且两者语义不同（一个是记号、一个是浮层）。现拆成 -mark / -popover 两个。 */}
+      <div className="muted" data-testid="orel-link-honesty" style={{ fontSize: 12, marginBottom: 18, display: "flex", alignItems: "center", gap: 6 }}>
+        <span data-testid="orel-link-honesty-mark">⚠ 状态列含未发布改动</span>
+        <InfoPopover topic={zh.admin.layer.relStatusTopic} testId="orel-link-honesty-popover">
+          <p>状态列含本次会话尚未发布的改动，刷新页面后会退回已发布快照 —— 这是如实标注，不是显示 bug。</p>
+          <p>{zh.admin.layer.relStatusBody}</p>
+          <p className="mono" style={{ fontSize: 12 }}>
+            snapshot.linkTypes[].deprecation ⊕ session write-back
+          </p>
+          <p>
+            工作集里的弃用态今天<b>没有只读下发口</b>：后端 9 处 <code>ontologyLinks.list</code> 读取方
+            全部把 <code>deprecation</code> 投影掉了。
+          </p>
+        </InfoPopover>
+      </div>
+
+      {/* ═══════════ 因果边 ═══════════ */}
+      <h3 style={{ fontSize: 13.5, margin: "16px 0 6px" }}>因果边 · 传导规则</h3>
+      <div className="panel" style={{ marginBottom: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <input
+          data-testid="orel-rule-key"
+          placeholder="规则 key"
+          value={pr.key}
+          onChange={(e) => setPr({ ...pr, key: e.target.value })}
+          style={{ width: 150 }}
+        />
+        <select data-testid="orel-rule-srctype" value={pr.sourceTypeKey} onChange={(e) => setPr({ ...pr, sourceTypeKey: e.target.value })}>
+          <option value="">来源类型…</option>
+          {typeOptions.map((k) => (
+            <option key={k} value={k}>
+              {k}
+            </option>
+          ))}
+        </select>
+        <input
+          data-testid="orel-rule-srcvar"
+          placeholder="来源状态变量"
+          value={pr.sourceStateVar}
+          onChange={(e) => setPr({ ...pr, sourceStateVar: e.target.value })}
+          style={{ width: 140 }}
+        />
+        <select data-testid="orel-rule-link" value={pr.viaLinkKey} onChange={(e) => setPr({ ...pr, viaLinkKey: e.target.value })}>
+          <option value="">经由结构边…</option>
+          {linkRows.map((l) => (
+            <option key={l.key} value={l.key}>
+              {l.key}
+            </option>
+          ))}
+        </select>
+        <select data-testid="orel-rule-tgttype" value={pr.targetTypeKey} onChange={(e) => setPr({ ...pr, targetTypeKey: e.target.value })}>
+          <option value="">去向类型…</option>
+          {typeOptions.map((k) => (
+            <option key={k} value={k}>
+              {k}
+            </option>
+          ))}
+        </select>
+        <input
+          data-testid="orel-rule-tgtvar"
+          placeholder="去向状态变量"
+          value={pr.targetStateVar}
+          onChange={(e) => setPr({ ...pr, targetStateVar: e.target.value })}
+          style={{ width: 140 }}
+        />
+        {/* 同上：字段口径一律用**可见 label**，不用原生 title（UI 规范 §2 R-UI-3）。 */}
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12 }}>
+          <span className="muted">系数</span>
+          <input
+            data-testid="orel-rule-coef"
+            type="number"
+            step="0.05"
+            value={pr.coefficient}
+            onChange={(e) => setPr({ ...pr, coefficient: e.target.value })}
+            style={{ width: 76 }}
+          />
+        </label>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12 }}>
+          <span className="muted">延迟(tick)</span>
+          <input
+            data-testid="orel-rule-delay"
+            type="number"
+            min="0"
+            value={pr.delayTicks}
+            onChange={(e) => setPr({ ...pr, delayTicks: e.target.value })}
+            style={{ width: 66 }}
+          />
+        </label>
+        {/*
+          启停语义**写在可见文案里**，不挂 `title=` ——
+          UI 规范 §2 R-UI-3 禁止用原生 title 承载需要阅读的口径
+          （`test/provenance-popover-legibility.test.tsx:1120` 是只减不增的棘轮，
+          我第一版写了一句带冒号的长 title，当场被它咬住）。
+        */}
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12 }}>
+          <span className="muted">启停</span>
+          <select
+            data-testid="orel-rule-status"
+            value={pr.status}
+            onChange={(e) => setPr({ ...pr, status: e.target.value as "DRAFT" | "PUBLISHED" })}
+          >
+            <option value="PUBLISHED">启用（进推演）</option>
+            <option value="DRAFT">停用（在册不生效）</option>
+          </select>
+        </label>
+        <input
+          data-testid="orel-rule-desc"
+          aria-label="新增因果边的影响说明"
+          placeholder="影响说明（这条边在业务上是什么意思）"
+          value={pr.description}
+          onChange={(e) => setPr({ ...pr, description: e.target.value })}
+          style={{ width: 260 }}
+        />
+        <button
+          className="btn primary sm"
+          data-testid="orel-rule-create"
+          disabled={
+            createRule.isPending ||
+            !pr.key.trim() ||
+            !pr.sourceTypeKey ||
+            !pr.sourceStateVar.trim() ||
+            !pr.viaLinkKey ||
+            !pr.targetTypeKey ||
+            !pr.targetStateVar.trim()
+          }
+          onClick={() => createRule.mutate()}
+        >
+          建因果边
+        </button>
+      </div>
+
+      {rulesByDomain.length === 0 && <div className="empty-state">暂无因果边</div>}
+      {rulesByDomain.map(([dk, rows]) => (
+        <div key={dk} data-testid={`orel-rule-domain-${dk}`} style={{ marginBottom: 12 }}>
+          <div className="muted" style={{ fontSize: 12, margin: "6px 0 3px" }}>
+            域：{domainName.get(dk) ?? dk}（{rows.length}）
+          </div>
+          {/* 列宽写死成百分比：auto-layout 会把「影响说明」挤成一条缝（2026-08-28 实测截图里
+              只看得到 6 个字；复验：本页 `OntologyRelationsPage.tsx` 去掉 tableLayout:"fixed"
+              后开 /v/admin/ontology-relations 看该列），
+              而那一列正是本单要让人读的东西 —— 它必须比三个 key 下拉更宽。 */}
+          <table className="cmp" style={{ width: "100%", tableLayout: "fixed" }}>
+            <thead>
+              <tr>
+                <th style={{ width: "19%" }}>来源</th>
+                <th style={{ width: "19%" }}>去向</th>
+                <th style={{ width: "16%" }}>关系</th>
+                <th style={{ width: "34%" }}>影响说明</th>
+                <th style={{ width: 44, textAlign: "center" }}>启</th>
+                <th style={{ width: 96 }} />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r0) => {
+                const r = merged(r0);
+                const dirty = isDirty(r0.id);
+                const on = r.status === "PUBLISHED";
+                return (
+                  <tr key={r0.id} data-testid={`orel-rule-${r0.key}`} data-dirty={dirty ? "true" : "false"}>
+                    {/* 来源 = 对象类型 + 状态变量，两个都是**后端现取**的下拉 */}
+                    <td>
+                      <select
+                        data-testid={`orel-rule-srctype-${r0.key}`}
+                        aria-label={`因果边 ${r0.key} 的来源对象类型`}
+                        value={r.sourceTypeKey}
+                        onChange={(e) => patchEdit(r0.id, { sourceTypeKey: e.target.value })}
+                        style={{ width: "100%", marginBottom: 2 }}
+                      >
+                        {/* 现值若已不在本体里（类型被删/改名），仍列出来并标注 —— 悄悄换成别的值就是替用户改了本体 */}
+                        {!typeOptions.includes(r.sourceTypeKey) && <option value={r.sourceTypeKey}>{r.sourceTypeKey}（本体中已不存在）</option>}
+                        {typeOptions.map((k) => <option key={k} value={k}>{k}</option>)}
+                      </select>
+                      <select
+                        data-testid={`orel-rule-srcvar-${r0.key}`}
+                        aria-label={`因果边 ${r0.key} 的来源状态变量`}
+                        value={r.sourceStateVar}
+                        onChange={(e) => patchEdit(r0.id, { sourceStateVar: e.target.value })}
+                        style={{ width: "100%" }}
+                      >
+                        {!stateVarOptions.includes(r.sourceStateVar) && <option value={r.sourceStateVar}>{svLabel(r.sourceStateVar)}</option>}
+                        {stateVarOptions.map((k) => <option key={k} value={k}>{svLabel(k)}</option>)}
+                      </select>
+                    </td>
+                    <td>
+                      <select
+                        data-testid={`orel-rule-tgttype-${r0.key}`}
+                        aria-label={`因果边 ${r0.key} 的去向对象类型`}
+                        value={r.targetTypeKey}
+                        onChange={(e) => patchEdit(r0.id, { targetTypeKey: e.target.value })}
+                        style={{ width: "100%", marginBottom: 2 }}
+                      >
+                        {!typeOptions.includes(r.targetTypeKey) && <option value={r.targetTypeKey}>{r.targetTypeKey}（本体中已不存在）</option>}
+                        {typeOptions.map((k) => <option key={k} value={k}>{k}</option>)}
+                      </select>
+                      <select
+                        data-testid={`orel-rule-tgtvar-${r0.key}`}
+                        aria-label={`因果边 ${r0.key} 的去向状态变量`}
+                        value={r.targetStateVar}
+                        onChange={(e) => patchEdit(r0.id, { targetStateVar: e.target.value })}
+                        style={{ width: "100%" }}
+                      >
+                        {!stateVarOptions.includes(r.targetStateVar) && <option value={r.targetStateVar}>{svLabel(r.targetStateVar)}</option>}
+                        {stateVarOptions.map((k) => <option key={k} value={k}>{svLabel(k)}</option>)}
+                      </select>
+                    </td>
+                    <td>
+                      <select
+                        data-testid={`orel-rule-link-${r0.key}`}
+                        aria-label={`因果边 ${r0.key} 经由的结构边`}
+                        value={r.viaLinkKey}
+                        onChange={(e) => patchEdit(r0.id, { viaLinkKey: e.target.value })}
+                        style={{ width: "100%" }}
+                      >
+                        {!linkRows.some((l) => l.key === r.viaLinkKey) && <option value={r.viaLinkKey}>{r.viaLinkKey}（不在结构边表里）</option>}
+                        {linkRows.map((l) => <option key={l.key} value={l.key}>{l.key}</option>)}
+                      </select>
+                      {/*
+                        系数**就地可改**（WO-CAUSAL-EDGE-CRUD，收编批次4 并入本表）。
+                        改前这一格是死文本 `×0.8`，要调一个系数只能回建边表单把字段全重述一遍，
+                        而那时重述还会**多出一条同 key 的边**、两条一起算（该缺陷已随 POST 改 upsert 修掉）。
+
+                        落点选 `onBlur` 而不是 `onChange`：每敲一个字符发一次 PATCH 会把
+                        「0.85」拆成 0 / 0. / 0.8 / 0.85 四次写入，中间三次都是**真的在改推演**。
+                        ⚠ `<input type=number>` 的 `onBlur` 在受控值未变时也会触发，故先比一次再发。
+                        ⚠ 系数**不进 `edits` 草稿**：草稿那套是给身份格与说明用的（改错了要能放弃），
+                          而系数是单格数值、后端 PATCH 只收这一格，就地写回更直接。
+                      */}
+                      <div className="muted mono" style={{ fontSize: 11, marginTop: 2, display: "flex", alignItems: "center", gap: 4 }}>
+                        <span>×</span>
+                        <input
+                          data-testid={`orel-rule-coef-${r0.key}`}
+                          aria-label={`因果边 ${r0.key} 的系数`}
+                          type="number"
+                          step="0.05"
+                          defaultValue={r.coefficient}
+                          disabled={patchCoef.isPending}
+                          onBlur={(e) => {
+                            const next = Number(e.target.value);
+                            if (!Number.isFinite(next) || next === r.coefficient) return; // 没变就不发（不制造无意义的新版本）
+                            patchCoef.mutate({ id: r0.id, coefficient: next });
+                          }}
+                          style={{ width: 64 }}
+                        />
+                        {r.delayTicks > 0 ? ` · 延迟${r.delayTicks}` : ""}
+                      </div>
+                    </td>
+                    <td>
+                      <input
+                        data-testid={`orel-rule-desc-${r0.key}`}
+                        aria-label={`因果边 ${r0.key} 的影响说明`}
+                        // `null` = 作者没写说明 ⇒ 空输入框 + 占位提示，**不拿 key 顶替**（顶替就是编一句他没写过的解释）
+                        value={r.description ?? ""}
+                        placeholder="这条边在业务上是什么意思"
+                        onChange={(e) => patchEdit(r0.id, { description: e.target.value === "" ? null : e.target.value })}
+                        style={{ width: "100%" }}
+                      />
+                    </td>
+                    <td style={{ textAlign: "center" }} data-testid={`orel-rule-status-${r0.key}`} data-status={r.status}>
+                      <input
+                        type="checkbox"
+                        data-testid={`orel-rule-toggle-${r0.key}`}
+                        aria-label={`因果边 ${r0.key} 是否启用（进推演）`}
+                        checked={on}
+                        disabled={toggleRule.isPending}
+                        onChange={() => {
+                          // 关掉是**减少**能力：先给波及面再落。开回来只是恢复，直接落。
+                          if (on) void askImpact(r0, "disable");
+                          else toggleRule.mutate({ id: r0.id, status: "PUBLISHED" });
+                        }}
+                      />
+                    </td>
+                    <td style={{ whiteSpace: "nowrap" }}>
+                      {dirty ? (
+                        <>
+                          <button
+                            className="btn primary sm"
+                            data-testid={`orel-rule-save-${r0.key}`}
+                            disabled={saveRule.isPending}
+                            onClick={() => saveRule.mutate(r0)}
+                          >
+                            保存
+                          </button>
+                          <button className="btn sm" data-testid={`orel-rule-cancel-${r0.key}`} onClick={() => dropEdit(r0.id)} style={{ marginLeft: 4 }}>
+                            放弃
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          className="btn sm"
+                          data-testid={`orel-rule-delete-${r0.key}`}
+                          aria-label={`删除因果边 ${r0.key}`}
+                          onClick={() => void askImpact(r0, "delete")}
+                          style={{ color: "var(--danger)" }}
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ))}
+
+      {/* ── WO-ONTOLOGY-EDGE-EDIT · 那条「只能新建」的诚实位**已撤**（撤得有据，不是删掉了事）──
+       *  它原文写的是：「`POST …/propagation-rules` 把 `id: newId("simpr")` 写在请求体展开之后 ⇒
+       *  传进去的 id 恒被覆盖 ⇒ 只能新建；真·启停需后端补 PUT/PATCH …/:id（后端单）。」
+       *  **那张后端单已经做了**：`app.ts` 该路由组现有 `PUT /:id`、`PATCH /:id/status`、`DELETE /:id`，
+       *  三条都先按 tenantId 读一次再写（跨租户实测 404）。诚实位的前提没了，留着它就成了谎话
+       *  —— 本仓的纪律是诚实位随事实走，事实变了就撤，不是"留着更谨慎"。
+       *  `test/ontology-relations.seam.test.tsx` §④ 那条断言同批反转（它本来就是为这一天写的）。
+       */}
+      <div className="muted" data-testid="orel-rule-honesty" style={{ fontSize: 12, marginBottom: 18, display: "flex", alignItems: "center", gap: 6 }}>
+        <span data-testid="orel-rule-honesty-mark">
+          关闭某条边会<b>切断该传播路径</b>
+        </span>
+        <InfoPopover topic="「启」这一列到底改了什么" testId="orel-rule-honesty-popover">
+          <div style={{ lineHeight: 1.7 }}>
+            取消勾选 = 把这条边置为<b>停用（在册不生效）</b>：它仍然留在这张表里、随时可以拨回来，
+            但推演不再走它 —— 沿这条路径下游的那些量<b>不会再被这条边推动</b>。
+            <br />
+            ✕ 是<b>删除</b>，不可逆：删掉之后这条边不在册，拨不回来。要"先关掉看看"请用勾选框，不要用 ✕。
+            <br />
+            两者按下去之前都会先算一次<b>波及面</b>给你看 —— 那是后端现算的，不是这里编的清单。
+          </div>
+        </InfoPopover>
+      </div>
+
+      {/* ══ 波及面确认闸（改之前先看见「切断这条会影响什么」）══════════════════════════
+          ⛔ 四桶 + 逐跳计数 + `unresolved` 诚实位**原样上屏**：契约原文写死了
+          「空集不许冒充『没有波及』」—— items 空 **且** unresolved 空 = 焦点确为叶子；
+          unresolved 非空 = 有算不出来的部分。两者屏上必须分开说，合成一句就是本仓最恨的那种谎。 */}
+      {pending && (
+        <div className="panel" data-testid="orel-impact-gate" style={{ marginBottom: 18, borderColor: "var(--danger)" }}>
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>
+            {pending.act === "delete" ? "删除" : "停用"}因果边 <span className="mono">{pending.rule.key}</span>：先看波及面
+          </div>
+          <div className="muted mono" style={{ fontSize: 12, marginBottom: 8 }}>
+            {pending.rule.sourceTypeKey}.{pending.rule.sourceStateVar} --{pending.rule.viaLinkKey}--&gt; {pending.rule.targetTypeKey}.{pending.rule.targetStateVar}
+          </div>
+
+          {pending.loading && <div className="muted" data-testid="orel-impact-loading" style={{ fontSize: 12 }}>{zh.common.loading}</div>}
+
+          {!pending.loading && pending.preview === null && (
+            <div data-testid="orel-impact-failed" style={{ fontSize: 12, color: "var(--danger-txt)", lineHeight: 1.7 }}>
+              <b>这次没算出波及面</b>（预览请求失败）。这与「没有波及」<b>不是一回事</b> ——
+              下面的按钮仍然可用，但你是在没有波及面的情况下按的。
+            </div>
+          )}
+
+          {!pending.loading && pending.preview && (() => {
+            const p = pending.preview;
+            const LABEL: Record<string, string> = {
+              recompute: "传导重算", rederive: "派生重算", rejudge: "规则重判", rewire: "结构改写",
+            };
+            const buckets = ["recompute", "rederive", "rejudge", "rewire"] as const;
+            return (
+              <div style={{ fontSize: 12, lineHeight: 1.8 }}>
+                <div data-testid="orel-impact-buckets" style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 6 }}>
+                  {buckets.map((b) => {
+                    const inB = p.items.filter((i) => i.bucket === b);
+                    const hops = [...new Set(inB.map((i) => i.hops))].sort((x, y) => x - y);
+                    return (
+                      <span key={b} data-testid={`orel-impact-bucket-${b}`}>
+                        {LABEL[b]} <b>{inB.length}</b>
+                        {inB.length > 0 && <span className="muted">（{hops.map((h) => `${h}跳×${inB.filter((i) => i.hops === h).length}`).join(" ")}）</span>}
+                      </span>
+                    );
+                  })}
+                </div>
+
+                {/* 「一条都没算到」与「算到了 0 条」在屏上必须长得不一样 */}
+                {p.items.length === 0 && p.unresolved.length === 0 && (
+                  <div data-testid="orel-impact-leaf" style={{ color: "var(--ok)" }}>
+                    {/*
+                     * ⚠ 下面那句话里的「四类」赌的是一个**静态事实**：波及桶枚举恰好 4 个成员。
+                     * 它头顶的运行时守卫 `p.items.length === 0 && p.unresolved.length === 0`
+                     * 只覆盖「一条都没有」与「没有算不出来的部分」两句，**看不见「四类」这个数**——
+                     * 枚举加到第 5 个时，这行绿字会照旧显示，而上面那排桶计数（`buckets`）也只画
+                     * 4 格，第 5 类的波及在屏上**根本不出现**：用户会据此把一条并非叶子的边删掉。
+                     * 这是屏上说谎，不是记账错误，故把赌注写成机器能跑的断言，上游一动门当场红。
+                     *
+                     * ⚠ **两条缺一不可**，理由是变异反证逼出来的，不是凑数：
+                     * 第一条只赌「这四个名字各在一次」——**加第 5 个成员它照样绿**（实测：把枚举
+                     * 改成五成员后现算仍是 4，门不出声）。第二条赌「成员恰好四个」才咬得住新增。
+                     * 两条合起来才覆盖 改名/删除（第一条）与 新增（第二条）三种走法。
+                     * @stale-fact packages/contracts/src/sim.ts /"(?:recompute|rederive|rejudge|rewire)"/ ==4
+                     * @stale-fact packages/contracts/src/sim.ts /bucket: z\.enum\(\["[a-z]+", "[a-z]+", "[a-z]+", "[a-z]+"\]\)/ ==1
+                     * 记号挂于 2026-08-29 · 复验：`node scripts/check-stale-claims.mjs`
+                     * 上游真相源：`packages/contracts/src/sim.ts` 的 `bucket: z.enum([...])`
+                     */}
+                    这条边确为<b>叶子</b>：四类波及一条都没有，且没有算不出来的部分 —— 关掉它不会带动别的东西。
+                  </div>
+                )}
+                {p.unresolved.length > 0 && (
+                  <div data-testid="orel-impact-unresolved" style={{ color: "var(--warn)" }}>
+                    <b>这次没算全</b>（{p.unresolved.length} 处追不到）——{p.items.length === 0 ? "所以上面那排 0 不等于「没有波及」，" : ""}
+                    下面逐条写明什么追不到、缺什么：
+                    <ul style={{ margin: "2px 0 0 16px" }}>
+                      {p.unresolved.map((u, i) => (
+                        <li key={i} className="mono" style={{ fontSize: 11 }}>{u.what} —— {u.missing}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {p.truncated && (
+                  <div data-testid="orel-impact-truncated" style={{ color: "var(--warn)" }}>
+                    已到 {p.maxHops} 跳保险丝，更远的没有继续追 —— 波及面<b>至少</b>这么大，不是恰好这么大。
+                  </div>
+                )}
+                {p.items.length > 0 && (
+                  <details data-testid="orel-impact-items" style={{ marginTop: 4 }}>
+                    <summary style={{ cursor: "pointer" }}>逐条看被波及的目标（{p.items.length}）▸</summary>
+                    <div className="mono" style={{ fontSize: 11, maxHeight: 180, overflowY: "auto", marginTop: 4 }}>
+                      {p.items.slice(0, 200).map((i, n) => (
+                        <div key={n}>{LABEL[i.bucket]} · {i.target} · {i.hops}跳 · 经 {i.via}</div>
+                      ))}
+                      {p.items.length > 200 && <div className="muted">…另有 {p.items.length - 200} 条未列出（只是没画，不是没有）</div>}
+                    </div>
+                  </details>
+                )}
+              </div>
+            );
+          })()}
+
+          <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+            <button
+              className="btn sm"
+              data-testid="orel-impact-confirm"
+              disabled={pending.loading || toggleRule.isPending || removeRule.isPending}
+              style={{ color: "var(--danger)" }}
+              onClick={() =>
+                pending.act === "delete"
+                  ? removeRule.mutate(pending.rule)
+                  : toggleRule.mutate({ id: pending.rule.id, status: "DRAFT" })
+              }
+            >
+              {pending.act === "delete" ? "确认删除（不可逆）" : "确认停用"}
+            </button>
+            <button className="btn sm" data-testid="orel-impact-cancel" onClick={() => setPending(null)}>
+              取消
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════ 不变式（第三类边）═══════════
+        WO-ONTOLOGY-EDGE-TRICLASS · 前两类边**一个字都没动**（见文件头「两种边，别混」）。
+
+        ── 为什么是第三类，而不是把前两类重排 ──────────────────────────────────
+        结构边答「有没有关系」、因果边答「变了多少」，两者都在描述**有什么**。
+        这一类描述的是**必须成立什么**：一条跨若干元素的守卫条件，为真即体检不通过，
+        并能指出是**谁**违反了它。三者语义互不覆盖，故并列三类而非合并。
+
+        ── 这一屏的数据从哪来（不许前端自带清单）────────────────────────────────
+        守卫清单、守卫条件的业务话渲染、实测量、容差原值，**全部后端下发**
+        （`fetchOntologyInvariants` / `evaluateOntologyInvariants`）。
+        前端自带一份的后果是：后端目录一改它就静默过期，而没有任何机器会说话。
+
+        ── 「改容差 / 停用」在这里是**试算**，不是治理动作 ───────────────────────
+        上面结构边与对象类型那两处的「停用/下线」是治理动作：有宽限期、有「仍被 N 处
+        引用就拒绝」的 409 闸、要会签发布。这一段的开关是**推演开关**：本地、即时、可逆、
+        一个字节都不落库，刷新即还原。两套刻意分开写、分开措辞 ——
+        合并会把「我想试试把这条守卫关掉看看谁会红」变成「我把这条守卫下线了」。
+      */}
+      <h3 style={{ fontSize: 13.5, margin: "16px 0 6px" }}>不变式 · 体检守卫</h3>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 8, lineHeight: 1.7 }}>
+        第三类边：前两类说「有什么」，这一类说「<b>必须成立什么</b>」—— 条件为真即体检通过，不成立时逐条点名是谁违反的。
+        <br />
+        这里改容差、停开关都只是<b>试算</b>：立刻重算给你看，但不落库、不进会签，刷新页面即还原。
+        与上面结构边的「停用/下线」不是一回事，那一套是要走会签的治理动作。
+      </div>
+
+      <div className="panel" data-testid="orel-inv-summary" style={{ marginBottom: 10, display: "flex", gap: 18, flexWrap: "wrap", fontSize: 12, alignItems: "center" }}>
+        <span data-testid="orel-inv-passed">成立 {inv ? inv.passed : "—"}</span>
+        <span data-testid="orel-inv-violated" style={{ color: inv && inv.violated > 0 ? "var(--danger)" : undefined }}>
+          不成立 {inv ? inv.violated : "—"}
+        </span>
+        <span data-testid="orel-inv-skipped" className="muted">
+          未参与体检 {inv ? inv.skipped : "—"}
+        </span>
+        {/* 阻断裁决未下 ⇒ 如实说「只标注」，并把「真拦会拦掉几条」先算给人看。 */}
+        <span data-testid="orel-inv-enforcement">
+          {inv?.enforcement.blocking
+            ? `不成立会拦住发布（${inv.enforcement.wouldBlock.length} 条）`
+            : `不成立只标注、不拦任何动作${inv ? `；若改为拦住发布，会拦下 ${inv.enforcement.wouldBlock.length} 条` : ""}`}
+        </span>
+        {invDirty && (
+          <button className="btn sm" data-testid="orel-inv-reset" onClick={() => setInvOverrides({})}>
+            全部还原
+          </button>
+        )}
+      </div>
+
+      {/* 「改了容差，谁翻了」的直答 —— 不让用户自己在表里前后比对。 */}
+      {inv && (inv.flippedToViolate.length > 0 || inv.flippedToHold.length > 0) && (
+        <div className="panel" data-testid="orel-inv-flips" style={{ marginBottom: 10, fontSize: 12, lineHeight: 1.7 }}>
+          {inv.flippedToViolate.length > 0 && (
+            <div data-testid="orel-inv-flip-violate">
+              因你这次的改动，<b>由成立转为不成立</b>：{inv.flippedToViolate.map((k) => invName(k)).join("、")}
+            </div>
+          )}
+          {inv.flippedToHold.length > 0 && (
+            <div data-testid="orel-inv-flip-hold">
+              因你这次的改动，<b>由不成立转为成立</b>：{inv.flippedToHold.map((k) => invName(k)).join("、")}
+            </div>
+          )}
+        </div>
+      )}
+
+      {inv && inv.items.length === 0 && <div className="empty-state">暂无不变式</div>}
+      {inv && inv.items.length > 0 && (
+        <table className="cmp" data-testid="orel-inv-table" style={{ width: "100%", marginBottom: 8 }}>
+          <thead>
+            <tr>
+              <th>守卫</th>
+              <th>守卫条件</th>
+              <th style={{ width: 110 }}>实测</th>
+              <th style={{ width: 150 }}>容差</th>
+              <th style={{ width: 90 }}>当前</th>
+              <th style={{ width: 110 }}>参与体检</th>
+            </tr>
+          </thead>
+          <tbody>
+            {inv.items.map((it) => {
+              const tone = !it.enabled ? "var(--muted)" : it.holds ? "var(--ok)" : "var(--danger)";
+              return (
+                <Fragment key={it.key}>
+                  <tr data-testid={`orel-inv-${it.key}`}>
+                    <td>
+                      {it.name}
+                      {it.overridden && (
+                        <span className="muted" data-testid={`orel-inv-overridden-${it.key}`} style={{ marginLeft: 6 }}>
+                          （试算中）
+                        </span>
+                      )}
+                    </td>
+                    <td data-testid={`orel-inv-guard-${it.key}`}>{it.guardText}</td>
+                    <td data-testid={`orel-inv-measure-${it.key}`}>
+                      {it.measure.value}
+                      {it.measure.unit ?? ""}
+                    </td>
+                    <td>
+                      <input
+                        data-testid={`orel-inv-tolerance-${it.key}`}
+                        type="number"
+                        step="any"
+                        aria-label={`${it.name}的${it.tolerance.label}`}
+                        value={it.tolerance.value}
+                        onChange={(e) => setInvOverride(it.key, { tolerance: Number(e.target.value) })}
+                        style={{ width: 74 }}
+                      />
+                      <span className="muted" style={{ marginLeft: 4 }}>
+                        {it.tolerance.unit ?? ""}
+                      </span>
+                    </td>
+                    <td data-testid={`orel-inv-status-${it.key}`} style={{ color: tone }}>
+                      {it.error ? "读不出来" : it.holds ? "成立" : "不成立"}
+                    </td>
+                    <td>
+                      <label style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12 }}>
+                        <input
+                          data-testid={`orel-inv-enabled-${it.key}`}
+                          type="checkbox"
+                          aria-label={`${it.name}参与体检`}
+                          checked={it.enabled}
+                          onChange={(e) => setInvOverride(it.key, { enabled: e.target.checked })}
+                        />
+                        <span className="muted">{it.enabled ? "参与" : "已停"}</span>
+                      </label>
+                    </td>
+                  </tr>
+                  {/* 违反者逐条点名 —— 只说「有 3 条不合规」而不说是哪三条，用户下一步就断了。 */}
+                  {it.enabled && !it.holds && it.participants.length > 0 && (
+                    <tr data-testid={`orel-inv-offenders-${it.key}`}>
+                      <td colSpan={6} className="muted" style={{ fontSize: 12, lineHeight: 1.7 }}>
+                        违反的是：
+                        {it.participants.map((p) => (
+                          <span key={`${p.kind}-${p.key}`} style={{ marginRight: 10 }}>
+                            <b className="mono">{p.key}</b>（{p.reason}）
+                          </span>
+                        ))}
+                      </td>
+                    </tr>
+                  )}
+                  {it.error && (
+                    <tr data-testid={`orel-inv-error-${it.key}`}>
+                      <td colSpan={6} className="muted" style={{ fontSize: 12 }}>
+                        这条守卫这次没能算出来：{it.error}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+      <div className="muted" data-testid="orel-inv-honesty" style={{ fontSize: 12, marginBottom: 18, lineHeight: 1.7 }}>
+        ⚠ 停用一条守卫<b>不会让问题消失</b>，只是这一轮不体检它 —— 实测值照算、照显示。
+        <br />
+        ⚠ 违反时目前<b>只标红，不拦任何动作</b>（发布、采纳都照常）。「该拦什么」还没定；定下来之前，
+        这里先把「真要拦会拦下哪几条」如实算给你看。
+      </div>
+
+      {/* ═══════════ 对象约束 · 引用规则库（WO-CONSTRAINT-REFS）═══════════ */}
+      <h3 style={{ fontSize: 13.5, margin: "16px 0 6px" }}>对象约束 · 引用规则库</h3>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 8, lineHeight: 1.7 }}>
+        给一类对象挂上<b>它自己的约束条件</b>——比如「设备的产能上限」「产线利用率不得超过 X」。
+        约束<b>不在这里写表达式</b>，而是<b>引用规则库里已发布的那条规则</b>：阈值改在规则库一处，
+        这里跟着变，不会分叉出第二份。挂上之后，<b>读这类对象的求解器会把它并入规则评估</b>，
+        推演结论真的会变。
+      </div>
+      <div className="panel" style={{ marginBottom: 10, display: "flex", alignItems: "flex-end", gap: 8, flexWrap: "wrap" }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 12 }}>
+          <span className="muted">① 给哪类对象</span>
+          <select
+            data-testid="orel-cf-type"
+            value={cf.typeKey}
+            onChange={(e) => setCf({ ...cf, typeKey: e.target.value, ruleKey: "", propKey: "" })}
+          >
+            <option value="">选一个对象类型…</option>
+            {(types.data ?? []).slice().sort((a, b) => (a.key < b.key ? -1 : 1)).map((t) => (
+              <option key={t.key} value={t.key}>
+                {t.displayName}（{t.key}）
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 12 }}>
+          <span className="muted">② 引用哪条规则</span>
+          <select
+            data-testid="orel-cf-rule"
+            value={cf.ruleKey}
+            disabled={!cf.typeKey}
+            onChange={(e) => setCf({ ...cf, ruleKey: e.target.value })}
+          >
+            <option value="">选一条已发布规则…</option>
+            {ruleOptions.map((r) => (
+              <option key={r.key} value={r.key}>
+                {r.key} · {r.name}（{r.severity}）
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 12 }}>
+          <span className="muted">③ 绑到哪个属性</span>
+          <select
+            data-testid="orel-cf-prop"
+            value={cf.propKey}
+            disabled={!cf.typeKey}
+            onChange={(e) => setCf({ ...cf, propKey: e.target.value })}
+          >
+            <option value="">选一个属性…</option>
+            {(cfType?.properties ?? []).map((p) => (
+              <option key={p.propKey} value={p.propKey}>
+                {p.displayName ?? p.propKey}
+                {p.unit ? `（${p.unit}）` : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 12 }}>
+          <span className="muted">④ 约束类型</span>
+          <select
+            data-testid="orel-cf-kind"
+            value={cf.kind}
+            onChange={(e) => setCf({ ...cf, kind: e.target.value as ObjectConstraintKind })}
+          >
+            {Object.entries(OBJECT_CONSTRAINT_KIND_LABELS).map(([k, label]) => (
+              <option key={k} value={k}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          className="btn primary sm"
+          data-testid="orel-cf-add"
+          disabled={!cf.typeKey || !cf.ruleKey || !cf.propKey || saveConstraints.isPending}
+          onClick={() =>
+            saveConstraints.mutate([
+              ...(cfType?.constraintRefs ?? []).filter((c) => !(c.ruleKey === cf.ruleKey && c.propKey === cf.propKey)),
+              { ruleKey: cf.ruleKey, propKey: cf.propKey, kind: cf.kind },
+            ])
+          }
+        >
+          挂上这条约束
+        </button>
+      </div>
+      {cf.typeKey && (
+        <table className="cmp" data-testid="orel-cf-table" style={{ width: "100%", marginBottom: 10 }}>
+          <thead>
+            <tr>
+              <th>引用的规则</th>
+              <th>绑定属性</th>
+              <th>约束类型</th>
+              <th>规则表达式（真值在规则库·此处只读）</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {(cfType?.constraintRefs ?? []).length === 0 && (
+              <tr>
+                <td colSpan={5} className="muted">
+                  该类型还没配约束
+                </td>
+              </tr>
+            )}
+            {(cfType?.constraintRefs ?? []).map((c) => {
+              const r = publishedRules.find((x) => x.key === c.ruleKey);
+              return (
+                <tr key={`${c.ruleKey}|${c.propKey}`} data-testid={`orel-cf-row-${c.ruleKey}`}>
+                  <td className="mono">
+                    {c.ruleKey}
+                    {r ? ` · ${r.name}` : ""}
+                  </td>
+                  <td className="mono">{c.propKey}</td>
+                  <td>{OBJECT_CONSTRAINT_KIND_LABELS[c.kind]}</td>
+                  {/* 规则已被下线 → 这里如实说，不留空让人以为约束还生效（后端同样会标 NOT_APPLICABLE）。 */}
+                  <td className="mono">{r ? r.expression : "⚠ 该规则已不在已发布规则库中，此约束当前不生效"}</td>
+                  <td>
+                    <button
+                      className="btn sm"
+                      data-testid={`orel-cf-del-${c.ruleKey}`}
+                      disabled={saveConstraints.isPending}
+                      onClick={() =>
+                        saveConstraints.mutate(
+                          (cfType?.constraintRefs ?? []).filter((x) => !(x.ruleKey === c.ruleKey && x.propKey === c.propKey)),
+                        )
+                      }
+                    >
+                      移除
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+      <div className="muted" data-testid="orel-cf-summary" style={{ fontSize: 12, marginBottom: 18, lineHeight: 1.7 }}>
+        全库已配约束的类型：<b>{constrainedTypes.length}</b> 个
+        {constrainedTypes.length > 0 && (
+          <>
+            {" — "}
+            {constrainedTypes.map((t) => `${t.key}(${(t.constraintRefs ?? []).length})`).join("、")}
+          </>
+        )}
+        <br />
+        {/* WO-RELATION-EDIT-GAPS 文体收口：原句尾括号里带**反引号包着的后端 TS 常量名**
+            （`SOLVER_ONTOLOGY_SIGNATURES` / `SOLVER_REQUIRED_TYPES`）——两条都犯规：
+            ① 屏上不许有 Markdown 字面量；② 那是源码符号不是业务事实（R-UI-4 同源）。
+            真前端实测本页 Markdown 字面量命中 2 处，就是这两个；删掉后 0 处。
+            信息本身没丢：前半句已经把「求解器没声明读某个类型就不评估」这条口径说清了。 */}
+        ⚠ 约束只在<b>读这类对象的求解器</b>上生效：求解器没声明读某个类型，挂在那个类型上的约束它不评估。
+        <br />
+        ⚠ 判定取<b>最可能违规的那个实例</b>（上限型取该属性最大的、下限型取最小的）——约束是全称命题，
+        取平均会把「一台设备严重超限」稀释成通过。
+      </div>
+
+      {/* ═══════════ 关系两端的对象类型 · 弃用流程 ═══════════ */}
+      <h3 style={{ fontSize: 13.5, margin: "16px 0 6px" }}>对象类型 · 弃用流程</h3>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 8, lineHeight: 1.7 }}>
+        停用/下线一个<b>类型</b>会连带作废它两端的全部关系，所以它和上面两张表是同一件事的两端。
+        后端是同一个治理函数、同一道「还有人引用就不许下线」的闸。
+      </div>
+      <div className="panel" style={{ marginBottom: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <select data-testid="orel-type-select" value={typeKeyToDeprecate} onChange={(e) => setTypeKeyToDeprecate(e.target.value)}>
+          <option value="">选一个对象类型…</option>
+          {typeOptions.map((k) => (
+            <option key={k} value={k}>
+              {k}
+            </option>
+          ))}
+        </select>
+        <button
+          className="btn sm"
+          data-testid="orel-type-deprecate"
+          disabled={!typeKeyToDeprecate || deprecateType.isPending}
+          onClick={() => deprecateType.mutate(typeKeyToDeprecate)}
+        >
+          停用类型
+        </button>
+        <button
+          className="btn sm"
+          data-testid="orel-type-retire"
+          disabled={!typeKeyToDeprecate || retireType.isPending}
+          onClick={() => retireType.mutate(typeKeyToDeprecate)}
+        >
+          下线类型
+        </button>
+        <span className="muted" style={{ fontSize: 12 }}>
+          下线前后端会先查引用；有引用则 409 并逐条列出，界面原样显示。
+        </span>
+      </div>
+      {Object.keys(typeDeprecation).length > 0 && (
+        <table className="cmp" data-testid="orel-type-table" style={{ width: "100%", marginBottom: 12 }}>
+          <thead>
+            <tr>
+              <th>对象类型</th>
+              <th>状态（本次会话写回包）</th>
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(typeDeprecation).map(([k, dep]) => (
+              <tr key={k} data-testid={`orel-type-row-${k}`}>
+                <td className="mono">{k}</td>
+                <td data-testid={`orel-type-status-${k}`}>{statusLabel(dep).text}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {/* ═══════════ 发布会签（R4）═══════════ */}
+      <h3 style={{ fontSize: 13.5, margin: "16px 0 6px" }}>发布会签（R4）</h3>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 8, lineHeight: 1.7 }}>
+        上面的建/停/下线写的是<b>工作集</b>，不是已发布真值。真值是 <code>OntologyVersion</code> 快照 ——
+        经<b>各域 owner 会签</b>后由后端自动固化（全域 APPROVE → <code>publishVersion</code>）。
+        本页<b>不提供</b>「直接发布」按钮：那条路会绕开会签。
+      </div>
+      <div className="panel" style={{ marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
+        <button className="btn primary sm" data-testid="orel-publish-open" disabled={openPublish.isPending} onClick={() => openPublish.mutate()}>
+          发起发布会签
+        </button>
+        <span className="muted" style={{ fontSize: 12 }}>
+          已发布版本：{versions.data && versions.data.length > 0 ? `v${Math.max(...versions.data.map((v) => v.version))}` : "尚无"}
+        </span>
+      </div>
+      <table className="cmp" data-testid="orel-publish-table" style={{ width: "100%", marginBottom: 8 }}>
+        <thead>
+          <tr>
+            <th>请求</th>
+            <th>目标版本</th>
+            <th>触及域</th>
+            <th>状态</th>
+            <th>进度</th>
+            <th style={{ width: 300 }}>会签</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(pubReqs.data ?? []).map((p) => {
+            /*
+             * WO-SIGNOFF-CHAIN：可处置判据走 `isPublishRequestActionable()`（契约枚举单源）。
+             * 此前这里写 `p.status !== "PENDING"` —— 后端**从来没发过** `"PENDING"`
+             * （契约枚举是 `PENDING_SIGNOFF|APPROVED|REJECTED|EXPIRED`）⇒ 两颗按钮恒灰，
+             * 15 条会签 0 条可处置。会签机制本身全是真的，只是没人按得下第一颗按钮。
+             */
+            const actionable = isPublishRequestActionable(p);
+            const undecided = publishRequestUndecidedCount(p);
+            const total = (p.signoffs ?? []).length;
+            const comment = rejectComment[p.id] ?? "";
+            return (
+            <tr key={p.id} data-testid={`orel-pubreq-${p.id}`}>
+              <td className="mono">{p.id}</td>
+              <td>v{p.ontologyVersion}</td>
+              {/* WO-ONTO-CRASH：原写 `p.touchedDomains.join(...)`，而后端记录里没有这个字段 ⇒
+                  租户里只要存在过一条会签请求，本页就**每次打开都崩**（F5 救不回，状态在服务端）。
+                  改走 `publishRequestDomains()`：有就用后端下发的，没有就从 signoffs 现推。 */}
+              <td className="mono">{publishRequestDomains(p).join(" · ") || "—"}</td>
+              <td data-testid={`orel-pubreq-status-${p.id}`}>{p.status}</td>
+              {/* 只显示一个状态串，运营方不知道"还差谁"。未决数与待签域名是业务事实，必须给。 */}
+              <td data-testid={`orel-pubreq-progress-${p.id}`} style={{ fontSize: 12 }}>
+                {total === 0 ? "—" : `${total - undecided}/${total} 已签`}
+                {undecided > 0 && (
+                  <div className="muted" style={{ fontSize: 11 }}>
+                    待签：{(p.signoffs ?? []).filter((s) => !s.decision).map((s) => s.domainKey).join("、")}
+                  </div>
+                )}
+              </td>
+              <td>
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <button
+                    className="btn sm"
+                    data-testid={`orel-pubreq-approve-${p.id}`}
+                    disabled={signoff.isPending || !actionable}
+                    onClick={() => signoff.mutate({ id: p.id, decision: "APPROVE" })}
+                  >
+                    同意
+                  </button>
+                  <input
+                    className="input sm"
+                    data-testid={`orel-pubreq-comment-${p.id}`}
+                    placeholder="驳回理由（必填）"
+                    value={comment}
+                    disabled={signoff.isPending || !actionable}
+                    onChange={(e) => setRejectComment((m) => ({ ...m, [p.id]: e.target.value }))}
+                    style={{ fontSize: 12, width: 150 }}
+                  />
+                  {/* 后端 REJECT 必填 comment（400 否则）⇒ 空理由时按钮就不该可点：
+                      摆一个必然 400 的按钮，与摆一个恒灰的按钮同样是骗人。 */}
+                  <button
+                    className="btn sm"
+                    data-testid={`orel-pubreq-reject-${p.id}`}
+                    disabled={signoff.isPending || !actionable || !comment.trim()}
+                    onClick={() => signoff.mutate({ id: p.id, decision: "REJECT", comment: comment.trim() })}
+                  >
+                    驳回
+                  </button>
+                </div>
+              </td>
+            </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {(pubReqs.data ?? []).length === 0 && <div className="empty-state">暂无发布会签请求</div>}
+    </div>
+  );
+}

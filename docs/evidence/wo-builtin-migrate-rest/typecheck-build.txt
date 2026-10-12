@@ -1,0 +1,18 @@
+== pnpm --filter @platform/contracts build ==
+> @platform/contracts@0.1.0 build /Users/apple/deploy/complete/.claude/worktrees/agent-adfaa59886e57c31c/packages/contracts
+> tsc -p tsconfig.json
+
+CONTRACTS_RC=0
+== pnpm --filter @platform/llm-adapters build ==
+> @platform/llm-adapters@0.1.0 build /Users/apple/deploy/complete/.claude/worktrees/agent-adfaa59886e57c31c/packages/llm-adapters
+> tsc -p tsconfig.json
+
+LLM_RC=0
+== pnpm --filter agentcore build ==
+> agentcore@0.1.0 build /Users/apple/deploy/complete/.claude/worktrees/agent-adfaa59886e57c31c/apps/agentcore
+> tsc -p tsconfig.json
+
+AGENTCORE_BUILD_RC=0
+== pnpm --filter agentcore exec tsc -p tsconfig.json --noEmit ==
+npm warn Unknown env config "side-effects-cache". This will stop working in the next major version of npm.
+TYPECHECK_RC=0

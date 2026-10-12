@@ -6,6 +6,14 @@
 | 设计基准 | 原型 HTML：buildAOP / buildQuarter / buildOrderAgg / 地理视图(mapsvgwrap) / VIEWS 七种图谱视角 / 编排推演 story / openMap 映射表 |
 | 决议 | 编排推演 DAG 与业务建模映射表**确认要做**（推翻此前"可不做"建议）；其余按上轮缺口清单 |
 
+## 0. 本体引用与影响（补录）
+
+> 遗留 PRD 追溯补录（治理 #2，prd:check 入图）；仅引用平台真实不变量(§5 R1–R14)/断点(§8 G-1..G-8)。
+
+- **触及不变量**（§5）：R3 · R13 · R14
+- **触及断点**（§8）：（无特定断点）
+- **范畴**：前端剩余视图补全（§7.14–7.22）：渲染分发、结论溯源、无业务常数
+
 ## 0. 契约补充
 
 1. **renderer 枚举扩至 12**：新增 `"annual-scenario" | "quarterly-rolling" | "order-chain" | "geo-map"`。

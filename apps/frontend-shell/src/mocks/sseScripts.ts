@@ -7,6 +7,7 @@ import {
   ANSWER_ADOPT,
   ANSWER_UNVERIFIED,
 } from "./fixtures";
+import { ANSWER_KIT } from "./kitFixtures";
 
 export interface TaskScriptPlan {
   segments: ScriptFrame[][];
@@ -180,6 +181,27 @@ export function scriptForQuery(taskId: string, query: string, context: SessionCo
           { event: "action_draft.created", data: { draftId: "act-001", actionType: "shift_plan_change" } },
           ...step("s3", "render_answer", 25),
           { event: "answer.final", data: ANSWER_ADOPT as unknown as Record<string, unknown> },
+        ],
+      ],
+    };
+  }
+
+  // S08 物料齐套分析（WO-S08-KIT-PROCUREMENT-FE）：答案里带采购四段。
+  // 触发词取自场景目录 S08 的预置问句「下周哪些订单缺料开不了工？」。
+  // 放在「风险」「影响哪些订单」之后：那两条的判据里已排除了本句（本句无"风险"、无"影响哪些订单"）。
+  if (query.includes("缺料") || query.includes("齐套")) {
+    return {
+      path: "WORKFLOW",
+      intentKey: "kit_analysis",
+      finalAnswer: ANSWER_KIT,
+      segments: [
+        [
+          accepted,
+          { event: "routing.completed", data: { path: "WORKFLOW", intentKey: "kit_analysis", confidence: 0.93 } },
+          ...step("s1", "query_objects", 150),
+          ...step("s2", "invoke_solver", 880),
+          ...step("s3", "render_answer", 30),
+          { event: "answer.final", data: ANSWER_KIT as unknown as Record<string, unknown> },
         ],
       ],
     };

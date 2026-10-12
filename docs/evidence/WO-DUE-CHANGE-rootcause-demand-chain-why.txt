@@ -1,0 +1,163 @@
+# 需求链逐拍实测  session=sims_1hd7mx38bdjv1nff  BASE=http://127.0.0.1:4019
+# 每条规则 coeff 来自 GET /a/v1/sim/propagation-rules?published=true（真后端 55 条）
+
+── tick 1 ─────────────────────────────
+  model.demandLoad                   n=6 非零=6 min=15.338 max=82.827  样例[15.338, 82.827]
+  model.forecastBias                 n=6 非零=6 min=1.000 max=88.000  样例[1.000, 88.000]
+  model.costPressure                 n=6 非零=2 min=0.000 max=0.208  样例[0.000, 0.208]
+  order.demandPressure               n=150 非零=99 min=0.000 max=37.578  样例[0.000, 37.578]
+  order.orderChurn                   n=150 非零=149 min=0.000 max=100.000  样例[0.000, 100.000]
+  finishedgoodsinventory.coverDays   n=18 非零=18 min=1.932 max=42.344  样例[1.932, 42.344]
+  finishedgoodsinventory.drawdownPressure n=18 非零=18 min=24.546 max=70.956  样例[24.546, 70.956]
+  饱和自报（demand* 相关）：
+     {"objectId":"obj_model_2170-NCM","stateVar":"demandLoad","raw":86.394496518033,"value":82.827073876669,"bound":"max"}
+     {"objectId":"obj_order_SO-3402","stateVar":"demandPressure","raw":-0.39,"value":0,"bound":"min"}
+     {"objectId":"obj_order_SO-3420","stateVar":"demandPressure","raw":-10.47,"value":0,"bound":"min"}
+     {"objectId":"obj_order_SO-3445","stateVar":"demandPressure","raw":-13.758,"value":0,"bound":"min"}
+     {"objectId":"obj_order_SO-3470","stateVar":"demandPressure","raw":-13.236,"value":0,"bound":"min"}
+     {"objectId":"obj_order_SO-3481","stateVar":"demandPressure","raw":-8.58,"value":0,"bound":"min"}
+
+── tick 2 ─────────────────────────────
+  model.demandLoad                   n=6 非零=6 min=6.805 max=49.800  样例[6.805, 49.800]
+  model.forecastBias                 n=6 非零=6 min=1.000 max=88.000  样例[1.000, 88.000]
+  model.costPressure                 n=6 非零=0 min=0.000 max=0.000  样例[0.000, 0.000]
+  order.demandPressure               n=150 非零=50 min=0.000 max=23.452  样例[0.000, 23.452]
+  order.orderChurn                   n=150 非零=149 min=0.000 max=100.000  样例[0.000, 100.000]
+  finishedgoodsinventory.coverDays   n=18 非零=18 min=1.932 max=42.344  样例[1.932, 42.344]
+  finishedgoodsinventory.drawdownPressure n=18 非零=18 min=20.593 max=63.090  样例[20.593, 63.090]
+  饱和自报（demand* 相关）：
+     {"objectId":"obj_order_SO-3402","stateVar":"demandPressure","raw":-11.1,"value":0,"bound":"min"}
+     {"objectId":"obj_order_SO-3415","stateVar":"demandPressure","raw":-1.8201,"value":0,"bound":"min"}
+     {"objectId":"obj_order_SO-3420","stateVar":"demandPressure","raw":-11.1,"value":0,"bound":"min"}
+     {"objectId":"obj_order_SO-3445","stateVar":"demandPressure","raw":-17.538,"value":0,"bound":"min"}
+     {"objectId":"obj_order_SO-3470","stateVar":"demandPressure","raw":-19.536,"value":0,"bound":"min"}
+     {"objectId":"obj_order_SO-3476","stateVar":"demandPressure","raw":-12.79248,"value":0,"bound":"min"}
+
+── tick 3 ─────────────────────────────
+  model.demandLoad                   n=6 非零=4 min=0.000 max=27.847  样例[0.000, 27.847]
+  model.forecastBias                 n=6 非零=6 min=1.000 max=88.000  样例[1.000, 88.000]
+  model.costPressure                 n=6 非零=6 min=0.084 max=0.809  样例[0.084, 0.809]
+  order.demandPressure               n=150 非零=46 min=0.000 max=14.553  样例[0.000, 14.553]
+  order.orderChurn                   n=150 非零=149 min=0.000 max=100.000  样例[0.000, 100.000]
+  finishedgoodsinventory.coverDays   n=18 非零=18 min=1.932 max=42.344  样例[1.932, 42.344]
+  finishedgoodsinventory.drawdownPressure n=18 非零=18 min=14.484 max=50.802  样例[14.484, 50.802]
+  饱和自报（demand* 相关）：
+     {"objectId":"obj_model_4680-NCM","stateVar":"demandLoad","raw":-0.658848523585,"value":0,"bound":"min"}
+     {"objectId":"obj_model_方形-LFP","stateVar":"demandLoad","raw":-0.057455912112,"value":0,"bound":"min"}
+     {"objectId":"obj_order_SO-3391","stateVar":"demandPressure","raw":-7.49577,"value":0,"bound":"min"}
+     {"objectId":"obj_order_SO-3402","stateVar":"demandPressure","raw":-11.1,"value":0,"bound":"min"}
+     {"objectId":"obj_order_SO-3415","stateVar":"demandPressure","raw":-11.1,"value":0,"bound":"min"}
+     {"objectId":"obj_order_SO-3420","stateVar":"demandPressure","raw":-11.1,"value":0,"bound":"min"}
+
+── tick 4 ─────────────────────────────
+  model.demandLoad                   n=6 非零=2 min=0.000 max=13.396  样例[0.000, 13.396]
+  model.forecastBias                 n=6 非零=6 min=1.000 max=88.000  样例[1.000, 88.000]
+  model.costPressure                 n=6 非零=6 min=0.724 max=1.836  样例[0.724, 1.836]
+  order.demandPressure               n=150 非零=39 min=0.000 max=8.946  样例[0.000, 8.946]
+  order.orderChurn                   n=150 非零=149 min=0.000 max=100.000  样例[0.000, 100.000]
+  finishedgoodsinventory.coverDays   n=18 非零=18 min=1.932 max=42.344  样例[1.932, 42.344]
+  finishedgoodsinventory.drawdownPressure n=18 非零=18 min=9.125 max=38.187  样例[9.125, 38.187]
+  饱和自报（demand* 相关）：
+     {"objectId":"obj_model_4680-LFP","stateVar":"demandLoad","raw":-6.521152186776,"value":0,"bound":"min"}
+     {"objectId":"obj_model_4680-NCM","stateVar":"demandLoad","raw":-5.074843897811,"value":0,"bound":"min"}
+     {"objectId":"obj_model_方形-LFP","stateVar":"demandLoad","raw":-5.228597883355,"value":0,"bound":"min"}
+     {"objectId":"obj_model_方形-NCM","stateVar":"demandLoad","raw":-0.910320245954,"value":0,"bound":"min"}
+     {"objectId":"obj_order_SO-3391","stateVar":"demandPressure","raw":-11.1,"value":0,"bound":"min"}
+     {"objectId":"obj_order_SO-3402","stateVar":"demandPressure","raw":-11.1,"value":0,"bound":"min"}
+
+── tick 5 ─────────────────────────────
+  model.demandLoad                   n=6 非零=1 min=0.000 max=3.965  样例[0.000, 3.965]
+  model.forecastBias                 n=6 非零=6 min=1.000 max=88.000  样例[1.000, 88.000]
+  model.costPressure                 n=6 非零=6 min=1.502 max=2.981  样例[1.502, 2.981]
+  order.demandPressure               n=150 非零=28 min=0.000 max=5.414  样例[0.000, 5.414]
+  order.orderChurn                   n=150 非零=149 min=0.000 max=100.000  样例[0.000, 100.000]
+  finishedgoodsinventory.coverDays   n=18 非零=18 min=1.932 max=42.344  样例[1.932, 42.344]
+  finishedgoodsinventory.drawdownPressure n=18 非零=18 min=5.749 max=27.032  样例[5.749, 27.032]
+  饱和自报（demand* 相关）：
+     {"objectId":"obj_model_4680-LFP","stateVar":"demandLoad","raw":-6.811363428683,"value":0,"bound":"min"}
+     {"objectId":"obj_model_4680-NCM","stateVar":"demandLoad","raw":-4.966670614408,"value":0,"bound":"min"}
+     {"objectId":"obj_model_方形-LFP","stateVar":"demandLoad","raw":-5.738217912963,"value":0,"bound":"min"}
+     {"objectId":"obj_model_方形-NCM","stateVar":"demandLoad","raw":-4.404170414904,"value":0,"bound":"min"}
+     {"objectId":"obj_model_圆柱-LFP","stateVar":"demandLoad","raw":-0.197552925081,"value":0,"bound":"min"}
+     {"objectId":"obj_order_SO-3391","stateVar":"demandPressure","raw":-11.1,"value":0,"bound":"min"}
+
+── tick 6 ─────────────────────────────
+  model.demandLoad                   n=6 非零=0 min=0.000 max=0.000  样例[0.000, 0.000]
+  model.forecastBias                 n=6 非零=6 min=1.000 max=88.000  样例[1.000, 88.000]
+  model.costPressure                 n=6 非零=6 min=1.898 max=3.775  样例[1.898, 3.775]
+  order.demandPressure               n=150 非零=20 min=0.000 max=3.189  样例[0.000, 3.189]
+  order.orderChurn                   n=150 非零=149 min=0.000 max=100.000  样例[0.000, 100.000]
+  finishedgoodsinventory.coverDays   n=18 非零=18 min=1.932 max=42.344  样例[1.932, 42.344]
+  finishedgoodsinventory.drawdownPressure n=18 非零=18 min=3.622 max=17.910  样例[3.622, 17.910]
+  饱和自报（demand* 相关）：
+     {"objectId":"obj_model_2170-NCM","stateVar":"demandLoad","raw":-2.142557909221,"value":0,"bound":"min"}
+     {"objectId":"obj_model_4680-LFP","stateVar":"demandLoad","raw":-6.719314347325,"value":0,"bound":"min"}
+     {"objectId":"obj_model_4680-NCM","stateVar":"demandLoad","raw":-4.885186619436,"value":0,"bound":"min"}
+     {"objectId":"obj_model_方形-LFP","stateVar":"demandLoad","raw":-5.971661782516,"value":0,"bound":"min"}
+     {"objectId":"obj_model_方形-NCM","stateVar":"demandLoad","raw":-4.325489581252,"value":0,"bound":"min"}
+     {"objectId":"obj_model_圆柱-LFP","stateVar":"demandLoad","raw":-2.931356999434,"value":0,"bound":"min"}
+
+── tick 7 ─────────────────────────────
+  model.demandLoad                   n=6 非零=0 min=0.000 max=0.000  样例[0.000, 0.000]
+  model.forecastBias                 n=6 非零=6 min=1.000 max=88.000  样例[1.000, 88.000]
+  model.costPressure                 n=6 非零=6 min=1.968 max=4.089  样例[1.968, 4.089]
+  order.demandPressure               n=150 非零=17 min=0.000 max=1.787  样例[0.000, 1.787]
+  order.orderChurn                   n=150 非零=149 min=0.000 max=100.000  样例[0.000, 100.000]
+  finishedgoodsinventory.coverDays   n=18 非零=18 min=1.932 max=42.344  样例[1.932, 42.344]
+  finishedgoodsinventory.drawdownPressure n=18 非零=18 min=2.282 max=11.283  样例[2.282, 11.283]
+  饱和自报（demand* 相关）：
+     {"objectId":"obj_model_2170-NCM","stateVar":"demandLoad","raw":-4.710131351502,"value":0,"bound":"min"}
+     {"objectId":"obj_model_4680-LFP","stateVar":"demandLoad","raw":-6.660134803233,"value":0,"bound":"min"}
+     {"objectId":"obj_model_4680-NCM","stateVar":"demandLoad","raw":-4.833851702603,"value":0,"bound":"min"}
+     {"objectId":"obj_model_方形-LFP","stateVar":"demandLoad","raw":-5.988086175453,"value":0,"bound":"min"}
+     {"objectId":"obj_model_方形-NCM","stateVar":"demandLoad","raw":-4.265317577972,"value":0,"bound":"min"}
+     {"objectId":"obj_model_圆柱-LFP","stateVar":"demandLoad","raw":-2.873802478316,"value":0,"bound":"min"}
+
+── tick 8 ─────────────────────────────
+  model.demandLoad                   n=6 非零=0 min=0.000 max=0.000  样例[0.000, 0.000]
+  model.forecastBias                 n=6 非零=6 min=1.000 max=88.000  样例[1.000, 88.000]
+  model.costPressure                 n=6 非零=6 min=1.744 max=3.961  样例[1.744, 3.961]
+  order.demandPressure               n=150 非零=15 min=0.000 max=0.904  样例[0.000, 0.904]
+  order.orderChurn                   n=150 非零=149 min=0.000 max=100.000  样例[0.000, 100.000]
+  finishedgoodsinventory.coverDays   n=18 非零=18 min=1.932 max=42.344  样例[1.932, 42.344]
+  finishedgoodsinventory.drawdownPressure n=18 非零=18 min=1.437 max=7.109  样例[1.437, 7.109]
+  饱和自报（demand* 相关）：
+     {"objectId":"obj_model_2170-NCM","stateVar":"demandLoad","raw":-4.730987439735,"value":0,"bound":"min"}
+     {"objectId":"obj_model_4680-LFP","stateVar":"demandLoad","raw":-6.622851690455,"value":0,"bound":"min"}
+     {"objectId":"obj_model_4680-NCM","stateVar":"demandLoad","raw":-4.801510704998,"value":0,"bound":"min"}
+     {"objectId":"obj_model_方形-LFP","stateVar":"demandLoad","raw":-5.957100184032,"value":0,"bound":"min"}
+     {"objectId":"obj_model_方形-NCM","stateVar":"demandLoad","raw":-4.227409215908,"value":0,"bound":"min"}
+     {"objectId":"obj_model_圆柱-LFP","stateVar":"demandLoad","raw":-2.829258170772,"value":0,"bound":"min"}
+
+── tick 9 ─────────────────────────────
+  model.demandLoad                   n=6 非零=0 min=0.000 max=0.000  样例[0.000, 0.000]
+  model.forecastBias                 n=6 非零=6 min=1.000 max=88.000  样例[1.000, 88.000]
+  model.costPressure                 n=6 非零=6 min=1.121 max=3.498  样例[1.121, 3.498]
+  order.demandPressure               n=150 非零=6 min=0.000 max=0.347  样例[0.000, 0.347]
+  order.orderChurn                   n=150 非零=149 min=0.000 max=100.000  样例[0.000, 100.000]
+  finishedgoodsinventory.coverDays   n=18 非零=18 min=1.932 max=42.344  样例[1.932, 42.344]
+  finishedgoodsinventory.drawdownPressure n=18 非零=18 min=0.906 max=4.478  样例[0.906, 4.478]
+  饱和自报（demand* 相关）：
+     {"objectId":"obj_model_2170-NCM","stateVar":"demandLoad","raw":-4.733152041627,"value":0,"bound":"min"}
+     {"objectId":"obj_model_4680-LFP","stateVar":"demandLoad","raw":-6.599363329405,"value":0,"bound":"min"}
+     {"objectId":"obj_model_4680-NCM","stateVar":"demandLoad","raw":-4.781135876507,"value":0,"bound":"min"}
+     {"objectId":"obj_model_方形-LFP","stateVar":"demandLoad","raw":-5.937579009437,"value":0,"bound":"min"}
+     {"objectId":"obj_model_方形-NCM","stateVar":"demandLoad","raw":-4.203526947806,"value":0,"bound":"min"}
+     {"objectId":"obj_model_圆柱-LFP","stateVar":"demandLoad","raw":-2.801195257019,"value":0,"bound":"min"}
+
+── tick 10 ─────────────────────────────
+  model.demandLoad                   n=6 非零=0 min=0.000 max=0.000  样例[0.000, 0.000]
+  model.forecastBias                 n=6 非零=6 min=1.000 max=88.000  样例[1.000, 88.000]
+  model.costPressure                 n=6 非零=6 min=0.277 max=2.816  样例[0.277, 2.816]
+  order.demandPressure               n=150 非零=0 min=0.000 max=0.000  样例[0.000, 0.000]
+  order.orderChurn                   n=150 非零=149 min=0.000 max=100.000  样例[0.000, 100.000]
+  finishedgoodsinventory.coverDays   n=18 非零=18 min=1.932 max=42.344  样例[1.932, 42.344]
+  finishedgoodsinventory.drawdownPressure n=18 非零=18 min=0.571 max=2.821  样例[0.571, 2.821]
+  饱和自报（demand* 相关）：
+     {"objectId":"obj_model_2170-NCM","stateVar":"demandLoad","raw":-4.727257422021,"value":0,"bound":"min"}
+     {"objectId":"obj_model_4680-LFP","stateVar":"demandLoad","raw":-6.584565661944,"value":0,"bound":"min"}
+     {"objectId":"obj_model_4680-NCM","stateVar":"demandLoad","raw":-4.768299734559,"value":0,"bound":"min"}
+     {"objectId":"obj_model_方形-LFP","stateVar":"demandLoad","raw":-5.925280669442,"value":0,"bound":"min"}
+     {"objectId":"obj_model_方形-NCM","stateVar":"demandLoad","raw":-4.188481118902,"value":0,"bound":"min"}
+     {"objectId":"obj_model_圆柱-LFP","stateVar":"demandLoad","raw":-2.783515621354,"value":0,"bound":"min"}
+

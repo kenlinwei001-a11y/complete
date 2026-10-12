@@ -1,0 +1,10 @@
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/agent-a80b730eca94f0bb7/apps/frontend-shell
+
+ ✓ test/use-option-adopt-resolve.test.ts (5 tests) 12ms
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  22:46:37
+   Duration  4.49s (transform 1.72s, setup 3.20s, collect 16ms, tests 12ms, environment 742ms, prepare 113ms)
+

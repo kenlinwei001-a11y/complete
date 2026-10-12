@@ -1,0 +1,236 @@
+① 打开 http://127.0.0.1:5173/ → http://127.0.0.1:5173/login
+② 登录表单存在 = true
+③ 登录后 URL = http://127.0.0.1:5173/
+④ 控制台 URL = http://127.0.0.1:5173/v/sim-unified
+⑤ DOM 快照：testid=120 inputs=3 buttons=58 正文=3285字符
+
+── 输入框 ──
+   <INPUT> id=- tid=global-search-input ph="全局搜索对象…"
+   <INPUT> id=- tid=c0828-horizon ph=""
+   <INPUT> id=- tid=- ph="输入问题，回车提交…"
+
+── testid（前 60）──
+   skip-to-main
+   tenant-name
+   global-search-input
+   history-clock
+   health-badge
+   health-dot
+   theme-toggle
+   user-menu-btn
+   left-nav
+   nav-scenario-launcher
+   nav-business
+   nav-decision-console
+   nav-group-规划与平衡
+   nav-group-toggle-规划与平衡
+   nav-group-推演
+   nav-group-toggle-推演
+   nav-sim-unified
+   nav-sim-sandbox
+   nav-group-台账与地图
+   nav-group-toggle-台账与地图
+   nav-group-数据接入
+   nav-group-toggle-数据接入
+   nav-group-建模与图谱
+   nav-group-toggle-建模与图谱
+   nav-group-图谱体系
+   nav-group-toggle-图谱体系
+   nav-group-规则与校准
+   nav-group-toggle-规则与校准
+   nav-group-构建与成长
+   nav-group-toggle-构建与成长
+   nav-group-编排与场景
+   nav-group-toggle-编排与场景
+   nav-group-运营与审批
+   nav-group-toggle-运营与审批
+   nav-group-平台与系统
+   nav-group-toggle-平台与系统
+   usim-shell
+   c0828-shell
+   c0828-topbar
+   c0828-scope-select
+   c0828-scope-echo
+   c0828-restored
+   c0828-restored-sims_demo_seed_world_p0
+   c0828-kpis
+   c0828-kpi-book
+   info-wrap-c0828-kpi-book
+   info-c0828-kpi-book
+   c0828-kpi-staged
+   info-wrap-c0828-kpi-staged
+   info-c0828-kpi-staged
+   c0828-kpi-entity
+   info-wrap-c0828-kpi-entity
+   info-c0828-kpi-entity
+   c0828-root
+   c0828-rail
+   c0828-staged-empty
+   c0828-ev-material-price-up
+   c0828-ev-batch-defect
+   c0828-ev-rush-order
+   c0828-ev-due-change
+
+── 按钮（前 30）──
+   history-clock
+   health-badge
+   theme-toggle
+   user-menu-btn
+   nav-group-toggle-规划与平衡
+   nav-group-toggle-推演
+   nav-group-toggle-台账与地图
+   nav-group-toggle-数据接入
+   nav-group-toggle-建模与图谱
+   nav-group-toggle-图谱体系
+   nav-group-toggle-规则与校准
+   nav-group-toggle-构建与成长
+   nav-group-toggle-编排与场景
+   nav-group-toggle-运营与审批
+   nav-group-toggle-平台与系统
+   info-c0828-kpi-book
+   info-c0828-kpi-staged
+   info-c0828-kpi-entity
+   c0828-ev-material-price-up
+   c0828-ev-batch-defect
+   c0828-ev-rush-order
+   c0828-ev-due-change
+   c0828-ev-order-cancel
+   c0828-ev-inbound-delay
+   c0828-ev-material-short
+   c0828-ev-equipment-down
+   c0828-ev-capacity-loss
+   c0828-ev-ship-to-change
+   c0828-ev-order-reprice
+   c0828-ev-forecast-bias
+
+── 正文头部 ──
+跳到主内容
+全域数字化智能决策支撑系统
+全域数字化智能决策支撑系统
+🕐
+健康度
+🌙
+A
+admin
+▾
+⚡ 场景启动器
+经营驾驶舱
+事件影响与对策
+▾
+规划与平衡
+年度规划
+季度规划
+月度规划
+规划体检
+规划建议
+▾
+推演
+统一推演控制台
+推演沙盘
+接单可行性
+接单组合优选
+产能推演
+订单进展与卡因
+▾
+台账与地图
+订单台账
+基地地理视图
+▾
+数据接入
+连接器与上传
+规则文档审核
+合成数据
+外部信号
+隔离区
+▾
+建模与图谱
+本体图谱
+本体建模
+对象/类型浏览
+域管理
+对象接口
+本体关系
+本体切片
+实体合并
+边界册治理
+原型 intake
+▾
+图谱体系
+▾
+规则与校准
+规则库
+校准报告
+▾
+构建与成长
+数据构建发动机
+构建 Pipeline 配置
+自成长发动机
+Agent 评测
+求解器目录
+求解器审核台
+▾
+编排与场景
+意图目录
+Agent
+Workflow
+Skill 库
+MCP
+场景入口
+智能资源治理
+计划构建画布
+兜底统计
+视图配置
+▾
+运营与审批
+Action 审批
+组织世界
+运营自动化
+定时任务
+工厂日历
+通知中心
+闭环验证(VLE)
+▾
+平台与系统
+用户管理
+权限策略
+功能开通
+LLM Provider
+配置迁移
+系统自我
+推演与对策
+范围
+全网（未限定）
+常州
+厦门
+成都
+眉山
+武汉
+江门
+合肥
+信阳
+枣庄
+邯郸
+自贡
+金华
+扬州
+当前扫描范围：
+未限定（全域）
+服
+
+── 页面发出的后端请求（去重，计数）──
+   ×   4  http://127.0.0.1:4001  /a/v1/auth/refresh
+   ×   4  http://127.0.0.1:4001  /a/v1/me/workspace
+   ×   4  http://127.0.0.1:4001  /a/v1/history/watermark
+   ×   4  http://127.0.0.1:4001  /a/v1/data-health
+   ×   4  http://127.0.0.1:4001  /a/v1/sim/drill/state-var-layers
+   ×   2  http://127.0.0.1:4001  /a/v1/auth/login
+   ×   2  http://127.0.0.1:4002  /b/v1/scenarios
+   ×   2  http://127.0.0.1:4001  /a/v1/sim/view-config
+   ×   2  http://127.0.0.1:4001  /a/v1/sim/propagation-rules?published=true
+   ×   2  http://127.0.0.1:4001  /a/v1/objects?type=Order&q=&page=1&pageSize=500
+   ×   2  http://127.0.0.1:4001  /a/v1/ontology/object-types
+   ×   2  http://127.0.0.1:4002  /b/v1/solvers/chain_impediments/run
+   ×   2  http://127.0.0.1:4001  /a/v1/sim/sessions
+   ×   2  http://127.0.0.1:4001  /a/v1/sim/sessions/sims_demo_seed_world/perturbations
+   ×   2  http://127.0.0.1:4001  /a/v1/sim/sessions/sims_demo_seed_world/metric-series?limit=500&stateVars=backlogPriceTop%2CbacklogQtyTop%2CblockedPressure%2CchangeoverPressure%2CclearanceQueueDays%2CcollectionPressure%2CcostPressure%2CcoverDays%2CdefectPressure%2CdeliveryDelay%2CdeliveryHoldRisk%2CdemandLoad%2CdemandPressure%2CdrawdownPressure%2CequipmentFailure%2CexpeditePressure%2CfeedPressure%2CforecastBias%2CgapPressure%2ChandlingBacklog%2CinboundExpeditePressure%2CinspectBacklog%2CleadDays%2CloadIndex%2CloadPressure%2CorderChurn%2CoverduePressure%2CpriceShock%2CprocurementDelay%2CpromiseRisk%2Cqty%2CqualificationQueue%2CqueueDays%2CqueuePressure%2CreceivablePressure%2CreleasePressure%2CrepairBacklog%2CreviewPressure%2CshortageRisk%2CsplitPressure%2CsupplyRisk%2CswitchPressure%2CtransferPressure%2CturnoverPressure%2CunitPrice%2CutilPressure%2CwindowSqueeze
+   ×   2  http://127.0.0.1:4001  /a/v1/sim/sessions/sims_demo_seed_world/pricing

@@ -11,8 +11,10 @@ import {
 import {
   createLlmProvider,
   fetchLlmBindings,
+  fetchLlmBudget,
   fetchLlmProviders,
   putLlmBindings,
+  putLlmBudget,
   testLlmProvider,
   updateLlmProvider,
   type LlmProviderSaveBody,
@@ -21,6 +23,7 @@ import {
 import { Modal } from "@/components/ui/Modal";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
+import { InfoPopover } from "@/components/InfoPopover";
 
 const KIND_BADGE: Record<LlmProvider["kind"], string> = {
   anthropic: "blue",
@@ -35,17 +38,18 @@ const PURPOSE_LABEL: Record<LlmPurpose, string> = {
   modeling: "建模建议（A3）",
   template_gen: "行业模板生成（A7）",
   compose: "llm_compose 步骤",
+  comprehend: "数据构建发动机·故事意图解析（接 Kimi）",
 };
 
 /**
  * /admin/llm-providers（LLM Provider 增量 §1.4，tenant_admin）：
  * Tab1 Provider 列表（kind 徽章/状态/模型数/token 用量）+ 编辑器（write-only 密钥、
- * 模型清单 + 能力勾选、连接测试、降级目标）；Tab2 用途绑定矩阵（6 用途 ×
+ * 模型清单 + 能力勾选、连接测试、降级目标）；Tab2 用途绑定矩阵（7 用途 ×
  * provider/model 下拉，能力不满足的选项禁用并注明缺什么）。
  */
 export default function LlmProvidersPage() {
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<"providers" | "bindings">("providers");
+  const [tab, setTab] = useState<"providers" | "bindings" | "budget">("providers");
   const { data: providers } = useQuery({ queryKey: ["a", "llm-providers"], queryFn: fetchLlmProviders });
   const [editing, setEditing] = useState<LlmProviderVM | "new" | null>(null);
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["a", "llm-providers"] });
@@ -60,6 +64,11 @@ export default function LlmProvidersPage() {
           </button>
           <button className={`btn sm ${tab === "bindings" ? "primary" : ""}`} onClick={() => setTab("bindings")} data-testid="tab-bindings">
             用途绑定矩阵
+          </button>
+          {/* WO-BEFE-F · OC7 成本配额：与 provider/绑定同页，因为三者是同一件事的三面
+              （用哪个模型 / 谁在用 / 用了多少还能用多少）。不新开导航项 ⇒ 不动信息架构。 */}
+          <button className={`btn sm ${tab === "budget" ? "primary" : ""}`} onClick={() => setTab("budget")} data-testid="tab-budget">
+            成本配额
           </button>
         </div>
         {tab === "providers" && (
@@ -115,6 +124,8 @@ export default function LlmProvidersPage() {
       )}
 
       {tab === "bindings" && <BindingMatrix providers={providers ?? []} />}
+
+      {tab === "budget" && <BudgetPanel />}
 
       {editing && (
         <ProviderEditor
@@ -394,20 +405,187 @@ function ProviderEditor({
   );
 }
 
-/** Tab2：用途绑定矩阵（6 用途 × provider/model；tools 缺失 → agent 用途选项禁用并注明）。 */
+/**
+ * Tab3：OC7 成本配额（WO-BEFE-F · `GET`/`PUT /a/v1/llm-budgets`）。
+ *
+ * 三态与后端 `budgetStatus()`（`apps/datacore/src/app.ts:1269-1274`）一字对齐，前端**不重算**：
+ * `state` / `softLimitTokens` / `degrade` 全部读后端回值 —— 自己再算一遍就会有第二个真值源，
+ * 软线口径一漂移，屏上说「还没超」而路径 B 已经在降级。
+ *
+ * `hardLimitTokens = 0` 在后端语义是**不限**（`hard > 0 &&` 才判超），UI 必须照说，
+ * 不能显示成「上限 0 ⇒ 全都超了」。
+ */
+function BudgetPanel() {
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery({ queryKey: ["a", "llm-budget"], queryFn: fetchLlmBudget });
+  const [hardLimit, setHardLimit] = useState("");
+  const [softPct, setSoftPct] = useState("");
+
+  const save = useMutation({
+    mutationFn: () => {
+      const hard = Number(hardLimit);
+      if (!Number.isFinite(hard) || hard < 0 || !Number.isInteger(hard)) {
+        throw new Error("硬线须为 ≥0 的整数 token 数（0 = 不限）");
+      }
+      const pct = softPct.trim() === "" ? undefined : Number(softPct) / 100;
+      if (pct !== undefined && (!Number.isFinite(pct) || pct < 0 || pct > 1)) {
+        throw new Error("软线百分比须在 0–100 之间");
+      }
+      return putLlmBudget({ hardLimitTokens: hard, ...(pct !== undefined ? { softLimitPct: pct } : {}) });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["a", "llm-budget"] });
+      toast("配额已更新 · 下一次 LLM 调用即按新线判定", "success");
+    },
+    onError: (e) => toastError(e instanceof Error ? e.message : String(e)),
+  });
+
+  const unlimited = data != null && data.hardLimitTokens === 0;
+  const pctUsed =
+    data && data.hardLimitTokens > 0 ? Math.min(100, (data.usedTokens / data.hardLimitTokens) * 100) : 0;
+
+  return (
+    <div className="panel" data-testid="llm-budget-panel">
+      <div className="section-title">当前用量</div>
+      {isLoading ? (
+        <span className="muted">加载中…</span>
+      ) : !data ? (
+        <span className="muted" data-testid="llm-budget-empty">
+          账本不可用
+          {/* 诚实位：「这次没查到」≠「没超」。状态留第一层，理由降 `?`（规范 §1）。 */}
+          <InfoPopover topic={zh.admin.layer.llmLedgerTopic} testId="llm-ledger-unavailable">
+            <p>{zh.admin.layer.llmLedgerBody}</p>
+          </InfoPopover>
+        </span>
+      ) : (
+        <>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <span
+              className={`badge ${data.state === "OK" ? "green" : data.state === "SOFT_EXCEEDED" ? "amber" : "red"}`}
+              data-testid="llm-budget-state"
+            >
+              {data.state === "OK" ? "正常" : data.state === "SOFT_EXCEEDED" ? "已过软线" : "已过硬线"}
+            </span>
+            {data.degrade && (
+              <span className="muted" style={{ fontSize: 12 }} data-testid="llm-budget-degrade">
+                ⚠ 已触发降级
+                {/* 「降级了」是状态，留第一层；「降级具体做什么」是口径，降 `?`。 */}
+                <InfoPopover topic={zh.admin.layer.llmDegradeTopic} testId="llm-degrade">
+                  <p>{zh.admin.layer.llmDegradeBody}</p>
+                  <p>过硬线则直接拒绝。</p>
+                </InfoPopover>
+              </span>
+            )}
+          </div>
+          <table className="cmp" style={{ width: "100%", maxWidth: 460 }}>
+            <tbody>
+              <tr>
+                <td>已用 token</td>
+                <td className="mono" data-testid="llm-budget-used">{data.usedTokens.toLocaleString()}</td>
+              </tr>
+              <tr>
+                <td>硬线</td>
+                <td className="mono" data-testid="llm-budget-hard">
+                  {unlimited ? "不限" : data.hardLimitTokens.toLocaleString()}
+                </td>
+              </tr>
+              <tr>
+                <td>软线</td>
+                <td className="mono" data-testid="llm-budget-soft">
+                  {unlimited ? "不限" : data.softLimitTokens.toLocaleString()}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          {!unlimited && (
+            <div
+              style={{ height: 6, background: "var(--hover-tint)", borderRadius: 3, marginTop: 8, maxWidth: 460 }}
+              role="progressbar"
+              aria-valuenow={Math.round(pctUsed)}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label="配额用量"
+            >
+              <div
+                style={{
+                  height: "100%",
+                  width: `${pctUsed}%`,
+                  borderRadius: 3,
+                  // 三档用的是 tokens.css 的**在册**令牌（`--ok:85` / `--amber:87` / `--danger`）。
+                  // ⛔ 原文写的是 `var(--green)` / `var(--red)` —— 这两个令牌**全仓无定义**，
+                  //    而 `var()` 又没给兜底值 ⇒ 声明作废、`background` 落回继承值，
+                  //    屏上不是「没上色」而是「这根用量条整条看不出档位」。
+                  //    `--amber` 是在册的，故保持不动（只改坏的那两个，别顺手统一）。
+                  background: data.state === "OK" ? "var(--ok)" : data.state === "SOFT_EXCEEDED" ? "var(--amber)" : "var(--danger)",
+                }}
+              />
+            </div>
+          )}
+        </>
+      )}
+
+      <div className="section-title" style={{ marginTop: 16 }}>调整配额</div>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
+        硬线 = 本周期 token 上限（<b>0 表示不限</b>）；软线 = 硬线的百分比，越线即开始降级。
+      </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <label style={{ fontSize: 12 }}>
+          硬线（token）{" "}
+          <input
+            data-testid="llm-budget-hard-input"
+            aria-label="硬线 token 上限"
+            type="number"
+            min={0}
+            step={1000}
+            value={hardLimit}
+            placeholder={data ? String(data.hardLimitTokens) : "0"}
+            onChange={(e) => setHardLimit(e.target.value)}
+            style={{ width: 140 }}
+          />
+        </label>
+        <label style={{ fontSize: 12 }}>
+          软线（%）{" "}
+          <input
+            data-testid="llm-budget-soft-input"
+            aria-label="软线百分比"
+            type="number"
+            min={0}
+            max={100}
+            value={softPct}
+            placeholder="80"
+            onChange={(e) => setSoftPct(e.target.value)}
+            style={{ width: 90 }}
+          />
+        </label>
+        <button
+          className="btn primary sm"
+          data-testid="llm-budget-save"
+          disabled={hardLimit.trim() === "" || save.isPending}
+          onClick={() => save.mutate()}
+        >
+          保存配额
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Tab2：用途绑定矩阵（7 用途 × provider/model；tools 缺失 → agent 用途选项禁用并注明）。 */
 function BindingMatrix({ providers }: { providers: LlmProviderVM[] }) {
   const queryClient = useQueryClient();
   const { data } = useQuery({ queryKey: ["a", "llm-bindings"], queryFn: fetchLlmBindings });
-  const [draft, setDraft] = useState<Record<string, { providerId: string; modelId: string }>>({});
+  const [draft, setDraft] = useState<Record<string, { providerId: string; modelId: string; noReasoning?: boolean }>>({});
 
-  const current = (purpose: LlmPurpose): { providerId: string; modelId: string } =>
+  const current = (purpose: LlmPurpose): { providerId: string; modelId: string; noReasoning?: boolean } =>
     draft[purpose] ?? data?.bindings.find((b) => b.purpose === purpose) ?? { providerId: "", modelId: "" };
 
   const saveMut = useMutation({
     mutationFn: () => {
       const bindings: PurposeBinding[] = LLM_PURPOSES.map((purpose) => {
         const v = current(purpose);
-        return v.providerId && v.modelId ? { purpose, providerId: v.providerId, modelId: v.modelId } : null;
+        return v.providerId && v.modelId
+          ? { purpose, providerId: v.providerId, modelId: v.modelId, ...(v.noReasoning ? { noReasoning: true } : {}) }
+          : null;
       }).filter((b): b is PurposeBinding => b !== null);
       return putLlmBindings(bindings);
     },
@@ -426,9 +604,24 @@ function BindingMatrix({ providers }: { providers: LlmProviderVM[] }) {
         <thead>
           <tr>
             <th>用途</th>
-            <th>能力要求</th>
+            {/* 能力要求列：口径（tools 硬性 / structuredOutput 可降级）在表头浮层里说一次，
+                不再逐行重复挂在每个单元格上（规范 §2 R-UI-3 + §1「第一层只放名字」）。 */}
+            <th>
+              能力要求
+              <InfoPopover topic={zh.admin.layer.llmCapTopic} testId="llm-cap">
+                <p>{zh.admin.layer.llmCapBody}</p>
+                <p>tools（硬性）：供应商不支持工具调用即不可用于该用途，没有降级路径。</p>
+              </InfoPopover>
+            </th>
             <th>provider</th>
             <th>model</th>
+            {/* WO-HOVER-LAYER：口径从原生 `title=` 迁到 InfoPopover（规范 §2 R-UI-3）。 */}
+            <th>
+              关推理
+              <InfoPopover topic={zh.sim.sandbox.info.llmNoReasoningTopic} testId="llm-no-reasoning" align="right">
+                {zh.sim.sandbox.info.llmNoReasoningBody}
+              </InfoPopover>
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -439,10 +632,11 @@ function BindingMatrix({ providers }: { providers: LlmProviderVM[] }) {
             return (
               <tr key={purpose} data-testid={`binding-row-${purpose}`}>
                 <td className="zh">
-                  <span className="mono" style={{ fontSize: 11 }}>{purpose}</span> · {PURPOSE_LABEL[purpose]}
+                  <span className="mono" style={{ fontSize: 12 }}>{purpose}</span> · {PURPOSE_LABEL[purpose]}
                 </td>
-                <td style={{ fontSize: 11, color: "var(--muted)" }}>
-                  {[req.tools ? "tools（硬性）" : null, req.structuredOutput ? "structuredOutput（可 JSON-mode 降级）" : null]
+                <td style={{ fontSize: 12, color: "var(--muted)" }}>
+                  {/* 只留能力**名字**；「硬性 / 可 JSON-mode 降级」的口径在本列表头的 `?` 里。 */}
+                  {[req.tools ? "tools" : null, req.structuredOutput ? "structuredOutput" : null]
                     .filter(Boolean)
                     .join(" + ") || "无"}
                 </td>
@@ -451,7 +645,7 @@ function BindingMatrix({ providers }: { providers: LlmProviderVM[] }) {
                     value={v.providerId}
                     aria-label={`${purpose}-provider`}
                     data-testid={`binding-provider-${purpose}`}
-                    onChange={(e) => setDraft((d) => ({ ...d, [purpose]: { providerId: e.target.value, modelId: "" } }))}
+                    onChange={(e) => setDraft((d) => ({ ...d, [purpose]: { providerId: e.target.value, modelId: "", noReasoning: v.noReasoning } }))}
                   >
                     <option value="">（未绑定 → 系统默认）</option>
                     {providers
@@ -468,9 +662,13 @@ function BindingMatrix({ providers }: { providers: LlmProviderVM[] }) {
                     value={v.modelId}
                     aria-label={`${purpose}-model`}
                     data-testid={`binding-model-${purpose}`}
-                    onChange={(e) => setDraft((d) => ({ ...d, [purpose]: { providerId: v.providerId, modelId: e.target.value } }))}
+                    onChange={(e) => setDraft((d) => ({ ...d, [purpose]: { providerId: v.providerId, modelId: e.target.value, noReasoning: v.noReasoning } }))}
                   >
                     <option value="">（选择模型）</option>
+                    {/* G-7：已绑 model 不在当前 provider 目录时仍可见可选，避免静默显示空白（像"绑定丢了"） */}
+                    {v.modelId && !(provider?.models ?? []).some((m) => m.modelId === v.modelId) && (
+                      <option value={v.modelId}>{v.modelId}（已绑 · 不在当前 provider 目录）</option>
+                    )}
                     {(provider?.models ?? []).map((m) => {
                       const missing: string[] = [];
                       if (req.tools && !m.capabilities.tools) missing.push("tools");
@@ -484,6 +682,20 @@ function BindingMatrix({ providers }: { providers: LlmProviderVM[] }) {
                       );
                     })}
                   </select>
+                </td>
+                <td style={{ textAlign: "center" }}>
+                  <input
+                    type="checkbox"
+                    aria-label={`${purpose}-noReasoning`}
+                    data-testid={`binding-noreason-${purpose}`}
+                    checked={Boolean(v.noReasoning)}
+                    onChange={(e) =>
+                      setDraft((d) => ({ ...d, [purpose]: { providerId: v.providerId, modelId: v.modelId, noReasoning: e.target.checked } }))
+                    }
+                  />
+                  {v.noReasoning && (provider?.models ?? []).find((m) => m.modelId === v.modelId)?.capabilities.reasoning ? (
+                    <div style={{ fontSize: 12, color: "var(--muted2)" }}>→非推理兄弟</div>
+                  ) : null}
                 </td>
               </tr>
             );

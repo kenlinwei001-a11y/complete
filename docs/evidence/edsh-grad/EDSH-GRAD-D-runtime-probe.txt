@@ -1,0 +1,16 @@
+=== 运行时探针：外部闭包是否在启动图里被解析 ===
+环境：DSH_HARNESS=0 · dist=present · hook=@deepseek-ai/* 解析即打印
+
+--- 测试臂：import dist/engine.js（唯一的分叉宿主） ---
+[engine] 导入完成
+RC=0
+
+--- 阳性对照①：import dist/dsh-runtime/runner.js（必须命中，否则探针瞎） ---
+[runner] 导入完成
+[HOOK] 解析到外部闭包: @deepseek-ai/dsh-sdk-client
+[HOOK] 解析到外部闭包: @deepseek-ai/dsh-sdk-protocol
+RC=0
+
+--- 阳性对照②：import dist/dsh-runtime/workflow-mcp.js（被静态引入的那个模块） ---
+[workflow-mcp] 导入完成
+RC=0

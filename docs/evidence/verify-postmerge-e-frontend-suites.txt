@@ -1,0 +1,54 @@
+
+ RUN  v3.2.6 /Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/frontend-shell
+
+stderr | test/f28.calibration.test.tsx > F28 · 校准报告页（/admin/calibration，M11 增量） > MAPE 趋势含 C12 阈值线（8%）与触发标记点 + 切片徽章（INSUFFICIENT_SAMPLES）+ 三级筛选
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+
+stderr | test/f28.calibration.test.tsx > F28 · 校准报告页（/admin/calibration，M11 增量） > MAPE 趋势含 C12 阈值线（8%）与触发标记点 + 切片徽章（INSUFFICIENT_SAMPLES）+ 三级筛选
+[ECharts] Can't get DOM width or height. Please check dom.clientWidth and dom.clientHeight. They should not be 0.For example, you may need to call this in the callback of window.onload.
+
+stderr | test/f28.calibration.test.tsx > F28 · 校准报告页（/admin/calibration，M11 增量） > MAPE 趋势含 C12 阈值线（8%）与触发标记点 + 切片徽章（INSUFFICIENT_SAMPLES）+ 三级筛选
+[ECharts] Can't get DOM width or height. Please check dom.clientWidth and dom.clientHeight. They should not be 0.For example, you may need to call this in the callback of window.onload.
+
+stderr | test/f28.calibration.test.tsx > F28 · 校准报告页（/admin/calibration，M11 增量） > MAPE 趋势含 C12 阈值线（8%）与触发标记点 + 切片徽章（INSUFFICIENT_SAMPLES）+ 三级筛选
+[ECharts] Can't get DOM width or height. Please check dom.clientWidth and dom.clientHeight. They should not be 0.For example, you may need to call this in the callback of window.onload.
+
+stderr | test/f28.calibration.test.tsx > F28 · 校准报告页（/admin/calibration，M11 增量） > MAPE 趋势含 C12 阈值线（8%）与触发标记点 + 切片徽章（INSUFFICIENT_SAMPLES）+ 三级筛选
+[ECharts] Can't get DOM width or height. Please check dom.clientWidth and dom.clientHeight. They should not be 0.For example, you may need to call this in the callback of window.onload.
+
+stderr | test/f28.calibration.test.tsx > F28 · 校准报告页（/admin/calibration，M11 增量） > 提案行：方法徽章（EMA/重放归因/分位数）+ 回测证据弹层 + HOLD/REJECTED 状态与标记
+[ECharts] Can't get DOM width or height. Please check dom.clientWidth and dom.clientHeight. They should not be 0.For example, you may need to call this in the callback of window.onload.
+
+stderr | test/f28.calibration.test.tsx > F28 · 校准报告页（/admin/calibration，M11 增量） > 提案批准走 Action 审批草稿（无直改参数 API）：状态仍 PENDING + 草稿入库
+[ECharts] Can't get DOM width or height. Please check dom.clientWidth and dom.clientHeight. They should not be 0.For example, you may need to call this in the callback of window.onload.
+
+stderr | test/f28.calibration.test.tsx > F28 · 校准报告页（/admin/calibration，M11 增量） > 「立即校准」按钮（M11 §3 手动触发）：POST /calibration/run → 运行摘要 toast
+[ECharts] Can't get DOM width or height. Please check dom.clientWidth and dom.clientHeight. They should not be 0.For example, you may need to call this in the callback of window.onload.
+
+stderr | test/f28.calibration.test.tsx > F28 · 校准报告页（/admin/calibration，M11 增量） > 校准历史时间线：触发原因 / 变更参数集 / 前后 MAPE + 预言 vs 实现（元闭环）
+[ECharts] Can't get DOM width or height. Please check dom.clientWidth and dom.clientHeight. They should not be 0.For example, you may need to call this in the callback of window.onload.
+
+stderr | test/f28.calibration.test.tsx > M0-F2 · 实料欠账计上屏（PRD-ground-truth §2.1） > 欠账面板：屏上读数与回包逐字一致（paired/forecasts/覆盖/expected/账龄/分指标）
+[ECharts] Can't get DOM width or height. Please check dom.clientWidth and dom.clientHeight. They should not be 0.For example, you may need to call this in the callback of window.onload.
+
+ ✓ test/f28.calibration.test.tsx (6 tests) 14509ms
+   ✓ F28 · 校准报告页（/admin/calibration，M11 增量） > MAPE 趋势含 C12 阈值线（8%）与触发标记点 + 切片徽章（INSUFFICIENT_SAMPLES）+ 三级筛选  10430ms
+   ✓ F28 · 校准报告页（/admin/calibration，M11 增量） > 提案行：方法徽章（EMA/重放归因/分位数）+ 回测证据弹层 + HOLD/REJECTED 状态与标记  1052ms
+   ✓ F28 · 校准报告页（/admin/calibration，M11 增量） > 提案批准走 Action 审批草稿（无直改参数 API）：状态仍 PENDING + 草稿入库  881ms
+   ✓ F28 · 校准报告页（/admin/calibration，M11 增量） > 「立即校准」按钮（M11 §3 手动触发）：POST /calibration/run → 运行摘要 toast  985ms
+   ✓ F28 · 校准报告页（/admin/calibration，M11 增量） > 校准历史时间线：触发原因 / 变更参数集 / 前后 MAPE + 预言 vs 实现（元闭环）  603ms
+   ✓ M0-F2 · 实料欠账计上屏（PRD-ground-truth §2.1） > 欠账面板：屏上读数与回包逐字一致（paired/forecasts/覆盖/expected/账龄/分指标）  545ms
+ ✓ test/sandbox-world-origin.seam.test.tsx (8 tests) 16224ms
+   ✓ WO-SANDBOX-REAL-SNAPSHOT · tick0 世界归服务端 + 逐格出处诚实位（四态） > ① F0 后建会话**不传 `baseSnapshot`**（前端一格都没造）；回包缺出处 ⇒ `UNKNOWN`（不知道就是不知道，不许自盖）  6315ms
+   ✓ WO-SANDBOX-REAL-SNAPSHOT · tick0 世界归服务端 + 逐格出处诚实位（四态） > ② 混合世界：徽标标 `MIXED` 且**两个数都写在屏上** —— 不许二值化  2327ms
+   ✓ WO-SANDBOX-REAL-SNAPSHOT · tick0 世界归服务端 + 逐格出处诚实位（四态） > ③ **逐项**记号：全实测的项与含占位的项显示**不一样**（不许两档长得一样）  2110ms
+   ✓ WO-SANDBOX-REAL-SNAPSHOT · tick0 世界归服务端 + 逐格出处诚实位（四态） > ⑤ 全实测世界 ⇒ `MEASURED`，且**占位字样一个都不出现**（反向：不许永远说占位）  1223ms
+   ✓ WO-SANDBOX-REAL-SNAPSHOT · tick0 世界归服务端 + 逐格出处诚实位（四态） > ⑥ 判据不能用「`worldQuery.data` 到没到」—— 新建会话时那个 GET **一次都不会发**  1067ms
+   ✓ WO-SANDBOX-REAL-SNAPSHOT · tick0 世界归服务端 + 逐格出处诚实位（四态） > ⑦ 推进 tick（引擎算的世界）后，tick0 的出处**仍在屏上** —— 不许被推拍抹掉  1536ms
+   ✓ WO-SANDBOX-REAL-SNAPSHOT · tick0 世界归服务端 + 逐格出处诚实位（四态） > ⑧ 事件驱动重取（真 GET 回来的那一份）出处照样在 —— 跟着数据走，不跟着某一个入口走  1618ms
+
+ Test Files  2 passed (2)
+      Tests  14 passed (14)
+   Start at  17:52:46
+   Duration  42.81s (transform 15.67s, setup 22.54s, collect 17.85s, tests 30.73s, environment 5.80s, prepare 609ms)
+

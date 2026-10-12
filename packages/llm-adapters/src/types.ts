@@ -18,6 +18,18 @@ export interface RawClassification {
   candidates: { intentKey: string; confidence: number }[];
   outOfCatalog: boolean;
   extractedSlots: Record<string, unknown>;
+  /**
+   * WO-DOMAIN-BY-INTENT · 意图所属**域**（域目录 key，如 `supply-chain` / `production` / `quality`）。
+   * 三态：`string`=分析判定属于该域；`null`=分析判定**判不出域**；`undefined`=**没有这份分析**（模型未吐/老结果）。
+   * ⇒ 调用侧据此选角色 agent；`undefined` 时落既有关键词兜底（关键词表降为金丝雀）。
+   * 域 key 的合法集不在此层（本包不认识业务域名）——由调用侧按既有角色目录判。
+   */
+  domainRole?: string | null;
+  /**
+   * WO-DOMAIN-BY-INTENT · 域判断的**理由**（模型给的一句）：两个域都沾边的模糊问句据此可见
+   * 「为什么选了它 / 为什么都不选」——⛔ 不许静默任选。判不出域时**也应**给（说明为何都不适用）。
+   */
+  domainReason?: string;
 }
 
 export type LlmContentBlock =
@@ -58,13 +70,55 @@ export interface LlmAgentRequest {
    * 仅 Anthropic adapter（capability 开启时）下发；其它 adapter 忽略。
    */
   contextEdits?: { type: string }[];
+  /**
+   * G-9：per-call 有界超时的取消信号。工具循环侧为每轮 agent() 建 AbortController+deadline，
+   * 适配器透传给底层 SDK（messages.create / chat.completions.create 的 { signal }），
+   * 使挂住的单次调用能被上界终止（abort → AbortError，循环收敛为优雅降级）。可选，向后兼容。
+   */
+  signal?: AbortSignal;
+  /**
+   * WO-FIX-REASONING-CONTENT：强制本轮工具选择（tool_choice）。缺省 `auto`（模型自决）；
+   * 收尾/兜底轮传 `{type:"tool", name:"final_answer"}` 令模型**必须**产出结构化收尾——
+   * 破解推理型模型（kimi-k2.6 / o1 / r1）"在推理通道给结论却漏调 final_answer"的死角。
+   * 适配器各自映射：OpenAI 兼容 → tool_choice；Anthropic → tool_choice；不支持的忽略（向后兼容）。
+   */
+  toolChoice?: { type: "auto" } | { type: "tool"; name: string };
+}
+
+/**
+ * 归一化用量（**单点定义** —— 改这里就是改全局口径，两个适配器都只准按它填）。
+ *
+ * ⛔ `inputTokens` ≡ **本次请求实际处理的输入量 = 新输入 + 缓存命中**。
+ *   不许把供应商字面字段直接填进来 —— 它们**不是同一个量**：
+ *     · OpenAI 兼容 `prompt_tokens` = **总输入（含缓存命中）** ⇒ 可直接填；
+ *     · Anthropic `input_tokens` = **新输入**（缓存命中/写入分列在 `cache_read_input_tokens` /
+ *       `cache_creation_input_tokens`，SDK 原文：total input = 三者之和）⇒ **必须补加命中桶**。
+ *   同名不同量曾让双跑账差读出**假的 210%**（2026-10-04 活服务实测，同问句两臂：
+ *   native 19,800 = Σ `input_tokens` vs dsh 97,515 = 未命中 24,427 + 命中 73,088；
+ *   同量对照 19,800 vs 24,427 = +23.4%）。§6.5 表 A 写的「输入取 prompt_tokens·含 cache 命中」
+ *   描述的是**本契约**，不是任何单个适配器的既有行为。
+ *
+ * **具名排除**（不是遗漏）：缓存**写**桶（Anthropic `cache_creation_input_tokens`）不计入本字段 ——
+ *   载体 A 的定义是「未命中 + 缓存命中」，写桶两侧都不计（dsh 侧另有 `cacheWriteTokens` 单独回声）。
+ *   供应商侧写桶按 1.25× 计费，本字段不表达它，别把它当成等价于供应商账单总额。
+ */
+export interface LlmUsage {
+  inputTokens: number;
+  outputTokens: number;
 }
 
 export interface LlmAgentResponse {
   content: LlmContentBlock[];
   stopReason: string; // "tool_use" | "end_turn" | ...
-  usage: { inputTokens: number; outputTokens: number };
+  usage: LlmUsage;
   raw?: unknown;
+  /**
+   * WO-FIX-REASONING-CONTENT：本轮**终结文本抢救自 reasoning_content**（推理型模型把结论写进
+   * 推理通道、content 为空且未调 final_answer）时置位。工具循环据此对该"漏调收尾"轮补一次
+   * 强制 final_answer 收尾（Manus 级韧性），而非直接降级为无溯源的散文答复。
+   * 普通文本终结（content 非空）不置位 → 既有降级路径逐字节不变（mock 从不置位）。
+   */
+  salvagedReasoning?: boolean;
 }
 
 /** Agent 运行时增量 §1.1：provider 能力声明（token 预算器/服务端 compaction）。 */
@@ -101,7 +155,8 @@ export interface CompletionReq {
 
 export interface CompletionResp {
   text: string;
-  usage: { inputTokens: number; outputTokens: number };
+  /** 同 `LlmUsage` 契约（单点定义见上）——输入桶含缓存命中。 */
+  usage: LlmUsage;
 }
 
 export interface ParseReq<T> {
@@ -146,4 +201,30 @@ export interface TokenMetricsPort {
 export function isContextWindowExceededError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   return /model_context_window_exceeded|context window|prompt is too long/i.test(msg);
+}
+
+/**
+ * LLM 空响应护栏（PRD 空响应护栏）：当适配器/客户端**返回 undefined 或缺 usage** 的非法响应时抛此错误，
+ * 由编排层错误中间件收敛为 R7 信封 `code=LLM_EMPTY_RESPONSE`（指明 model/用途），把"裸 TypeError·reading usage"
+ * 变成可诊断错误（多因 `agent` 用途未绑定/key 失效/兼容网关返回缺 usage）。
+ */
+export class LlmEmptyResponseError extends Error {
+  readonly code = "LLM_EMPTY_RESPONSE";
+  constructor(message: string) {
+    super(message);
+    this.name = "LlmEmptyResponseError";
+  }
+}
+
+/**
+ * 校验 LLM 响应含合法 usage；缺响应/缺 usage → 抛 LlmEmptyResponseError（含 model）。
+ * 适配器 create/parse 后调用，使"空响应"早失败为结构化错误而非下游裸 deref（R7）。
+ */
+export function requireUsage(
+  resp: { usage?: { input_tokens?: number; output_tokens?: number } | null } | null | undefined,
+  model: string,
+): void {
+  if (!resp || !resp.usage) {
+    throw new LlmEmptyResponseError(`LLM 返回空响应或缺 usage（model=${model}）——检查该用途的 LLM 绑定是否配置且 key 有效`);
+  }
 }
