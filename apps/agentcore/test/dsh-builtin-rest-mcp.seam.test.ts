@@ -46,7 +46,7 @@ import { TENANT, createTestApp, type TestApp } from "./helpers.js";
 import { STUB_DCP_SPEC, startStubOpenAi, stubDirectory, stubProvider, type StubRound } from "./helpers-dsh-stub.js";
 import { toolUse } from "../src/llm/mock.js";
 import { seedRegistry, seedMcpConfigs } from "../src/mocks/seed.js";
-import { buildSessionSetup } from "../src/dsh-runtime/setup-spec.js";
+import { buildSessionSetup, FINAL_ANSWER_ALIAS } from "../src/dsh-runtime/setup-spec.js";
 import { BUILTIN_TOOLS } from "../src/tools/registry.js";
 import { isTruncationExemptTool } from "../src/agent/loop.js";
 import { reflectAnswer } from "../src/agent/reflect.js";
@@ -134,15 +134,19 @@ const SERVER_ROSTER: readonly string[] = BUILTIN_TOOLS.map((t) => t.name).filter
 const NOT_YET_MIGRATED: readonly string[] = SERVER_ROSTER.filter((n) => !MIGRATED.includes(n));
 
 /**
- * 通用 agent 的裸名面 = **注册表 − 本体专属 − 已迁**（与 seed 侧那条 filter 同一条判据，
- * 但在这里独立再算一遍）。比 `NOT_YET_MIGRATED` 多一件 `evaluate_rules` —— 它在**规则面**上，
- * 不在本 server 的花名册里，**不属本单**（本单只迁本 server 花名册上的件）。
- * ⚠ 批次 5（收尾批）之后 `NOT_YET_MIGRATED` 空、而本数组仍非空 ⇒ 反向通道的活金丝雀就是它：
- *   通用 agent 上这件**必须仍是裸名前向授予**（它同时是 `dsh-rules-mcp` 那条「旧载体金丝雀」的读数锚）。
+ * ⚠ WO-GRANT-MISMATCH · 本数组原为「通用 agent 的裸名面 = 注册表 − 本体专属 − 已迁」，批次 5 之后
+ * 唯一成员是 `evaluate_rules`（在**规则面**上、不属本 server 花名册）。**该件已改挂自己的 server 全名**
+ * （`mcp__rules__evaluate_rules`，与其余四族同一惯例）⇒ 通用 agent 的裸名面**结构性清零**。
+ * 于是这条金丝雀**第二次作废**（第一次是批次 5 的 `NOT_YET_MIGRATED`）：对空集断言恒真 ≠ 验过。
+ * 现予换锚：**反向通道这条“路”还活着**的判据改由「出厂里仍有 agent 持裸名授予」承担（现算，
+ * 不手抄）——见 `BARE_GRANT_AGENT_KEYS`。本常量保留为空集断言：通用 agent 的裸名面必须 = 0。
  */
-const EXPECT_GENERAL_BARE: readonly string[] = BUILTIN_TOOLS.map((t) => t.name).filter(
-  (n) => !(ONTOLOGY_MCP_TOOL_NAMES as readonly string[]).includes(n) && !MIGRATED.includes(n),
-);
+const EXPECT_GENERAL_BARE: readonly string[] = [];
+
+/** 反向通道的活金丝雀（现算）：出厂种子中**仍持裸名 `{kind:"BUILTIN"}` 授予**的 agent key。 */
+const BARE_GRANT_AGENT_KEYS: readonly string[] = seedRegistry()
+  .agents.filter((a) => a.tools.some((t) => t.kind === "BUILTIN"))
+  .map((a) => a.key);
 
 const SEED_AGENT_ID = "agt_seed_analyst";
 const GENERAL_AGENT_ID = "agt_general";
@@ -562,9 +566,11 @@ describe("WO-BUILTIN-MIGRATE-REST · A 组：DSH 侧真看到的这批工具（M
     // ⚠ 批次 5 = **收尾批** ⇒「本 server 仍未迁件」这一支金丝雀**结构性作废**（对空集断言恒真，
     //   不是「验过了」）。故这里改钉**新的真相**：花名册已全迁（反过来咬：哪天又漏一件，这里先红）。
     expect(NOT_YET_MIGRATED.length, "收尾批：本 server 花名册已全迁（有未迁件 ⇒ 本批没做完）").toBe(0);
-    // 反向通道的**活**金丝雀换锚到跨面的那一件（通用 agent 的裸名面）：它非空 ⇒
-    // 「已迁件退出反向通道」那几条不是拿空集当证据（见 C2/C4/D3）。
-    expect(EXPECT_GENERAL_BARE.length, "反向通道的活金丝雀（跨面）：通用 agent 仍非空").toBeGreaterThan(0);
+    // 反向通道的**活**金丝雀（WO-GRANT-MISMATCH 换锚）：通用 agent 的裸名面已清零（本单判据），
+    // 故「这条通道还活着」改由**仍有 agent 持裸名授予**承担 —— 现算且非空，否则 C2/C4/D3 那几条
+    // 「已迁件退出反向通道」就是在拿空集当证据。金丝雀自己也要有牙：数量 + 逐条 key 都打出来。
+    expect(BARE_GRANT_AGENT_KEYS.length, `反向通道的活金丝雀：仍有 agent 持裸名授予（现算=${JSON.stringify(BARE_GRANT_AGENT_KEYS)}）`).toBeGreaterThan(0);
+    expect(EXPECT_GENERAL_BARE.length, "通用 agent 的裸名面（本单起）= 0").toBe(0);
   });
 
   it("A1 tools/list（判据②）：真 spawn + 真握手，本批每一件都在 ∧ 名/描述/入参模式与注册表逐字同源", { timeout: SEAM_TIMEOUT }, async () => {
@@ -860,13 +866,18 @@ describe("WO-BUILTIN-MIGRATE-REST · C 组：三面同改 + 只剩一条授予�
         }
       }
     }
-    // 反向金丝雀：**未迁**的件在通用 agent 上仍是裸名 BUILTIN 授予（⇒ 上面的「退净」不是整体塌了）
+    // 通用 agent 的裸名面（WO-GRANT-MISMATCH 起 = 0）：它的规则面已改挂自己的 server 全名。
     const general = agents.find((a) => a.id === GENERAL_AGENT_ID)!;
     const generalBare = general.tools.filter((t) => t.kind === "BUILTIN").map((t) => t.name).sort();
-    expect(generalBare, "通用 agent 的裸名面 = 注册表 − 本体专属 − 已迁（逐条推导，不手抄）").toEqual(
-      [...EXPECT_GENERAL_BARE].sort(),
-    );
+    expect(generalBare, "通用 agent 的裸名面").toEqual([...EXPECT_GENERAL_BARE].sort());
     expect(rawOfFilter(builtinRef(general)).sort(), "通用 agent 的 MCP 面 = 已迁全量").toEqual([...MIGRATED].sort());
+    // 反向金丝雀换锚（见 BARE_GRANT_AGENT_KEYS 注）：另有 agent 仍持裸名授予 ⇒ 上面的「清零」
+    // 不是「反向通道被拆了」；且那条锚**独立可验**（拿它的真授予面核对，不看上面的推导）。
+    expect(BARE_GRANT_AGENT_KEYS.length, "反向通道仍活（另有 agent 持裸名授予）").toBeGreaterThan(0);
+    for (const key of BARE_GRANT_AGENT_KEYS) {
+      const anchor = agents.find((a) => a.key === key)!;
+      expect(anchor.tools.some((t) => t.kind === "BUILTIN"), `${key} 的裸名授予真在册`).toBe(true);
+    }
   });
 
   it("C3 engine 真装配（analyst）：expanded 出全名 ∧ 反向工具面**空**（单路证明）∧ 允许表 = 本 agent 那几件", async () => {
@@ -893,10 +904,10 @@ describe("WO-BUILTIN-MIGRATE-REST · C 组：三面同改 + 只剩一条授予�
     expect((spec.tools ?? []).map((x) => x.name), "harness 白名单含全名").toContain(full(EXPECT_ANALYST_RAW[0]));
   });
 
-  it("C4 engine 真装配（通用 agent）：裸名面 = 注册表 − 本体专属 − 已迁 ∧ Phase6C 不砍内置工具面（原生臂真跑）", async () => {
+  it("C4 engine 真装配（通用 agent）：裸名面 = 0 ∧ Phase6C 不砍内置工具面（原生臂真跑）", async () => {
     const { spec, expanded } = await setupFromSeedAgent(seedAgent(GENERAL_AGENT_ID));
     const names = expanded.map((x) => x.name);
-    // 通用 agent：已迁全量在模型面（全名），未迁全量在反向面（裸名）
+    // 通用 agent：已迁全量在模型面（全名）；裸名面（WO-GRANT-MISMATCH 起）= 0
     for (const raw of MIGRATED) expect(names).toContain(full(raw));
     const hostNames = (spec.hostTools ?? []).map((x) => x.name).sort();
     for (const raw of MIGRATED) expect(hostNames).not.toContain(raw);
@@ -1059,8 +1070,11 @@ describe("WO-BUILTIN-MIGRATE-REST · E 组：真跑的 run 记录（迁前 / 迁
       const names = stubVisibleTools(stub).map((x) => x.name);
       expect(names, "迁前：能力以裸名到达模型面").toContain(PROBE_RAW);
       expect(names, "迁前：DSH 侧没有这批工具的 MCP 身份").not.toContain(full(PROBE_RAW));
-      // 单变量：**只这一件**回到裸名，同 server 的其余已迁件照旧在 MCP 面上（否则对照不是单变量）
-      const stillMigrated = names.filter((n) => n.startsWith(`mcp__${BUILTIN_MCP_SERVER}__`));
+      // 单变量：**只这一件**回到裸名，同 server 的其余已迁件照旧在 MCP 面上（否则对照不是单变量）。
+      // WO-GRANT-MISMATCH：模型面的 `mcp__builtin__*` 里另有一个**非花名册**名（终止工具的全名别名
+      // `mcp__builtin__final_answer`，见 setup-spec.FINAL_ANSWER_ALIAS）——本对照比的是**花名册成员**，
+      // 别名单独剔掉（不剔 = 拿「多一个别名」误读成「少一件」）。
+      const stillMigrated = names.filter((n) => n.startsWith(`mcp__${BUILTIN_MCP_SERVER}__`) && n !== FINAL_ANSWER_ALIAS);
       expect(stillMigrated, "迁前臂：其余已迁件一件不少").toEqual(
         expandedBuiltinNamesOf(seedAgent(PROBE_AGENT_ID))
           .filter((n) => n !== full(PROBE_RAW))

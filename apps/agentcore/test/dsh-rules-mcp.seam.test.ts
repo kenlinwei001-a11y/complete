@@ -437,15 +437,20 @@ describe("WO-AGENT-CONFIG-TO-DSH · C 组：规则面三面同改 + 只剩一条
     // ⚠ WO-BUILTIN-MIGRATE-REST：次级锚 `get_object` **也**迁走了，且 analyst 手上已无未迁件
     // ⇒ 金丝雀改锚**通用 agent**（它还有 discover 一族未迁，仍走反向通道）——
     // 本 agent 的反向面则从「有别的件」翻成「必须为空」，见下。
+    // ⚠ WO-GRANT-MISMATCH：通用 agent 的规则面**也**改挂自己的 server 全名 ⇒ 它的反向面同样清零。
+    //   那条「反向通道仍活」的金丝雀第二次作废（对空集断言恒真 ≠ 验过）⇒ 再换锚：锚到**仍持裸名
+    //   授予**的出厂 agent（现算，不手抄），并拿它的真授予面独立核对。
     const generalSeed = seedRegistry().agents.find((a) => a.id === "agt_general");
     if (!generalSeed) throw new Error("seed general agent not found");
     const general = await setupFromSeedAgent({ ...generalSeed, kernel: "EXTERNAL" } as AgentDefinition);
     const generalHostNames = (general.spec.hostTools ?? []).map((x) => x.name);
-    const generalMcp = (general.spec.tools ?? []).map((x) => x.name).filter((n) => n.startsWith("mcp__builtin__"));
-    expect(generalHostNames.length + generalMcp.length, "旧载体金丝雀：反向面 + MCP 面 = 花名册全量").toBe(
-      BUILTIN_MCP_TOOL_NAMES.length + 1, // +1 = evaluate_rules（在**规则面**上，不在本 server 花名册里）
-    );
-    expect(generalHostNames.length, "金丝雀有牙：反向面本批仍非空（未迁件还在）").toBeGreaterThan(0);
+    expect(generalHostNames, "通用 agent 无裸名反向工具面（规则面已改挂自己的 server 全名）").toEqual([]);
+    expect((general.spec.tools ?? []).map((x) => x.name), "通用 agent 的规则面记全名").toContain(FULL);
+    const bareGrantAgents = seedRegistry().agents.filter((a) => a.tools.some((t) => t.kind === "BUILTIN"));
+    expect(bareGrantAgents.length, "反向通道仍活：出厂里另有 agent 持裸名授予").toBeGreaterThan(0);
+    const anchor = bareGrantAgents[0]!;
+    const anchorSetup = await setupFromSeedAgent({ ...anchor, kernel: "EXTERNAL" } as AgentDefinition);
+    expect((anchorSetup.spec.hostTools ?? []).map((x) => x.name), `${anchor.key}：反向工具面真非空`).not.toEqual([]);
     expect(hostNames, "analyst 已无未迁件 ⇒ 反向工具面结构性为空").toEqual([]);
     // MCP 面：真 server spec + toolAllowlist 收窄到一件；按 serverName 取，⛔ 不按下标
     const rulesServer = spec.mcpServers?.find((m) => m.serverName === RULES_MCP_SERVER);
