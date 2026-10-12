@@ -44,6 +44,33 @@ beforeEach(async () => {
 });
 
 describe("WO-Phase4 · 硬预算 → 优雅降级（BUDGET_EXHAUSTED·确定性 R6）", () => {
+  /**
+   * WO-DISCOVER-QUOTA · 探索配额的**计量单位**是三态，必须同时钉住（缺一条就会被"顺手放松"绕过）：
+   *   ① 同轮（同 roundKey）多件发现型工具 ⇒ 只吃**一个**名额、全部放行（旧行为下第二件就 BUDGET_EXCEEDED）；
+   *   ② 跨轮（新 roundKey）⇒ 照旧递增，超 cap 即拒并置 exhausted（"无限刷发现"仍被挡）；
+   *   ③ 不传 roundKey（工作流步 / 直调 executor 等旧调用方）⇒ **逐调用计**，逐字节旧行为。
+   * 金丝雀：③ 是 ① 的对照 —— 若 ① 的放行来自"配额被整体关掉"，③ 也会放行，本断言会红。
+   */
+  it("①′ 探索配额按看路轮记：同轮多件共用一个名额 ∧ 跨轮照旧递增 ∧ 无轮键=逐调用计（旧行为对照）", () => {
+    const bt = new BudgetTracker({ maxDiscoverCalls: 1 });
+    // ① 同轮：4 件（含同名两件、入参各异）全部放行，只吃一个名额
+    for (const t of ["discover", "retrieve_knowledge", "search_experience", "discover"]) {
+      expect(bt.tryConsumeDiscover("rt:0"), `同轮 ${t}`).toEqual({ ok: true });
+    }
+    expect(bt.discoverCalls, "同轮 4 件 = 一个名额").toBe(1);
+    expect(bt.exhausted, "同轮内不置 exhausted").toBe(false);
+    // ② 跨轮：第二轮第一件即被拒，且**同轮内余下几件沿用同一判定**（不多扣、不翻案）
+    expect(bt.tryConsumeDiscover("rt:1")).toEqual({ ok: false, reason: "maxDiscoverCalls exceeded" });
+    expect(bt.tryConsumeDiscover("rt:1")).toEqual({ ok: false, reason: "maxDiscoverCalls exceeded" });
+    expect(bt.exhausted, "超 cap 置 exhausted（降级路径入口）").toBe(true);
+    expect(bt.discoverCalls, "被拒的轮不偷扣名额").toBe(1);
+    // ③ 对照：不传轮键 ⇒ 逐调用计（旧行为），第二件当场被拒
+    const bare = new BudgetTracker({ maxDiscoverCalls: 1 });
+    expect(bare.tryConsumeDiscover()).toEqual({ ok: true });
+    expect(bare.tryConsumeDiscover()).toEqual({ ok: false, reason: "maxDiscoverCalls exceeded" });
+    expect(bare.discoverCalls).toBe(1);
+  });
+
   it("① maxRoundTrips=4：5 轮工具 → 第 5 轮前硬预算降级·outcome=BUDGET_EXHAUSTED·答案含前缀+provenance", async () => {
     await t.repos.agents.insert(agentDef({ id: "agt_rt", key: "rt_agent" }));
     for (let k = 0; k < 8; k++) t.llm.queueAgentTurn(queryBaseTurn());

@@ -254,7 +254,7 @@ async function runAgent(
   t: TestApp,
   taskId: string,
   agentId: string,
-  opts: { enforceObjectScope?: boolean; prompt?: string } = {},
+  opts: { enforceObjectScope?: boolean; prompt?: string; budget?: BudgetTracker } = {},
 ): Promise<Awaited<ReturnType<TestApp["deps"]["engine"]["runRegisteredAgent"]>>> {
   return t.deps.engine.runRegisteredAgent({
     taskId,
@@ -262,7 +262,7 @@ async function runAgent(
     version: 1,
     prompt: opts.prompt ?? "看一下常州基地的订单情况。",
     ctx: CTX,
-    nesting: enterNesting({ callChain: [], budget: new BudgetTracker() }, "agent", agentId),
+    nesting: enterNesting({ callChain: [], budget: opts.budget ?? new BudgetTracker() }, "agent", agentId),
     emit: async () => {},
     ...(opts.enforceObjectScope ? { enforceObjectScope: true } : {}),
   });
@@ -915,4 +915,93 @@ describe("WO-BUILTIN-TO-DSH · E 组：真跑的 run 记录（迁前 / 迁后同
       await stub.close();
     }
   });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// F 组 · WO-DISCOVER-QUOTA：探索配额按「看路轮」记（DSH 臂真跑·MCP 载体）
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * 【今天的行为是 X】`maxDiscoverCalls` 逐**调用**扣名额，四件发现型工具共用一个计数器 ⇒ 同一轮里
+ * 一起发出的第二件起全灭（先到的吃掉唯一名额），且 `BUDGET_EXCEEDED` 经 B6 桥 **cancel 整轮** ——
+ * 活服务实测（Q3「电解液涨价 15%…」）：首轮 4 件里 1 件 OK、其余 3 件连发都没发出去（ERROR ~14ms），
+ * 领域工具 0 次。**应该是 Y**：配额单位是「一轮看路」（`prompts` 原话「≤1 次 discover 盲扫」）——
+ * 同一轮里用几把望远镜看一遍只吃一个名额；跨轮才递增，超 cap 仍然拒（防"无限刷发现"照旧）。
+ *
+ * 本组判据 = **必须能区分「同一轮」与「相邻轮」**，故三条断言缺一不可：
+ *   ① 同一步两件（MCP `_meta` 携同一轮键）**都真执行**（OK 行恰两行·名字逐件对上）；
+ *   ② 下一步再来一件 ⇒ `BUDGET_EXCEEDED`（cap=1 咬得住 —— 证明 ① 不是"把配额关了"）；
+ *   ③ 轮内幂等是**记账**事实：`budget.discoverCalls === 1`（两件只吃了一个名额，独立于审计行读）。
+ */
+const FULL_DISCOVER = builtinMcpToolName("discover");
+const FULL_RETRIEVE = builtinMcpToolName("retrieve_knowledge");
+
+/** 把出厂 agent 的授予面收成**两件发现型工具**（其余不动：载体仍是内置工具 MCP server）。 */
+function discoveryAgent(agent: AgentDefinition): AgentDefinition {
+  return {
+    ...agent,
+    tools: [{ kind: "MCP", mcpConfigId: BUILTIN_MCP_CONFIG_ID, toolFilter: [FULL_DISCOVER, FULL_RETRIEVE] }] as AgentDefinition["tools"],
+    mcpServers: [{ mcpConfigId: BUILTIN_MCP_CONFIG_ID }],
+    scopeDeclaration: { ...agent.scopeDeclaration, objectTypes: [], toolNames: [FULL_DISCOVER, FULL_RETRIEVE] },
+  } as AgentDefinition;
+}
+
+describe("WO-DISCOVER-QUOTA · F 组：探索配额按看路轮记（真 DSH 分叉 + 真 MCP 载体）", () => {
+  let savedEnv: Record<string, string | undefined>;
+  beforeEach(() => {
+    savedEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
+    delete process.env.DSH_HARNESS;
+    process.env.DSH_HARNESS_DIR = HARNESS_DIR;
+  });
+  afterEach(() => {
+    for (const k of ENV_KEYS) {
+      if (savedEnv[k] === undefined) delete process.env[k];
+      else process.env[k] = savedEnv[k];
+    }
+  });
+
+  it(
+    "F1 同一步两件发现型工具都放行（不再互相挤掉）∧ 下一步再刷被拒（cap=1）∧ 轮内只吃一个名额",
+    { timeout: SEAM_TIMEOUT },
+    async () => {
+      const stub = await startStubOpenAi([
+        // 第 1 步：**同一条 assistant 消息里的两件**（真 provider 的多 tool_calls 形态）
+        {
+          toolCalls: [
+            { name: FULL_DISCOVER, arguments: JSON.stringify({ kind: "object_types" }) },
+            { name: FULL_RETRIEVE, arguments: JSON.stringify({ query: "成本压力传导到订单毛利" }) },
+          ],
+          usage: PLAIN_USAGE,
+        },
+        // 第 2 步：**新的一轮**再要一件 ⇒ 超 cap 必拒
+        { toolCall: { name: FULL_DISCOVER, arguments: JSON.stringify({ kind: "solvers" }) }, usage: PLAIN_USAGE },
+        { text: "stub final answer", usage: PLAIN_USAGE },
+      ] satisfies StubRound[]);
+      const { t, close } = await startToolExecApp({ stubUrl: `${stub.url}/v1`, serviceToken: SERVICE_TOKEN });
+      try {
+        await seedWorld(t, discoveryAgent(seedAnalyst()));
+        const budget = new BudgetTracker({ maxDiscoverCalls: 1 });
+        const result = await runAgent(t, "task_discover_quota_f1", SEED_AGENT_ID, { budget });
+        expect(result.run.kernel, "真走 DSH 分叉").toBe("EXTERNAL");
+
+        // ① 同一轮的两件**都真执行**（模型面可见面自证：两件都在工具清单里 —— 否则下面是假阴性）
+        const visible = stubVisibleTools(stub).map((x) => x.name);
+        expect(visible, "两件发现型工具都在模型面").toEqual(expect.arrayContaining([FULL_DISCOVER, FULL_RETRIEVE]));
+        const rows = await t.repos.toolCalls.listByTask("task_discover_quota_f1");
+        const okNames = rows.filter((r) => r.outcome === "OK").map((r) => r.toolName).sort();
+        expect(okNames, "首轮两件都跑成（审计名 = 裸名归一后）").toEqual(["discover", "retrieve_knowledge"]);
+
+        // ② 下一轮那件被挡（防仍在）：BUDGET_EXCEEDED 恰一行，且是第二轮那件
+        const over = rows.filter((r) => r.outcome === "BUDGET_EXCEEDED");
+        expect(over.map((r) => r.toolName), "第三件（新一轮）被挡").toEqual(["discover"]);
+        expect(JSON.stringify(over[0]!.output), "拒绝原因逐字 = 旧口径").toContain("maxDiscoverCalls exceeded");
+
+        // ③ 记账事实（独立于审计行）：两件同轮 ⇒ 只吃一个名额；第三件没有偷扣
+        expect(budget.discoverCalls, "同轮两件=一个名额").toBe(1);
+        expect(budget.exhausted, "超 cap 置 exhausted（既有降级路径不变）").toBe(true);
+      } finally {
+        await close();
+        await stub.close();
+      }
+    },
+  );
 });
