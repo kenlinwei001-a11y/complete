@@ -30,6 +30,8 @@ import { scanBlocks } from "../src/util/numerics.js";
 import { MockMcpClient } from "../src/mcp/mock.js";
 import { encryptSecret } from "../src/crypto.js";
 import { WORKFLOW_MCP_CONFIG_ID, workflowMcpToolName } from "../src/mcp/workflow-mcp.js";
+// WO-GRANT-MISMATCH：终止工具的第二形态名（两臂同源，非 MCP 工具、不经 wire）。
+import { FINAL_ANSWER_ALIAS } from "../src/agent/loop.js";
 import {
   STUB_DCP_SPEC,
   STUB_FAKE_KEY,
@@ -773,9 +775,12 @@ function compareArms(task: DualRunTask, x: ArmProducts, y: ArmProducts, flags: {
       .map((tool) => `mcp__${mcp.serverName}__${tool.name}`)
       .sort();
     expect(
-      xSet.filter((n) => n.startsWith("mcp__")),
+      // WO-GRANT-MISMATCH：终止工具的第二形态名（`mcp__builtin__final_answer`）**不是 MCP 工具**
+      // （loop/harness 本地注册、不经 MCP wire）⇒ 不进本判据的 `mcp__` 子集；两臂都在，故剔它。
+      xSet.filter((n) => n.startsWith("mcp__") && n !== FINAL_ANSWER_ALIAS),
       `${task.id} name-set 防空集假绿：x 臂 mcp__ 子集须恰为语料滤后留存名`,
     ).toEqual(expectedMcp);
+    expect(xSet, `${task.id} 终止工具第二形态名在 x 臂模型面`).toContain(FINAL_ANSWER_ALIAS);
   }
 
   // ---- sketch / outcome parity ----

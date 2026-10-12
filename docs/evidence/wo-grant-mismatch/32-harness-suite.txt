@@ -1,0 +1,39 @@
+HARNESS_PREFLIGHT_OK deps=16 files=9 cordis=cordis.poc.yml
+CASE_A_EVENTS=["agent/inbox/spliced","turn/start","agent/inbox/spliced","step/start","user/message","request/header","request/context","assistant/chunk","assistant/chunk","assistant/chunk","assistant/chunk","assistant/chunk","assistant/chunk","assistant/message","tool/call","tool/result","step/end","step/start","assistant/chunk","assistant/chunk","assistant/chunk","assistant/chunk","assistant/chunk","assistant/message","step/end","turn/end"]
+CASE_A_TOOLRESULT={"type":"tool/result","seq":15,"time":1791820691872,"data":{"turn":1,"step":1,"message":{"source":{"kind":"tool","callId":"call_1"},"content":[{"type":"tool-result","toolCallId":"call_1","content":[{"type":"text","text":"Error: mock rule engine: tool echo_tool denied by ruleBindings PRE_CHECK"}],"is
+CASE_A_EXECUTE_COUNT=0 TURN_END=true
+CASE_B_EVENTS=["agent/inbox/spliced","turn/start","agent/inbox/spliced","step/start","user/message","request/header","request/context","assistant/chunk","assistant/chunk","assistant/chunk","assistant/chunk","assistant/chunk","assistant/chunk","assistant/message","tool/call","tool/result","step/end","step/start","assistant/chunk","assistant/chunk","assistant/chunk","assistant/chunk","assistant/chunk","assistant/message","step/end","turn/end"]
+CASE_B_TOOLRESULT={"type":"tool/result","seq":15,"time":1791820699995,"data":{"turn":1,"step":1,"message":{"source":{"kind":"tool","callId":"call_1"},"content":[{"type":"tool-result","toolCallId":"call_1","content":[{"type":"text","text":"echoed: hello from dsh-B"}],"isError":false}],"role":"user","id":"cd9936bf-c26a
+CASE_B_REPLAY_ERROR="session/prompt carried setup for live session s2-B; setup is creation-only"
+CASE_B_EXECUTE_COUNT=1 TURN_END=true
+CASE_C_EVENTS=["agent/inbox/spliced","turn/start","agent/inbox/spliced","step/start","user/message","request/header","request/context","assistant/chunk","assistant/chunk","assistant/chunk","assistant/chunk","assistant/chunk","assistant/chunk","assistant/message","tool/call","tool/result","step/end","step/start","assistant/chunk","assistant/chunk","assistant/chunk","assistant/chunk","assistant/chunk","assistant/message","step/end","turn/end"]
+CASE_C_TOOLRESULT={"type":"tool/result","seq":15,"time":1791820705660,"data":{"turn":1,"step":1,"message":{"source":{"kind":"tool","callId":"call_1"},"content":[{"type":"tool-result","toolCallId":"call_1","content":[{"type":"text","text":"Error: tool echo_tool not in agent scope allow-list (scopeDeclaration ∪ granted
+CASE_C_EXECUTE_COUNT=0 TURN_END=true
+CASE_D_EVENTS=["agent/inbox/spliced","turn/start","agent/inbox/spliced","step/start","user/message","request/header","request/context","assistant/chunk","assistant/chunk","assistant/chunk","assistant/chunk","assistant/chunk","assistant/message","tool/call","tool/result","step/end","step/start","assistant/chunk","assistant/chunk","assistant/chunk","assistant/chunk","assistant/chunk","assistant/message","step/end","turn/end"]
+CASE_D_TOOLRESULT={"type":"tool/result","seq":14,"time":1791820710691,"data":{"turn":1,"step":1,"message":{"source":{"kind":"tool","callId":"call_1"},"content":[{"type":"tool-result","toolCallId":"call_1","content":[{"type":"text","text":"final answer recorded"}],"isError":false}],"role":"user","id":"76f308a6-1588-46
+CASE_D_EXECUTE_COUNT=0 TURN_END=true
+SMOKE_OK
+HARNESS_UNIT_DISCOVERED=2: test/namespace-tenant-seam.test.mjs, test/tenant-pool-collision-e2e.test.mjs
+✔ A9: validateSetupSpec rejects mcpServers without tenantId (fail-closed) (7.908553ms)
+✔ A1: tenant tA mounts serverName=erp via applySetupSpec → resolve, no duplicate namespace (134.863612ms)
+✔ A2: tenant tB mounts SAME serverName=erp → resolve（原生 T2 原败例转绿） (515.841101ms)
+✔ A3: 互不可见 —— A 视图含 tA 独有工具且不含 tB 独有工具，B 对称 (0.396015ms)
+✔ A4: 路由不串 —— 同名 whoami，A 调用回 tA 标记、B 调用回 tB 标记 (8.836441ms)
+✔ A5: 审计名逐字节（E4 基线字面量写死）+ 调用审计帧携带 tenantId 归因 (5.094379ms)
+✔ A12: 异名对位 —— tB 再挂 crm 各自成、互不影响（原生 T3 对位） (80.814138ms)
+✔ A6: 同 tenant 两 agent 共享一条连接（stdio 子进程计数=1） (329.041668ms)
+✔ A7: dispose 释放语义（原生 T5/T6 对位） (681.250796ms)
+✔ A8: list_changed 通知扇出到同池全部订阅者（代际不混） (489.527546ms)
+✔ A10: 无 tenantId 路径复刻原生六用例（同 root 同名撞 / 异名成 / 独立 root 同名成 / 重试仍拒 / dispose 释放可重挂） (65.379251ms)
+✔ P1 池键各立：同世界双 tenant 同 serverName ⇒ pidFile 恰 2 异 pid（不共享不互撞） (926.415002ms)
+✔ P2 路由+审计归属：whoami 各回各 marker；pre-execute 审计帧 tenantId 不错位 (10.160941ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4317.384736
+drift-check OK: upstream 0.1.0-rc.6 sha256 50ff18e787527a84bdaa569de9cbf68d2322941a870767030b52717b9c3322f1 matches fork pins
+HARNESS_TESTS_OK smoke=PASS unit_files=2 drift=PASS

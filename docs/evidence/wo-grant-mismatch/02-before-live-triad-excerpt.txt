@@ -1,0 +1,39 @@
+# 三题实测 · 被拒读数摘录（来源：docs/evidence/wo-multihop-completeness/，取证 2026-10-10 · 活服务 4002 内存态）
+
+## q2/readings.json —— 工具账 + 披露块原文
+
+【本次运行中有工具调用未成功】以下结论未包含这些调用的结果，请勿把它们当作已核实的数据：
+- mcp__builtin__evaluate_rules（ERROR）：Error: tool mcp__builtin__evaluate_rules not in agent scope allow-list (scopeDeclaration ∪ granted)
+- mcp__builtin__final_answer（ERROR）：Error: tool mcp__builtin__final_answer not in agent scope allow-list (scopeDeclaration ∪ granted)", "ref_tokens": 10, "ref_range": [0, 8], "ref_distinct": [0, 2, 3, 4, 5, 6, 8], "provenance_count": 12, "provenance": [{"refIndex": 0, "id": "prov_01M4JQZ41NCQSXTCMSFKKR9NEP", "source": "TOOL_RESULT", 
+
+
+## q2/readings.json —— 模型思考原文（它自己诊断出这道门）
+
+final_answer not in allow-list? That's odd. The system prompt says final_answer is the only exit. But the tool call failed. Maybe I need to just output the answer as text? Let me retry once — perhaps a transient routing issue. Let me try again with the same call.
+
+Actually the error says not in agent scope allow-list. Possibly the tool name must be exactly \"final_answer\" — it is. Hmm, other builtin tools like evaluate_rules also failed with the same message, while discover, query_objects, aggregate_objects, invoke_solver worked. So some tools are not granted.
+
+Let me try calling final_answer once more; if it fails, output the structured answer as plain text in my final message.
+
+Let me retry."}, {"stepId": "think-1-7-0", "frames": 92, "chars": 445, "text": "The final answer was recorded. Now I should give a brief closing message. Actually the final_answer is the exit; I'll just c
+
+
+## q3/readings.json —— 结论原文自陈
+
+ 开沙盘施加涨价扰动 → `finance_world_projection` 取成本/毛利 Δ → 沿 BOM 通路定位受影响订单 → 逐单 `quote_margin` 核对是否跌破地板线；若需调价/换料，走 `create_action_draft` 出草稿待审批；
+4. **明示缺口**：需求清单是「电解液在 BOM 中的单台用量 + 订单毛利基线」，缺这两项任何数字都不可信。
+
+（此前一次误用了 `mcp__builtin__final_answer` 工具名被拒，已改用 `final_answer` 正常收尾。）
+【本次运行中有工具调用未成功】以下结论未包含这些调用的结果，请勿把它们当作已核实的数据：
+- mcp__builtin__discover（BUDGET_EXCEEDED）：Error: 预算已尽，请基于已有结果调用 final_answer 收尾
+- mcp__builtin__discover（BUDGET_EXCEEDED）：Error: 预算已尽，请基于已有结果调用 final_answer 收尾
+- mcp__builtin__search
+
+
+## q3/readings.json —— 披露块原文
+
+【本次运行中有工具调用未成功】以下结论未包含这些调用的结果，请勿把它们当作已核实的数据：
+- mcp__builtin__discover（BUDGET_EXCEEDED）：Error: 预算已尽，请基于已有结果调用 final_answer 收尾
+- mcp__builtin__discover（BUDGET_EXCEEDED）：Error: 预算已尽，请基于已有结果调用 final_answer 收尾
+- mcp__builtin__search_experience（BUDGET_EXCEEDED）：Error: 预算已尽，请基于已有结果调用 final_answer 收尾
+- mcp__builtin__final_answer（ERROR）：Error: tool mcp__builtin__final_answer not in agent scope allow-li

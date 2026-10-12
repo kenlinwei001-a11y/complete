@@ -52,7 +52,8 @@ import { seedRegistry, seedMcpConfigs } from "../src/mocks/seed.js";
 import { buildSessionSetup } from "../src/dsh-runtime/setup-spec.js";
 import { BUILTIN_TOOLS } from "../src/tools/registry.js";
 // 截断豁免判据（身份归一的单点判据，loop.ts 原生臂 / server.ts 端点共用同一函数）。
-import { isTruncationExemptTool } from "../src/agent/loop.js";
+// WO-GRANT-MISMATCH：终止工具的第二形态名（非花名册成员）。
+import { FINAL_ANSWER_ALIAS, isTruncationExemptTool } from "../src/agent/loop.js";
 import {
   BUILTIN_MCP_CONFIG_ID,
   BUILTIN_MCP_DESC_PREFIX,
@@ -603,10 +604,14 @@ describe("WO-BUILTIN-TO-DSH · C 组：内置工具面三面同改 + 只剩一�
       // 件数由**授予面现算**，不写死 1：写死就会在每次迁移后假红）
       expect(names, "内置工具面在模型面（豁免生效）").toContain(FULL);
       const grantedBuiltin = expandedBuiltinNames(agent);
+      // WO-GRANT-MISMATCH：`mcp__builtin__*` 面上另有一个**非花名册**名（终止工具的第二形态名
+      // `mcp__builtin__final_answer`，见 agent/loop.ts 的 FINAL_ANSWER_ALIAS）——本判据比的是
+      // **授予的花名册成员**逐件在模型面，别名剔掉后单独点名（剔掉 ≠ 不管：它必须真在）。
       expect(
-        names.filter((n) => n.startsWith(`mcp__${BUILTIN_MCP_SERVER}__`)).sort(),
+        names.filter((n) => n.startsWith(`mcp__${BUILTIN_MCP_SERVER}__`) && n !== FINAL_ANSWER_ALIAS).sort(),
         "内置工具面逐件在模型面（全量、不重复、不被 top-k 砍）",
       ).toEqual([...grantedBuiltin].sort());
+      expect(names, "终止工具第二形态名在模型面（非花名册成员）").toContain(FINAL_ANSWER_ALIAS);
       // 主判据②（与①合起来才是完全判别式）：**参与收窄的那一面恰为 top-k=8**。
       // 收窄面 = `mcpSpecs` 里的非内置项（本体/求解器/规则）；工作流面 binding 是 WORKFLOW，
       // 从来不进 `mcpSpecs` ⇒ 两边都从集合里排掉后再数。
