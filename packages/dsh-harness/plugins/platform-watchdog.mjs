@@ -49,6 +49,9 @@ const GENTLE_REMINDER = "You are repeating the exact same tool call with identic
 //   · dsh  臂 = `skill`（@deepseek-ai/dsh-tool-skill@0.1.0-rc.6 的上游常量，不可配）。
 // P2A 换名前这里写的是 `load_skill` ⇒ 改名后守卫失配、技能加载开始计入环检测预算，
 // 合法重复加载会被判死循环（行为回归，不是记账问题）。本行按 dsh 臂写真名。
+// WO-GRANT-MISMATCH：终止工具的别名（`spec.finalAnswer.aliases`）**不在**本常量里 ——
+// 它随会话 spec 变（单一来源在 agentcore 的 setup-spec），由 installStallLoopWatchdog 的
+// `opts.extraMetaTools` 逐会话并入判据（见该函数）。本常量只钉**编译期固定**的那两个名字。
 const META_TOOLS = new Set(['final_answer', 'skill'])
 
 /**
@@ -183,16 +186,20 @@ export function installDenyBudget(agentCtx, env = process.env) {
  *   计数放 post-execute 的另一理由（stock :274-278 同语）：deny 的调用也过同一瀑布，
  *   模型锤一个被拒调用正是要打断的环。
  */
-export function installStallLoopWatchdog(agentCtx) {
+export function installStallLoopWatchdog(agentCtx, opts = {}) {
   const cap = parseLoopRepeatCap(process.env.QOS_AGENT_LOOP_REPEAT_CAP)
   if (cap === undefined) return { enabled: false }
+
+  // WO-GRANT-MISMATCH · 终止工具的**别名**（spec.finalAnswer.aliases，单一来源在 agentcore 侧）
+  // 与主名同享豁免：豁免集按名字判，只写主名 ⇒ 模型换个形态名点终止器就被计入环检测。
+  const extraMetaTools = opts.extraMetaTools ?? []
 
   // per-agent Map<sig, n>（scoped 挂载 ⇒ 本 Map 天然 per-agent，无需 stock 的 WeakMap 键控）。
   const counts = new Map()
 
   agentCtx.on('tools/post-execute', async (exec, _result, next) => {
     if (!exec.agent) return next() // stock observe :280 同守卫（无 agent 的执行不计）
-    if (META_TOOLS.has(exec.name)) return next()
+    if (META_TOOLS.has(exec.name) || extraMetaTools.includes(exec.name)) return next()
     const sig = JSON.stringify([exec.name, canonicalize(exec.arguments)]) // 链键同构 stock :282-283
     const n = (counts.get(sig) ?? 0) + 1
     counts.set(sig, n)

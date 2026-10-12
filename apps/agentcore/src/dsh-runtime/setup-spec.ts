@@ -14,6 +14,38 @@ import { createHash } from "node:crypto";
 import type { AgentDefinition, McpServerConfig, SkillDefinition } from "@platform/contracts";
 import { isWriteModeSkill, mcpServerNameSlug } from "@platform/contracts";
 import { DEFAULT_FINAL_ANSWER_SCHEMA, FINAL_ANSWER_DESC } from "../agent/loop.js";
+import { builtinMcpToolName } from "../mcp/builtin-mcp.js";
+
+/**
+ * WO-GRANT-MISMATCH · 终止工具的**第二形态名**（模型面按 `mcp__builtin__*` 惯例寻址时的形态）。
+ *
+ * 【今天的行为是 X】模型对**内置工具族**一律按 `mcp__builtin__{raw}` 全名寻址（本平台 25 件皆如此，
+ * 实测三题里每一次成功的调用都用全名），于是它对**终止工具**也按同一惯例寻址
+ * （`mcp__builtin__final_answer`）—— 而终止器是 harness 本地注册的**裸名**工具（两臂同形），
+ * 该名不在 `spec.tools` 允许表里 ⇒ 被 scope 门当场拒（`tool … not in agent scope allow-list`），
+ * 收尾改由**软收尾**兜底（实测：三题里两次终局被拒，答案的 structured 收尾路径结构上走不通）。
+ *
+ * 【应该是 Y】终止工具**两种形态名都可调用**：
+ *   · 裸名 `final_answer` —— 原生臂同名、人设文本（`AGENT_SYSTEM_CORE`）通篇写的就是它，
+ *     且 `reassemble` 的单源判据（元工具跳过 / `finalCall` 定位）一直按它认；
+ *   · 全名 `mcp__builtin__final_answer` —— 模型按族的命名惯例寻址的形态。
+ * 两者**同一个 execute、同一个终止语义**（harness 侧注册的终止器），不是两条执行路：
+ * 全名**不经 MCP wire**、也不在 `BUILTIN_MCP_TOOL_NAMES` 花名册上（它不是内置 server 提供的工具，
+ * 故 `parseBuiltinMcpToolName` 对它恒返回 undefined 是**正确**的，不要把它塞进花名册）。
+ *
+ * ⚠ 为什么不能在「授予面」单边改：门是**逐名精确匹配**（`spec.tools[].name` 集合），本名要能过门
+ *   就得真被授予；而被授予的名字**必须真有实体**（否则调用撞 UNKNOWN_TOOL，等于把「门拒」
+ *   换成「没有这个工具」）。两半缺一不可：本名进允许表（`buildSessionSetup` 的 loopMetaTools）
+ *   + harness 侧真注册（`platform-world.mjs` 按 `spec.finalAnswer.aliases` 逐条注册同一 execute）。
+ *   单一来源就是本常量：平台授予它、harness 注册它、重组装认它（`reassemble.ts` 的
+ *   `isFinalAnswerToolName`），三处不各写一份字面量。
+ */
+export const FINAL_ANSWER_ALIAS = builtinMcpToolName("final_answer");
+
+/** 终止工具的**任一**形态名（裸名 / 全名别名）——「这一次调用是不是收尾」的唯一判据。 */
+export function isFinalAnswerToolName(name: string): boolean {
+  return name === "final_answer" || name === FINAL_ANSWER_ALIAS;
+}
 
 // ---------------------------------------------------------------------------
 // SetupSpec：过 wire 的会话创建期组态（与 packages/dsh-harness 侧 validateSetupSpec 对偶）
@@ -47,8 +79,12 @@ export interface DshSetupSpec {
    * final_answer 终止工具的 schema 下发（harness 侧 scoped 注册；模型调它收尾 =
    * 我方 Answer 的结构化载体）。description/schema 单一出处 = agent/loop.ts 导出常量；
    * expectsSchema 模式下由 buildSessionSetup 替换为调用方 schema（raw input 直通 structured）。
+   *
+   * `aliases`（WO-GRANT-MISMATCH · additive 可选键）：终止工具的**第二形态名**清单，
+   * harness 侧逐条注册成**同一个 execute** 的同义名（缺省不出键 = 逐字节旧行为）。
+   * 单一来源 = 本文件 `FINAL_ANSWER_ALIAS`（平台授予它、harness 注册它、重组装认它）。
    */
-  finalAnswer?: { description: string; schema: Record<string, unknown> };
+  finalAnswer?: { description: string; schema: Record<string, unknown>; aliases?: string[] };
 }
 
 export interface DshMcpServerSpec {
@@ -327,9 +363,13 @@ export function buildSessionSetup(input: {
   }
   // final_answer/skill 是循环自加的元工具（AgentLoopOpts 契约：调用方 tools 不得含，循环自加）
   // ——dsh 路的允许表同理在适配层自加，否则治理闸（platform-world 白名单）会把它们一并拒掉。
+  // WO-GRANT-MISMATCH：终止工具的**两种形态名都进允许表**（裸名给原生臂同形的调用与人设文本；
+  // 全名 `mcp__builtin__final_answer` 给模型按内置工具族命名惯例的寻址）——见 FINAL_ANSWER_ALIAS 头注。
+  // ⚠ 与「同一能力不许两条授予路并存」不冲突：两者是**同一个 harness 终止器**的两个模型面名
+  //   （同一 execute、同一终止语义），不是两个载体各挂一份实现。
   // P2A 换名：hand-rolled `load_skill` 已摘除，模型面加载器 = dsh-tool-skill 注册的 `skill`
   // （工具名是上游常量，不可配）；不并进允许表 ⇒ 治理闸 deny，模型面看得到目录但取不到全文。
-  const loopMetaTools = ["final_answer", ...(input.skills?.length ? ["skill"] : [])];
+  const loopMetaTools = ["final_answer", FINAL_ANSWER_ALIAS, ...(input.skills?.length ? ["skill"] : [])];
   const effectiveToolNames = [...new Set([...agent.scopeDeclaration.toolNames, ...input.grantedToolNames, ...loopMetaTools])];
   return {
     tenantId: agent.tenantId, // N4：harness 侧 mcp namespace 池键的唯一来源（A11 机器核）
@@ -345,6 +385,8 @@ export function buildSessionSetup(input: {
     finalAnswer: {
       description: input.finalAnswerDescription ?? FINAL_ANSWER_DESC,
       schema: input.expectsSchema ?? DEFAULT_FINAL_ANSWER_SCHEMA,
+      // 第二形态名随 spec 下发（harness 侧据此注册同义名）——单一来源 = FINAL_ANSWER_ALIAS。
+      aliases: [FINAL_ANSWER_ALIAS],
     },
   };
 }

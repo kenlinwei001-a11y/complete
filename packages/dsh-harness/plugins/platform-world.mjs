@@ -203,6 +203,22 @@ export function validateSetupSpec(spec) {
       || typeof spec.finalAnswer.schema !== 'object' || spec.finalAnswer.schema === null) {
       throw new TypeError('setup.finalAnswer requires {description: string, schema: object}')
     }
+    // WO-GRANT-MISMATCH · additive 可选键 `aliases`：终止工具的**第二形态名**（如
+    // mcp__builtin__final_answer —— 模型按内置工具族命名惯例寻址终止工具时的形态）。
+    // 形态错误当场抛（同 hostTools 纪律）：静默丢掉别名会让那一次收尾调用撞 UNKNOWN_TOOL，
+    // 而模型面看不出区别（「门拒」换成「没这个工具」，同样是收不了尾）。
+    if (spec.finalAnswer.aliases !== undefined) {
+      if (!Array.isArray(spec.finalAnswer.aliases)
+        || spec.finalAnswer.aliases.length === 0
+        || spec.finalAnswer.aliases.some((a) => typeof a !== 'string' || a.length === 0)) {
+        throw new TypeError('setup.finalAnswer.aliases must be a non-empty array of non-empty strings when present')
+      }
+      // 别名与主名同名 = 无意义（且会在注册期撞名）；空数组已在上面拒掉（它会读成"无别名"而其实
+      // 是「声明了但一个都没生效」——与本仓「拒空数组而不是当无声明」同纪律）。
+      if (spec.finalAnswer.aliases.includes('final_answer')) {
+        throw new TypeError('setup.finalAnswer.aliases must not repeat the canonical name "final_answer"')
+      }
+    }
     out.finalAnswer = spec.finalAnswer
   }
   if (spec.hostTools !== undefined) {
@@ -279,8 +295,14 @@ export async function applySetupSpec(agentCtx, spec) {
   const tools = agentCtx.get('tools')
   if (spec.finalAnswer !== undefined) {
     if (!tools) throw new Error('setup.finalAnswer requires the tools plugin in cordis.yml')
-    tools.register({
-      name: 'final_answer',
+    // WO-GRANT-MISMATCH · 终止工具按**主名 + 别名**逐条注册 —— 别名与主名**共用同一份定义**
+    // （同一个 execute、同一个 schema、同一段 render），不是两条执行路：一条是本 agent 作用域内
+    // 的终止器，只是模型可以用两种形态名点它。为什么需要别名：模型对内置工具族一律按
+    // `mcp__builtin__{raw}` 全名寻址（族群 25 件皆如此），对终止器也照此寻址 —— 而终止器是
+    // harness 本地注册的裸名工具，那个名字此前既不在允许表里、也没有实体 ⇒ 调用被门拒
+    // （`not in agent scope allow-list`），收尾只能靠软收尾兜底（实测三题里两次）。
+    // 允许表那一半在平台侧（`buildSessionSetup` 的 loopMetaTools，同一份别名清单）。
+    const terminalDef = {
       description: spec.finalAnswer.description,
       parameters: spec.finalAnswer.schema,
       output: {
@@ -291,7 +313,10 @@ export async function applySetupSpec(agentCtx, spec) {
         if (typeof args !== 'object' || args === null) throw new Error('final_answer arguments must be an object')
         return { recorded: true }
       },
-    })
+    }
+    for (const name of ['final_answer', ...(spec.finalAnswer.aliases ?? [])]) {
+      tools.register({ name, ...terminalDef })
+    }
   }
   // P2A：hand-rolled `load_skill` 已摘除 —— 模型面加载器改由 dsh-tool-skill 的 `skill` 工具承担
   // （名称/参数/渲染都是上游常量，不可配），全文取自上方 SkillProvider 经 ctx.skills。
@@ -416,5 +441,8 @@ export async function applySetupSpec(agentCtx, spec) {
   // --- N3 · STALL_LOOP 看门狗：scoped tools/post-execute 计数 + 两档升级 ---
   // 与上方 pre-execute 治理闸同层同 scope（同 scopeTarget 分发模式）；cap 与出货 compose
   // 同一 env 源（子进程 process.env.QOS_AGENT_LOOP_REPEAT_CAP），缺省禁用 = 零挂载。
-  installStallLoopWatchdog(agentCtx)
+  // WO-GRANT-MISMATCH：终止工具的**别名**一并进它的 meta 豁免集 —— 豁免集按**名字**判，
+  // 只豁免主名等于「换个形态名点终止器就开始计入环检测」（合法重复收尾被判死循环）。
+  // 名字从 spec 现取（同一份来源），本文件不另写一份字面量。
+  installStallLoopWatchdog(agentCtx, { extraMetaTools: spec.finalAnswer?.aliases ?? [] })
 }

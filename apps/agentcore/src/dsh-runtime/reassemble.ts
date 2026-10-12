@@ -43,6 +43,10 @@ export type { FailedToolCall } from "../agent/failure-disclosure.js";
 import { reflectAnswer } from "../agent/reflect.js";
 import { checkJsonSchema } from "../util/jsonschema.js";
 import { newId } from "../ids.js";
+// WO-GRANT-MISMATCH：终止工具的两种形态名（裸名 / 内置面全名）单一来源 = setup-spec.ts。
+// 适配层（下发给 harness 的 spec）与重组装层（本文件认帧流）必须同判据 —— 各写一份名字就是
+// 「同一件事两套真相源」，改名时必有一侧静默失配。
+import { FINAL_ANSWER_ALIAS, isFinalAnswerToolName } from "./setup-spec.js";
 
 // ---- dsh 帧的窄本地类型（只声明重组装消费的字段；wire 上还有更多字段，宽容忽略） ----
 
@@ -557,7 +561,7 @@ export function foldDshIterations(
     }
     if (e.type === "tool/call") {
       if (typeof d.callId !== "string" || typeof d.name !== "string") continue;
-      if (d.name === "final_answer") continue; // meta 口径：派发前拦截，native 审计同无记录
+      if (isFinalAnswerToolName(d.name)) continue; // meta 口径：派发前拦截，native 审计同无记录（两种形态名同判）
       let input: unknown = d.arguments;
       if (typeof input === "string") {
         try { input = JSON.parse(input); } catch { /* 保留原始字符串（collectToolCalls 同容错） */ }
@@ -674,8 +678,10 @@ export function reassembleDshRun(events: readonly DshSessionEvent[], opts: Reass
   // sketch：loop.ts:1146 同口径 —— 元工具（final_answer/技能加载器）不进 sketch。
   // 技能加载器名 = dsh 臂真名 `skill`（上游常量，@deepseek-ai/dsh-tool-skill，不可配）；
   // native 的 `load_skill` 不流经本函数（本函数只吃 dsh 帧流）。
+  // WO-GRANT-MISMATCH：终止器**两种形态名**都剔（`isFinalAnswerToolName`）—— 否则模型按全名
+  // 收尾时，同一次终止会在 sketch 里以“一步”的形态冒出来（native 与裸名收尾都没有这一步）。
   const sketch = calls
-    .filter((c) => c.name !== "final_answer" && c.name !== "skill")
+    .filter((c) => !isFinalAnswerToolName(c.name) && c.name !== "skill")
     .map((c) => ({ toolName: c.name, inputSummary: JSON.stringify(c.input ?? {}).slice(0, 200) }));
 
   const reason = turnEndReason(events);
@@ -694,7 +700,10 @@ export function reassembleDshRun(events: readonly DshSessionEvent[], opts: Reass
     return block ? [block] : [];
   })();
 
-  const finalCall = [...calls].reverse().find((c) => c.name === "final_answer");
+  // WO-GRANT-MISMATCH：收尾调用按**终止工具身份**定位（裸名 `final_answer` / 全名别名
+  // `mcp__builtin__final_answer` 同判）—— 只认裸名时，模型按内置工具族惯例用全名收尾的那一次
+  // 会落进「压根没调 final_answer」的软收尾支（正文兜底），用户读到的是过程文本而不是交卷。
+  const finalCall = [...calls].reverse().find((c) => isFinalAnswerToolName(c.name));
 
   // N3 · stall-loop 分类前置（degrade 短路语义，先于 expectsSchema/final_answer 分支）：
   // watchdog cancel 落帧 ⇒ outcome BUDGET_EXHAUSTED + degraded{STALL_LOOP}（对位 loop.ts:1182）
@@ -968,7 +977,10 @@ export interface SseEmission {
  *   · dsh `skill`（上游常量，@deepseek-ai/dsh-tool-skill@0.1.0-rc.6，不可配）—— P2A 换名后就是它。
  * 写错名字 = meta 帧不再被 skip ⇒ 技能加载会以 `type:"skill"` 上 SSE 面（native 不发这步）。
  */
-const META_TOOL_NAMES = new Set(["final_answer", "skill"]);
+// WO-GRANT-MISMATCH：终止器的**两种形态名**都在内（`FINAL_ANSWER_ALIAS` 同源）——SSE 面口径
+// 与 native 同形（native 在派发前拦截 ⇒ 从不为终止器发 step 事件），只剔裸名时全名收尾会以
+// 一步 `type:"mcp__builtin__final_answer"` 上屏（用户看到一步本不存在的「工具」）。
+const META_TOOL_NAMES = new Set(["final_answer", FINAL_ANSWER_ALIAS, "skill"]);
 
 /**
  * N2·D-7 · SSE 桥工厂（原 mapDshEventToSse 纯函数 → 工厂持态版）。

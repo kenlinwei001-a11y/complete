@@ -22,7 +22,7 @@ import { SOLVERS_MCP_CONFIG_ID } from "../mcp/solvers-catalog.js";
 import { SOLVERS_MCP_SERVER, solverMcpToolName } from "@platform/contracts";
 import { WORKFLOW_MCP_CONFIG_ID, workflowMcpToolName } from "../mcp/workflow-mcp.js";
 // WO-AGENT-CONFIG-TO-DSH · 规则面的 DSH 原生 MCP 模式（三面同改用的同名常量与全名拼接单一来源）。
-import { RULES_MCP_CONFIG_ID, RULES_MCP_SERVER, rulesMcpToolName } from "../mcp/rules-mcp.js";
+import { RULES_MCP_CONFIG_ID, RULES_MCP_SERVER, RULES_MCP_TOOL_NAMES, rulesMcpToolName } from "../mcp/rules-mcp.js";
 // WO-BUILTIN-TO-DSH · 内置工具面（查数据 / 取对象 / 搜知识…）的 DSH 原生 MCP 模式
 // （三面同改用的同名常量与全名拼接单一来源；工具清单本身由 mcp/builtin-mcp.ts 从注册表现算）。
 import { BUILTIN_MCP_CONFIG_ID, BUILTIN_MCP_SERVER, builtinMcpToolName } from "../mcp/builtin-mcp.js";
@@ -1781,17 +1781,27 @@ export function seedRegistry(now = new Date().toISOString()): {
         // WO-BUILTIN-TO-DSH / WO-BUILTIN-MIGRATE-REST · 本 agent 已改挂**内置工具 MCP 面**的那些件
         // （`BUILTIN_MIGRATED` 累计台账）同样从旧载体剔除 —— **同一个数组**同时喂「这里剔除」与
         // 下方「MCP ref 授予」，禁两处各写一份（写漏一处 = 同一能力两条授予路并存 = 要退的病）。
+        // WO-GRANT-MISMATCH · 规则面那件同样剔除（它由**自己的** server 承载，见下方 ref）：
+        // 「今天的行为是 X」通用 agent 把 `evaluate_rules` 挂在**旧载体**（裸名 BUILTIN + 反向通道）上，
+        // 而同一族的其余 25 件走 `mcp__builtin__{raw}` 全名 —— 同一族两种记法。模型对内置工具族
+        // 一律按全名寻址（实测三题：每一次成功的调用都用全名），于是它把规则也按全名寻址
+        // （`mcp__builtin__evaluate_rules`）而被 scope 门拒 —— 门是逐名精确匹配，那个名字上哪儿
+        // 都不存在。「应该是 Y」：规则面记**自己的**全名 `mcp__rules__evaluate_rules`（与
+        // 切片/求解器/工作流/内置工具四族同一惯例：一个资源一条授予路，名字 = 它自己的 server），
+        // 通用 agent 的裸名残留随之清零（判据：本 filter 的结果集为空）。
         ...BUILTIN_TOOLS.filter(
           (t) =>
             !(ONTOLOGY_MCP_TOOL_NAMES as readonly string[]).includes(t.name) &&
+            !(RULES_MCP_TOOL_NAMES as readonly string[]).includes(t.name) &&
             !(BUILTIN_MIGRATED as readonly string[]).includes(t.name),
         ).map((t): AgentDefinition["tools"][number] => ({ kind: "BUILTIN", name: t.name })),
-        // ②③④⑤ 四张目录：本体切片 / 全部求解器 / 全部工作流 / **内置工具面**
-        // （`toolFilter` 收窄到本 agent 已迁移的那几件 = 累计台账）。
+        // ②③④⑤⑥ 五张目录：本体切片 / 全部求解器 / 全部工作流 / **内置工具面**
+        // （`toolFilter` 收窄到本 agent 已迁移的那几件 = 累计台账）/ 规则面（本 run 唯一一件）。
         { kind: "MCP", mcpConfigId: ONTOLOGY_MCP_CONFIG_ID },
         { kind: "MCP", mcpConfigId: SOLVERS_MCP_CONFIG_ID },
         { kind: "MCP", mcpConfigId: WORKFLOW_MCP_CONFIG_ID },
         builtinMcpRef(BUILTIN_MIGRATED),
+        { kind: "MCP", mcpConfigId: RULES_MCP_CONFIG_ID, toolFilter: [rulesMcpToolName("evaluate_rules")] },
       ] as AgentDefinition["tools"],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
       // ③ 技能目录现算（已发布 ∧ 非写回型）——见上方 ③ 的说明。
@@ -1804,6 +1814,8 @@ export function seedRegistry(now = new Date().toISOString()): {
         { mcpConfigId: SOLVERS_MCP_CONFIG_ID },
         { mcpConfigId: WORKFLOW_MCP_CONFIG_ID },
         { mcpConfigId: BUILTIN_MCP_CONFIG_ID },
+        // WO-GRANT-MISMATCH · 规则 server 随授予面一起挂（只有 ref 没有挂载 = 模型面拿不到它）。
+        { mcpConfigId: RULES_MCP_CONFIG_ID },
       ],
       scopeDeclaration: {
         // 声明面留空**不是**省略：`allObjectTypes` 才是「全量」的判据（空数组在 opt-in 强制下
@@ -1814,12 +1826,16 @@ export function seedRegistry(now = new Date().toISOString()): {
           ...BUILTIN_TOOLS.filter(
             (t) =>
               !(ONTOLOGY_MCP_TOOL_NAMES as readonly string[]).includes(t.name) &&
+              !(RULES_MCP_TOOL_NAMES as readonly string[]).includes(t.name) &&
               !(BUILTIN_MIGRATED as readonly string[]).includes(t.name),
           ).map((t) => t.name),
           // WO-BUILTIN-TO-DSH / WO-BUILTIN-MIGRATE-REST · 已迁到 MCP 面的那些件按契约惯例记**全名**
           // （与授予面同源数组，禁各写一份）。
           ...builtinMcpFullNames(BUILTIN_MIGRATED),
           ...ONTOLOGY_MCP_TOOL_NAMES.map((raw) => ontologyMcpToolName(raw)),
+          // WO-GRANT-MISMATCH · 规则面同样按契约惯例记**全名**（同一资源一条路：授予 ∧ 声明 ∧ 挂载
+          // 三面都用 `rulesMcpToolName`，禁一处写裸名 —— 记裸名会让这条路被自己的 scope 门拒）。
+          rulesMcpToolName("evaluate_rules"),
         ],
         allTools: true,
       },
