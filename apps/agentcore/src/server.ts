@@ -2383,6 +2383,12 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       input?: unknown;
       timeoutMs?: unknown;
       kind?: unknown;
+      /**
+       * WO-DISCOVER-QUOTA · 本调用所属「看路轮」键（additive·缺席 = 逐调用计 = 旧行为逐字节兼容）。
+       * 由 harness 侧从帧流 `tool/call{turn,step}` 现取（反向工具 execute 的 exec 二参 / MCP tools/call
+       * 的 `_meta`），供探索配额**按轮**记：同一轮里一起发出的几件发现型工具共用一次名额（不再互相挤掉）。
+       */
+      discoverRoundKey?: unknown;
     };
     if (typeof body.runToken !== "string" || typeof body.callId !== "string" || typeof body.toolName !== "string") {
       throw new HttpError(400, "VALIDATION_ERROR", "tool-execute 载荷需 {runToken, callId, toolName: string, input, timeoutMs?}");
@@ -2475,11 +2481,21 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     if (requestedTimeoutMs !== undefined && (!Number.isInteger(requestedTimeoutMs) || requestedTimeoutMs < 1)) {
       throw new HttpError(400, "VALIDATION_ERROR", "timeoutMs 需正整数");
     }
+    // WO-DISCOVER-QUOTA：轮键 additive 校验（与 kind 同款 fail-closed —— 畸形值 400，不许静默当"没有轮"：
+    // 静默会把它降级回逐调用计费，即把本单要修的病灶悄悄装回去）。缺席 = 旧行为。
+    const discoverRoundKey = body.discoverRoundKey;
+    if (discoverRoundKey !== undefined
+      && (typeof discoverRoundKey !== "string" || discoverRoundKey.length === 0 || discoverRoundKey.length > 200)) {
+      throw new HttpError(400, "VALIDATION_ERROR", "discoverRoundKey 需 1..200 字符串");
+    }
     // per-call deadline 对位 native callTimeoutMs（loop.ts:837-838）：min(请求档 ?? 默认档, 预算剩余)。
     const base = requestedTimeoutMs ?? entry.defaultTimeoutMs;
     const remainingMs = entry.budget ? entry.budget.budget.maxDurationMs - entry.budget.elapsedMs() : base;
     const effectiveTimeoutMs = Math.max(1, Math.min(base, remainingMs));
-    const r = await entry.executor.run(body.toolName, body.input, { timeoutMs: effectiveTimeoutMs });
+    const r = await entry.executor.run(body.toolName, body.input, {
+      timeoutMs: effectiveTimeoutMs,
+      ...(discoverRoundKey !== undefined ? { discoverRoundKey } : {}),
+    });
     // W9-full：宿主侧表累积（键 = 桥上传的帧 callId 原值）——reassemble 命中支的四态/tc_/
     // 宿主实测 durationMs 事实源。409 重放拒绝在上方先行 ⇒ 同 callId 不会二次落表。
     entry.hostToolCalls.set(body.callId, { outcome: r.outcome, toolCallId: r.toolCallId, durationMs: r.durationMs });

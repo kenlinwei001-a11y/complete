@@ -27,6 +27,12 @@ export interface StubRequest {
 export interface StubRound {
   /** 工具调用轮（name + 序列化 arguments；同 name+同 arguments = 同签名，watchdog 计数对象）。 */
   toolCall?: { name: string; arguments: string };
+  /**
+   * WO-DISCOVER-QUOTA（additive）· **同一步多件工具调用**（真 provider 的同一 assistant 消息里
+   * 发多条 `tool_calls` 的形态；探索配额按「看路轮」记的判据要靠它才能在本机上跑出来）。
+   * 与 `toolCall` 互斥（两者同时给 ⇒ 抛，不静默二选一）；单件仍走 `toolCall`（逐字节兼容）。
+   */
+  toolCalls?: Array<{ name: string; arguments: string }>;
   /** 纯文本收尾轮。 */
   text?: string;
   /**
@@ -46,6 +52,23 @@ function sseChunk(obj: unknown): string {
 }
 
 /**
+ * WO-DISCOVER-QUOTA · 本轮的工具调用清单（两种形态归一）。`toolCall` 与 `toolCalls` 同时给 =
+ * 剧本写错（会静默丢掉一半调用）⇒ 当场抛，不猜。
+ */
+function toolCallsOf(round: StubRound): Array<{ name: string; arguments: string }> {
+  if (round.toolCall !== undefined && round.toolCalls !== undefined) {
+    throw new Error("StubRound: toolCall 与 toolCalls 互斥（同一步多件走 toolCalls）");
+  }
+  if (round.toolCalls !== undefined) return round.toolCalls;
+  return round.toolCall !== undefined ? [round.toolCall] : [];
+}
+
+/** 帧 callId：单件恒 `call_${seq}`（逐字节旧行为），多件加下标防宿主 409 重号拒。 */
+function callIdOf(seq: number, index: number, total: number): string {
+  return total > 1 ? `call_${seq}_${index}` : `call_${seq}`;
+}
+
+/**
  * 非流式（JSON）形态的同一轮次 —— **只在 `jsonWhenNotStreaming` 开启且请求未带 `stream:true` 时走**。
  *
  * 为什么需要它：两条臂的**线协议不同**。dsh 臂经 pi-ai 走 SSE（`roundToSse`）；
@@ -56,14 +79,13 @@ function sseChunk(obj: unknown): string {
  * 这正是「同 task 双跑比 token 账」的受控变量。缺省不开 ⇒ 既有全部调用方逐字节不变。
  */
 function roundToJson(round: StubRound, _seq: number): unknown {
-  const toolCalls = round.toolCall
-    ? [
-        {
-          id: `call_${_seq}`,
-          type: "function",
-          function: { name: round.toolCall.name, arguments: round.toolCall.arguments },
-        },
-      ]
+  const calls = toolCallsOf(round);
+  const toolCalls = calls.length > 0
+    ? calls.map((c, i) => ({
+        id: callIdOf(_seq, i, calls.length),
+        type: "function",
+        function: { name: c.name, arguments: c.arguments },
+      }))
     : undefined;
   return {
     id: "chatcmpl-stub",
@@ -75,11 +97,11 @@ function roundToJson(round: StubRound, _seq: number): unknown {
         index: 0,
         message: {
           role: "assistant",
-          content: round.toolCall ? null : (round.text ?? ""),
+          content: toolCalls ? null : (round.text ?? ""),
           ...(toolCalls ? { tool_calls: toolCalls } : {}),
           ...(round.reasoning !== undefined ? { reasoning_content: round.reasoning } : {}),
         },
-        finish_reason: round.toolCall ? "tool_calls" : (round.finishReason ?? "stop"),
+        finish_reason: toolCalls ? "tool_calls" : (round.finishReason ?? "stop"),
       },
     ],
     usage: round.usage,
@@ -102,7 +124,8 @@ function roundToSse(round: StubRound, seq: number): string {
       ],
     });
   }
-  if (round.toolCall) {
+  const calls = toolCallsOf(round);
+  if (calls.length > 0) {
     out += sseChunk({
       ...base,
       choices: [
@@ -111,24 +134,25 @@ function roundToSse(round: StubRound, seq: number): string {
           delta: {
             role: "assistant",
             content: null,
-            tool_calls: [
+            tool_calls: calls.map((c, i) => (
               // W9-full：帧 callId 直通宿主反向通道后，同剧本多轮工具调用若共用硬编码
               // "call_1" 会撞宿主 409 重号拒（真 provider 每轮铸唯一 id——这是夹具仿真度缺口，
               // 非产品缺陷）。按请求序铸 call_<seq>：单调用剧本恒 call_1（逐字节兼容），
-              // 多轮剧本得唯一 id。显式 callId 控制仍走 helpers-dsh-scripted 变体。
-              { index: 0, id: `call_${seq}`, type: "function", function: { name: round.toolCall.name, arguments: "" } },
-            ],
+              // 多轮/多件剧本得唯一 id（多件加下标）。显式 callId 控制仍走 helpers-dsh-scripted 变体。
+              { index: i, id: callIdOf(seq, i, calls.length), type: "function", function: { name: c.name, arguments: "" } }
+            )),
           },
           finish_reason: null,
         },
       ],
     });
+    // 入参按同序分帧（真 provider 逐件流式增量同形；index 对齐）。
     out += sseChunk({
       ...base,
       choices: [
         {
           index: 0,
-          delta: { tool_calls: [{ index: 0, function: { arguments: round.toolCall.arguments } }] },
+          delta: { tool_calls: calls.map((c, i) => ({ index: i, function: { arguments: c.arguments } })) },
           finish_reason: null,
         },
       ],

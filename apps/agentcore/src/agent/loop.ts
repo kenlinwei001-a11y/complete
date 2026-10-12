@@ -616,6 +616,13 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
   if (opts.perToolCallCap !== undefined && opts.perToolCallCap > 0) opts.budget.perToolCallCap = opts.perToolCallCap;
   // WO-LOOP-CONTROL-P2 · Retry Manager 最大重试次数（opt-in·0=不重试=现行为字节兼容）。
   const retryMaxAttempts = opts.retry && opts.retry.maxAttempts > 0 ? opts.retry.maxAttempts : 0;
+  /**
+   * WO-DISCOVER-QUOTA · 本次运行的**探索轮键前缀**（探索配额按「看路轮」记，见 `budget.tryConsumeDiscover`）。
+   * 轮键必须**跨运行唯一**：预算 tracker 经 nesting 被父子运行共享，两个并发子 agent 各自的第 1 轮
+   * 不能撞成同一轮（撞了 = 一个名额管两家，凭空收紧）。故前缀取本次运行现铸的一次性 id
+   * （纯键·不参与任何判据的取值·R6 确定性不受其值影响）。
+   */
+  const discoverRoundPrefix = newId("rt");
   // WO-LOOP-CONTROL-P2 · Escalation Ladder 一次性状态位（暗发 escalation·mirror forceFinishNotified·升级至多一次·仍停滞即诚实降级）。
   let escalated = false;
   // WO-LOOP-CONTROL-P2.5 · rung② 可判别停滞标记（仅在 rung① 用尽后的停滞点置位·由 degrade 在 escalation 开时挂到结果 stalled 上抛
@@ -805,6 +812,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
   const runToolBlock = async (
     block: ToolUseBlock,
     budgetDecision?: { ok: true } | { ok: false; reason: string },
+    discoverRoundKey?: string,
   ): Promise<BlockOutcome> => {
     if (block.name === "load_skill" && opts.loadSkillEnabled) {
       const skillId = String((block.input as Record<string, unknown>)?.skillId ?? "");
@@ -934,10 +942,10 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     // WO-LOOP-CONTROL-P2 · Retry Manager（PRD §3.2·机制 #4）：瞬时/传输层错（executor 回执 retryable=true·DataCore 不可达/
     // MCP 传输抖动）有界重试至多 retryMaxAttempts 次（退避复用同一 per-call deadline callTimeoutMs·**不新起定时器体系**）——
     // 重试成功（OK）→ 下游 roundHadSuccess 复位停滞计数（= 瞬时错**不入停滞**）；确定性错（retryable=false）不重试立即入停滞（现行为）。
-    let r = await opts.executor.run(block.name, block.input, { binding, budgetDecision, timeoutMs: callTimeoutMs });
+    let r = await opts.executor.run(block.name, block.input, { binding, budgetDecision, timeoutMs: callTimeoutMs, discoverRoundKey });
     for (let attempt = 0; r.retryable && attempt < retryMaxAttempts; attempt++) {
       opts.metrics.agentRetry.inc();
-      r = await opts.executor.run(block.name, block.input, { binding, budgetDecision, timeoutMs: callTimeoutMs });
+      r = await opts.executor.run(block.name, block.input, { binding, budgetDecision, timeoutMs: callTimeoutMs, discoverRoundKey });
     }
     await opts.emit("step.started", { stepId: r.toolCallId, type: block.name });
     await opts.emit("step.completed", {
@@ -1319,11 +1327,12 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
         const cost = builtinTool(b.name)?.costClass ?? "CHEAP";
         return opts.budget.tryConsume(cost);
       });
-      outcomes = await mapLimit(toolUses, PARALLEL_READ_CONCURRENCY, (b, idx) => runToolBlock(b, decisions[idx]));
+      outcomes = await mapLimit(toolUses, PARALLEL_READ_CONCURRENCY, (b, idx) =>
+        runToolBlock(b, decisions[idx], `${discoverRoundPrefix}:${i}`));
     } else {
       outcomes = [];
       for (const block of toolUses) {
-        outcomes.push(await runToolBlock(block));
+        outcomes.push(await runToolBlock(block, undefined, `${discoverRoundPrefix}:${i}`));
       }
     }
 

@@ -4,7 +4,7 @@
 //   上游 sha256: 50ff18e787527a84bdaa569de9cbf68d2322941a870767030b52717b9c3322f1
 //   漂移检查: packages/dsh-harness/test/drift-check.mjs（上游升级必须重贴下述三处 diff 并更新钉值）
 //
-// 与上游的 diff 仅三处，其余逐字节不动：
+// 与上游的 diff 仅四处，其余逐字节不动：
 //   D1 Config 两臂加可选 tenantId（z.string().min(1)，schemastery 对象属性缺省可选）。
 //      缺省时行为与上游逐字节等价（保住原生六用例基线）；harness 路径由 platform-world
 //      validateSetupSpec 强制必填（fail-closed）。
@@ -17,6 +17,9 @@
 //      首连/重连/tools_list_changed 重同步逐订阅者 scope 重注册，每订阅者独立 disposers 代际，
 //      共享上游 syncChain 串行化保序防双 dispose；新增 syncSubscriber（后 attach 订阅者补首轮
 //      同步）与 dropSubscriber（release 串行化归还本代际注册）。
+//   D4 WO-DISCOVER-QUOTA：`tools/call` 的 params 补 additive `_meta.platformDiscoverRoundKey`
+//      （本调用所属「看路轮」= 会话 id + 帧 tool/call{turn,step}，见 discoverRoundKeyOf）——
+//      取不到即**键不出**（请求体与旧形态逐字节同）；tenantId 仍永不进公开名、永不上 wire。
 //   publicToolName / SERVER_NAME_PATTERN / reconnect 策略全部不动 —— tenantId 永不进公开名、
 //   永不上 wire 给 MCP server。
 import z from "@deepseek-ai/schemastery";
@@ -99,13 +102,46 @@ function listToolsUncached(client, cursor) {
 		...cursor === void 0 ? {} : { params: { cursor } }
 	}, ListToolsResultSchema);
 }
+/**
+* WO-DISCOVER-QUOTA · 本调用所属「看路轮」键（= 会话 id + 帧 `tool/call{turn,step}`）。
+*
+* 【为什么要它】平台侧探索配额（`maxDiscoverCalls`）按**轮**记：同一轮里一起发出的几件发现型
+* 工具（`discover`/`search_experience`/`query_system_ontology`/`retrieve_knowledge`）是**一次**看路，
+* 只吃一个名额；跨轮才递增。而 MCP 载体的调用在宿主眼里**同一步与相邻步长得一模一样**
+* （宿主自铸 callId、逐件串行到达）——轮号只有帧流知道，故由这里搭一趟车（`tools/call` 的
+* `_meta`，MCP 规范给协议元数据留的位；宿主侧由 builtin-mcp-server 读出后随反向通道回传）。
+*
+* 【取不到时】返回 undefined ⇒ 不带该键 ⇒ 宿主退回逐调用计费（旧行为）。宁可退回旧行为，
+* 也不编一个轮号去改变配额判据。
+*
+* @param exec - 工具 execute 的二参（agent-loop 铸造：callId=block.id，与 `tool/call` 帧同源同值）。
+* @returns 轮键串，或 undefined（无帧/无 session/帧无 turn·step）。
+*/
+export function discoverRoundKeyOf(exec) {
+	const session = exec?.agent?.session;
+	const events = session?.events;
+	const callId = exec?.callId;
+	if (!Array.isArray(events) || typeof callId !== "string" || callId.length === 0) return undefined;
+	for (let i = events.length - 1; i >= 0; i--) {
+		const e = events[i];
+		if (e?.type !== "tool/call" || e?.data?.callId !== callId) continue;
+		const { turn, step } = e.data;
+		if (typeof turn !== "number" || typeof step !== "number") return undefined;
+		const sid = typeof session?.id === "string" ? session.id : "session";
+		return `${sid}:t${turn}s${step}`;
+	}
+	return undefined;
+}
 /** Call without the SDK pre-validating an output schema the bridge may not support. */
 function callToolUncached(client, rawName, args, exec, opts) {
+	const discoverRoundKey = discoverRoundKeyOf(exec);
 	return client.request({
 		method: "tools/call",
 		params: {
 			name: rawName,
-			arguments: args
+			arguments: args,
+			// 缺席即键不出（`_meta` 全空时不发 —— 与旧请求体逐字节同）。
+			...(discoverRoundKey !== void 0 ? { _meta: { platformDiscoverRoundKey: discoverRoundKey } } : {})
 		}
 	}, RawCallToolResultSchema, {
 		signal: exec.signal,

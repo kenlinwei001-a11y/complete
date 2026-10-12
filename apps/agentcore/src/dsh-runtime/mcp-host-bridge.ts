@@ -88,7 +88,16 @@ export function envelopeOf(body: HostReply, fallbackCallId: string): { text: str
  * （`mcp__{server}__{raw}`）—— 宿主 executor 的 scope 门（executor.ts 第 0 步）用全名校验，
  * 与 scopeDeclaration/审计的全名惯例同源。转发裸名会被 scope 门 DENIED。
  */
-export async function forwardToHost(fullName: string, input: Record<string, unknown>): Promise<{ text: string; isError: boolean }> {
+/**
+ * @param discoverRoundKey WO-DISCOVER-QUOTA · 本调用所属「看路轮」键（MCP `tools/call` 的 `_meta` 带来；
+ *   harness 侧 mcp-client-tenant 从帧流 `tool/call{turn,step}` 现取）。宿主探索配额按轮记用；
+ *   缺席 ⇒ 请求体不带该键 ⇒ 宿主退回逐调用计费（旧行为逐字节兼容）。
+ */
+export async function forwardToHost(
+  fullName: string,
+  input: Record<string, unknown>,
+  discoverRoundKey?: string,
+): Promise<{ text: string; isError: boolean }> {
   if (!EXEC_URL || !RUN_TOKEN) {
     return {
       text:
@@ -106,7 +115,14 @@ export async function forwardToHost(fullName: string, input: Record<string, unkn
         "content-type": "application/json",
         ...(EXEC_TOKEN ? { "x-service-token": EXEC_TOKEN } : {}),
       },
-      body: JSON.stringify({ runToken: RUN_TOKEN, callId, toolName: fullName, input, timeoutMs: TIMEOUT_MS }),
+      body: JSON.stringify({
+        runToken: RUN_TOKEN,
+        callId,
+        toolName: fullName,
+        input,
+        timeoutMs: TIMEOUT_MS,
+        ...(typeof discoverRoundKey === "string" && discoverRoundKey.length > 0 ? { discoverRoundKey } : {}),
+      }),
       signal: AbortSignal.timeout(TIMEOUT_MS + 5_000), // 宿主 per-call 档 + 宽限（桥同口径）
     });
   } catch (err) {
