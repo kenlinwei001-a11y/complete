@@ -344,12 +344,18 @@ export async function applySetupSpec(agentCtx, spec) {
         // W9-full：execute 二参 exec 透传帧 callId（agent-loop exec 铸造 callId=block.id，
         // lib/index.js:120-129，与 tool/call 帧 :293-298 同源同值）——桥上传作请求 callId，
         // 宿主侧表键 = 帧配对键，关联白得（team-lead 2026-08-22 裁决）。
-        execute: async (args, exec) => hostExecute({
-          toolName: t.name,
-          input: args,
-          callId: exec?.callId,
-          ...(t.wireKind ? { kind: t.wireKind } : {}),
-        }),
+        execute: async (args, exec) => {
+          // WO-DISCOVER-QUOTA：本调用所属「看路轮」（帧 turn/step，与 MCP 载体共用同一份实现）——
+          // 宿主探索配额按轮记用。取不到 ⇒ 键不出（宿主退回逐调用计费 = 旧行为），绝不编造轮号。
+          const discoverRoundKey = McpClient.discoverRoundKeyOf(exec)
+          return hostExecute({
+            toolName: t.name,
+            input: args,
+            callId: exec?.callId,
+            ...(discoverRoundKey !== undefined ? { discoverRoundKey } : {}),
+            ...(t.wireKind ? { kind: t.wireKind } : {}),
+          })
+        },
       })
     }
     // authored isError 通道：非 OK 包络在此换成 native 逐字回执（normalizeDispatchResult

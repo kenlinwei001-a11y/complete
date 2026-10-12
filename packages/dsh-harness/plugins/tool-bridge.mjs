@@ -112,7 +112,7 @@ export function apply(ctx, config = {}) {
     setSkillPrecondProbe(null)
   }
 
-  setToolExecutor(async ({ toolName, input, callId, kind }) => {
+  setToolExecutor(async ({ toolName, input, callId, kind, discoverRoundKey }) => {
     const envelope = (out) => ({ __w8bridge: true, ...out })
     try {
       const res = await fetch(url, {
@@ -127,6 +127,10 @@ export function apply(ctx, config = {}) {
           toolName,
           input,
           timeoutMs: callTimeoutMs,
+          // WO-DISCOVER-QUOTA：additive discoverRoundKey（本调用所属「看路轮」，见 platform-world
+          // 与 mcp-client-tenant 共用的 discoverRoundKeyOf）；取不到 ⇒ 键不出 ⇒ 请求体逐字节旧
+          // （宿主退回逐调用计费）。
+          ...(typeof discoverRoundKey === 'string' && discoverRoundKey.length > 0 ? { discoverRoundKey } : {}),
           // W8.5：additive kind 键——workflow 反向工具带 kind:'workflow'（宿主端点按 per-run
           // 绑定表解析 workflowId，wire 永不带 workflowId）；BUILTIN 不带 ⇒ 请求体逐字节旧。
           ...(kind ? { kind } : {}),

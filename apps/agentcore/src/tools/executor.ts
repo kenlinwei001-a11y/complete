@@ -132,6 +132,12 @@ export class GuardedToolExecutor {
       budgetDecision?: { ok: true } | { ok: false; reason: string };
       /** 约束执行层 stage3②：声明此工具输出应符合的本体对象类型 → 运行时强制校验,不符拒（信任边界）。 */
       expectsObjectType?: string;
+      /**
+       * WO-DISCOVER-QUOTA · 本次调用所属的「看路轮」键（探索配额按**轮**记，见 `budget.tryConsumeDiscover`）。
+       * 由驱动方给：原生 loop 传 `本次运行的唯一前缀:轮序号`、DSH 臂传帧 `turn/step`（宿主端点从 wire 收）。
+       * 缺省 undefined = 逐调用计（旧行为·工作流步/直调 executor 字节兼容）。
+       */
+      discoverRoundKey?: string;
     },
   ): Promise<ToolRunResult> {
     const started = Date.now();
@@ -265,10 +271,12 @@ export class GuardedToolExecutor {
       return this.finish(toolName, input, wrapError(err), "ERROR", started, false, classifyRetryable(err, binding));
     }
 
-    // 2.0) WO-Phase4：探索类工具专用配额（discover/search_experience/query_system_ontology）——与通用 tool 预算正交，
-    // 串行/并行轮均在此消耗（确定性 R6）。超 maxDiscoverCalls → BUDGET_EXCEEDED + 置 budget.exhausted（loop 下轮降级）。
+    // 2.0) WO-Phase4：探索类工具专用配额（discover/search_experience/query_system_ontology/retrieve_knowledge）
+    // ——与通用 tool 预算正交，串行/并行轮均在此消耗（确定性 R6）。超 maxDiscoverCalls → BUDGET_EXCEEDED
+    // + 置 budget.exhausted（loop 下轮降级）。WO-DISCOVER-QUOTA：配额按**轮**记 —— 同一轮里一起发出的
+    // 几件发现型工具共用一次名额（同轮幂等），不再互相挤掉；跨轮才递增。轮键由驱动方传（缺省=逐调用计）。
     if (this.opts.budget && DISCOVER_TOOLS.has(toolName)) {
-      const d = this.opts.budget.tryConsumeDiscover();
+      const d = this.opts.budget.tryConsumeDiscover(options?.discoverRoundKey);
       if (!d.ok) {
         return this.finish(toolName, input, { error: "BUDGET_EXCEEDED", reason: d.reason }, "BUDGET_EXCEEDED", started, false);
       }

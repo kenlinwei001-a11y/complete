@@ -68,7 +68,16 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   // 回宿主时转发**全名**：宿主 executor 的 scope 门（executor.ts 第 0 步）用全名校验，
   // 与 scopeDeclaration/审计的全名惯例同源；归一成裸名发生在门**之后**的 shim
   // （executor.ts parseBuiltinMcpToolName）。转发裸名会被 scope 门 DENIED。
-  const r = await forwardToHost(spec.name, (req.params.arguments ?? {}) as Record<string, unknown>);
+  //
+  // WO-DISCOVER-QUOTA：带上本调用所属「看路轮」键（MCP `tools/call` 的 `_meta`，harness 侧
+  // mcp-client-tenant 从帧流 `tool/call{turn,step}` 现取）——宿主探索配额按**轮**记：
+  // 同一轮里一起发出的几件发现型工具共用一次名额，不再互相挤掉。取不到 ⇒ 不带 ⇒ 宿主退回逐调用计。
+  const roundKey = req.params._meta?.platformDiscoverRoundKey;
+  const r = await forwardToHost(
+    spec.name,
+    (req.params.arguments ?? {}) as Record<string, unknown>,
+    typeof roundKey === "string" ? roundKey : undefined,
+  );
   return { content: [{ type: "text" as const, text: r.text }], ...(r.isError ? { isError: true } : {}) };
 });
 

@@ -26,6 +26,12 @@ export class BudgetTracker {
   perToolCallCap?: number;
   /** WO-LOOP-CONTROL-P2 · 逐工具累计调用计数（perToolCallCap 判定用·R6 确定性·无时钟/随机）。 */
   readonly toolCallCounts = new Map<string, number>();
+  /**
+   * WO-DISCOVER-QUOTA · 逐「看路轮」的探索配额判定（roundKey → 本轮判定），仅供同轮幂等去重用。
+   * 有序 Map + 上限裁剪（只留最近 N 轮）：轮内判定恒由首个发现型调用落定，后续同 key 调用沿用。
+   * 确定性 R6（纯计数/纯键比较·无时钟/随机）；键由调用方给（原生 loop 传轮序号、DSH 臂传帧 turn/step）。
+   */
+  private readonly discoverRounds = new Map<string, { ok: true } | { ok: false; reason: string }>();
 
   constructor(overrides?: Partial<AgentBudget>) {
     this.budget = { ...DEFAULT_AGENT_BUDGET, ...(overrides ?? {}) };
@@ -100,15 +106,45 @@ export class BudgetTracker {
   }
 
   /**
-   * WO-Phase4：探索类工具专用预算消耗（在 executor 里对 discover/search_experience/query_system_ontology 调用）。
+   * WO-Phase4 / WO-DISCOVER-QUOTA：探索类工具专用预算消耗（在 executor 里对
+   * discover/search_experience/query_system_ontology/retrieve_knowledge 调用）。
    * 超 maxDiscoverCalls → 失败并置 exhausted（loop 下一轮迭代前查 exhausted → 硬预算降级收尾）。确定性 R6。
+   *
+   * ══ 计量单位 = 「一轮看路」，不是「一次调用」（WO-DISCOVER-QUOTA · 2026-10-12）══════════
+   * 今天的行为是 X：本方法**逐调用**扣名额，四件发现型工具共用同一个计数器。而这几件在**同一轮**里
+   * 被模型一起发出是常态（系统提示自己写着「优先在同一轮并行发起」）——于是"一次看路用四把望远镜"
+   * 被记成"四次看路"：先跑到的那件吃掉唯一名额，同轮其余几件一律 BUDGET_EXCEEDED 并置 exhausted
+   * （DSH 臂经 B6 桥直接 cancel 整轮、原生臂下一轮边界降级）⇒ 首轮看路的其余几把望远镜全灭，
+   * run 在拿到任何业务数据之前就被判死。实测（部署态 maxDiscoverCalls=1）：三题里只有"首轮恰好
+   * 只看了一件"的那题拿到了完整领域取证，另两题分别得到 6/13、0 次领域调用。
+   * 应该是 Y：`prompts` 对模型的原话是「≤1 次 discover 盲扫」、契约/配置注释写的是「盲扫次数上界」
+   * —— 单位是**看路这件事**。同一轮内的多件发现型调用 = 一次看路，只吃一个名额；跨轮才递增；
+   * 超 maxDiscoverCalls 仍然 BUDGET_EXCEEDED + 置 exhausted（"无限刷发现调用"照旧被挡）。
+   *
+   * `roundKey` 语义：同 key 的后续调用**沿用本轮已判定的结论**（本轮放行 ⇒ 一并放行且不再扣名额；
+   * 本轮被拒 ⇒ 一并被拒，不多扣也不翻案）⇒ 轮内幂等。缺省（undefined）= 逐调用计 = 旧行为，
+   * 供不传轮号的调用方（工作流步、直调 executor）字节兼容。
    */
-  tryConsumeDiscover(): { ok: true } | { ok: false; reason: string } {
-    if (this.discoverCalls >= this.budget.maxDiscoverCalls) {
-      return this.markExhausted("maxDiscoverCalls exceeded");
+  tryConsumeDiscover(roundKey?: string): { ok: true } | { ok: false; reason: string } {
+    if (roundKey !== undefined) {
+      const prior = this.discoverRounds.get(roundKey);
+      if (prior) return prior;
     }
-    this.discoverCalls += 1;
-    return { ok: true };
+    const verdict: { ok: true } | { ok: false; reason: string } =
+      this.discoverCalls >= this.budget.maxDiscoverCalls
+        ? this.markExhausted("maxDiscoverCalls exceeded")
+        : { ok: true };
+    if (verdict.ok) this.discoverCalls += 1;
+    if (roundKey !== undefined) {
+      this.discoverRounds.set(roundKey, verdict);
+      // 只留最近 32 轮（轮是顺序推进的，同轮的调用只会挨着；裁剪只为防长跑任务无界增长）。
+      while (this.discoverRounds.size > 32) {
+        const oldest = this.discoverRounds.keys().next().value;
+        if (oldest === undefined) break;
+        this.discoverRounds.delete(oldest);
+      }
+    }
+    return verdict;
   }
 
   /**
