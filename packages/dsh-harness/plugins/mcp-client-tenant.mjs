@@ -4,7 +4,7 @@
 //   上游 sha256: 50ff18e787527a84bdaa569de9cbf68d2322941a870767030b52717b9c3322f1
 //   漂移检查: packages/dsh-harness/test/drift-check.mjs（上游升级必须重贴下述三处 diff 并更新钉值）
 //
-// 与上游的 diff 仅三处，其余逐字节不动：
+// 与上游的 diff 仅四处，其余逐字节不动：
 //   D1 Config 两臂加可选 tenantId（z.string().min(1)，schemastery 对象属性缺省可选）。
 //      缺省时行为与上游逐字节等价（保住原生六用例基线）；harness 路径由 platform-world
 //      validateSetupSpec 强制必填（fail-closed）。
@@ -17,6 +17,9 @@
 //      首连/重连/tools_list_changed 重同步逐订阅者 scope 重注册，每订阅者独立 disposers 代际，
 //      共享上游 syncChain 串行化保序防双 dispose；新增 syncSubscriber（后 attach 订阅者补首轮
 //      同步）与 dropSubscriber（release 串行化归还本代际注册）。
+//   D4 WO-DISCOVER-QUOTA：`tools/call` 的 params 补 additive `_meta.platformDiscoverRoundKey`
+//      （本调用所属「看路轮」= 会话 id + 帧 tool/call{turn,step}，见 discoverRoundKeyOf）——
+//      取不到即**键不出**（请求体与旧形态逐字节同）；tenantId 仍永不进公开名、永不上 wire。
 //   publicToolName / SERVER_NAME_PATTERN / reconnect 策略全部不动 —— tenantId 永不进公开名、
 //   永不上 wire 给 MCP server。
 import z from "@deepseek-ai/schemastery";
