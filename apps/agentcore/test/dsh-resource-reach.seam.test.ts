@@ -46,6 +46,8 @@ import { buildSessionSetup } from "../src/dsh-runtime/setup-spec.js";
 import { buildOntologyMcpTools, ONTOLOGY_MCP_DESC_PREFIX } from "../src/tools/ontology-mcp.js";
 // WO-BUILTIN-TO-DSH · 内置工具 MCP 面的全名拼接（本文件新增的金丝雀用它，禁手抄字面量）。
 import { BUILTIN_MCP_TOOL_NAMES, builtinMcpToolName } from "../src/mcp/builtin-mcp.js";
+// WO-GRANT-MISMATCH：终止工具的第二形态名（非花名册成员）——花名册计数的剔除数 + 在场钉子。
+import { FINAL_ANSWER_ALIAS } from "../src/agent/loop.js";
 import { buildExploratoryTools } from "../src/router/orchestrator.js";
 import {
   WORKFLOW_MCP_CONFIG_ID,
@@ -587,11 +589,17 @@ describe("RESOURCE-REACH · A 授予面契约（seed → expandAgentTools → se
     // 旧载体金丝雀②：通用 agent 的**两半合起来 = 内置工具花名册全量**（任一半归零都会在这里现形，
     // 且不随本单一批批迁移而漂 —— 每进一批只是件从这一半挪到那一半）。
     const generalHost = (general.spec.hostTools ?? []).map((x) => x.name);
-    const generalMcp = (general.spec.tools ?? []).map((x) => x.name).filter((n) => n.startsWith("mcp__builtin__"));
-    expect(generalHost.length + generalMcp.length, "旧载体金丝雀②：反向面 + MCP 面 = 花名册全量").toBe(
-      BUILTIN_MCP_TOOL_NAMES.length + 1, // +1 = evaluate_rules（在**规则面**上，不在本 server 花名册里）
-    );
-    expect(generalHost.length, "金丝雀有牙：反向面本批仍非空（未迁件还在）").toBeGreaterThan(0);
+    const generalMcpAll = (general.spec.tools ?? []).map((x) => x.name).filter((n) => n.startsWith("mcp__builtin__"));
+    // WO-GRANT-MISMATCH：花名册成员 = MCP 面**剔掉终止工具的第二形态名**（它不是花名册成员，
+    // 见 agent/loop.ts 的 FINAL_ANSWER_ALIAS）；那件单独点名要求在场。
+    const generalMcpRoster = generalMcpAll.filter((n) => n !== FINAL_ANSWER_ALIAS);
+    expect(generalHost.length, "反向面清零（通用 agent 的裸名面 = 0）").toBe(0);
+    expect(generalMcpRoster.length, "旧载体金丝雀②：MCP 面 = 花名册全量").toBe(BUILTIN_MCP_TOOL_NAMES.length);
+    expect(generalMcpAll, "终止工具第二形态名在允许表（非花名册成员，单独点名）").toContain(FINAL_ANSWER_ALIAS);
+    // 反向通道这条**路**仍活着（金丝雀换锚：通用 agent 清零后原锚结构性作废 —— 对空集断言恒真 ≠ 验过）：
+    // 现算出厂里仍持裸名 `{kind:"BUILTIN"}` 授予的 agent，非空才算这条通道没被拆。
+    const bareGrant = seedRegistry().agents.filter((a) => a.tools.some((t) => t.kind === "BUILTIN"));
+    expect(bareGrant.length, "反向通道金丝雀：出厂里另有 agent 持裸名授予").toBeGreaterThan(0);
   });
 
   it("A2 对照（把 MCP 授予拿掉）：展开面 / 允许表 / mcpServers **三面一起**收缩——这是 D1 变异能红的前提", async () => {
@@ -621,11 +629,13 @@ describe("RESOURCE-REACH · A 授予面契约（seed → expandAgentTools → se
     if (!generalSeed) throw new Error("seed general agent not found");
     const general = await setupFromSeedAgent({ ...generalSeed, kernel: "EXTERNAL" } as AgentDefinition);
     const generalHost = (general.spec.hostTools ?? []).map((x) => x.name);
-    const generalMcp = (general.spec.tools ?? []).map((x) => x.name).filter((n) => n.startsWith("mcp__builtin__"));
-    expect(generalHost.length + generalMcp.length, "旧载体金丝雀：反向面 + MCP 面 = 花名册全量").toBe(
-      BUILTIN_MCP_TOOL_NAMES.length + 1, // +1 = evaluate_rules（在**规则面**上，不在本 server 花名册里）
+    const generalMcpAll = (general.spec.tools ?? []).map((x) => x.name).filter((n) => n.startsWith("mcp__builtin__"));
+    expect(generalHost.length, "反向面清零（通用 agent 的裸名面 = 0）").toBe(0);
+    expect(generalMcpAll.filter((n) => n !== FINAL_ANSWER_ALIAS).length, "旧载体金丝雀：MCP 面 = 花名册全量").toBe(
+      BUILTIN_MCP_TOOL_NAMES.length,
     );
-    expect(generalHost.length, "金丝雀有牙：反向面本批仍非空（未迁件还在）").toBeGreaterThan(0);
+    const bareGrant = seedRegistry().agents.filter((a) => a.tools.some((t) => t.kind === "BUILTIN"));
+    expect(bareGrant.length, "金丝雀有牙：反向通道仍活（另有 agent 持裸名授予）").toBeGreaterThan(0);
   });
 });
 

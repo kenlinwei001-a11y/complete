@@ -19,7 +19,7 @@ import type { GuardedToolExecutor, ToolBinding } from "../tools/executor.js";
 import { builtinTool } from "../tools/registry.js";
 import { enrichProvenance } from "../tools/provenance.js";
 // WO-BUILTIN-TO-DSH · 内置工具 MCP 全名 → 裸名身份归一（截断豁免集按**身份**判，不按载体名）。
-import { resolveBuiltinToolIdentity } from "../mcp/builtin-mcp.js";
+import { builtinMcpToolName, resolveBuiltinToolIdentity } from "../mcp/builtin-mcp.js";
 import { scanBlocks } from "../util/numerics.js";
 import { checkJsonSchema } from "../util/jsonschema.js";
 import { reflectAnswer, type ReflectVerdict } from "./reflect.js";
@@ -365,6 +365,36 @@ export const DEFAULT_FINAL_ANSWER_SCHEMA: Record<string, unknown> = {
   required: ["blocks", "provenance"],
 };
 
+/**
+ * WO-GRANT-MISMATCH · 终止工具的**第二形态名**（模型按内置工具族命名惯例寻址时的形态）。
+ *
+ * 【今天的行为是 X】模型对**内置工具族**一律按 `mcp__builtin__{raw}` 全名寻址（本平台 25 件皆如此，
+ * 实测三题里每一次成功的调用都用全名），于是它对**终止工具**也按同一惯例寻址
+ * （`mcp__builtin__final_answer`）—— 而终止器是逐 run 注册的**裸名**工具（两臂同形），
+ * 该名此前**不在授予面**（DSH 臂）也**不在模型面**（两臂）⇒ DSH 臂被 scope 门当场拒
+ * （`tool … not in agent scope allow-list`），收尾只能靠**软收尾**兜底（实测三题里两次如此）。
+ *
+ * 【应该是 Y】终止工具**两种形态名都可调用**：
+ *   · 裸名 `final_answer` —— 人设文本（`AGENT_SYSTEM_CORE`）通篇写的是它，两臂的收尾判据一直按它认；
+ *   · 全名 `mcp__builtin__final_answer` —— 模型按族惯例寻址的形态。
+ * 两者是**同一个终止器的两个模型面名**（同 schema、同描述、同收尾语义），不是两条路：
+ * 全名**不经 MCP wire**、也不在 `BUILTIN_MCP_TOOL_NAMES` 花名册上（它不是内置 server 提供的工具，
+ * 故 `parseBuiltinMcpToolName` 对它恒 undefined 是**正确**的，⛔ 不要把它塞进花名册）。
+ *
+ * ⚠ 为什么两臂都要给（而不是只给 DSH 臂）：模型面的命名惯例是**两臂共有**的（两臂都能看到
+ *   `mcp__builtin__*` 的 25 件），只给一臂 = 同一个模型动作在换内核后结果不同 —— 那正是本仓
+ *   「两内核模型面/行为同源」判据要防的形态（`dsh-resource-reach` C1 两臂可见面逐项比）。
+ * 单一来源就在本常量：原生臂模型面（本文件 llmTools）、DSH 臂授予面与注册面
+ * （`dsh-runtime/setup-spec.ts` 的 loopMetaTools + `spec.finalAnswer.aliases` → harness 注册）、
+ * DSH 臂重组装（`dsh-runtime/reassemble.ts` 的 `isFinalAnswerToolName`），三处不各写一份字面量。
+ */
+export const FINAL_ANSWER_ALIAS = builtinMcpToolName("final_answer");
+
+/** 终止工具的**任一**形态名（裸名 / 全名别名）——「这一次调用是不是收尾」的唯一判据（两臂共用）。 */
+export function isFinalAnswerToolName(name: string): boolean {
+  return name === "final_answer" || name === FINAL_ANSWER_ALIAS;
+}
+
 /** 增量 §1.2：query_timeseries_agg（桶数 ≤120）等自带输出上限的工具不受二次截断影响；
  * read_skill_resource 自带 64KB 文本上限（§3），同样豁免。
  * W8主：导出供 server.ts tool-execute 端点镜像同一豁免集（单源，禁双写）。
@@ -637,6 +667,14 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     ...opts.tools.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })),
     {
       name: "final_answer",
+      description: opts.finalAnswerDescription ?? FINAL_ANSWER_DESC,
+      inputSchema: opts.expectsSchema ?? DEFAULT_FINAL_ANSWER_SCHEMA,
+    },
+    // WO-GRANT-MISMATCH · 终止工具的**第二形态名**（同一份描述/schema，同一条收尾语义）——
+    // 模型按内置工具族惯例寻址终止工具时点的就是它，见 FINAL_ANSWER_ALIAS 头注。
+    // 两臂都给（DSH 臂由 harness 按 `spec.finalAnswer.aliases` 注册同名同义的一件）。
+    {
+      name: FINAL_ANSWER_ALIAS,
       description: opts.finalAnswerDescription ?? FINAL_ANSWER_DESC,
       inputSchema: opts.expectsSchema ?? DEFAULT_FINAL_ANSWER_SCHEMA,
     },
@@ -1114,7 +1152,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     // ReAct 的 thought）实时流给前端——复用 `step.completed` 伪 step（`type=agent_narration`·**不新增 §8.2 事件名**·
     // `stepId=narration-${i}` 独立行·不污染工具步时间线聚合）。仅当有旁白文本 **且** 本轮确有真工具动作（非纯 final_answer
     // 收尾）才发；纯收尾散文归 answer.final，不重复外露。`opts.emitNarration` 缺省 false → 零回归（既有 agent 测试字节不变）。
-    if (opts.emitNarration && toolUses.some((b) => b.name !== "final_answer")) {
+    if (opts.emitNarration && toolUses.some((b) => !isFinalAnswerToolName(b.name))) {
       const narration = texts.map((t) => t.text).join("\n").trim();
       if (narration) {
         await opts.emit("step.completed", { stepId: `narration-${i}`, type: "agent_narration", text: narration.slice(0, 600), iteration: i });
@@ -1143,7 +1181,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     }
 
     // If this turn carries final_answer, accept it first and terminate (no tool_results needed).
-    const finalBlock = toolUses.find((b) => b.name === "final_answer");
+    const finalBlock = toolUses.find((b) => isFinalAnswerToolName(b.name));
     if (finalBlock) {
       // WO-R4-FREEQA-GATE · 闸门吃「开跑静态位 ∪ 载入动态位」，两来源取并（只收紧不放宽）。
       const accepted = await acceptFinalAnswer(finalBlock.input, opts, {
@@ -1282,7 +1320,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     // 缺省不设 cap → 直接放行（现行为字节兼容）。final_answer/load_skill 元操作不计。
     if (opts.budget.perToolCallCap !== undefined) {
       for (const b of toolUses) {
-        if (b.name === "final_answer" || b.name === "load_skill") continue;
+        if (isFinalAnswerToolName(b.name) || b.name === "load_skill") continue;
         opts.budget.tryConsumeTool(b.name);
       }
     }
@@ -1291,7 +1329,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
       // P1 hash 环检测：本轮任一真实 tool_use 的 callSignature 累计达 repeatCap → 无进度环。
       let hashStalled = false;
       for (const b of toolUses) {
-        if (b.name === "final_answer" || b.name === "load_skill") continue;
+        if (isFinalAnswerToolName(b.name) || b.name === "load_skill") continue;
         const sig = callSignature(b.name, b.input ?? {});
         const n = (callSignatureCounts.get(sig) ?? 0) + 1;
         callSignatureCounts.set(sig, n);

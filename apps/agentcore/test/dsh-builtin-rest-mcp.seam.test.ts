@@ -46,7 +46,8 @@ import { TENANT, createTestApp, type TestApp } from "./helpers.js";
 import { STUB_DCP_SPEC, startStubOpenAi, stubDirectory, stubProvider, type StubRound } from "./helpers-dsh-stub.js";
 import { toolUse } from "../src/llm/mock.js";
 import { seedRegistry, seedMcpConfigs } from "../src/mocks/seed.js";
-import { buildSessionSetup, FINAL_ANSWER_ALIAS } from "../src/dsh-runtime/setup-spec.js";
+import { buildSessionSetup } from "../src/dsh-runtime/setup-spec.js";
+import { FINAL_ANSWER_ALIAS } from "../src/agent/loop.js";
 import { BUILTIN_TOOLS } from "../src/tools/registry.js";
 import { isTruncationExemptTool } from "../src/agent/loop.js";
 import { reflectAnswer } from "../src/agent/reflect.js";
@@ -921,8 +922,12 @@ describe("WO-BUILTIN-MIGRATE-REST · C 组：三面同改 + 只剩一条授予�
       await runAgent(t, "task_rest_c4", GENERAL_AGENT_ID);
       const visible = (t.llm.agentRequests[0]?.tools ?? []).map((x) => x.name);
       for (const raw of MIGRATED) expect(visible, `模型面有 ${raw}`).toContain(full(raw));
-      const builtinFace = visible.filter((n) => n.startsWith(`mcp__${BUILTIN_MCP_SERVER}__`));
+      // WO-GRANT-MISMATCH：`mcp__builtin__*` 面上另有一件**非花名册**名（终止工具的第二形态名，
+      // 见 setup-spec.FINAL_ANSWER_ALIAS）——本判据量的是**花名册成员**是否恒全量，别名单独剔掉
+      // 并**单独点名**（剔掉不等于不管：它必须真在，否则模型按族惯例的收尾寻址又会落空）。
+      const builtinFace = visible.filter((n) => n.startsWith(`mcp__${BUILTIN_MCP_SERVER}__`) && n !== FINAL_ANSWER_ALIAS);
       expect(builtinFace.length, "内置工具面恒全量（= 已迁件数，一件不多一件不少）").toBe(MIGRATED.length);
+      expect(visible, "终止工具的第二种形态名在模型面").toContain(FINAL_ANSWER_ALIAS);
       const routerFace = visible.filter((n) => n.startsWith("mcp__") && !n.startsWith(`mcp__${BUILTIN_MCP_SERVER}__`) && !n.startsWith("mcp__workflow__"));
       // 金丝雀：收窄真在跑（可见求解器 < 授予的全部求解器），否则「收窄面=8」可能只是压根没收窄
       expect(routerFace.length, "收窄面恰为 top-k(8)（内置面不占名额）").toBe(8);

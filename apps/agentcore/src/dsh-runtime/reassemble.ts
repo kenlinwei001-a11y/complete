@@ -43,10 +43,10 @@ export type { FailedToolCall } from "../agent/failure-disclosure.js";
 import { reflectAnswer } from "../agent/reflect.js";
 import { checkJsonSchema } from "../util/jsonschema.js";
 import { newId } from "../ids.js";
-// WO-GRANT-MISMATCH：终止工具的两种形态名（裸名 / 内置面全名）单一来源 = setup-spec.ts。
-// 适配层（下发给 harness 的 spec）与重组装层（本文件认帧流）必须同判据 —— 各写一份名字就是
-// 「同一件事两套真相源」，改名时必有一侧静默失配。
-import { FINAL_ANSWER_ALIAS, isFinalAnswerToolName } from "./setup-spec.js";
+// WO-GRANT-MISMATCH：终止工具的两种形态名（裸名 / 内置面全名）单一来源 = `agent/loop.ts`
+// （两臂共用）。适配层（下发给 harness 的 spec）、原生臂模型面与重组装层（本文件认帧流）必须
+// 同判据 —— 各写一份名字就是「同一件事两套真相源」，改名时必有一侧静默失配。
+import { FINAL_ANSWER_ALIAS, isFinalAnswerToolName } from "../agent/loop.js";
 
 // ---- dsh 帧的窄本地类型（只声明重组装消费的字段；wire 上还有更多字段，宽容忽略） ----
 

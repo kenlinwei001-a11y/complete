@@ -41,6 +41,8 @@ import { startStubOpenAi, stubProvider, stubDirectory, type StubRound } from "./
 import { MockMcpClient } from "../src/mcp/mock.js";
 import { encryptSecret } from "../src/crypto.js";
 import { buildSessionSetup, type DshMcpServerSpec } from "../src/dsh-runtime/setup-spec.js";
+// WO-GRANT-MISMATCH：终止工具的第二形态名（模型按内置工具族惯例寻址时的形态）。
+import { FINAL_ANSWER_ALIAS } from "../src/agent/loop.js";
 import { BudgetTracker } from "../src/tools/budget.js";
 import { enterNesting } from "../src/runtime.js";
 
@@ -249,7 +251,12 @@ describe("WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发", () => {
         expect(result.outcome).toBe("ANSWERED");
         expect(stub.requests.length).toBeGreaterThanOrEqual(1);
         for (const r of stub.requests) {
-          expect(JSON.stringify(r.body)).not.toContain("mcp__");
+          const names = (((r.body as { tools?: { function?: { name?: string } }[] }).tools) ?? []).map((x) => x.function?.name ?? "");
+          const mcpNames = names.filter((n) => n.startsWith("mcp__"));
+          // WO-GRANT-MISMATCH：终止工具的第二形态名（`mcp__builtin__final_answer`，harness 本地注册、
+          // 不经 MCP wire、不是 MCP 工具）**常驻模型面** ⇒ 本臂的「零 MCP 工具」判据按**精确集合**表达
+          // （恰为这一个名字），不再用「body 不含 mcp__ 子串」那种会被合法新名撞红的写法。
+          expect(mcpNames, "无 mcpServers ⇒ 唯一的 mcp__ 名是终止工具第二形态名（零 MCP 工具）").toEqual([FINAL_ANSWER_ALIAS]);
         }
       } finally {
         restore();

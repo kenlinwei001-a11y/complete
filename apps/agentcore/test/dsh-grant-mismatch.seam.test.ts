@@ -37,7 +37,7 @@ import { GENERAL_AGENT_ID, seedMcpConfigs, seedRegistry } from "../src/mocks/see
 import { BUILTIN_TOOLS } from "../src/tools/registry.js";
 import { ONTOLOGY_MCP_TOOL_NAMES } from "../src/tools/ontology-mcp.js";
 import { RULES_MCP_TOOL_NAMES } from "../src/mcp/rules-mcp.js";
-import { FINAL_ANSWER_ALIAS } from "../src/dsh-runtime/setup-spec.js";
+import { FINAL_ANSWER_ALIAS } from "../src/agent/loop.js";
 import { BudgetTracker } from "../src/tools/budget.js";
 import { enterNesting } from "../src/runtime.js";
 import type { ToolAuthCtx } from "../src/tools/clients.js";
